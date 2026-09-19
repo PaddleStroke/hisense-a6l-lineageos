@@ -210,3 +210,13 @@ cc_binary {
     stl: "none",
     cflags: ["-Wall", "-Wextra", "-Werror"],
 }
+
+cc_binary {
+    name: "a6l_eink_swtcon_probe",
+    srcs: ["diagnostic/eink_swtcon_probe.c"],
+    compile_multilib: "64",
+    shared_libs: ["libdl"],
+    ldflags: ["-Wl,--export-dynamic"], // let the dlopen'd library bind to our refusing system()/popen()
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
