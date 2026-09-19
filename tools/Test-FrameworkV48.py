@@ -416,7 +416,10 @@ if opts.health:
 if opts.bpf:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-bpf-v55.sh',archive/'framework-bpf-v55.sh')
 if opts.hint_compat:
-    shutil.copytree(R/'research/framework-hint-v56/adaptation',archive/'hint-compat-source')
+    # copyfile only: copytree's copystat fails with EPERM on the Windows-backed /mnt/c archive
+    (archive/'hint-compat-source').mkdir(exist_ok=True)
+    for src in sorted((R/'research/framework-hint-v56/adaptation').iterdir()):
+        if src.is_file():shutil.copyfile(src,archive/'hint-compat-source'/src.name)
 shutil.copyfile(__file__,archive/'Test-FrameworkV48.py')
 print(json.dumps(report,indent=2))
 print('\n'.join(line for line in log.splitlines() if 'A6L_PRIVATE_PROPERTY' not in line and any(s in line for s in ['A6L_', 'FATAL EXCEPTION', 'FatalError', 'Entered the Android', 'SystemServerTiming ']) and len(line)<400)[-5000:])
