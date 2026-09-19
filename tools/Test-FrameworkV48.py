@@ -333,6 +333,8 @@ if opts.series and opts.series>=60:
     text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-media-v60.sh || echo A6L_MEDIA_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     if opts.series>=62:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-security-v62.sh || echo A6L_SECURITY_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     if opts.series>=64:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-datadirs-v64.sh || echo A6L_DATADIRS_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
+    # init.rc gives zygote 'rlimit nofile 32768'; the shell default (1024) made NetworkStats fail with EMFILE after boot (V65).
+    if opts.series>=66:text=text.replace('  echo A6L_SYSTEMSERVER_BEGIN','  ulimit -n 32768\n  echo A6L_SYSTEMSERVER_BEGIN',1)
     # Reap daemons that detach from the supervisor's process group before binderfs/bpffs cleanup.
     text=text.replace('  echo A6L_SYSTEMSERVER_EXIT=$?','  echo A6L_SYSTEMSERVER_EXIT=$?\n  for svc in media.audio_flinger media.audio_policy android.system.keystore2.IKeystoreService/default android.service.gatekeeper.IGateKeeperService netd vold; do service check $svc | grep -q ": found" && echo A6L_POST_SERVICE_PASS name=$svc || echo A6L_POST_SERVICE_MISSING name=$svc; done\n  killall -9 android.hardware.security.keymint-service.nonsecure netd audioserver vold idmap2d keystore2 gatekeeperd android.hardware.audio.service-aidl.example android.hardware.audio.effect.service-aidl.example iptables-restore ip6tables-restore 2>/dev/null || true\n  sleep 2',1)
     assert text.count('-k 3 180 /system/bin/framework-services --zygote')==1

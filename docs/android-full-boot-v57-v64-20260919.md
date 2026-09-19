@@ -16,6 +16,14 @@ The run ended with an upstream NPE in `WebViewZygote.getProcess` because the Web
 aborted: `Failed to mount tmpfs to /data/data: No such file or directory`. V65 adds init.rc's
 `/data/data` directory and `/data/user/0` symlink.
 
+## V65 r1 addendum
+
+With `/data/data` present the WebView zygote starts, `sys.boot_completed=1` is set and
+`Displayed org.lineageos.setupwizard/.WelcomeActivity` is logged: the VM reaches the LineageOS welcome
+screen (software rendering, no screenshot captured). About a minute later SystemServer dies in
+`NetworkStatsService` with `synchronizeKernelRCU failed: -24` (EMFILE): the harness starts zygote with the
+shell's 1024-descriptor limit, whereas init.rc grants 32768. V66 sets `ulimit -n 32768`.
+
 ## Steps
 
 | Test | Added | Stopped at |
