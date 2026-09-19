@@ -194,6 +194,16 @@ if opts.series and opts.series>=63:
         if 'root/vendor/lib64/'+lib not in entries and (P/'vendor/lib64'/lib).is_file():put('root/vendor/lib64/'+lib,(P/'vendor/lib64'/lib).resolve())
     for name in ['keymint','secureclock','sharedsecret']:
         put(f'root/vendor/etc/vintf/manifest/android.hardware.security.{name}-service.xml',P/f'vendor/etc/vintf/manifest/android.hardware.security.{name}-service.xml')
+if opts.series and opts.series>=64:
+    # Recreate init.rc's own /data directory layout (paths, modes, owners) instead of guessing names one crash at a time.
+    lines=['#!/system/bin/sh','# Generated from system/core/rootdir/init.rc mkdir entries; diskless VM only.','grep -q virt /proc/device-tree/model || exit 97']
+    for m in re.finditer(r'^\s*mkdir (/data/\S+)[ \t]+(\d+)[ \t]+(\w+)[ \t]+(\w+)',(A/'system/core/rootdir/init.rc').read_text(),re.M):
+        path,mode,owner,group=m.groups()
+        lines.append(f'mkdir -p {path} && chmod {mode} {path} && chown {owner}:{group} {path} || echo A6L_DATADIR_FAILED path={path}')
+    assert len(lines)>60,len(lines)
+    lines+=['mkdir -p /data/misc/profiles/cur/0 /data/misc/profiles/ref /data/data /data/user /data/user_de/0 /data/media/0','[ -e /data/user/0 ] || ln -s /data/data /data/user/0  # init.rc: symlink /data/data /data/user/0','chmod 0771 /data/data','chown system:system /data/misc/profiles/cur/0 /data/data /data/user_de/0','echo A6L_DATADIRS_DONE count=%d'%(len(lines)-3)]
+    textfile('root/system/bin/framework-datadirs-v64.sh','\n'.join(lines)+'\n',0o755)
+    put('root/system/bin/vold_prepare_subdirs',P/'system/bin/vold_prepare_subdirs')
 if opts.bpf:
     put('root/system/bin/bpfloader',P/'system/bin/bpfloader')
     put('root/vendor/etc/bpf/filterPowerSupplyEvents.o',P/'vendor/etc/bpf/filterPowerSupplyEvents.o')
@@ -322,6 +332,7 @@ if opts.series and opts.series>=60:
         'timeout --foreground -k 3 400 /system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 > /logs/vold.log 2>&1 &\necho $! > /logs/vold-early.pid\n/system/bin/framework-apex-v51.sh || exit 12',1)
     text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-media-v60.sh || echo A6L_MEDIA_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     if opts.series>=62:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-security-v62.sh || echo A6L_SECURITY_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
+    if opts.series>=64:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-datadirs-v64.sh || echo A6L_DATADIRS_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     # Reap daemons that detach from the supervisor's process group before binderfs/bpffs cleanup.
     text=text.replace('  echo A6L_SYSTEMSERVER_EXIT=$?','  echo A6L_SYSTEMSERVER_EXIT=$?\n  for svc in media.audio_flinger media.audio_policy android.system.keystore2.IKeystoreService/default android.service.gatekeeper.IGateKeeperService netd vold; do service check $svc | grep -q ": found" && echo A6L_POST_SERVICE_PASS name=$svc || echo A6L_POST_SERVICE_MISSING name=$svc; done\n  killall -9 android.hardware.security.keymint-service.nonsecure netd audioserver vold idmap2d keystore2 gatekeeperd android.hardware.audio.service-aidl.example android.hardware.audio.effect.service-aidl.example iptables-restore ip6tables-restore 2>/dev/null || true\n  sleep 2',1)
     assert text.count('-k 3 180 /system/bin/framework-services --zygote')==1

@@ -1,6 +1,6 @@
 # A6L port checklist
 
-Updated 19 September 2026, after physical V47 and offline V58. This is the current status index. Dated
+Updated 19 September 2026, after physical V47 and offline V64. This is the current status index. Dated
 reports are historical evidence; the newest entry in `resume-next-session.md`
 records the exact installed image and any running operation.
 
@@ -18,16 +18,12 @@ reaches PackageManager, where missing installer application content stops it.
 V53 r1 passes 13 foundation checks with the built system apps and real installd;
 PackageManager initializes and SystemServer completes bootstrap services. It
 stops in BatteryService because the Health HAL is absent. Full UI is not up.
-**19 September update:** V54–V55 added the real Health HAL and BPF loader (15/15);
-V56 verified the merged LineageOS HintManager fix for a missing Power HAL (16/16);
-V57–V58 added sys.* properties plus real vold and idmap2d. SystemServer now runs
-without a fatal exception up to NetworkManagementService, where it waits for netd.
-netd needs init-style control sockets and an Android networking kernel configuration
-(the V50 runtime kernel lacks xt_bpf/owner/quota2, ingress/cls_bpf and built-in iptables).
-None has run on the phone. Three external
-hardware research reports have been reviewed: see
-[review and integration decisions](external-research-review-20260918.md).
-Their haptic/ADSP test scripts require corrections before physical use.
+**19 September update:** see [V57–V64 report](android-full-boot-v57-v64-20260919.md). In the VM, genuine
+SystemServer now starts every service, completes boot phase 1000, unlocks user 0 and launches SystemUI,
+FallbackHome and the LineageOS setup wizard (V64 r1, 22/23 checks; teardown check fails). Added on the way:
+Health HAL, BPF loader, HintManager no-Power-HAL fix, vold, idmap2d, netd on a new Android-networking
+runtime kernel (V59), audioserver + example AIDL audio HAL, gatekeeperd, keystore2 + software KeyMint,
+init.rc data layout. Nothing of this has run on the phone yet.
 **Target:** a usable modern LineageOS phone with both displays.
 The full LineageOS interface has not booted on the phone. Linux 7.2.3 is the
 working diagnostic kernel; this checklist does not claim it is the latest release.
@@ -63,7 +59,7 @@ production-complete merely because one test passed.
 | Motion/light/proximity sensors | Prepared | Stock inventory and module bundle | ADSP/SMGR, real readings, calibration, Android Sensors |
 | Cameras/flash | Open | Stock artifacts available | Exact active sensors, power/ISP/calibration, preview and Android Camera |
 | Fingerprint/security | Open | Stock wiring/HAL evidence | Sensor/TEE, enrollment, keystore, lockscreen and encryption |
-| Android interface | Partial foundation | Phone native input/rendering; VM ART/APEX/native services, display discovery, PackageManager and SystemServer bootstrap | netd + Android net kernel config, remaining services, full SystemUI/launcher, then phone validation |
+| Android interface | Partial foundation | Phone native input/rendering; VM ART/APEX/native services, display discovery, PackageManager and SystemServer bootstrap | VM: WebView zygote, launcher idle, teardown; then assemble the same service set for a phone RAM boot |
 | Installable release | Open | Reproducible diagnostic images with manifests | Full device build, enforcing SELinux, signing, recovery/OTA, regression |
 
 ## Next checkpoints, in order
@@ -77,7 +73,8 @@ production-complete merely because one test passed.
 - [x] Physically test corrected haptic candidate: commands pass, user still feels no vibration.
 - [ ] Review stock PM660 startup/resonance; physical vibration remains unresolved.
 - [x] Connect front touch to an interactive Android rendering/input test: V47 software and user visual checks passed.
-- [ ] Bring up framework UI, SystemUI and launcher.
+- [x] VM: full framework boot to SystemUI/setup wizard (V64, offline only).
+- [ ] Phone: boot the same framework/service set from RAM on Linux 7.2.3 with the V59 networking configuration.
 - [ ] Preserve the separate e-ink SPI data and pursue a controlled first refresh early.
 - [ ] Bring up shared ADSP/modem services to unblock audio, sensors, Wi-Fi and GNSS.
 
