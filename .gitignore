@@ -35,3 +35,6 @@ __pycache__/
 # Large build staging archives
 *.tar
 *.tar.gz
+
+# Claude<->WSL command relay scratch
+/.relay/
