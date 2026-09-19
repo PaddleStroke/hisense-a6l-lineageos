@@ -2,7 +2,7 @@
 import argparse,gzip,hashlib,json,os,re,shutil,subprocess,time,xml.etree.ElementTree as ET,zipfile,io
 from pathlib import Path
 R=Path(__file__).resolve().parents[1];A=Path('/home/a6l/android/a6l-lineage24');P=A/'out/target/product/a6l'
-ap=argparse.ArgumentParser();ap.add_argument('--attempt',required=True,type=int);ap.add_argument('--rooted',action='store_true');ap.add_argument('--runtime-kernel',action='store_true');ap.add_argument('--apex-service',action='store_true');ap.add_argument('--native-bootstrap',action='store_true');ap.add_argument('--applications',action='store_true');ap.add_argument('--health',action='store_true');ap.add_argument('--bpf',action='store_true');ap.add_argument('--hint-compat',action='store_true');opts=ap.parse_args();n=opts.attempt
+ap=argparse.ArgumentParser();ap.add_argument('--attempt',required=True,type=int);ap.add_argument('--rooted',action='store_true');ap.add_argument('--runtime-kernel',action='store_true');ap.add_argument('--apex-service',action='store_true');ap.add_argument('--native-bootstrap',action='store_true');ap.add_argument('--applications',action='store_true');ap.add_argument('--health',action='store_true');ap.add_argument('--bpf',action='store_true');ap.add_argument('--hint-compat',action='store_true');ap.add_argument('--series',type=int,help='V57+: explicit test series number (requires --hint-compat)');opts=ap.parse_args();n=opts.attempt
 assert not opts.runtime_kernel or opts.rooted, 'Runtime kernel follow-up requires the normal-root harness'
 assert not opts.apex_service or opts.runtime_kernel, 'Real APEX test requires the runtime kernel'
 assert not opts.native_bootstrap or opts.apex_service, 'Native bootstrap requires real APEX activation'
@@ -10,10 +10,13 @@ assert not opts.applications or opts.native_bootstrap, 'System apps require nati
 assert not opts.health or opts.applications, 'Health follow-up requires the system apps fixture'
 assert not opts.bpf or opts.health, 'BPF follow-up requires Health test'
 assert not opts.hint_compat or opts.bpf, 'Hint compatibility test requires BPF/Health fixture'
-version=56 if opts.hint_compat else (55 if opts.bpf else (54 if opts.health else (53 if opts.applications else (52 if opts.native_bootstrap else (51 if opts.apex_service else (50 if opts.runtime_kernel else (49 if opts.rooted else 48)))))))
+assert not opts.series or (opts.hint_compat and opts.series>=57), 'Series numbers extend the V56 fixture'
+version=opts.series if opts.series else 56 if opts.hint_compat else (55 if opts.bpf else (54 if opts.health else (53 if opts.applications else (52 if opts.native_bootstrap else (51 if opts.apex_service else (50 if opts.runtime_kernel else (49 if opts.rooted else 48)))))))
 kernel_archive=R/('firmware/extracted/framework-kernel-v50-20260918' if opts.runtime_kernel else 'firmware/extracted/android-init-kernel-20260917')
 O=Path(f'/home/a6l/kernel/framework-v{version}-r{n}');O.mkdir(exist_ok=False)
-archive=R/f'firmware/extracted/android-framework-v{version}-20260918-r{n}';archive.mkdir(exist_ok=False)
+import datetime
+stamp='20260918' if version<57 else datetime.date.today().strftime('%Y%m%d')
+archive=R/f'firmware/extracted/android-framework-v{version}-{stamp}-r{n}';archive.mkdir(exist_ok=False)
 entries={};sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 def put(name,p,mode=None):
     if p.is_symlink():entries[name]=('slink',os.readlink(p),0o777);return
@@ -152,6 +155,9 @@ if opts.health:
         A/'hardware/interfaces/health/aidl/default/android.hardware.health-service.example.xml')
     put('root/system/bin/framework-health-v54.sh',R/'device/hisense/a6l/diagnostic/framework-health-v54.sh',0o755)
     put('root/system/bin/dumpsys',P/'system/bin/dumpsys')
+if opts.series and opts.series>=58:
+    for name in ['vold','idmap2d']:put('root/system/bin/'+name,P/'system/bin'/name)
+    put('root/system/bin/framework-storage-v58.sh',R/'device/hisense/a6l/diagnostic/framework-storage-v58.sh',0o755)
 if opts.bpf:
     put('root/system/bin/bpfloader',P/'system/bin/bpfloader')
     put('root/vendor/etc/bpf/filterPowerSupplyEvents.o',P/'vendor/etc/bpf/filterPowerSupplyEvents.o')
@@ -264,6 +270,9 @@ if opts.applications:
 if opts.health:
     probe.write_text(probe.read_text().replace('echo A6L_CLASSPATH_BEGIN',
         '/system/bin/framework-health-v54.sh || exit 15\necho A6L_CLASSPATH_BEGIN',1))
+if opts.series and opts.series>=58:
+    probe.write_text(probe.read_text().replace('echo A6L_CLASSPATH_BEGIN',
+        '/system/bin/framework-storage-v58.sh || exit 17\necho A6L_CLASSPATH_BEGIN',1))
 if opts.bpf:
     probe.write_text(probe.read_text().replace('/system/bin/framework-native-v52.sh || exit 14',
         '/system/bin/framework-bpf-v55.sh || exit 16\n/system/bin/framework-native-v52.sh || exit 14',1))
@@ -392,6 +401,8 @@ if opts.health:
     checks.update(health_service='A6L_HEALTH_SERVICE_PASS' in log)
 if opts.bpf:
     checks.update(bpf_loader='A6L_BPF_LOADER_PASS' in log)
+if opts.series and opts.series>=58:
+    checks.update(vold_service='A6L_VOLD_SERVICE_PASS' in log,idmap_service='A6L_IDMAP_SERVICE_PASS' in log)
 if opts.hint_compat:
     # RoleManager is reached only after the HintManager constructor returns.
     checks.update(hint_no_aidl_compat='SystemServerTiming StartRoleManagerService' in log)
@@ -415,6 +426,8 @@ if opts.health:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-health-v54.sh',archive/'framework-health-v54.sh')
 if opts.bpf:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-bpf-v55.sh',archive/'framework-bpf-v55.sh')
+if opts.series and opts.series>=58:
+    shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-storage-v58.sh',archive/'framework-storage-v58.sh')
 if opts.hint_compat:
     # copyfile only: copytree's copystat fails with EPERM on the Windows-backed /mnt/c archive
     (archive/'hint-compat-source').mkdir(exist_ok=True)
