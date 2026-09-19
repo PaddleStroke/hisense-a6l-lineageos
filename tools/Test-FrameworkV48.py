@@ -164,6 +164,25 @@ if opts.series and opts.series>=59:
     for name in ['ip6tables','iptables-restore','ip6tables-restore','iptables-save','ip6tables-save']:
         entries['root/system/bin/'+name]=('slink','iptables',0o777)
     put('root/system/bin/framework-netd-v59.sh',R/'device/hisense/a6l/diagnostic/framework-netd-v59.sh',0o755)
+if opts.series and opts.series>=60:
+    put('root/system/bin/audioserver',P/'system/bin/audioserver')
+    for name in ['killall','tail','head']:entries['root/system/bin/'+name]=('slink','toybox',0o777)
+    put('root/system/bin/framework-media-v60.sh',R/'device/hisense/a6l/diagnostic/framework-media-v60.sh',0o755)
+if opts.series and opts.series>=61:
+    put('root/vendor/apex/com.android.hardware.audio.apex',P/'vendor/apex/com.android.hardware.audio.apex')
+    # AOSP generic audio policy: gives the example HAL its 'primary' (default) and r_submix modules.
+    policy=A/'frameworks/av/services/audiopolicy/config'
+    # The APEX VINTF declares default, r_submix, bluetooth, stub and usb modules, and audioserver waits
+    # for every declared instance; include each module so the example HAL registers all of them.
+    generic=(policy/'audio_policy_configuration_generic.xml').read_text()
+    marker='<xi:include href="r_submix_audio_policy_configuration.xml"/>'
+    assert generic.count(marker)==1
+    extra=['bluetooth_audio_policy_configuration_7_0.xml','usb_audio_policy_configuration.xml','stub_audio_policy_configuration.xml']
+    textfile('root/vendor/etc/audio_policy_configuration.xml',generic.replace(marker,marker+''.join('\n        <xi:include href="%s"/>'%n for n in extra)))
+    for name in extra:put('root/vendor/etc/'+name,policy/name)
+    for name in ['primary_audio_policy_configuration.xml','r_submix_audio_policy_configuration.xml','audio_policy_volumes.xml','default_volume_tables.xml','surround_sound_configuration_5_0.xml']:
+        put('root/vendor/etc/'+name,policy/name)
+    put('root/vendor/etc/audio_effects_config.xml',A/'hardware/interfaces/audio/aidl/default/audio_effects_config.xml')
 if opts.bpf:
     put('root/system/bin/bpfloader',P/'system/bin/bpfloader')
     put('root/vendor/etc/bpf/filterPowerSupplyEvents.o',P/'vendor/etc/bpf/filterPowerSupplyEvents.o')
@@ -192,6 +211,9 @@ if opts.bpf:
     vendor_source=(A/'system/core/libvendorsupport/version_props.cpp').read_text()
     assert '202404 + ((sdkApiLevel - __ANDROID_API_V__) * 100)' in vendor_source
     props['ro.vendor.api_level']=str(api if api<35 else 202404+(api-35)*100)
+    if (opts.series or 0)>=61:
+        # Normally set by the bootloader/device config to select the vendor audio APEX; the HAL finds its XML configuration through it.
+        props['ro.boot.vendor.apex.com.android.hardware.audio']='com.android.hardware.audio'
 if opts.apex_service:
     # tmpfs cannot pin file extents. Use apexd's supported loop-file path.
     props['apexd.config.use_fiemap']='false'
@@ -282,6 +304,17 @@ if opts.series and opts.series>=58:
 if opts.bpf:
     probe.write_text(probe.read_text().replace('/system/bin/framework-native-v52.sh || exit 14',
         '/system/bin/framework-bpf-v55.sh || exit 16\n/system/bin/framework-native-v52.sh || exit 14',1))
+if opts.series and opts.series>=60:
+    text=probe.read_text()
+    assert text.count('/system/bin/framework-apex-v51.sh || exit 12')==1 and text.count('  echo A6L_SYSTEMSERVER_EXIT=$?')==1
+    text=text.replace('/system/bin/framework-apex-v51.sh || exit 12',
+        'timeout --foreground -k 3 400 /system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 > /logs/vold.log 2>&1 &\necho $! > /logs/vold-early.pid\n/system/bin/framework-apex-v51.sh || exit 12',1)
+    text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-media-v60.sh || echo A6L_MEDIA_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
+    # Reap daemons that detach from the supervisor's process group before binderfs/bpffs cleanup.
+    text=text.replace('  echo A6L_SYSTEMSERVER_EXIT=$?','  echo A6L_SYSTEMSERVER_EXIT=$?\n  killall -9 netd audioserver vold idmap2d iptables-restore ip6tables-restore 2>/dev/null || true\n  sleep 2',1)
+    assert text.count('-k 3 180 /system/bin/framework-services --zygote')==1
+    text=text.replace('-k 3 180 /system/bin/framework-services --zygote','-k 3 480 /system/bin/framework-services --zygote',1)
+    probe.write_text(text)
 if opts.series and opts.series>=59:
     probe.write_text(probe.read_text().replace('echo A6L_CLASSPATH_BEGIN',
         '/system/bin/framework-netd-v59.sh || echo A6L_NETD_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1))
@@ -390,7 +423,7 @@ args=['qemu-system-aarch64','-machine','virt,gic-version=3','-cpu','cortex-a53',
 with (O/'console.log').open('wb') as f:
     p=subprocess.Popen(args,stdout=f,stderr=subprocess.STDOUT)
     try:
-        deadline=time.monotonic()+420
+        deadline=time.monotonic()+(1000 if (opts.series or 0)>=60 else 420)
         while p.poll() is None and time.monotonic()<deadline:
             if b'A6L_QEMU_FRAMEWORK_DONE' in (O/'console.log').read_bytes():break
             time.sleep(2)
@@ -414,6 +447,10 @@ if opts.series and opts.series>=58:
     checks.update(vold_service='A6L_VOLD_SERVICE_PASS' in log,idmap_service='A6L_IDMAP_SERVICE_PASS' in log)
 if opts.series and opts.series>=59:
     checks.update(netd_service='A6L_NETD_SERVICE_PASS' in log)
+if opts.series and opts.series>=60:
+    checks.update(audioflinger_service='A6L_AUDIOFLINGER_SERVICE_PASS' in log)
+if opts.series and opts.series>=61:
+    checks.update(audio_hal_service='A6L_AUDIO_HAL_SERVICE_PASS' in log)
 if opts.hint_compat:
     # RoleManager is reached only after the HintManager constructor returns.
     checks.update(hint_no_aidl_compat='SystemServerTiming StartRoleManagerService' in log)
@@ -441,6 +478,8 @@ if opts.series and opts.series>=58:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-storage-v58.sh',archive/'framework-storage-v58.sh')
 if opts.series and opts.series>=59:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-netd-v59.sh',archive/'framework-netd-v59.sh')
+if opts.series and opts.series>=60:
+    shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-media-v60.sh',archive/'framework-media-v60.sh')
 if opts.hint_compat:
     # copyfile only: copytree's copystat fails with EPERM on the Windows-backed /mnt/c archive
     (archive/'hint-compat-source').mkdir(exist_ok=True)

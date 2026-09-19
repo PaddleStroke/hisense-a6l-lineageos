@@ -6,10 +6,14 @@ set -eu
 grep -q virt /proc/device-tree/model || exit 70
 echo A6L_STORAGE_DAEMONS_BEGIN
 mkdir -p /dev/block/vold /data/resource-cache /data/misc/vold /mnt/user /mnt/runtime /storage
-timeout --foreground -k 3 300 /system/bin/vold \
-    --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 \
-    --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 > /logs/vold.log 2>&1 &
-vold_pid=$!
+if [ -s /logs/vold-early.pid ]; then
+    vold_pid=$(cat /logs/vold-early.pid)   # V60+: started before apexd, which otherwise waits ~60 s for it
+else
+    timeout --foreground -k 3 400 /system/bin/vold \
+        --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 \
+        --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 > /logs/vold.log 2>&1 &
+    vold_pid=$!
+fi
 # Normally lazily started through ctl.start; the VM has no init control path.
 timeout --foreground -k 3 300 /system/bin/idmap2d > /logs/idmap2d.log 2>&1 &
 idmap_pid=$!
