@@ -12,7 +12,8 @@ assert not opts.bpf or opts.health, 'BPF follow-up requires Health test'
 assert not opts.hint_compat or opts.bpf, 'Hint compatibility test requires BPF/Health fixture'
 assert not opts.series or (opts.hint_compat and opts.series>=57), 'Series numbers extend the V56 fixture'
 version=opts.series if opts.series else 56 if opts.hint_compat else (55 if opts.bpf else (54 if opts.health else (53 if opts.applications else (52 if opts.native_bootstrap else (51 if opts.apex_service else (50 if opts.runtime_kernel else (49 if opts.rooted else 48)))))))
-kernel_archive=R/('firmware/extracted/framework-kernel-v50-20260918' if opts.runtime_kernel else 'firmware/extracted/android-init-kernel-20260917')
+import glob
+kernel_archive=R/(sorted(glob.glob(str(R/'firmware/extracted/framework-kernel-v59-*')))[-1] if (opts.series or 0)>=59 else 'firmware/extracted/framework-kernel-v50-20260918' if opts.runtime_kernel else 'firmware/extracted/android-init-kernel-20260917')
 O=Path(f'/home/a6l/kernel/framework-v{version}-r{n}');O.mkdir(exist_ok=False)
 import datetime
 stamp='20260918' if version<57 else datetime.date.today().strftime('%Y%m%d')
@@ -158,6 +159,11 @@ if opts.health:
 if opts.series and opts.series>=58:
     for name in ['vold','idmap2d']:put('root/system/bin/'+name,P/'system/bin'/name)
     put('root/system/bin/framework-storage-v58.sh',R/'device/hisense/a6l/diagnostic/framework-storage-v58.sh',0o755)
+if opts.series and opts.series>=59:
+    for name in ['netd','iptables','ip','tc','ndc','a6l_socket_exec']:put('root/system/bin/'+name,P/'system/bin'/name)
+    for name in ['ip6tables','iptables-restore','ip6tables-restore','iptables-save','ip6tables-save']:
+        entries['root/system/bin/'+name]=('slink','iptables',0o777)
+    put('root/system/bin/framework-netd-v59.sh',R/'device/hisense/a6l/diagnostic/framework-netd-v59.sh',0o755)
 if opts.bpf:
     put('root/system/bin/bpfloader',P/'system/bin/bpfloader')
     put('root/vendor/etc/bpf/filterPowerSupplyEvents.o',P/'vendor/etc/bpf/filterPowerSupplyEvents.o')
@@ -276,6 +282,9 @@ if opts.series and opts.series>=58:
 if opts.bpf:
     probe.write_text(probe.read_text().replace('/system/bin/framework-native-v52.sh || exit 14',
         '/system/bin/framework-bpf-v55.sh || exit 16\n/system/bin/framework-native-v52.sh || exit 14',1))
+if opts.series and opts.series>=59:
+    probe.write_text(probe.read_text().replace('echo A6L_CLASSPATH_BEGIN',
+        '/system/bin/framework-netd-v59.sh || echo A6L_NETD_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1))
 rc=O/'init.rc';rc.write_text((R/'device/hisense/a6l/diagnostic/android-init.rc').read_text()+'''
 on early-init
     start frameworktest
@@ -403,13 +412,15 @@ if opts.bpf:
     checks.update(bpf_loader='A6L_BPF_LOADER_PASS' in log)
 if opts.series and opts.series>=58:
     checks.update(vold_service='A6L_VOLD_SERVICE_PASS' in log,idmap_service='A6L_IDMAP_SERVICE_PASS' in log)
+if opts.series and opts.series>=59:
+    checks.update(netd_service='A6L_NETD_SERVICE_PASS' in log)
 if opts.hint_compat:
     # RoleManager is reached only after the HintManager constructor returns.
     checks.update(hint_no_aidl_compat='SystemServerTiming StartRoleManagerService' in log)
 report={'runtime_foundation_passed':all(checks.values()),'checks':checks,
         'kernel_sha256':sha(kernel_archive/'Image'),
         'read_barrier_mismatch':'read barrier state mismatch' in log,
-        'kernel_profile':'framework-v50' if opts.runtime_kernel else 'validated-v38',
+        'kernel_profile':kernel_archive.name if opts.runtime_kernel else 'validated-v38',
         'systemserver_entered':'Entered the Android system server!' in log,
         'system_ui_passed':False,'console_sha256':sha(O/'console.log'),
         'raw_console_file':'console.raw.log','console_text_sha256':sha(archive/'console.log'),'command':args}
@@ -428,6 +439,8 @@ if opts.bpf:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-bpf-v55.sh',archive/'framework-bpf-v55.sh')
 if opts.series and opts.series>=58:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-storage-v58.sh',archive/'framework-storage-v58.sh')
+if opts.series and opts.series>=59:
+    shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-netd-v59.sh',archive/'framework-netd-v59.sh')
 if opts.hint_compat:
     # copyfile only: copytree's copystat fails with EPERM on the Windows-backed /mnt/c archive
     (archive/'hint-compat-source').mkdir(exist_ok=True)

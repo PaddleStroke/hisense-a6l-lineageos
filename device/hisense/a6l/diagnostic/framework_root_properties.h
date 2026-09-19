@@ -39,7 +39,7 @@ static pid_t start_private_properties(void) {
     pid_t p=fork();need(p>=0,"private property fork");
     if(!p){
         close(ready[0]);setpgid(0,0);prctl(PR_SET_PDEATHSIG,SIGKILL);if(getppid()==1)_exit(125);
-        need(!chdir("/"),"property root");
+        need(!chdir("/"),"property root");signal(SIGCHLD,SIG_IGN);
         need(!__system_property_area_init(),"fresh property areas");
         for(size_t i=0;i<saved_count;i++)prop_write(saved[i].name,saved[i].value);
         prop_write("servicemanager.ready","false");
@@ -65,7 +65,13 @@ static pid_t start_private_properties(void) {
             struct timeval timeout={.tv_sec=2};setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout));
             uint32_t cmd=0,result=0x18;char name[256],value[PROP_VALUE_MAX];
             if(!read_full(c,&cmd,4)&&cmd==0x00020001&&!read_string(c,name,sizeof(name))&&!read_string(c,value,sizeof(value))){
-                if(strcmp(name,"service.sf.present_timestamp")==0||strcmp(name,"servicemanager.ready")==0||strcmp(name,"hwservicemanager.ready")==0||strcmp(name,"hwservicemanager.disabled")==0||strncmp(name,"debug.",6)==0||strncmp(name,"sys.system_server.",18)==0||strncmp(name,"persist.sys.",12)==0||strncmp(name,"sys.",4)==0||strcmp(name,"bpf.progs_loaded")==0||strcmp(name,"apexd.status")==0||strcmp(name,"apex.all.ready")==0||strcmp(name,"apexd.config.runtime.erofs_file_backed_mount")==0){prop_write(name,value);result=0;}
+                if(strncmp(name,"ctl.",4)!=0){prop_write(name,value);result=0;}
+                if(!strcmp(value,"idmap2d")&&(!strcmp(name,"ctl.start")||!strcmp(name,"ctl.stop"))){
+                    static pid_t idmap=-1;int alive=idmap>0&&!kill(idmap,0);
+                    if(!strcmp(name,"ctl.stop")){if(alive)kill(idmap,SIGTERM);idmap=-1;}
+                    else if(!alive){idmap=fork();if(!idmap){execl("/system/bin/idmap2d","idmap2d",(char *)NULL);_exit(127);}}
+                    result=0;
+                }
                 if(strncmp(name,"ctl.",4)==0)fprintf(stdout,"A6L_PRIVATE_CONTROL name=%s value=%s result=%u\n",name,value,result);
                 fprintf(stdout,"A6L_PRIVATE_PROPERTY name=%s result=%u\n",name,result);
                 (void)write(c,&result,4);
