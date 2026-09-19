@@ -24,6 +24,12 @@ FallbackHome and the LineageOS setup wizard (V64 r1, 22/23 checks; teardown chec
 Health HAL, BPF loader, HintManager no-Power-HAL fix, vold, idmap2d, netd on a new Android-networking
 runtime kernel (V59), audioserver + example AIDL audio HAL, gatekeeperd, keystore2 + software KeyMint,
 init.rc data layout. Nothing of this has run on the phone yet.
+**19 September, unattended preparation:** V66 stable after boot (full 900 s window). New offline
+deliverables: [e-ink software-TCON ABI](eink-swtcon-abi-20260919.md) with a passing emulator run;
+bounded fail-closed ADSP start/stop diagnostic `device/hisense/a6l/diagnostic/adsp_diag_r2.sh` with an
+11-case mock test (not yet run on the phone); phone kernel **V67 candidate** (V38 config + Android
+networking + RMTFS_MEM, all modules rebuilt; build-only, never flashed); Android builds of `rmtfs`,
+`tqftpserv`, `qrtr-lookup`, `libqrtr` for the modem/Wi-Fi/sensor service path.
 **Target:** a usable modern LineageOS phone with both displays.
 The full LineageOS interface has not booted on the phone. Linux 7.2.3 is the
 working diagnostic kernel; this checklist does not claim it is the latest release.
@@ -49,7 +55,7 @@ production-complete merely because one test passed.
 | Vibration | Partial | Corrected brake parsing and bounded commands succeed; V46 pulse still not felt; stock PWM/current/amplitude discrepancies identified offline | Guarded register observations, reviewed PM660 configuration and perceptible output |
 | Battery readings | Partial | Voltage, capacity, current, temperature, design capacity | Accuracy checks and Android Health service |
 | Charging/thermal/sleep | Prepared | Stock policies/configuration identified; modules prepared | Charger/parallel-charger policy, limits, thermal handling, deep sleep |
-| Rear e-ink display | Prepared | Stock reverse engineering; TCON version ABI; fixed waveform/VCOM read interface mapped | Privileged SPI window backup (not whole chip), power/transport, first static refresh |
+| Rear e-ink display | Prepared | Stock reverse engineering; **full software-TCON call ABI recovered and executed in the VM** (Init/ModeDecision/Update, 116-frame sequence, guarded buffers); fixed waveform/VCOM read interface mapped | Privileged SPI window backup (not whole chip), power/transport, first static refresh |
 | Rear touch/screen switching | Prepared | Stock controller and dimensions identified | New-kernel input, active-face routing and display switching |
 | Wi-Fi | Prepared | Firmware and module/dependency bundle checked offline | Modem services, correct board data, link/data and Android Wi-Fi |
 | Cellular/SIM | Prepared | Own modem firmware and memory map collected | MSS/RMTFS/QMI, registration, calls/SMS/IMS; IPA data path unresolved |
@@ -109,7 +115,7 @@ production-complete merely because one test passed.
 
 - [x] Stock library/kernel/framework evidence archived; basic TCON ABI emulated.
 - [ ] Read and verify panel-specific SPI/VCOM/waveform data with known coverage.
-- [ ] Establish exact TCON initialization/conversion ABI and buffer contracts.
+- [x] TCON initialization/conversion ABI and buffer contracts: [recovered + emulator-run](eink-swtcon-abi-20260919.md); drive-frame pixel encoding still open.
 - [ ] Power sequencing, bridge/DSI transport, first static panel refresh.
 - [ ] Rear touchscreen, screen selection and inactive-face input rejection.
 - [ ] Full/partial updates, ghosting control, temperature compensation, sleep/wake.

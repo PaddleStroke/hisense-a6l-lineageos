@@ -48,7 +48,10 @@ for s in USERFAULTFD NETFILTER_XTABLES IP_NF_FILTER IP6_NF_FILTER IP_NF_MANGLE N
 done
 make O="$out" ARCH=arm64 LLVM=1 -j14 Image.gz
 make O="$out" ARCH=arm64 LLVM=1 -j14 modules dtbs > "$out/modules-build.log" 2>&1
-rm -rf "$out/modinst"; make O="$out" ARCH=arm64 LLVM=1 INSTALL_MOD_PATH="$out/modinst" INSTALL_MOD_STRIP=1 modules_install >> "$out/modules-build.log" 2>&1
+# modules_install wants zstd (absent in WSL); collect the built modules directly, stripped of debug info.
+rm -rf "$out/modinst"; mkdir -p "$out/modinst"
+( cd "$out" && find . -name "*.ko" -not -path "./modinst/*" | while read -r m; do mkdir -p "modinst/$(dirname "$m")"; llvm-strip --strip-debug -o "modinst/$m" "$m"; done )
+cp "$out/modules.order" "$out/modules.builtin" "$out/modinst/" 2>/dev/null || true
 ( cd "$out/modinst" && find . -name "*.ko" | sort | xargs sha256sum ) > "$archive/modules-SHA256SUMS"
 tar -C "$out/modinst" -czf "$archive/modules.tar.gz" .
 cp "$out/arch/arm64/boot/dts/qcom/sdm660-hisense-a6l"*.dtb "$archive/" 2>/dev/null || true

@@ -27,7 +27,7 @@ Only six library functions are called from the HWC (call sites in parentheses):
 |---|---|---|
 | `Request_ProcessBuf_Size` (0x420ec) | `struct{u32 w; u32 h;} f(cfg*)` | constant: returns w=384 (0x180), h=725 (0x2d5); argument ignored. HWC ignores the result and hard-codes `0x10FE00` = 768×1450 = (2·384)×(2·725). |
 | `Init_Eink_SWTcon` (0x421ac) | `void* f(struct buf ring[5], int count=5, u32 cfg[3], void* flash, u32 flash_len=0x70080, void* info)` | returns the handle (non-NULL = success) stored at `this+0x570`. No `malloc` import: the handle and all work buffers are static `.bss` (~75 MB). |
-| `ModeDecision_MirrorMode` (0x436b0) | `int f(struct buf* image, void* handle, int temp_a, int temp_b, int force, int mode)` | image = 1440×720×4 RGBA (`0x3F4800`). `temp_a/temp_b` = `this+0x594/0x590`, written by `GetEpdTopTemp/BottomTemp` just before. `force` = `this+0x598` (cleared afterwards), `mode` = `this+0x5a0` (requested refresh mode). Returns the mode actually chosen. |
+| `ModeDecision_MirrorMode` (0x436b0) | `int frames = f(struct buf* image, void* handle, int temp_a, int temp_b, int force, int mode)` | image = 1440×720×4 RGBA (`0x3F4800`). `temp_a/temp_b` = `this+0x594/0x590`, written by `GetEpdTopTemp/BottomTemp` just before. `force` = `this+0x598` (cleared afterwards), `mode` = `this+0x5a0` (requested refresh mode). Returns the number of drive frames that follow (emulator-verified). |
 | `Update_Display_Image` (0x43d44) | `u8 f(struct buf* ring_slot, void* handle)` | `memcpy(slot->data, handle[0x98], 0x10FE00)` then `Update_Display_Image_Lib`. Returns non-zero while more drive frames remain; 0 = sequence finished. |
 | `SetEinkContrast` | `void f(int which, int value)` | tail-calls `SetImageContrast`: which=1,2,3 select three global contrast words. |
 | `ReportEinkSWTconLibVersion` | `void f(u32* major, u32* minor)` | 2.2 (verified in QEMU on 17 September). |
@@ -47,6 +47,22 @@ Only six library functions are called from the HWC (call sites in parentheses):
   `(write+1) % 5`, blocking on a condition variable while the ring is full.
 - `EpdUpdateThreadHandler` (0x43768, consumer): takes ring slots in order and presents them through
   `DrawEpd`/`GetFramebuffer`/`SetActiveFramebuffer` (framebuffer-style flips on the e-ink display).
+
+## Emulator result (eink-swtcon-20260919-r2)
+
+`tools/Test-EinkSwtconQemu.py 2` ran the full sequence in the diskless VM with a **zero-filled** waveform:
+5/5 checks pass, no fault against end-aligned guard pages, no `system`/`popen` attempt.
+
+- `Request_ProcessBuf_Size` → 384×725 as disassembled.
+- `Init_Eink_SWTcon` returned a handle, left the `cfg` guard word intact and wrote bytes 0…195 of `info`
+  with ASCII text fields (all `'0'` for zero data): a 15-byte field at +0, 31 bytes at +47, then more from
+  +94. `info` is therefore a ≤196-byte record of waveform identification strings (what `SaveEpdInfo` stores).
+  Init does **not** validate the waveform; a bad or missing capture would be accepted silently, so the
+  capture must be verified independently (repeat-read hashes, header sanity) before use.
+- `ModeDecision_MirrorMode(img, handle, 25, 25, force=1, mode=0)` returned **116**, and
+  `Update_Display_Image` then returned non-zero exactly 116 times before returning 0: the return value is
+  the **number of drive frames in the sequence**, not a mode id. At `cfg[2]=50` Hz that is a 2.3 s update,
+  plausible for an initial/clearing waveform. Frames 0–5 were identical (expected with a null waveform).
 
 ## Consequences for the port
 
