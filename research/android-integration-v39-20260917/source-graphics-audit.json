@@ -1,0 +1,120 @@
+{
+  "external/minigbm/dumb_driver.c": {
+    "sha256": "d778e831ef75778ac4e2b3582f6d291807a70d51673cb9e370bc39dabef20b32",
+    "hits": [
+      {
+        "line": 16,
+        "text": "\t\t.init = dumb_driver_init,                                                          \\"
+      },
+      {
+        "line": 17,
+        "text": "\t\t.bo_create = drv_dumb_bo_create,                                                   \\"
+      },
+      {
+        "line": 18,
+        "text": "\t\t.bo_create_with_modifiers = dumb_bo_create_with_modifiers,                         \\"
+      },
+      {
+        "line": 19,
+        "text": "\t\t.bo_destroy = drv_dumb_bo_destroy,                                                 \\"
+      },
+      {
+        "line": 22,
+        "text": "\t\t.bo_map = drv_dumb_bo_map,                                                         \\"
+      },
+      {
+        "line": 36,
+        "text": "static int dumb_driver_init(struct driver *drv)"
+      },
+      {
+        "line": 56,
+        "text": "static int dumb_bo_create_with_modifiers(struct bo *bo, uint32_t width, uint32_t height,"
+      },
+      {
+        "line": 61,
+        "text": "\t\t\treturn drv_dumb_bo_create(bo, width, height, format, 0);"
+      }
+    ]
+  },
+  "external/minigbm/drv.c": {
+    "sha256": "0bca874fb74e25fa21b96cf099fb359a4499467006dd59ae59bf38e614fec50e",
+    "hits": []
+  },
+  "external/drm_hwcomposer/drm/DrmDevice.cpp": {
+    "sha256": "e8d94c3e3424eaca878d3e48ac5366d0531b41ff063e44e253511355efbcb4c4",
+    "hits": [
+      {
+        "line": 83,
+        "text": "  ret = drmSetClientCap(*GetFd(), DRM_CLIENT_CAP_ATOMIC, 1);"
+      },
+      {
+        "line": 85,
+        "text": "    ALOGE(\"Failed to set atomic cap %d\", ret);"
+      },
+      {
+        "line": 102,
+        "text": "  if (drmGetCap(*GetFd(), DRM_CAP_ADDFB2_MODIFIERS, &cap_value) != 0) {"
+      },
+      {
+        "line": 370,
+        "text": "                                 DRM_MODE_ATOMIC_ALLOW_MODESET, this);"
+      },
+      {
+        "line": 402,
+        "text": "  struct drm_mode_create_dumb create = {"
+      },
+      {
+        "line": 415,
+        "text": "  struct drm_mode_map_dumb map = {"
+      },
+      {
+        "line": 419,
+        "text": "  auto dumb_buffer_fd = std::make_shared<DumbBufferFd>();"
+      },
+      {
+        "line": 434,
+        "text": "      .fds_shared = dumb_buffer_fd,"
+      },
+      {
+        "line": 446,
+        "text": "    ALOGE(\"Failed to mmap dumb buffer %d\", errno);"
+      },
+      {
+        "line": 453,
+        "text": "    ALOGE(\"Failed to unmap dumb buffer: %d\", errno);"
+      },
+      {
+        "line": 458,
+        "text": "    ALOGE(\"Failed to export dumb buffer as FD: %d\", errno);"
+      },
+      {
+        "line": 462,
+        "text": "  dumb_buffer_fd->fd = MakeSharedFd(buffer_info.prime_fds[0]);"
+      },
+      {
+        "line": 468,
+        "text": "    struct drm_mode_destroy_dumb destroy = {"
+      }
+    ]
+  },
+  "external/drm_hwcomposer/drm/DrmPlane.cpp": {
+    "sha256": "17cafae232c32f0f281e905a984b5f079d292ff6e1f4e80cdb93e6fc7f872075",
+    "hits": [
+      {
+        "line": 280,
+        "text": "    // in the kernel drivers/gpu/drm/drm_atomic.c file."
+      }
+    ]
+  },
+  "built_system_hal_binaries": [
+    "android.system.suspend-service"
+  ],
+  "graphics_libraries": [
+    "lib64/libGLESv1_CM.so",
+    "lib64/libGLESv1_CM_angle.so",
+    "lib64/libgralloctypes.so",
+    "lib64/libGLESv3.so",
+    "lib64/libGLESv2.so",
+    "lib64/libGLESv2_angle.so"
+  ]
+}

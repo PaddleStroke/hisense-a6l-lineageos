@@ -1,0 +1,128 @@
+diff --git a/edl.py b/edl.py
+index 6d6fa73..67a04ba 100755
+--- a/edl.py
++++ b/edl.py
+@@ -310,6 +310,9 @@ class main(metaclass=LogBase):
+             version = 2
+         if mode == "sahara":
+             cmd = conninfo["cmd"]
++            if cmd != cmd_t.SAHARA_HELLO_REQ:
++                self.error("Sahara did not return HELLO; stopping without streaming fallback.")
++                return self.exit(1)
+             if cmd == cmd_t.SAHARA_HELLO_REQ:
+                 if "data" in conninfo:
+                     data = conninfo["data"]
+diff --git a/edlclient/Library/Connection/seriallib.py b/edlclient/Library/Connection/seriallib.py
+index 45aca34..fd1d77f 100755
+--- a/edlclient/Library/Connection/seriallib.py
++++ b/edlclient/Library/Connection/seriallib.py
+@@ -37,6 +37,8 @@ class serial_class(DeviceClass):
+     def __init__(self, loglevel=logging.INFO, portconfig=None, devclass=-1):
+         super().__init__(loglevel, portconfig, devclass)
+         self.is_serial = True
++        # Sahara starts with binary packets. Firehose enables XML mode later.
++        self.xmlread = False
+ 
+     def connect(self, EP_IN=-1, EP_OUT=-1, portname: str = ""):
+         if self.connected:
+@@ -49,11 +51,24 @@ class serial_class(DeviceClass):
+         if portname != "":
+             self.device = serial.Serial(baudrate=115200, bytesize=serial.EIGHTBITS,
+                                         parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
+-                                        timeout=50,
+-                                        xonxoff=False, dsrdtr=True, rtscts=True)
++                                        timeout=5, write_timeout=5,
++                                        xonxoff=False, dsrdtr=False, rtscts=False)
+             self.device._reset_input_buffer = _reset_input_buffer
+             self.device.setPort(port=portname)
+-            self.device.open()
++            if sys.platform == 'win32':
++                # pySerial's Windows open() directly purges RX, losing the
++                # boot ROM's one-shot HELLO. Preserve RX only during open.
++                from serial import win32
++                original_purge = win32.PurgeComm
++                def preserve_rx(handle, flags):
++                    return original_purge(handle, flags & ~(win32.PURGE_RXCLEAR | win32.PURGE_RXABORT))
++                win32.PurgeComm = preserve_rx
++                try:
++                    self.device.open()
++                finally:
++                    win32.PurgeComm = original_purge
++            else:
++                self.device.open()
+             self.device._reset_input_buffer = _reset_input_buffer_org
+             self.connected = self.device.is_open
+             if self.connected:
+@@ -96,7 +111,9 @@ class serial_class(DeviceClass):
+ 
+     def write(self, command, pktsize=None):
+         if pktsize is None:
+-            pktsize = 512
++            # A Sahara data request is one transfer. Splitting 728 bytes into
++            # separate 512/216-byte COM writes makes this driver end it early.
++            pktsize = max(1, len(command))
+         if isinstance(command, str):
+             command = bytes(command, 'utf-8')
+         pos = 0
+@@ -120,7 +137,7 @@ class serial_class(DeviceClass):
+                     ctr = self.device.write(command[pos:pos + pktsize])
+                     if ctr <= 0:
+                         self.info(ctr)
+-                    pos += pktsize
++                    pos += ctr
+                 except Exception as err:
+                     self.debug(str(err))
+                     # print("Error while writing")
+@@ -130,7 +147,7 @@ class serial_class(DeviceClass):
+                         return False
+                     pass
+         self.verify_data(bytearray(command), "TX:")
+-        self.device.flushOutput()
++        self.device.flush()
+         timeout = 0
+         time.sleep(0.005)
+         """
+@@ -145,6 +162,7 @@ class serial_class(DeviceClass):
+     def read(self, length=None, timeout=-1):
+         if timeout == -1:
+             timeout = self.timeout
++        timeout = min(timeout, 5) if timeout is not None else 5
+         if length is None:
+             length = self.device.in_waiting
+             if length == 0:
+@@ -178,7 +196,7 @@ class serial_class(DeviceClass):
+         bytestoread = resplen
+         while len(res) < bytestoread:
+             try:
+-                val = epr(bytestoread)
++                val = epr(bytestoread - len(res))
+                 if len(val) == 0:
+                     break
+                 extend(val)
+diff --git a/edlclient/Library/sahara.py b/edlclient/Library/sahara.py
+index 1c45d14..bc4ae16 100755
+--- a/edlclient/Library/sahara.py
++++ b/edlclient/Library/sahara.py
+@@ -116,6 +116,9 @@ class sahara(metaclass=LogBase):
+     def connect(self):
+         try:
+             v = self.cdc.read(length=0xC * 0x4, timeout=1)
++            if not v and self.cdc.is_serial:
++                self.cmd_reset_state_machine()
++                v = self.cdc.read(length=0xC * 0x4, timeout=2)
+             if len(v) > 1:
+                 if v[0] == 0x01:
+                     pkt = self.ch.pkt_cmd_hdr(v)
+diff --git a/edlclient/Library/utils.py b/edlclient/Library/utils.py
+index a339242..a53d5d4 100755
+--- a/edlclient/Library/utils.py
++++ b/edlclient/Library/utils.py
+@@ -758,7 +758,7 @@ def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_lengt
+     str_format = "{:>5." + str(decimals) + "f}"
+     percents = str_format.format(100 * (iteration / float(total)))
+     filled_length = int(round(bar_length * iteration / float(total)))
+-    bar = '█' * filled_length + '-' * (bar_length - filled_length)
++    bar = '#' * filled_length + '-' * (bar_length - filled_length)
+ 
+     progstring = '\r%s |%s| %s%s %s' % (prefix, bar, percents, '%', suffix)
+     cols, _ = shutil.get_terminal_size()

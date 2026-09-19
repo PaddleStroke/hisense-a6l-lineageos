@@ -1,0 +1,62 @@
+[
+  {
+    "sha": "27539976d6289346eb66e051adb00bff28bcd2f7",
+    "filename": "arch/arm64/boot/dts/qcom/sdm630-nokia-pl2.dts",
+    "status": "modified",
+    "additions": 24,
+    "deletions": 10,
+    "changes": 34,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm630-nokia-pl2.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm630-nokia-pl2.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm630-nokia-pl2.dts?ref=f785ccd13f96e571ab0e3a20ea8ddd3cc887e679",
+    "patch": "@@ -252,17 +252,17 @@\n \t\tpinctrl-names = \"default\";\n \t\tpinctrl-0 = <&panel_reset_gpio &panel_te_gpio>;\n \n-                port {\n-                        panel_in: endpoint {\n-                                remote-endpoint = <&mdss_dsi0_out>;\n-                        };\n-                };\n-        };\n+\t\tport {\n+\t\t\tpanel_in: endpoint {\n+\t\t\t\tremote-endpoint = <&mdss_dsi0_out>;\n+\t\t\t};\n+\t\t};\n+\t};\n };\n \n &mdss_dsi0_out {\n-        data-lanes = <0 1 2 3>;\n-        remote-endpoint = <&panel_in>;\n+\tdata-lanes = <0 1 2 3>;\n+\tremote-endpoint = <&panel_in>;\n };\n \n &mdss_dsi0_phy {\n@@ -324,8 +324,8 @@\n };\n \n &pm660l_wled {\n-        status = \"okay\";\n-        default-brightness = <512>;\n+\tstatus = \"okay\";\n+\tdefault-brightness = <512>;\n };\n \n &pm660_charger {\n@@ -345,6 +345,14 @@\n \tstatus = \"okay\";\n };\n \n+&qusb2phy0 {\n+\tstatus = \"okay\";\n+\n+\tvdd-supply = <&vreg_l1b_0p925>;\n+\tvdda-pll-supply = <&vreg_l10a_1p8>;\n+\tvdda-phy-dpdm-supply = <&vreg_l7b_3p125>;\n+};\n+\n &rpm_requests {\n \tregulators-0 {\n \t\tcompatible = \"qcom,rpm-pm660l-regulators\";\n@@ -679,10 +687,16 @@\n };\n \n &usb3 {\n+\tqcom,select-utmi-as-pipe-clk;\n+\n \tstatus = \"okay\";\n };\n \n &usb3_dwc3 {\n+\tmaximum-speed = \"high-speed\";\n+\tphys = <&qusb2phy0>;\n+\tphy-names = \"usb2-phy\";\n+\n \tdr_mode = \"peripheral\";\n \textcon = <&extcon_usb>;\n };"
+  },
+  {
+    "sha": "5adb0466ca31be36e9a0d79a4b1f97d5fc9a3ed7",
+    "filename": "arch/arm64/boot/dts/qcom/sdm636-asus-x00td.dts",
+    "status": "modified",
+    "additions": 6,
+    "deletions": 6,
+    "changes": 12,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-asus-x00td.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-asus-x00td.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-asus-x00td.dts?ref=f785ccd13f96e571ab0e3a20ea8ddd3cc887e679",
+    "patch": "@@ -603,8 +603,8 @@\n };\n \n &pm660l_wled {\n-        status = \"okay\";\n-        default-brightness = <512>;\n+\tstatus = \"okay\";\n+\tdefault-brightness = <512>;\n };\n \n &gcc {\n@@ -620,19 +620,19 @@\n };\n \n &mmss_smmu {\n-        status = \"okay\";\n+\tstatus = \"okay\";\n };\n \n &anoc2_smmu {\n-        status = \"okay\";\n+\tstatus = \"okay\";\n };\n \n &kgsl_smmu {\n-        status = \"okay\";\n+\tstatus = \"okay\";\n };\n \n &lpass_smmu {\n-        status = \"okay\";\n+\tstatus = \"okay\";\n };\n \n &adreno_gpu {"
+  },
+  {
+    "sha": "147fb06be8e6dc09c7dc92f61c9ca628a71b3754",
+    "filename": "arch/arm64/boot/dts/qcom/sdm636-xiaomi-tulip.dts",
+    "status": "modified",
+    "additions": 5,
+    "deletions": 0,
+    "changes": 5,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-tulip.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-tulip.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-tulip.dts?ref=f785ccd13f96e571ab0e3a20ea8ddd3cc887e679",
+    "patch": "@@ -575,10 +575,15 @@\n };\n \n &usb3 {\n+\tqcom,select-utmi-as-pipe-clk;\n+\n \tstatus = \"okay\";\n };\n \n &usb3_dwc3 {\n+\tmaximum-speed = \"high-speed\";\n+\tphys = <&qusb2phy0>;\n+\tphy-names = \"usb2-phy\";\n \tdr_mode = \"peripheral\";\n \n \tstatus = \"okay\";"
+  },
+  {
+    "sha": "df73514cb44fbee8ce50f898aef02823a6b0e3f4",
+    "filename": "arch/arm64/boot/dts/qcom/sdm660-xiaomi-jasmine.dts",
+    "status": "modified",
+    "additions": 6,
+    "deletions": 1,
+    "changes": 7,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-jasmine.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-jasmine.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-jasmine.dts?ref=f785ccd13f96e571ab0e3a20ea8ddd3cc887e679",
+    "patch": "@@ -247,11 +247,16 @@\n };\n \n &usb3 {\n+\tqcom,select-utmi-as-pipe-clk;\n+\n \tstatus = \"okay\";\n };\n \n &usb3_dwc3 {\n-\tstatus = \"okay\";\n+\tmaximum-speed = \"high-speed\";\n+\tphys = <&qusb2phy0>;\n+\tphy-names = \"usb2-phy\";\n+\n \tdr_mode = \"peripheral\";\n \textcon = <&extcon_usb>;\n };"
+  },
+  {
+    "sha": "26fa4c7fe24cfe6fee8a2eb6e5a8c51b3a86a153",
+    "filename": "arch/arm64/boot/dts/qcom/sdm660-xiaomi-platina.dts",
+    "status": "modified",
+    "additions": 10,
+    "deletions": 5,
+    "changes": 15,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/f785ccd13f96e571ab0e3a20ea8ddd3cc887e679/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts?ref=f785ccd13f96e571ab0e3a20ea8ddd3cc887e679",
+    "patch": "@@ -192,8 +192,7 @@\n \n \tgpio_keys {\n \t\tstatus = \"okay\";\n-\t\tcompatible = \"gpio-keys-polled\";\n-\t\tpoll-interval = <100>;\n+\t\tcompatible = \"gpio-keys\";\n \t\tlabel = \"Volume up\";\n \t\tpinctrl-names = \"default\";\n \t\tpinctrl-0 = <&vol_up_gpio_default>;\n@@ -752,15 +751,15 @@\n \n };\n \n-&adreno_gpu{\n+&adreno_gpu {\n \tstatus = \"disabled\";\n };\n \n-&gpucc{\n+&gpucc {\n \tstatus = \"disabled\";\n };\n \n-&mmcc{\n+&mmcc {\n \tstatus = \"disabled\";\n };\n \n@@ -773,10 +772,16 @@\n };\n \n &usb3 {\n+\tqcom,select-utmi-as-pipe-clk;\n+\n \tstatus = \"okay\";\n };\n \n &usb3_dwc3 {\n+\tmaximum-speed = \"high-speed\";\n+\tphys = <&qusb2phy0>;\n+\tphy-names = \"usb2-phy\";\n+\n \tdr_mode = \"peripheral\";\n \textcon = <&extcon_usb>;\n };"
+  }
+]

@@ -1,0 +1,6 @@
+# Spare A6L only, on its established physical port. No blanket USB permissions.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", KERNEL=="3-2", ATTR{idVendor}=="109b", ATTR{serial}=="1e529013", OWNER:="pierrelouis", MODE:="0600"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", KERNEL=="3-2", ATTR{idVendor}=="05c6", ATTR{idProduct}=="9008", OWNER:="pierrelouis", MODE:="0600"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", KERNEL=="3-2", ATTR{idVendor}=="18d1", ATTR{idProduct}=="d00d", ATTR{serial}=="1e529013", OWNER:="pierrelouis", MODE:="0600"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", KERNEL=="3-2", ATTR{idVendor}=="1d6b", ATTR{idProduct}=="0104", ATTR{serial}=="HLTE730T-PROBE", OWNER:="pierrelouis", MODE:="0600"
+SUBSYSTEM=="tty", KERNELS=="3-2", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0104", ATTRS{serial}=="HLTE730T-PROBE", OWNER:="pierrelouis", MODE:="0600"

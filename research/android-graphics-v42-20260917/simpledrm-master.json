@@ -1,0 +1,6 @@
+{
+  "before_sha256": "98e9054d5f98c3d107c25be6ac240c0b4bb858717860657641479595d3ec3103",
+  "after_sha256": "6c629795d958f9cf35c67d2613fca4c3e1792654d39b02a6ed542785eede416f",
+  "scope": "Only successful Android simpledrm allocations that accidentally acquired DRM master",
+  "reference": "minigbm_helpers.c primary-node drmDropMaster pattern"
+}

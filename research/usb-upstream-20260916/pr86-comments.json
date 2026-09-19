@@ -1,0 +1,48 @@
+[
+  {
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/issues/comments/2869046199",
+    "html_url": "https://github.com/sdm660-mainline/linux/pull/86#issuecomment-2869046199",
+    "issue_url": "https://api.github.com/repos/sdm660-mainline/linux/issues/86",
+    "id": 2869046199,
+    "node_id": "IC_kwDOG86efM6rAiu3",
+    "user": {
+      "login": "minlexx",
+      "id": 13084776,
+      "node_id": "MDQ6VXNlcjEzMDg0Nzc2",
+      "avatar_url": "https://avatars.githubusercontent.com/u/13084776?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/minlexx",
+      "html_url": "https://github.com/minlexx",
+      "followers_url": "https://api.github.com/users/minlexx/followers",
+      "following_url": "https://api.github.com/users/minlexx/following{/other_user}",
+      "gists_url": "https://api.github.com/users/minlexx/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/minlexx/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/minlexx/subscriptions",
+      "organizations_url": "https://api.github.com/users/minlexx/orgs",
+      "repos_url": "https://api.github.com/users/minlexx/repos",
+      "events_url": "https://api.github.com/users/minlexx/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/minlexx/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "created_at": "2025-05-10T17:39:16Z",
+    "updated_at": "2025-05-10T17:39:16Z",
+    "body": "The list of affected devices can be deduced from list of branches containing the commit https://github.com/MiCode/Xiaomi_Kernel_OpenSource/commit/d4f721c5222fe3e47c37e009479542cd44b44dd9 :laughing: \r\n\r\n`clover jasmine jason lavender nitrogen platina sagit tulip whyred`",
+    "author_association": "MEMBER",
+    "reactions": {
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/issues/comments/2869046199/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "performed_via_github_app": null,
+    "minimized": null
+  }
+]

@@ -1,0 +1,23 @@
+diff --git a/cros_gralloc/cros_gralloc_driver.cc b/cros_gralloc/cros_gralloc_driver.cc
+index 706dee9..1a92bee 100644
+--- a/cros_gralloc/cros_gralloc_driver.cc
++++ b/cros_gralloc/cros_gralloc_driver.cc
+@@ -110,6 +110,18 @@ static struct driver *init_try_node(int idx, char const *str)
+ 		return NULL;
+ 
+ 	drv = drv_create(fd, NULL);
++	/* simpledrm has no render node. Opening card0 can accidentally take
++	 * modesetting ownership, which belongs to the display composer.
++	 * Match the ownership release in minigbm_helpers.c, scoped to our
++	 * newly supported simpledrm allocation path.
++	 */
++	if (drv && !strcmp(drv_get_name(drv), "simpledrm") && drmIsMaster(fd)) {
++		if (drmDropMaster(fd)) {
++			ALOGE("Failed to release simpledrm DRM master: %s", strerror(errno));
++			drv_destroy(drv);
++			drv = nullptr;
++		}
++	}
+ 	if (!drv)
+ 		close(fd);
+ 

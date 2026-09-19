@@ -1,0 +1,39 @@
+{
+  "prepared": true,
+  "staged": true,
+  "installed": false,
+  "physical_tests_started": false,
+  "candidate_sha256": "aae86f0da6f15a0c1f6e425e88806edb165289c459462b232f0b8773f5e4ac14",
+  "checks": {
+    "Test-ControlsV45Guards.py": {
+      "passed": true,
+      "source_sha256": "fc71945ee5eea5e963381516fa6ff8fa2ad2ee4d67e626dc33263b0671b9a5f9"
+    },
+    "Test-TouchCapture.py": {
+      "passed": true,
+      "source_sha256": "8e2a4cc5742f5295e656803a204219f69af5ef4e07e85d08008e10035b5981b7"
+    },
+    "Test-RecoveryTransitionV45.py": {
+      "passed": true,
+      "source_sha256": "9ac6be7fc56764e595aeefd380b25f6cab4607e92e86ee9c4bf7f8fc49eed9cf"
+    },
+    "Test-DiagnosticRecoveryProtocolV45.py": {
+      "passed": true,
+      "source_sha256": "bf022f86abb8f873a5cb1dacff2b1b6c6d9c4f7da12e918ea0c423a3b404ff00"
+    },
+    "stage": {
+      "passed": true,
+      "pin_count": 30,
+      "verified": {
+        "v38_tools": 9,
+        "v45_tools": 12,
+        "controls-v45_payload": 5,
+        "android-surface-v44_payload": 146
+      },
+      "scope": "Offline staged-file verification; no USB access or phone actions"
+    },
+    "module_qemu": true,
+    "captured_abl": true,
+    "eink_abi_qemu": true
+  }
+}

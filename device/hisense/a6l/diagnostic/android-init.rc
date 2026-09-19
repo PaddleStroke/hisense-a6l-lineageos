@@ -1,0 +1,30 @@
+# RAM diagnostic only. No mount_all, persistent partitions or imported scripts.
+on early-init
+    write /proc/sys/kernel/printk_devkmsg on
+    mkdir /tmp 0770 root root
+    mount tmpfs tmpfs /tmp nosuid nodev
+    mount configfs configfs /sys/kernel/config nosuid nodev noexec
+    mkdir /sys/kernel/config/usb_gadget/a6lprobe 0755 root root
+    mkdir /sys/kernel/config/usb_gadget/a6lprobe/functions/ffs.adb 0755 root root
+    mkdir /dev/usb-ffs 0770 shell shell
+    mkdir /dev/usb-ffs/adb 0770 shell shell
+    mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
+    symlink /dev/pts/ptmx /dev/ptmx
+    restorecon_recursive /system /dev /adb_keys
+    setprop sys.usb.configfs 1
+    setprop sys.usb.config adb
+    start adbd
+    start a6lprobe
+
+service adbd /system/bin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
+    user root
+    group root shell log
+    disabled
+    seclabel u:r:adbd:s0
+
+service a6lprobe /system/bin/a6l_android_probe
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0

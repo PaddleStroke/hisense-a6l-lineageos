@@ -1,0 +1,24 @@
+diff --git a/services/core/java/com/android/server/power/hint/HintManagerService.java b/services/core/java/com/android/server/power/hint/HintManagerService.java
+index 5d9e51289..334ad59b8 100644
+--- a/services/core/java/com/android/server/power/hint/HintManagerService.java
++++ b/services/core/java/com/android/server/power/hint/HintManagerService.java
+@@ -330,6 +330,8 @@ public final class HintManagerService extends SystemService {
+             } catch (RemoteException e) {
+                 throw new IllegalStateException("Could not contact PowerHAL!", e);
+             }
++        } else {
++            mSupportInfo = getDummySupportInfo();
+         }
+         if (mSupportInfo.headroom.isCpuSupported) {
+             mCpuHeadroomCache = new HeadroomCache<>(2, mSupportInfo.headroom.cpuMinIntervalMillis);
+@@ -371,6 +373,10 @@ public final class HintManagerService extends SystemService {
+             throw new IllegalStateException("Could not contact PowerHAL!", e);
+         }
+ 
++        return getDummySupportInfo();
++    }
++
++    private SupportInfo getDummySupportInfo() {
+         SupportInfo supportInfo = new SupportInfo();
+         supportInfo.usesSessions = isHintSessionSupported();
+         // Global boosts & modes aren't currently relevant for HMS clients

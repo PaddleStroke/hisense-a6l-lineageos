@@ -1,0 +1,67 @@
+{
+  "assets": [
+    {
+      "path": "firmware/extracted/vendor/lib64/libtcon_eink.so",
+      "bytes": 330448,
+      "sha256": "4eaf6536bc5f2418b0945abde3404432083a0016491524da4635174518325b3c"
+    },
+    {
+      "path": "firmware/extracted/vendor/lib64/hw/hwcomposer.sdm660.so",
+      "bytes": 333904,
+      "sha256": "d1dfac49c24e4329db38a53d7b4c862f479a893090c0d93cf7e67d54be5ec4db"
+    },
+    {
+      "path": "firmware/extracted/system/system/lib64/libgui.so",
+      "bytes": 732144,
+      "sha256": "68c215bc31fd45203a75ba1296a077734102eaea638ecae9ef14b48fa4596415"
+    },
+    {
+      "path": "firmware/extracted/eink-elf-analysis.json",
+      "bytes": 13745,
+      "sha256": "9fed54a3fd4e74f3d4ff3460963747ab6d98d307571d4c08cb560cf83ccb8175"
+    },
+    {
+      "path": "firmware/extracted/kernel-interface-audit.json",
+      "bytes": 5867,
+      "sha256": "fe211fcb1c761848073fb219a7bc7605c714b51d0d84d933351592ddcbb75ad2"
+    },
+    {
+      "path": "firmware/extracted/kernel-eink-attributes.json",
+      "bytes": 2319,
+      "sha256": "a3b0cd75c854a5fab99643621e6a68526bdd1e39e618d7cd2afed4dc17e465d0"
+    },
+    {
+      "path": "firmware/extracted/kernel-eink-handlers.txt",
+      "bytes": 22360,
+      "sha256": "a7145c5cab246fb40412a69d33cbe775198122227c5031481240c3be7e341bd1"
+    },
+    {
+      "path": "firmware/extracted/kernel-epd-flash-read.txt",
+      "bytes": 12483,
+      "sha256": "22e8fe54d831ff7ce17e757da77be47eb93690d63b0ad7004a156e94e2fdc98c"
+    },
+    {
+      "path": "firmware/extracted/eink-framework-disassembly.txt",
+      "bytes": 582244,
+      "sha256": "3db42eae3725b655a8e12ba73bf2c425f6a4c10c9a36760ebc37077f1a64bbef"
+    },
+    {
+      "path": "firmware/extracted/eink-services-disassembly.txt",
+      "bytes": 686159,
+      "sha256": "19b7b53bdd612d052ec635402786481da4825a546bbb56406dd0562c1082a8fd"
+    },
+    {
+      "path": "firmware/extracted/epd-spi-capture-20260914/report.json",
+      "bytes": 566,
+      "sha256": "475f63181bb910211543a06bf3820763b72aeddf0f6f097fefb19a94c84efbcb"
+    },
+    {
+      "path": "firmware/extracted/stock-dtbo-20260914/stock-00-merged.dtb",
+      "bytes": 344325,
+      "sha256": "a51bcd4bde94e42ebcb361ddc8583bdc8720b19bb1b9f6b8c95e8d5a194483e7"
+    }
+  ],
+  "spi_data_backed_up": false,
+  "hardware_tested_this_turn": false,
+  "note": "Existing evidence indexed and hashed; no panel data read or calibration change."
+}

@@ -1,0 +1,7 @@
+{
+  "files": {
+    "a6l-host-control.py": "d4861ed304715d73035e1e6e3c1797cb3c0d022618ab7da1931b8175c84749aa",
+    "99-a6l-access.rules": "d7664936e5f33c906683712c613d424cf55a67dd7a0a515b55501d111a9754fc",
+    "a6l-host-control.sudoers": "d2873871475fb88308d4bf6092a0527997f05aa16a97257afee953d8ac2e78a6"
+  }
+}

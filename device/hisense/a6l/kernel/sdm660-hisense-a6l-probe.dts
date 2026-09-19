@@ -1,0 +1,156 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Hisense HLTE730T minimal bring-up prototype.
+ * Wiring: verified L1632.6.01.04 DTBs with stock DTBO entry 0 applied.
+ * No display, charging, modem or calibration driver is enabled here.
+ */
+
+/dts-v1/;
+
+#include "sdm660.dtsi"
+#include "pm660.dtsi"
+#include "pm660l.dtsi"
+
+/ {
+	model = "Hisense A6L (HLTE730T) bring-up prototype";
+	compatible = "hisense,hlte730t", "qcom,sdm660";
+	chassis-type = "handset";
+
+	aliases {
+		serial0 = &blsp1_uart2;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		/* Temporary: retain bootloader power state during bring-up. */
+		bootargs = "earlycon=msm_serial_dm,0xc170000 console=ttyMSM0,115200n8 loglevel=8 clk_ignore_unused pd_ignore_unused regulator_ignore_unused";
+	};
+
+	reserved-memory {
+		/* Preserve the A6L boot display and Hisense diagnostic regions. */
+		splash_mem: framebuffer@9d400000 {
+			reg = <0 0x9d400000 0 0x23ff000>;
+			no-map;
+		};
+
+		dfps_mem: memory@9f7ff000 {
+			reg = <0 0x9f7ff000 0 0x1000>;
+			no-map;
+		};
+
+		bootlog_mem: memory@b0000000 {
+			reg = <0 0xb0000000 0 0x80000>;
+			no-map;
+		};
+
+		subsys_trap_mem: memory@b0080000 {
+			reg = <0 0xb0080000 0 0x100000>;
+			no-map;
+		};
+
+		recorder_mem: memory@b0180000 {
+			reg = <0 0xb0180000 0 0x400000>;
+			no-map;
+		};
+	};
+};
+
+/* Inherited split regions together cover stock removed_regions@85800000. */
+&tz_mem {
+	reg = <0 0x86200000 0 0x2d00000>;
+};
+
+&blsp1_uart2 {
+	status = "okay";
+};
+
+&tlmm {
+	/* GPIO 8 direction read stops physical bring-up. Reserve the SPI3
+	 * group, matching other SDM660 board descriptions.
+	 */
+	gpio-reserved-ranges = <8 4>;
+};
+
+&adsp_pil {
+	status = "disabled";
+};
+
+&remoteproc_cdsp {
+	status = "disabled";
+};
+
+&remoteproc_mss {
+	status = "disabled";
+};
+
+&rpm_requests {
+	regulators-0 {
+		compatible = "qcom,rpm-pm660l-regulators";
+
+		vreg_l1b: l1 {
+			regulator-name = "pm660l_l1";
+			regulator-min-microvolt = <800000>;
+			regulator-max-microvolt = <925000>;
+		};
+
+		vreg_l4b: l4 {
+			regulator-name = "pm660l_l4";
+			/* Keep the stock 2.95 V cap. Mainline's 8 mV steps
+			 * provide 2.944 V below it; exact 2.950 V cannot register.
+			 */
+			regulator-min-microvolt = <2944000>;
+			regulator-max-microvolt = <2950000>;
+		};
+
+		vreg_l7b: l7 {
+			regulator-name = "pm660l_l7";
+			regulator-min-microvolt = <2700000>;
+			regulator-max-microvolt = <3125000>;
+		};
+	};
+
+	regulators-1 {
+		compatible = "qcom,rpm-pm660-regulators";
+
+		vreg_l8a: l8 {
+			regulator-name = "pm660_l8";
+			/* Stock eMMC I/O consumer requests a fixed 1.8 V. */
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+
+		vreg_l10a: l10 {
+			regulator-name = "pm660_l10";
+			regulator-min-microvolt = <1780000>;
+			regulator-max-microvolt = <1950000>;
+		};
+	};
+};
+
+&sdhc_1 {
+	vmmc-supply = <&vreg_l4b>;
+	vqmmc-supply = <&vreg_l8a>;
+	/* Begin without HS200/HS400 tuning, CQE or inline encryption. */
+	max-frequency = <50000000>;
+	status = "okay";
+};
+
+&qusb2phy0 {
+	vdd-supply = <&vreg_l1b>;
+	vdda-pll-supply = <&vreg_l10a>;
+	vdda-phy-dpdm-supply = <&vreg_l7b>;
+	status = "okay";
+};
+
+&usb3 {
+	qcom,select-utmi-as-pipe-clk;
+	status = "okay";
+};
+
+&usb3_dwc3 {
+	/* Stock overlay 0 selects USB2 and disables the SuperSpeed PHY. */
+	maximum-speed = "high-speed";
+	phys = <&qusb2phy0>;
+	phy-names = "usb2-phy";
+	dr_mode = "peripheral";
+};

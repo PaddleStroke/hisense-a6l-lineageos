@@ -1,0 +1,9 @@
+{
+  "StockControlProtocol.py": "913d81b45dc861f2b11f1a96287cb049a91974e4cdd8b92c25184de7111e76e0",
+  "Write-LaptopStockControl-v1.py": "fa0a810f0ffc6df8a30d6f329e766077a356daebab6dbc0417d13cada469fe58",
+  "Run-LaptopStockControlInstall-v1.py": "4294de34f2ff323414f902bf21ab1fdbb41159c256fa02095beda8985c755a61",
+  "Run-LaptopStockControlRestore-v1.py": "599e0302bdfacdea560375318063b4d58ef95e1dd251c1250fc095f8cb76eeec",
+  "Inspect-StockControl-v1.py": "f8b62b8133ee49f050878d957ce810f9c5126a79bfea25929371ef2151375e56",
+  "Run-LaptopStockControlCapture-v1.py": "b945bce12667499e2059223f0b1cdf831c5691232d46184dbac4958ef574a731",
+  "Collect-StockControl-v1.py": "20f5779d7269045e00204df5b2f29c948ec4df6b7cfa094630adb8857c7e1672"
+}

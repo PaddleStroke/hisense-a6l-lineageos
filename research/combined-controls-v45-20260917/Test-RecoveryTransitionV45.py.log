@@ -1,0 +1,9 @@
+test_boot_prefix_is_not_enough (__main__.TransitionChecks.test_boot_prefix_is_not_enough) ... ok
+test_exact_stock_and_previous_with_each_known_boot_message (__main__.TransitionChecks.test_exact_stock_and_previous_with_each_known_boot_message) ... ok
+test_modified_device_state_rejected (__main__.TransitionChecks.test_modified_device_state_rejected) ... ok
+test_unknown_or_partial_image_rejected (__main__.TransitionChecks.test_unknown_or_partial_image_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+OK

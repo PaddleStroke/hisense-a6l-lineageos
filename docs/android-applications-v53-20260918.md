@@ -1,0 +1,15 @@
+# V53 — system application payload in the offline VM
+
+V52 r2 passes 12 checks and SystemServer reaches PackageManager after real display discovery. The fatal exception is missing installer application. Native installd independently exits for missing `/data/misc/user`.
+
+V53 packages the original built `app` and `priv-app` trees from system, system_ext and product (approximately 975 MB before compression), creates the missing RAM parent directory, supplies standard ANDROID_ASSETS/EXTERNAL_STORAGE environment and checks genuine installd Binder registration. No Java checks are bypassed and no replacement installer is invented.
+
+The duplicated RAM test payload now uses an 8 GiB VM, sized from actual app directory sizes plus expanded/runtime APEX payloads. This is not an eventual phone RAM requirement; normal system partitions are not duplicated inside initramfs. Kernel and native supervisor remain V50 and V51 build-r4 respectively. Normal init lifecycle and production permissions remain unfinished.
+
+Command: `tools/Test-FrameworkV48.py --rooted --runtime-kernel --apex-service --native-bootstrap --applications --attempt N`. Work `/home/a6l/kernel/framework-v53-r1`; archive `firmware/extracted/android-framework-v53-20260918-r1`. No phone/laptop access, disks or network attached to VM.
+
+**Attempt 1 PASS for all 13 foundation checks.** Actual installd Binder registration succeeds. PackageManager finishes; SystemServer continues through UserManager, SetSystemProcess, OverlayManager, ResourcesManager and SensorPrivacy initialization, then completes startBootstrapServices. This does not validate physical sensors. It enters startCoreServices and fails BatteryService because no default IHealth HAL is available. Full UI remains false.
+
+Next exact failure: `java.util.NoSuchElementException: IHealth service instance default isn't available`, reached through HealthServiceWrapper HIDL fallback. No Health HAL was staged or declared. Local AIDL implementation is `hardware/interfaces/health/aidl/default`; its default main constructs Health with InitHealthdConfig, backed by Linux power-supply monitoring. No built service exists in product vendor/bin/hw yet. Review/build a properly declared HAL and reconcile its sysfs inputs with the saved A6L power-supply readings. A VM without a battery can validate service integration only, never A6L charging or thermal policy. Further native services and normal init lifecycle remain needed.
+
+Raw console SHA256 `506a5c648e811a084f1b6a116432de47595281a5f2d141f5a035c2fdf00cb594`, preserved byte-for-byte as `console.raw.log`. The readable `console.log` decodes binary Android log packets, replacing invalid UTF-8 and normalizing newlines; its distinct hash is recorded in `console-integrity.json`. All nine V51–V53 raw logs were checked against their original report hashes. Future harness runs archive both forms directly. Test finished, supervisor cleanup passed and QEMU exited. No jobs remain. Application inclusion increased the temporary RAM fixture, not the target phone's memory requirement.

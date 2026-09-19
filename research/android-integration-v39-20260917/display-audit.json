@@ -1,0 +1,492 @@
+{
+  "scope": "Offline current diagnostic DT and stock library interface evidence",
+  "dt_sha256": "16ddb1b36ea60923c108844e840fb8e5b1cdc0f90faffa863578be5b861bc31f",
+  "display_nodes": [
+    {
+      "path": "/opp-table-dsi",
+      "compatible": [
+        "operating-points-v2"
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/opp-table-dsi/opp-131250000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/opp-table-dsi/opp-210000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/opp-table-dsi/opp-262500000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/reserved-memory/gpu@fed00000",
+      "compatible": [
+        "shared-dma-pool"
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/reserved-memory/framebuffer@9d400000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/qfprom@780000/gpu-speed-bin@41a0",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000",
+      "compatible": [
+        "qcom,adreno-512.0",
+        "qcom,adreno"
+      ],
+      "status": [
+        "disabled"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table",
+      "compatible": [
+        "operating-points-v2"
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table/opp-588000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table/opp-465000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table/opp-370000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table/opp-160000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table/opp-19200000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table/opp-430000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/opp-table/opp-266000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/gpu@5000000/zap-shader",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000",
+      "compatible": [
+        "qcom,mdss"
+      ],
+      "status": [
+        "disabled"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000",
+      "compatible": [
+        "qcom,sdm660-mdp5",
+        "qcom,mdp5"
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/ports",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/ports/port@0",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/ports/port@0/endpoint",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/ports/port@1",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/ports/port@1/endpoint",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/opp-table",
+      "compatible": [
+        "operating-points-v2"
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/opp-table/opp-150000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/opp-table/opp-275000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/opp-table/opp-300000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/opp-table/opp-330000000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/display-controller@c901000/opp-table/opp-412500000",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c994000",
+      "compatible": [
+        "qcom,sdm660-dsi-ctrl",
+        "qcom,mdss-dsi-ctrl"
+      ],
+      "status": [
+        "disabled"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c994000/ports",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c994000/ports/port@0",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c994000/ports/port@0/endpoint",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c994000/ports/port@1",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c994000/ports/port@1/endpoint",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/phy@c994400",
+      "compatible": [
+        "qcom,dsi-phy-14nm-660"
+      ],
+      "status": [
+        "disabled"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c996000",
+      "compatible": [
+        "qcom,sdm660-dsi-ctrl",
+        "qcom,mdss-dsi-ctrl"
+      ],
+      "status": [
+        "disabled"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c996000/ports",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c996000/ports/port@0",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c996000/ports/port@0/endpoint",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c996000/ports/port@1",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/dsi@c996000/ports/port@1/endpoint",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/soc@0/display-subsystem@c900000/phy@c996400",
+      "compatible": [
+        "qcom,dsi-phy-14nm-660"
+      ],
+      "status": [
+        "disabled"
+      ]
+    },
+    {
+      "path": "/thermal-zones/gpu-thermal",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/thermal-zones/gpu-thermal/cooling-maps",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/thermal-zones/gpu-thermal/cooling-maps/map0",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/thermal-zones/gpu-thermal/trips",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/thermal-zones/gpu-thermal/trips/trip-point0",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/thermal-zones/gpu-thermal/trips/trip-point1",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    },
+    {
+      "path": "/thermal-zones/gpu-thermal/trips/trip-point2",
+      "compatible": [
+        ""
+      ],
+      "status": [
+        "okay"
+      ]
+    }
+  ],
+  "stock_graphics_interfaces": {
+    "vendor/lib64/hw/hwcomposer.sdm660.so": {
+      "sha256": "d1dfac49c24e4329db38a53d7b4c862f479a893090c0d93cf7e67d54be5ec4db",
+      "device_strings": [
+        "/dev/epd_flash",
+        "/dev/fb1",
+        "/dev/graphics/fb1"
+      ]
+    },
+    "vendor/lib64/libsdmcore.so": {
+      "sha256": "2efdce1f718d2ae063a946f391083bc26307be6a4af8b286b1ddb9f0a7c73b46",
+      "device_strings": [
+        "/dev/fb",
+        "/dev/graphics/fb",
+        "/dev/mdss_rotator",
+        "/dev/video"
+      ]
+    },
+    "vendor/lib64/egl/libGLESv2_adreno.so": {
+      "sha256": "223aa1c59c55c8cf7747a39bf7718f5293c24c47435e79d7ee58b5aacc5e5b2a",
+      "device_strings": []
+    }
+  }
+}

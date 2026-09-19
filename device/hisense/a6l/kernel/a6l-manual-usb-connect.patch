@@ -1,0 +1,82 @@
+--- a/drivers/usb/gadget/udc/core.c
++++ b/drivers/usb/gadget/udc/core.c
+@@ -17,12 +17,23 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/sched/task_stack.h>
+ #include <linux/workqueue.h>
++#include <linux/init.h>
++#include <linux/kstrtox.h>
++#include <linux/of.h>
+ 
+ #include <linux/usb/ch9.h>
+ #include <linux/usb/gadget.h>
+ #include <linux/usb.h>
+ 
+ #include "trace.h"
++
++/* Temporary A6L RAM diagnostic, opt-in and board gated. */
++static bool a6l_manual_usb;
++static int __init a6l_manual_usb_setup(char *value)
++{
++	return kstrtobool(value, &a6l_manual_usb);
++}
++early_param("a6l_manual_usb", a6l_manual_usb_setup);
+ 
+ static DEFINE_IDA(gadget_id_numbers);
+ 
+@@ -60,6 +71,7 @@
+ 	bool				vbus;
+ 	bool				started;
+ 	bool				allow_connect;
++	bool				a6l_hold_connect;
+ 	struct work_struct		vbus_work;
+ 	struct mutex			connect_lock;
+ };
+@@ -711,6 +723,11 @@
+ 
+ 	if (!gadget->ops->pullup) {
+ 		ret = -EOPNOTSUPP;
++		goto out;
++	}
++
++	if (gadget->udc->a6l_hold_connect) {
++		dev_info(&gadget->udc->dev, "A6L_USB_CONNECT_HELD: driver bound, pullup not called\n");
+ 		goto out;
+ 	}
+ 
+@@ -1659,6 +1676,11 @@
+ 
+ 	usb_gadget_udc_set_speed(udc, driver->max_speed);
+ 
++	udc->a6l_hold_connect = a6l_manual_usb &&
++		of_machine_is_compatible("hisense,hlte730t");
++	if (udc->a6l_hold_connect)
++		dev_info(&udc->dev, "A6L_USB_MANUAL_CONNECT armed\n");
++
+ 	ret = driver->bind(udc->gadget, driver);
+ 	if (ret)
+ 		goto err_bind;
+@@ -1815,9 +1837,20 @@
+ 
+ 	if (sysfs_streq(buf, "connect")) {
+ 		mutex_lock(&udc->connect_lock);
+-		usb_gadget_udc_start_locked(udc);
+-		usb_gadget_connect_locked(udc->gadget);
+-		mutex_unlock(&udc->connect_lock);
++		if (udc->a6l_hold_connect) {
++			dev_info(&udc->dev, "A6L_USB_CONNECT_RELEASE_BEGIN\n");
++			/* Binding already started the driver and installed its IRQ. */
++			udc->a6l_hold_connect = false;
++			ret = usb_gadget_connect_locked(udc->gadget);
++			dev_info(&udc->dev, "A6L_USB_CONNECT_RELEASE_END result=%zd\n", ret);
++			mutex_unlock(&udc->connect_lock);
++			if (ret)
++				goto out;
++		} else {
++			usb_gadget_udc_start_locked(udc);
++			usb_gadget_connect_locked(udc->gadget);
++			mutex_unlock(&udc->connect_lock);
++		}
+ 	} else if (sysfs_streq(buf, "disconnect")) {
+ 		mutex_lock(&udc->connect_lock);
+ 		usb_gadget_disconnect_locked(udc->gadget);

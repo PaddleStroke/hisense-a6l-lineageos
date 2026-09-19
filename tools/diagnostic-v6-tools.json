@@ -1,0 +1,10 @@
+{
+  "DiagnosticRecoveryProtocolV5.py": "b037652e2ccb1438d97513aa689ce2e0d5324c8e98cd6bd49267db8f77e0907d",
+  "Write-LaptopDiagnosticRecovery-v6.py": "de0a2125d25b9d7a4a9b8579cb62868b715615b793d62b83d3bfb256f0fed409",
+  "Inspect-DiagnosticRecovery-v6.py": "d5575a8d938d9a074a1801aa15f59d4baaf0de743a7dc7294aa9b47f798c2454",
+  "Run-LaptopDiagnosticInstall-v6.py": "1965894496c360744afd1f64e723cb11305d537eb5f8c58c7d0ff4596dbdf12c",
+  "Run-LaptopDiagnosticRestore-v6.py": "5eb292e0f4ce0c34edeb22b6962dd89f0f33767db60ab6c3970d883bb2712a07",
+  "Run-LaptopProbeCapture-v6.py": "55584be1118dc944925e98c0ea0d4acef52446e5b0b10a5b9107aef66f5b0863",
+  "Test-DiagnosticRecoveryProtocolV5.py": "f381404e20eba810640cde8ca75df2c415cdd21c0435f7a2374c4b1151869acf",
+  "Run-A6LDiagnosticV6.ps1": "e9a959621c40e7691e1c300472efc0a9b237acfb360aaa177b9cd11c618d5339"
+}

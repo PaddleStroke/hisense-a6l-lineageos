@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Hisense A6L (HLTE730T) ADSP startup diagnostic overlay — candidate B.
+// ONLY together with patches/0001-remoteproc-qcom_q6v5_pas-a6l-stock-style-
+// proxy-cx-vote.patch (rebuilt qcom_q6v5_pas.ko). Do not use with the
+// unmodified module: "hisense,a6l-adsp-pas" would then fall through to the
+// "qcom,sdm660-adsp-pas" match (same behaviour as candidate A) while the
+// power domain below would point at rwlc/0 without any level vote.
+//
+// Difference from candidate A: the single "cx" power domain is
+// <&rpmpd RPMPD_SSCCX> = rpmpd "ssc_cx" = RPM resource "rwlc"/0
+// (include/dt-bindings/power/qcom-rpmpd.h, pinned tree: RPMPD_SSCCX 6;
+// drivers/pmdomain/qcom/rpmpd.c sdm660_rpmpds[RPMPD_SSCCX] = ssc_cx_rwlc0_lvl),
+// which is the RPM resource behind the stock proxy supply pm660l_l9_level
+// (stock DTB rpm-regulator-ldob9: qcom,resource-name = "rwlc",
+// qcom,resource-id = 0, regulator-l9-level max level 0x180).
+// Not physically tested.
+/dts-v1/;
+/plugin/;
+
+&adsp_pil {
+	compatible = "hisense,a6l-adsp-pas", "qcom,sdm660-adsp-pas";
+	firmware-name = "qcom/hisense/a6l/adsp.mdt";
+	/* RPMPD_SSCCX (6): LPASS/SSC CX, RPM "rwlc"/0, level-keyed. */
+	power-domains = <&rpmpd 6>;
+	power-domain-names = "cx";
+	status = "okay";
+};
+
+/ {
+	fragment@1 {
+		target-path = "/chosen";
+		__overlay__ {
+			hisense,a6l-adsp = "diag1-ssccx";
+		};
+	};
+};

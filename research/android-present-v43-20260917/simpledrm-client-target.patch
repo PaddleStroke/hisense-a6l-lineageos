@@ -1,0 +1,43 @@
+diff --git a/hwc3/ComposerClient.cpp b/hwc3/ComposerClient.cpp
+index 0e5d7d9..233d7f5 100644
+--- a/hwc3/ComposerClient.cpp
++++ b/hwc3/ComposerClient.cpp
+@@ -19,6 +19,7 @@
+ 
+ #include "ComposerClient.h"
+ 
++#include <drm_fourcc.h>
+ #include <cinttypes>
+ #include <cmath>
+ #include <memory>
+@@ -465,8 +466,18 @@ static auto GetBufferCache(HwcDisplay* parent, HwcLayer& layer)
+   auto frontend_private_data = layer.GetFrontendPrivateData();
+   if (!frontend_private_data) {
+     frontend_private_data = std::make_shared<GrallocBufferCache>(
+-        [parent](auto& bi)
++        [parent, client_target = (&layer == &parent->GetClientLayer())](auto& bi)
+             -> std::shared_ptr<::android::drm_hwcomposer::DrmFbIdHandle> {
++          // simpleDRM exposes an opaque primary plane. A fully composed BGRA
++          // client target has the same color-byte layout as XRGB scanout.
++          // Adapt only this private cached view, never application metadata
++          // or individual device-composed layers.
++          if (client_target && !parent->IsInHeadlessMode() &&
++              parent->GetPipe().device->GetName() == "simpledrm" &&
++              bi.format == DRM_FORMAT_ARGB8888) {
++            bi.format = DRM_FORMAT_XRGB8888;
++            bi.blend_mode = BufferBlendMode::kNone;
++          }
+           return ImportFb(parent, bi);
+         });
+     layer.SetFrontendPrivateData(frontend_private_data);
+@@ -1725,6 +1736,10 @@ void ComposerClient::ExecuteSetDisplayClientTarget(
+       .colorspace = AidlToColorspace(command.dataspace),
+       .transfer_func = AidlToTransferFunc(command.dataspace),
+   };
++  if (!display->IsInHeadlessMode() &&
++      display->GetPipe().device->GetName() == "simpledrm") {
++    properties.blend_mode = BufferBlendMode::kNone;
++  }
+   client_layer.SetLayerProperties(properties);
+ }
+ 

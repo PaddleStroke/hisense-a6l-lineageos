@@ -1,0 +1,17 @@
+# V22: bypass optional SDHCI activity LED
+
+V21 reached checkpoint46 core_register_led, then disconnected before core_register_mmc_host. No panic captured. Stock Android and laptop services returned at14:15:51UTC. Exact logs saved in captures/capture-probe-serial-user-v21. The boundary implicates this interval but does not prove a specific instruction or exclude asynchronous work.
+
+The optional LED callback reads/writes SDHCI_HOST_CONTROL under the host lock. The SDHCI core already offers SDHCI_QUIRK_NO_LED to omit registration and activity-bit writes. V22 sets that existing quirk only when compatible is hisense,hlte730t and device name c0c4000.mmc. It does not alter any phone frontlight/display/notification LED driver. Device tree, clocks, voltage/load settings, other storage quirks, RAM init and all paced checkpoints remain identical. Only the bundled sdhci-msm module changes. This is a controlled diagnostic bypass, not yet a proven production fix.
+
+Related upstream discussion: https://patchew.org/linux/20240321-sdhci-mmc-suspend-v1-1-fbc555a64400%408devices.com/ describes crashes when LED access touches a runtime-suspended Qualcomm controller. Our driver already sets host->runtime_suspended in suspend/resume, so the known missing-flag fix is present. V21 does not establish that runtime suspend caused our failure.
+
+Kernel is byte-identical to V21: adaptedSHA5717b756307399dae8767922963ef592d6661edf2ddb8a457487f3fe06f37643. ModuleSHA6a6e13de188f8137cccd2428256e13b8df02c2ee907a60c35a910e7dd9806100. RAMSHAc619bbf588ab47220c2d7cef32ad9351b6bd7744dc60d6d4964d30e1653491a6. Module-load QEMU test passed; actual RAM test running. No V22 phone write or staging yet. V21 remains installed.
+
+Module and actual RAM boot tests passed, followed by packaging, captured ABL routines, six protocol fault checks and four transition checks. Candidate19ea35f9ce8b97683c195aa2a26fce811170a04064483c539eddaba1782720d3. Staged hashes and offline laptop preflight passed. Installation launched14:22:49UTC PID139896 under GNOME A6L-v22-install. InstallUSED; capture/restoreUNUSED. Await full readback and cleanup before manual Power request.
+
+Installed14:23:21.148908UTC; all12copiedreadbacks independently verified. ExactV21predecessor+knownbootmessagepreserved. EDL disappeared after poweroff and laptop services restored. User asked onlyPower to stockAndroid; awaitreply. V22capture/restoreUNUSED.
+
+Android baseline verified; V22 capture launched14:25:51UTC PID140412. Exact fastboot and logger confirmed. User asked to select Recovery, wait50s without filming. Capture now USED.
+
+Physical V22: first logger opened too early and got EACCES on ttyACM0 (0bytes); permissions then correctly became UID1000 mode0600. No chmod/sudo change made. Diagnostic remained alive because storage load waits for transmitted logs. Separate bounded read-only late logger PID141082 started14:28:40UTC, recovered210793bytes and caused normal gate progress: fork at145s. NO_LED marker seen, checkpoint46 passed, last47core_register_mmc_host then disconnect. No panic. The late-reader staged_capture_complete flag is based on buffered ALIVE>=40 and does NOT establish post-load stability. Both original and late captures archived separately. Normal Android returned and services restored14:29:37.102567UTC; independently verified. V22 remains installed. V23 will retry only transient EACCES for5s and measure its successful observation window from actual fork time.

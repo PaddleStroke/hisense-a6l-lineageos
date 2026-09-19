@@ -1,0 +1,6 @@
+{
+  "base_commit": "87daba89b05fabc7f1e9316e3f283f19fd0c45cd",
+  "before_sha256": "dbe699d7a70ac5aa6b35c27f78f9ccf9cb804c4740dad68abdc6face0dcdca66",
+  "after_sha256": "187981fb7041a2e71e52bbacbc8fdd48992b4587a8aae32df9e9c9e254926ee4",
+  "scope": "Only simpledrm fully composed client-target BGRA view becomes opaque XRGB; all other buffers unchanged"
+}

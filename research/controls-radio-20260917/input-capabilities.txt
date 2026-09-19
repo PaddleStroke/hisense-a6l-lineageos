@@ -1,0 +1,92 @@
+add device 1: /dev/input/event11
+  name:     "sdm660-snd-card Button Jack"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN        KEY_VOLUMEUP          KEY_MEDIA             BTN_4                
+                BTN_5                 KEY_VOICECOMMAND     
+  input props:
+    INPUT_PROP_ACCELEROMETER
+add device 2: /dev/input/event10
+  name:     "sdm660-snd-card Headset Jack"
+  events:
+    SW  (0005): SW_HEADPHONE_INSERT   SW_MICROPHONE_INSERT  SW_LINEOUT_INSERT     SW_JACK_PHYSICAL_INS    
+                SW_PEN_INSERTED       0010                  0011                  0012                 
+  input props:
+    <none>
+add device 3: /dev/input/event7
+  name:     "light_extend_front_1"
+  events:
+    ABS (0003): ABS_MISC              : value 4522013, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    <none>
+add device 4: /dev/input/event8
+  name:     "proximity_extend_front_1"
+  events:
+    ABS (0003): ABS_DISTANCE          : value 0, min 0, max 1, fuzz 0, flat 0, resolution 0
+  input props:
+    <none>
+add device 5: /dev/input/event0
+  name:     "qpnp_pon"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN        KEY_POWER            
+  input props:
+    <none>
+add device 6: /dev/input/event3
+  name:     "sf-keys"
+  events:
+    KEY (0001): KEY_HOME              KEY_MENU              KEY_WAKEUP            KEY_BACK             
+                KEY_TOUCHPAD_TOGGLE   KEY_TOUCHPAD_ON       KEY_TOUCHPAD_OFF      KEY_CAMERA_ZOOMIN    
+                KEY_CAMERA_ZOOMOUT    KEY_CAMERA_UP        
+  input props:
+    <none>
+add device 7: /dev/input/event1
+  name:     "ft8719_ts"
+  events:
+    KEY (0001): BTN_TOUCH             01fd                  01fe                  01ff                 
+                KEY_NUMERIC_0         KEY_NUMERIC_1         KEY_NUMERIC_2         KEY_NUMERIC_3        
+                KEY_NUMERIC_4         KEY_NUMERIC_7         KEY_NUMERIC_8         022b                 
+    ABS (0003): ABS_MT_SLOT           : value 4, min 0, max 4, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 1080, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 2340, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 8: /dev/input/event9
+  name:     "gpio-keys"
+  events:
+    KEY (0001): KEY_VOLUMEUP          KEY_F18               KEY_LEFT_UP          
+  input props:
+    <none>
+add device 9: /dev/input/event4
+  name:     "hall"
+  events:
+    ABS (0003): ABS_DISTANCE          : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    <none>
+add device 10: /dev/input/event2
+  name:     "ft5x06_ts"
+  events:
+    KEY (0001): BTN_TOUCH             01fe                  01ff                  KEY_NUMERIC_1        
+                KEY_NUMERIC_3         KEY_NUMERIC_4         KEY_NUMERIC_7         KEY_NUMERIC_8        
+                022b                  KEY_3D_MODE           KEY_STOP_RECORD       KEY_PAUSE_RECORD     
+    ABS (0003): ABS_MT_SLOT           : value 4, min 0, max 4, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 720, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 1440, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 11: /dev/input/event6
+  name:     "proximity_extend_back_1"
+  events:
+    ABS (0003): ABS_DISTANCE          : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    <none>
+add device 12: /dev/input/event5
+  name:     "light_extend_back_1"
+  events:
+    ABS (0003): ABS_X                 : value 589849, min 0, max 65535, fuzz 0, flat 0, resolution 0
+                ABS_MISC              : value 458777, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    <none>
+could not get driver version for /dev/input/mice, Not a typewriter

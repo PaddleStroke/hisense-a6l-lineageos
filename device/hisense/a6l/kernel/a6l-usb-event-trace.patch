@@ -1,0 +1,144 @@
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -8,6 +8,10 @@
+  *	    Sebastian Andrzej Siewior <bigeasy@linutronix.de>
+  */
+ 
++#include <linux/init.h>
++#include <linux/kstrtox.h>
++#include <linux/of.h>
++#include <linux/atomic.h>
+ #include <linux/kernel.h>
+ #include <linux/delay.h>
+ #include <linux/slab.h>
+@@ -138,6 +142,18 @@
+ 
+ 	return -ETIMEDOUT;
+ }
++
++/* Temporary bounded A6L diagnostic; no change to event handling. */
++static bool a6l_usb_trace;
++static bool a6l_usb_trace_active;
++static atomic_t a6l_irq_trace_count = ATOMIC_INIT(0);
++static atomic_t a6l_thread_trace_count = ATOMIC_INIT(0);
++static atomic_t a6l_event_trace_count = ATOMIC_INIT(0);
++static int __init a6l_usb_trace_setup(char *value)
++{
++	return kstrtobool(value, &a6l_usb_trace);
++}
++early_param("a6l_usb_trace", a6l_usb_trace_setup);
+ 
+ static void dwc3_ep0_reset_state(struct dwc3 *dwc)
+ {
+@@ -4567,10 +4583,16 @@
+ 
+ 	while (left > 0) {
+ 		union dwc3_event event;
++		bool trace = a6l_usb_trace_active &&
++			atomic_inc_return(&a6l_event_trace_count) <= 16;
+ 
+ 		event.raw = *(u32 *) (evt->cache + evt->lpos);
+-
++		if (trace)
++			dev_info(dwc->dev, "A6L_USB_EVENT_BEGIN raw=%08x pos=%u left=%d\n",
++				 event.raw, evt->lpos, left);
+ 		dwc3_process_event_entry(dwc, &event);
++		if (trace)
++			dev_info(dwc->dev, "A6L_USB_EVENT_END raw=%08x\n", event.raw);
+ 
+ 		/*
+ 		 * FIXME we wrap around correctly to the next entry as
+@@ -4613,12 +4635,18 @@
+ 	struct dwc3 *dwc = evt->dwc;
+ 	unsigned long flags;
+ 	irqreturn_t ret = IRQ_NONE;
+-
++	bool trace = a6l_usb_trace_active &&
++		atomic_inc_return(&a6l_thread_trace_count) <= 8;
++
++	if (trace)
++		dev_info(dwc->dev, "A6L_USB_THREAD_BEGIN irq=%d\n", irq);
+ 	local_bh_disable();
+ 	spin_lock_irqsave(&dwc->lock, flags);
+ 	ret = dwc3_process_event_buf(evt);
+ 	spin_unlock_irqrestore(&dwc->lock, flags);
+ 	local_bh_enable();
++	if (trace)
++		dev_info(dwc->dev, "A6L_USB_THREAD_END ret=%d\n", ret);
+ 
+ 	return ret;
+ }
+@@ -4628,7 +4656,11 @@
+ 	struct dwc3 *dwc = evt->dwc;
+ 	u32 amount;
+ 	u32 count;
+-
++	bool trace = a6l_usb_trace_active && atomic_read(&a6l_irq_trace_count) <= 8;
++
++	if (trace)
++		dev_info(dwc->dev, "A6L_USB_EVENT_CHECK suspended=%d flags=%x\n",
++			 pm_runtime_suspended(dwc->dev), evt->flags);
+ 	if (pm_runtime_suspended(dwc->dev)) {
+ 		dwc->pending_events = true;
+ 		/*
+@@ -4650,7 +4682,12 @@
+ 	if (evt->flags & DWC3_EVENT_PENDING)
+ 		return IRQ_HANDLED;
+ 
++	if (trace)
++		dev_info(dwc->dev, "A6L_USB_EVENT_COUNT_READ_BEGIN\n");
+ 	count = dwc3_readl(dwc, DWC3_GEVNTCOUNT(0));
++	if (trace)
++		dev_info(dwc->dev, "A6L_USB_EVENT_COUNT_READ_END raw=%08x len=%u pos=%u\n",
++			 count, evt->length, evt->lpos);
+ 	count &= DWC3_GEVNTCOUNT_MASK;
+ 	if (!count)
+ 		return IRQ_NONE;
+@@ -4668,12 +4705,16 @@
+ 	dwc3_writel(dwc, DWC3_GEVNTSIZ(0),
+ 		    DWC3_GEVNTSIZ_INTMASK | DWC3_GEVNTSIZ_SIZE(evt->length));
+ 
++	if (trace)
++		dev_info(dwc->dev, "A6L_USB_EVENT_COPY_BEGIN count=%u\n", count);
+ 	amount = min(count, evt->length - evt->lpos);
+ 	memcpy(evt->cache + evt->lpos, evt->buf + evt->lpos, amount);
+ 
+ 	if (amount < count)
+ 		memcpy(evt->cache, evt->buf, count - amount);
+ 
++	if (trace)
++		dev_info(dwc->dev, "A6L_USB_EVENT_COPY_END\n");
+ 	dwc3_writel(dwc, DWC3_GEVNTCOUNT(0), count);
+ 
+ 	return IRQ_WAKE_THREAD;
+@@ -4682,8 +4723,17 @@
+ static irqreturn_t dwc3_interrupt(int irq, void *_evt)
+ {
+ 	struct dwc3_event_buffer	*evt = _evt;
+-
+-	return dwc3_check_event_buf(evt);
++	irqreturn_t ret;
++	bool trace = a6l_usb_trace_active &&
++		atomic_inc_return(&a6l_irq_trace_count) <= 8;
++
++	if (trace)
++		dev_info(evt->dwc->dev, "A6L_USB_IRQ_BEGIN irq=%d\n", irq);
++	ret = dwc3_check_event_buf(evt);
++	if (trace)
++		dev_info(evt->dwc->dev, "A6L_USB_IRQ_END ret=%d count=%u pos=%u\n",
++			 ret, evt->count, evt->lpos);
++	return ret;
+ }
+ 
+ static int dwc3_gadget_get_irq(struct dwc3 *dwc)
+@@ -4730,6 +4780,10 @@
+ 	int irq;
+ 	struct device *dev;
+ 
++	a6l_usb_trace_active = a6l_usb_trace &&
++		of_machine_is_compatible("hisense,hlte730t");
++	if (a6l_usb_trace_active)
++		dev_info(dwc->dev, "A6L_USB_EVENT_TRACE armed: first 8 IRQs/threads and 16 events\n");
+ 	irq = dwc3_gadget_get_irq(dwc);
+ 	if (irq < 0) {
+ 		ret = irq;

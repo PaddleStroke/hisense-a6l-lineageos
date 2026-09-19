@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "pin_count": 178,
+  "payload_files": 170,
+  "shared_tools": 9,
+  "scope": "File-only validation; no phone actions"
+}

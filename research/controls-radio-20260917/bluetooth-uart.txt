@@ -1,0 +1,4 @@
+lrwxrwxrwx 1 root root 0 2020-10-14 17:23 /sys/class/tty/ttyHS0/device -> ../../../c1af000.uart
+
+
+

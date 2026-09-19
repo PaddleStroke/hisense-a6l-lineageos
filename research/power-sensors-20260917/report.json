@@ -1,0 +1,32 @@
+{
+  "time": "2026-09-17T18:51:58.854949+00:00",
+  "read_only": true,
+  "sensor_entries": 61,
+  "results": {
+    "identity": {
+      "exit": 0,
+      "stdout": "Hisense/HLTE730T/HLTE730T:9/PKQ1.190723.001/L1632.6.01.04:user/release-keys\n1\n",
+      "stderr": ""
+    },
+    "battery-service": {
+      "exit": 0,
+      "stdout": "Current Battery Service state:\n  AC powered: false\n  USB powered: true\n  Wireless powered: false\n  Max charging current: 475000\n  Max charging voltage: 5000000\n  Charge counter: 3839238\n  status: 5\n  health: 2\n  present: true\n  level: 100\n  scale: 100\n  voltage: 4371\n  temperature: 250\n  technology: Li-ion\n",
+      "stderr": ""
+    },
+    "power-supplies": {
+      "exit": 0,
+      "stdout": "SUPPLY=/sys/class/power_supply/battery\nSUPPLY=/sys/class/power_supply/bms\nSUPPLY=/sys/class/power_supply/dc\nSUPPLY=/sys/class/power_supply/main\nSUPPLY=/sys/class/power_supply/parallel\nSUPPLY=/sys/class/power_supply/pc_port\nSUPPLY=/sys/class/power_supply/usb\n",
+      "stderr": ""
+    },
+    "thermal-zones": {
+      "exit": 0,
+      "stdout": "ZONE=/sys/class/thermal/thermal_zone0\nFIELD=type\nbattery\nFIELD=temp\n25000\nZONE=/sys/class/thermal/thermal_zone1\nFIELD=type\nepd_therm\nFIELD=temp\n25\nZONE=/sys/class/thermal/thermal_zone10\nFIELD=type\ntsens_tz_sensor1\nFIELD=temp\n273\nZONE=/sys/class/thermal/thermal_zone11\nFIELD=type\ntsens_tz_sensor2\nFIELD=temp\n269\nZONE=/sys/class/thermal/thermal_zone12\nFIELD=type\ntsens_tz_sensor3\nFIELD=temp\n257\nZONE=/sys/class/thermal/thermal_zone13\nFIELD=type\ntsens_tz_sensor4\nFIELD=temp\n260\nZONE=/sys/class/thermal/thermal_zone14\nFIELD=type\ntsens_tz_sensor5\nFIELD=temp\n273\nZONE=/sys/class/thermal/thermal_zone15\nFIELD=type\ntsens_tz_sensor6\nFIELD=temp\n263\nZONE=/sys/class/thermal/thermal_zone16\nFIELD=type\ntsens_tz_sensor7\nFIELD=temp\n263\nZONE=/sys/class/thermal/thermal_zone17\nFIELD=type\ntsens_tz_sensor8\nFIELD=temp\n269\nZONE=/sys/class/thermal/thermal_zone18\nFIELD=type\ntsens_tz_sensor9\nFIELD=temp\n269\nZONE=/sys/class/thermal/thermal_zone19\nFIELD=type\ntsens_tz_sensor10\nFIELD=temp\n263\nZONE=/sys/class/thermal/thermal_zone2\nFIELD=type\nemmc_therm\nFIELD=temp\n25\nZONE=/sys/class/thermal/thermal_zone20\nFIELD=type\ntsens_tz_sensor11\nFIELD=temp\n269\nZONE=/sys/class/thermal/thermal_zone21\nFIELD=type\ntsens_tz_sensor12\nFIELD=temp\n269\nZONE=/sys/class/thermal/thermal_zone22\nFIELD=type\ntsens_tz_sensor13\nFIELD=temp\n273\nZONE=/sys/class/thermal/thermal_zone23\nFIELD=type\nlimits_sensor-00\nFIELD=temp\nZONE=/sys/class/thermal/thermal_zone24\nFIELD=type\nlimits_sensor-01\nFIELD=temp\nZONE=/sys/class/thermal/thermal_zone25\nFIELD=type\nbms\nFIELD=temp\n25000\nZONE=/sys/class/thermal/thermal_zone26\nFIELD=type\nGLM_soc\nFIELD=temp\n0\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone27\nFIELD=type\nLLM_cp1-\nFIELD=temp\n0\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone28\nFIELD=type\nLLM_cp0-\nFIELD=temp\n0\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone3\nFIELD=type\npa_therm0\nFIELD=temp\n24\nZONE=/sys/class/thermal/thermal_zone4\nFIELD=type\npm660_tz\nFIELD=temp\n26331\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone5\nFIELD=type\npm660l_tz\nFIELD=temp\n37000\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone6\nFIELD=type\nmsm_therm\nFIELD=temp\n25\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone7\nFIELD=type\nquiet_therm\nFIELD=temp\n25\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone8\nFIELD=type\nxo_therm\nFIELD=temp\n25\nFIELD=mode\ndisabled\nZONE=/sys/class/thermal/thermal_zone9\nFIELD=type\ntsens_tz_sensor0\nFIELD=temp\n269\n",
+      "stderr": "cat: /sys/class/thermal/thermal_zone23/temp: Invalid argument\ncat: /sys/class/thermal/thermal_zone24/temp: Invalid argument\n"
+    },
+    "i2c-names": {
+      "exit": 1,
+      "stdout": "NODE=/sys/bus/i2c/devices/*/name\n",
+      "stderr": "cat: /sys/bus/i2c/devices/*/name: No such file or directory\n"
+    }
+  }
+}

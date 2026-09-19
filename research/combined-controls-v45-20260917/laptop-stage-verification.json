@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "pin_count": 30,
+  "verified": {
+    "v38_tools": 9,
+    "v45_tools": 12,
+    "controls-v45_payload": 5,
+    "android-surface-v44_payload": 146
+  },
+  "scope": "Offline staged-file verification; no USB access or phone actions"
+}

@@ -1,0 +1,23 @@
+{
+  "candidate_sha256": "ca4c452b707524bac03d92626f27322ffd1327646a3eba3b8f735abf72c45971",
+  "sources": {
+    "Write-LaptopDiagnosticRecovery-user-v13.py": "74bcc56cd52555e2c0dcf0c26d72ea8002b136aae4a81ed06d6f4cb3621f9809",
+    "Inspect-DiagnosticRecovery-user-v13.py": "036c339a2e3caa11a00c7f51b239f10c606758b9d2ed445d6a087125d1e97582",
+    "Run-LaptopDiagnosticInstall-user-v13.py": "f2959b424df48ee050534c15cf58384a0eed43efa0c90890992fde172152a1de",
+    "Run-LaptopDiagnosticRestore-user-v13.py": "e8abae6fc337613799f531750a3f222550f9926e761764fbe75a79dc232a7a5b",
+    "Run-LaptopProbeCapture-user-v13.py": "2dc922b258691870b6c7b6c77e6259056fbbf549fde6066dbc7838695c6699a7",
+    "DiagnosticRecoveryProtocolV13.py": "a93bef8f76827e448ac4a3771059d1fbc009209ed5b6d7a8ab016efe2d656754",
+    "Test-DiagnosticRecoveryProtocolV13.py": "8d65a58d7b80b9fb9bc9c052b7c2b683147da34ce7cc91c07aa208433fbde9da"
+  },
+  "files": {
+    "Write-LaptopDiagnosticRecovery-user-v14.py": "bd8035d06a91babd38c96cf62af88725e2580b4438424ae8eb2c01753ba819d0",
+    "Inspect-DiagnosticRecovery-user-v14.py": "d4e6a17cfe07aea69ea5bdb8138cf99c1b23255f908804a21497d0ee124f3f71",
+    "Run-LaptopDiagnosticInstall-user-v14.py": "cf71148b7d61275bb5d25afa91c0ea83530f951fe77d7f08fa6b89b2c50919c3",
+    "Run-LaptopDiagnosticRestore-user-v14.py": "763494ac9608d679a7ff05d149acc2990d6d03bec3c230d2d36447280c48f865",
+    "Run-LaptopProbeCapture-user-v14.py": "985f06cc81159ce2cf9c6957b1028e30d8e7d27600dbabeb29b9c2457bc0fa89",
+    "DiagnosticRecoveryProtocolV14.py": "02d446b972c2b269e66351101a88434818adeea4fa4d89ef3e2d80caad2f57ec",
+    "Test-DiagnosticRecoveryProtocolV14.py": "a62d4584921aca9e193a14e7a6e4b064387529c5200752e5bc364a3d3b34e408",
+    "RecoveryTransitionV14.py": "20ec28bbb4e82a7b1db3397fcfc25a3cbd1fd775dba5050baa77b28c37ed6238",
+    "Collect-ProbeSerial-v14.py": "a9cef1152b09741dba0dc7dc961b90fe9af57d953421f7976b162a772032bcb9"
+  }
+}

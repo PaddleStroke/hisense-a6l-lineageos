@@ -1,0 +1,61 @@
+0x00000001) BMI160 Accelerometer      | BOSCH           | ver: 2062701 | type: android.sensor.accelerometer(1) | perm: n/a | flags: 0x00000000
+0x00000002) BMI160 Accelerometer Uncalibrated -Wakeup | BOSCH           | ver: 2062701 | type: android.sensor.accelerometer_uncalibrated(35) | perm: n/a | flags: 0x00000000
+0x00000003) AK09918 Magnetometer      | AKM             | ver: 1 | type: android.sensor.magnetic_field(2) | perm: n/a | flags: 0x00000000
+0x00000004) AK09918 Magnetometer Uncalibrated | AKM             | ver: 1 | type: android.sensor.magnetic_field_uncalibrated(14) | perm: n/a | flags: 0x00000000
+0x00000005) BMI160 Gyroscope          | BOSCH           | ver: 2062701 | type: android.sensor.gyroscope(4) | perm: n/a | flags: 0x00000000
+0x00000006) BMI160 Gyroscope Uncalibrated | BOSCH           | ver: 2062701 | type: android.sensor.gyroscope_uncalibrated(16) | perm: n/a | flags: 0x00000000
+0x00000007) BMI160 Accelerometer -Wakeup Secondary | BOSCH           | ver: 2062701 | type: android.sensor.accelerometer(1) | perm: n/a | flags: 0x00000001
+0x00000008) BMI160 Accelerometer Uncalibrated -Wakeup Secondary | BOSCH           | ver: 2062701 | type: android.sensor.accelerometer_uncalibrated(35) | perm: n/a | flags: 0x00000001
+0x00000009) AK09918 Magnetometer -Wakeup Secondary | AKM             | ver: 1 | type: android.sensor.magnetic_field(2) | perm: n/a | flags: 0x00000001
+0x0000000a) AK09918 Magnetometer Uncalibrated -Wakeup Secondary | AKM             | ver: 1 | type: android.sensor.magnetic_field_uncalibrated(14) | perm: n/a | flags: 0x00000001
+0x0000000b) BMI160 Gyroscope -Wakeup Secondary | BOSCH           | ver: 2062701 | type: android.sensor.gyroscope(4) | perm: n/a | flags: 0x00000001
+0x0000000c) BMI160 Gyroscope Uncalibrated -Wakeup Secondary | BOSCH           | ver: 2062701 | type: android.sensor.gyroscope_uncalibrated(16) | perm: n/a | flags: 0x00000001
+0x0000000d) Gravity                   | QTI             | ver: 2 | type: android.sensor.gravity(9) | perm: n/a | flags: 0x00000000
+0x0000000e) Linear Acceleration       | QTI             | ver: 2 | type: android.sensor.linear_acceleration(10) | perm: n/a | flags: 0x00000000
+0x0000000f) Rotation Vector           | QTI             | ver: 2 | type: android.sensor.rotation_vector(11) | perm: n/a | flags: 0x00000000
+0x00000010) Step Detector             | QTI             | ver: 2 | type: android.sensor.step_detector(18) | perm: n/a | flags: 0x00000006
+0x00000011) Step Counter              | QTI             | ver: 2 | type: android.sensor.step_counter(19) | perm: n/a | flags: 0x00000002
+0x00000012) Significant Motion Detector | QTI             | ver: 2 | type: android.sensor.significant_motion(17) | perm: n/a | flags: 0x00000005
+0x00000013) Game Rotation Vector      | QTI             | ver: 2 | type: android.sensor.game_rotation_vector(15) | perm: n/a | flags: 0x00000000
+0x00000014) GeoMagnetic Rotation Vector | QTI             | ver: 2 | type: android.sensor.geomagnetic_rotation_vector(20) | perm: n/a | flags: 0x00000000
+0x00000015) Orientation               | QTI             | ver: 2 | type: android.sensor.orientation(3) | perm: n/a | flags: 0x00000000
+0x00000016) Tilt Detector             | QTI             | ver: 2 | type: android.sensor.tilt_detector(22) | perm: n/a | flags: 0x00000007
+0x00000017) Android Stationary Detector | QTI             | ver: 2 | type: android.sensor.stationary_detect(29) | perm: n/a | flags: 0x00000005
+0x00000018) Android Motion Detector   | QTI             | ver: 2 | type: android.sensor.motion_detect(30) | perm: n/a | flags: 0x00000005
+0x00000019) Gravity -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.gravity(9) | perm: n/a | flags: 0x00000001
+0x0000001a) Linear Acceleration -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.linear_acceleration(10) | perm: n/a | flags: 0x00000001
+0x0000001b) Rotation Vector -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.rotation_vector(11) | perm: n/a | flags: 0x00000001
+0x0000001c) Step Detector -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.step_detector(18) | perm: n/a | flags: 0x00000007
+0x0000001d) Step Counter -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.step_counter(19) | perm: n/a | flags: 0x00000003
+0x0000001e) Game Rotation Vector -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.game_rotation_vector(15) | perm: n/a | flags: 0x00000001
+0x0000001f) GeoMagnetic Rotation Vector -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.geomagnetic_rotation_vector(20) | perm: n/a | flags: 0x00000001
+0x00000020) Orientation -Wakeup Secondary | QTI             | ver: 2 | type: android.sensor.orientation(3) | perm: n/a | flags: 0x00000001
+0x00000021) AMD                       | QTI             | ver: 2 | type:   com.qti.sensor.amd(33171006) | perm: n/a | flags: 0x00000003
+0x00000022) RMD                       | QTI             | ver: 2 | type:   com.qti.sensor.rmd(33171007) | perm: n/a | flags: 0x00000002
+0x00000023) Pedometer                 | QTI             | ver: 2 | type: com.qti.sensor.pedometer(33171009) | perm: n/a | flags: 0x00000002
+0x00000024) Motion Accel              | QTI             | ver: 2 | type: com.qti.sensor.motion_accel(33171011) | perm: n/a | flags: 0x00000006
+0x00000025) Persistent Motion Detector | QTI             | ver: 2 | type:   com.qti.sensor.pmd(33171024) | perm: n/a | flags: 0x00000003
+0x00000026) OEM1                      | Hisense         | ver: 1 | type:  android.sensor.oem1(33172055) | perm: n/a | flags: 0x00000003
+0x00000027) OEM2                      | Hisense         | ver: 1 | type:  android.sensor.oem2(33172005) | perm: n/a | flags: 0x00000003
+0x00000028) hall                      | oem             | ver: 1 | type:  android.sensor.hall(65577) | perm: n/a | flags: 0x00000002
+0x00000029) proximity_extend_front_1  | Sensortek       | ver: 1 | type: android.sensor.proximity(69896) | perm: n/a | flags: 0x00000003
+0x0000002a) light_extend_front_1      | Sensortek       | ver: 1 | type: android.sensor.light(69893) | perm: n/a | flags: 0x00000002
+0x0000002b) light_extend_back_1       | ams             | ver: 1 | type: android.sensor.light(73989) | perm: n/a | flags: 0x00000002
+0x0000002c) proximity_extend_back_1   | ams             | ver: 1 | type: android.sensor.proximity(73992) | perm: n/a | flags: 0x00000003
+0x5f627465) Bring_To_Ear Sensor       | Hmct            | ver: 1 | type:                     (33171035) | perm: n/a | flags: 0x00000002
+0x5f636779) Corrected Gyroscope Sensor | AOSP            | ver: 1 | type: android.sensor.gyroscope(4) | perm: n/a | flags: 0x00000000
+0x5f666c70) Flip Sensor               | Hmct            | ver: 1 | type:                     (33172001) | perm: n/a | flags: 0x00000002
+0x5f676172) Game Rotation Vector Sensor | AOSP            | ver: 3 | type: android.sensor.game_rotation_vector(15) | perm: n/a | flags: 0x00000000
+0x5f676273) Gyroscope Bias (debug)    | AOSP            | ver: 1 | type: android.sensor.accelerometer(1) | perm: n/a | flags: 0x00000000
+0x5f67656f) GeoMag Rotation Vector Sensor | AOSP            | ver: 3 | type: android.sensor.geomagnetic_rotation_vector(20) | perm: n/a | flags: 0x00000000
+0x5f677276) Gravity Sensor            | AOSP            | ver: 3 | type: android.sensor.gravity(9) | perm: n/a | flags: 0x00000000
+0x5f6c696e) Linear Acceleration Sensor | AOSP            | ver: 3 | type: android.sensor.linear_acceleration(10) | perm: n/a | flags: 0x00000000
+0x5f6d7363) Motion_Status_Check Sensor | Hmct            | ver: 1 | type:   android.sensor.msc(33172045) | perm: n/a | flags: 0x00000003
+0x5f707570) HmctPickUp Sensor         | Hmct            | ver: 1 | type: android.sensor.pick_up_gesture(25) | perm: n/a | flags: 0x00000005
+0x5f726f76) Rotation Vector Sensor    | AOSP            | ver: 3 | type: android.sensor.rotation_vector(11) | perm: n/a | flags: 0x00000000
+0x5f73616b) Shake Sensor              | Hmct            | ver: 1 | type:                     (16842760) | perm: n/a | flags: 0x00000002
+0x5f73746c) Still Sensor              | Hmct            | ver: 1 | type:                     (16842770) | perm: n/a | flags: 0x00000002
+0x5f74696c) Tilt Sensor               | Hmct            | ver: 1 | type:                     (33172000) | perm: n/a | flags: 0x00000000
+0x5f797072) Orientation Sensor        | AOSP            | ver: 1 | type: android.sensor.orientation(3) | perm: n/a | flags: 0x00000000
+0x636c7578) Combo Light Sensor        | oem             | ver: 2 | type: android.sensor.light(5) | perm: n/a | flags: 0x00000002
+0x63707273) Combo Proximity Sensor    | oem             | ver: 1 | type: android.sensor.proximity(8) | perm: n/a | flags: 0x00000003

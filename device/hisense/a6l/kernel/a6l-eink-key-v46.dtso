@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Stock PM660 GPIO11 settings translated to the pinned upstream binding.
+// Physical sufficiency remains to be tested; no GPIO-number/IRQ-code change.
+/dts-v1/;
+/plugin/;
+&pm660_gpios {
+    a6l_eink_key: a6l-eink-key-state {
+        pins = "gpio11";
+        function = "normal";
+        input-enable;
+        power-source = <0>;
+        qcom,pull-up-strength = <0>;
+        qcom,drive-strength = <3>;
+    };
+};
+/ {
+    fragment@1 {
+        target-path = "/a6l-buttons";
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&a6l_eink_key>;
+        };
+    };
+};

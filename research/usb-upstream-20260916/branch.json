@@ -1,0 +1,99 @@
+{
+  "name": "qcom-sdm660-7.2.y",
+  "commit": {
+    "sha": "e47d622cb6d2440a9eacdc8bb2df32c037bec7b8",
+    "node_id": "C_kwDOG86efNoAKGU0N2Q2MjJjYjZkMjQ0MGE5ZWFjZGM4YmIyZGYzMmMwMzdiZWM3Yjg",
+    "commit": {
+      "author": {
+        "name": "Alexey Minnekhanov",
+        "email": "alexeymin@minlexx.ru",
+        "date": "2026-09-12T09:34:10Z"
+      },
+      "committer": {
+        "name": "Alexey Min",
+        "email": "minlexx@users.noreply.github.com",
+        "date": "2026-09-12T10:09:45Z"
+      },
+      "message": "fixup! Add GitHub Actions CI",
+      "tree": {
+        "sha": "c720730af2ea7b5630b6fa016e495561a674bc3f",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/c720730af2ea7b5630b6fa016e495561a674bc3f"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/e47d622cb6d2440a9eacdc8bb2df32c037bec7b8",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/e47d622cb6d2440a9eacdc8bb2df32c037bec7b8",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/e47d622cb6d2440a9eacdc8bb2df32c037bec7b8",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/e47d622cb6d2440a9eacdc8bb2df32c037bec7b8/comments",
+    "author": {
+      "login": "minlexx",
+      "id": 13084776,
+      "node_id": "MDQ6VXNlcjEzMDg0Nzc2",
+      "avatar_url": "https://avatars.githubusercontent.com/u/13084776?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/minlexx",
+      "html_url": "https://github.com/minlexx",
+      "followers_url": "https://api.github.com/users/minlexx/followers",
+      "following_url": "https://api.github.com/users/minlexx/following{/other_user}",
+      "gists_url": "https://api.github.com/users/minlexx/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/minlexx/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/minlexx/subscriptions",
+      "organizations_url": "https://api.github.com/users/minlexx/orgs",
+      "repos_url": "https://api.github.com/users/minlexx/repos",
+      "events_url": "https://api.github.com/users/minlexx/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/minlexx/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "minlexx",
+      "id": 13084776,
+      "node_id": "MDQ6VXNlcjEzMDg0Nzc2",
+      "avatar_url": "https://avatars.githubusercontent.com/u/13084776?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/minlexx",
+      "html_url": "https://github.com/minlexx",
+      "followers_url": "https://api.github.com/users/minlexx/followers",
+      "following_url": "https://api.github.com/users/minlexx/following{/other_user}",
+      "gists_url": "https://api.github.com/users/minlexx/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/minlexx/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/minlexx/subscriptions",
+      "organizations_url": "https://api.github.com/users/minlexx/orgs",
+      "repos_url": "https://api.github.com/users/minlexx/repos",
+      "events_url": "https://api.github.com/users/minlexx/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/minlexx/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "def6bf7ee544e10f614a6f9daebab621511804b9",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/def6bf7ee544e10f614a6f9daebab621511804b9",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/def6bf7ee544e10f614a6f9daebab621511804b9"
+      }
+    ]
+  },
+  "_links": {
+    "self": "https://api.github.com/repos/sdm660-mainline/linux/branches/qcom-sdm660-7.2.y",
+    "html": "https://github.com/sdm660-mainline/linux/tree/qcom-sdm660-7.2.y"
+  },
+  "protected": false,
+  "protection": {
+    "enabled": false,
+    "required_status_checks": {
+      "enforcement_level": "off",
+      "contexts": [],
+      "checks": []
+    }
+  },
+  "protection_url": "https://api.github.com/repos/sdm660-mainline/linux/branches/qcom-sdm660-7.2.y/protection"
+}

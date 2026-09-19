@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Offline candidate; requires a bounded test, not arbitrary FF amplitudes.
+// Stock LRA: square, 6667 us, brake 3/3/0/0, direct mode.
+// Upstream uses 400 mA instead of stock 800 mA, and a different auto-resonance
+// algorithm. These must be tested before Android's vibrator HAL is enabled.
+/dts-v1/;
+/plugin/;
+&pm660_haptics {
+    status = "okay";
+    qcom,actuator-type = <0>;
+    qcom,wave-shape = <1>;
+    qcom,play-mode = <0>;
+    qcom,wave-play-rate-us = <6667>;
+    qcom,brake-pattern = <3 3 0 0>;
+};

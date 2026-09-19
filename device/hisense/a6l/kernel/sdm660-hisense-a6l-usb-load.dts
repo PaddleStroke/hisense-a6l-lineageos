@@ -1,0 +1,7 @@
+// Match the stock A6L pm660_l10 proxy-consumer load and SDM660 USB reset fix.
+#include "sdm660-hisense-a6l-usb-only.dts"
+
+&vreg_l10a {
+	regulator-allow-set-load;
+	regulator-system-load = <14000>;
+};

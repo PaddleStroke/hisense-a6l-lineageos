@@ -1,0 +1,26 @@
+[
+  {
+    "sha": "0b8b3d690b772edb83cecd40cbaacb1868cd6155",
+    "filename": "arch/arm64/boot/dts/qcom/pm660.dtsi",
+    "status": "modified",
+    "additions": 11,
+    "deletions": 1,
+    "changes": 12,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/c48dea2cc0fc2aa22d5cf53e38689151097a9c29/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fpm660.dtsi",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/c48dea2cc0fc2aa22d5cf53e38689151097a9c29/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fpm660.dtsi",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fpm660.dtsi?ref=c48dea2cc0fc2aa22d5cf53e38689151097a9c29",
+    "patch": "@@ -53,14 +53,24 @@\n \n \t\t\treg = <0x800>;\n \n-\t\t\tpwrkey {\n+\t\t\tpon_pwrkey: pwrkey {\n \t\t\t\tcompatible = \"qcom,pm8941-pwrkey\";\n \t\t\t\tinterrupts = <0x0 0x8 0 IRQ_TYPE_EDGE_BOTH>;\n \t\t\t\tdebounce = <15625>;\n \t\t\t\tbias-pull-up;\n \t\t\t\tlinux,code = <KEY_POWER>;\n+\n+\t\t\t\tstatus = \"disabled\";\n \t\t\t};\n \n+\t\t\tpon_resin: resin {\n+\t\t\t\tcompatible = \"qcom,pm8941-resin\";\n+\t\t\t\tinterrupts = <0x0 0x8 1 IRQ_TYPE_EDGE_BOTH>;\n+\t\t\t\tdebounce = <15625>;\n+\t\t\t\tbias-pull-up;\n+\n+\t\t\t\tstatus = \"disabled\";\n+\t\t\t};\n \t\t};\n \n \t\tpm660_temp: temp-alarm@2400 {"
+  },
+  {
+    "sha": "3170c6c38da9da0036bd4be838315f1a8bd65962",
+    "filename": "arch/arm64/boot/dts/qcom/sdm660-xiaomi-platina.dts",
+    "status": "modified",
+    "additions": 53,
+    "deletions": 7,
+    "changes": 60,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/c48dea2cc0fc2aa22d5cf53e38689151097a9c29/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/c48dea2cc0fc2aa22d5cf53e38689151097a9c29/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts?ref=c48dea2cc0fc2aa22d5cf53e38689151097a9c29",
+    "patch": "@@ -192,17 +192,17 @@\n \n \tgpio_keys {\n \t\tstatus = \"okay\";\n-\t\tcompatible = \"gpio-keys\";\n-\t\tinput-name = \"gpio-keys\";\n-\t\t#address-cells = <1>;\n-\t\t#size-cells = <0>;\n+\t\tcompatible = \"gpio-keys-polled\";\n+\t\tpoll-interval = <100>;\n+\t\tlabel = \"Volume up\";\n+\t\tpinctrl-names = \"default\";\n+\t\tpinctrl-0 = <&vol_up_gpio_default>;\n \n \t\tvol_up {\n \t\t\tlabel = \"Volume Up\";\n \t\t\tgpios = <&pm660l_gpios 7 GPIO_ACTIVE_LOW>;\n-\t\t\tlinux,input-type = <1>;\n+\t\t\tlinux,input-type = <EV_KEY>;\n \t\t\tlinux,code = <KEY_VOLUMEUP>;\n-\t\t\twakeup-source;\n \t\t\tdebounce-interval = <15>;\n \t\t};\n \t};\n@@ -245,6 +245,23 @@\n \t */\n };\n \n+&blsp_i2c4 {\n+\tstatus = \"okay\";\n+\t/* Novatek device tree node */\n+\tnovatek@62 {\n+\t\tcompatible = \"novatek,nt36525\";\n+\t\treg = <0x62>;\n+\t\tvcc-supply = <&vreg_l11a_1p8>;\n+\t\tpinctrl-0 = <&ts_int_active &ts_rst_n>;\n+\t\tpinctrl-names = \"default\";\n+\t\tinterrupt-parent = <&tlmm>;\n+\t\tinterrupts = <67 IRQ_TYPE_EDGE_FALLING>;\n+\t\treset-gpios = <&tlmm 66 GPIO_ACTIVE_LOW>;\n+\t\ttouchscreen-size-x = <1080>;\n+\t\ttouchscreen-size-y = <2280>;\n+\t};\n+};\n+\n &blsp1_uart2 {\n \tstatus = \"okay\";\n };\n@@ -601,7 +618,7 @@\n \t\tpower-source = <0>;\n \t};\n \n-\tvol_key_gpio_default: vol-key-gpio-default {\n+\tvol_up_gpio_default: vol-up-gpio-default {\n \t\tpins = \"gpio7\";\n \t\tfunction = \"normal\";\n \t\tbias-pull-up;\n@@ -610,6 +627,15 @@\n \t};\n };\n \n+&pon_resin {\n+\tlinux,code = <KEY_VOLUMEDOWN>;\n+\tstatus = \"okay\";\n+};\n+\n+&pon_pwrkey {\n+\tstatus = \"okay\";\n+};\n+\n &tlmm {\n \tgpio-reserved-ranges = <8 4>;\n \n@@ -726,6 +752,26 @@\n \n };\n \n+&adreno_gpu{\n+\tstatus = \"disabled\";\n+};\n+\n+&gpucc{\n+\tstatus = \"disabled\";\n+};\n+\n+&mmcc{\n+\tstatus = \"disabled\";\n+};\n+\n+&qusb2phy {\n+\tstatus = \"okay\";\n+\n+\tvdd-supply = <&vreg_l1b_0p925>;\n+\tvdda-pll-supply = <&vreg_l10a_1p8>;\n+\tvdda-phy-dpdm-supply = <&vreg_l7b_3p125>;\n+};\n+\n &usb3 {\n \tstatus = \"okay\";\n };"
+  }
+]

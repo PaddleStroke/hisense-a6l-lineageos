@@ -1,0 +1,23 @@
+[
+  {
+    "name": "sdhci_msm_probe",
+    "address": "0xffffff8008a2decc",
+    "bytes": 5328,
+    "raw_match": true,
+    "sha256": "d11e30f0279f3ebebc00c35536a0ec8c4b472c9684d7988a01531d7e3797baa2"
+  },
+  {
+    "name": "sdhci_msm_set_clock",
+    "address": "0xffffff8008a2cd6c",
+    "bytes": 2700,
+    "raw_match": true,
+    "sha256": "6640dbc192000f1c5fcfb5eb1f901cedb01288ef17a14205dd4bab04a472b64f"
+  },
+  {
+    "name": "sdhci_msm_set_uhs_signaling",
+    "address": "0xffffff8008a276f0",
+    "bytes": 560,
+    "raw_match": true,
+    "sha256": "a74e1673a4210f01942c24681b4eaea1ca0f82c4194b12aa3c3d5be1bd91982d"
+  }
+]

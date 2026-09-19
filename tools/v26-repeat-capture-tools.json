@@ -1,0 +1,8 @@
+{
+  "files": {
+    "Collect-ProbeSerial-v26-repeat.py": "4c022df72baf98a09734483764a64bea56a0ff0954d2592895931c86f4de2241",
+    "Run-LaptopProbeCapture-user-v26-repeat.py": "554f0636710fcb43e8f2ac15ab4be77892bb778cc92cc0ca78fe56dead8fb2c9"
+  },
+  "deadline_tests_passed": 6,
+  "scope": "Host capture only. Same installed V26 image; no firmware write."
+}

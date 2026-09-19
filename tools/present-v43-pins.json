@@ -1,0 +1,8 @@
+{
+  "Run-AndroidPresentV43.py": "b3e8e68ecb540926df51749461af3d3e8ce59c17ffd39099b6dc0b201c3d1ba5",
+  "Run-LaptopPresentCapture-v43.py": "6c3846da9a0f07436ed85d305e2f391f1244716a9040af1e4906ba4daa968216",
+  "Verify-PresentV43Stage.py": "00b9bbf4bc8ea0c4b3bbc43c2414d4099ba52c5105b48131f05f70cdb631c184",
+  "diagnostic-user-v38-tools.json": "3e316c37033414b958aedb24412be8e156cb90249150a413590517be72e11d40",
+  "android-present-v43/manifest.json": "498e40d89076d25d41b31fa91ab2024d4695ea4dc8cf720aad8ccf0878da26e1",
+  "android-present-v43/qemu-report.json": "f09f4a7c968aa74dd143906c112e48227607be068bc7d01f79b36f162de59944"
+}

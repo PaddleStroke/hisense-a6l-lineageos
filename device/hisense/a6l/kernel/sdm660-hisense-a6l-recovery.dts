@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Recovery-only wrapper for the measured stock ABL's DTB/DTBO selection. */
+
+#include "sdm660-hisense-a6l-probe.dts"
+
+/ {
+	/* Same SoC/generic-board selection metadata as both captured base DTBs. */
+	qcom,msm-id = <317 0>;
+	qcom,board-id = <0 0>;
+
+	a6l_recovery_chosen: chosen {
+		/* ABL appends the Android header command line here. */
+		/delete-property/ bootargs;
+	};
+};

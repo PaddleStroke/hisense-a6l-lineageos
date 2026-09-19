@@ -1,0 +1,811 @@
+{
+ "mdt": "/sessions/rcw-01nkb6g2zed4wnuyhsmrdvjt/mnt/A6L/firmware/extracted/peripheral-prep-20260917/firmware/qcom/hisense/a6l/adsp.mdt",
+ "mdt_sha256": "9a5105caf136434128f0893e4993fe77b33a00a3df3f42286559cbaf35822800",
+ "mdt_size": 7964,
+ "region": {
+  "base": "0x92a00000",
+  "size": "0x1e00000",
+  "end": "0x94800000"
+ },
+ "checks": [
+  {
+   "check": "elf_magic",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "e_phentsize == 32",
+   "ok": true,
+   "detail": "32"
+  },
+  {
+   "check": "phdr table inside mdt",
+   "ok": true,
+   "detail": "52+32*23 <= 7964"
+  },
+  {
+   "check": "section table absent or valid",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "e_phnum >= 2",
+   "ok": true,
+   "detail": "23"
+  },
+  {
+   "check": "phdr[0] is not PT_LOAD (ELF header segment)",
+   "ok": true,
+   "detail": "0x0"
+  },
+  {
+   "check": "hash segment present",
+   "ok": true,
+   "detail": "index 1"
+  },
+  {
+   "check": "metadata obtainable from .mdt alone",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "firmware fits reserved region",
+   "ok": true,
+   "detail": "0x1e00000 <= 0x1e00000"
+  },
+  {
+   "check": "seg2 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg2 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg2 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b02 size 9320 vs p_filesz 9320"
+  },
+  {
+   "check": "seg3 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg3 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg3 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b03 size 114944 vs p_filesz 114944"
+  },
+  {
+   "check": "seg4 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg4 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg4 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b04 size 1634284 vs p_filesz 1634284"
+  },
+  {
+   "check": "seg5 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg5 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg5 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b05 size 1145832 vs p_filesz 1145832"
+  },
+  {
+   "check": "seg6 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg6 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg6 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b06 size 2152 vs p_filesz 2152"
+  },
+  {
+   "check": "seg7 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg7 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg7 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b07 size 70059 vs p_filesz 70059"
+  },
+  {
+   "check": "seg8 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg8 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg8 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b08 size 97304 vs p_filesz 97304"
+  },
+  {
+   "check": "seg9 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg9 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg9 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b09 size 42532 vs p_filesz 42532"
+  },
+  {
+   "check": "seg10 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg10 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg10 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b10 size 307496 vs p_filesz 307496"
+  },
+  {
+   "check": "seg11 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg11 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg11 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b11 size 100 vs p_filesz 100"
+  },
+  {
+   "check": "seg12 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg12 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg12 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b12 size 697124 vs p_filesz 697124"
+  },
+  {
+   "check": "seg13 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg13 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg13 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b13 size 16388 vs p_filesz 16388"
+  },
+  {
+   "check": "seg14 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg14 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg14 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b14 size 63432 vs p_filesz 63432"
+  },
+  {
+   "check": "seg15 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg15 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg15 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b15 size 22588 vs p_filesz 22588"
+  },
+  {
+   "check": "seg16 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg16 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg16 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b16 size 155040 vs p_filesz 155040"
+  },
+  {
+   "check": "seg17 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg17 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg17 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b17 size 194640 vs p_filesz 194640"
+  },
+  {
+   "check": "seg18 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg18 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg18 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b18 size 6068584 vs p_filesz 6068584"
+  },
+  {
+   "check": "seg19 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg19 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg19 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b19 size 309472 vs p_filesz 309472"
+  },
+  {
+   "check": "seg20 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg20 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg20 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b20 size 1744 vs p_filesz 1744"
+  },
+  {
+   "check": "seg21 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg21 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg21 split file exists with exact p_filesz",
+   "ok": true,
+   "detail": "adsp.b21 size 79256 vs p_filesz 79256"
+  },
+  {
+   "check": "seg22 inside region",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "seg22 p_filesz <= p_memsz",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "segments": [
+  {
+   "i": 0,
+   "p_type": "0x0",
+   "p_offset": "0x0",
+   "p_vaddr": "0x0",
+   "p_paddr": "0x0",
+   "p_filesz": "0x314",
+   "p_memsz": "0x0",
+   "p_flags": "0x7000000",
+   "p_align": "0x0",
+   "loadable": "0x0",
+   "is_hash": "0x0",
+   "relocatable": "0x0"
+  },
+  {
+   "i": 1,
+   "p_type": "0x0",
+   "p_offset": "0x1000",
+   "p_vaddr": "0x94800000",
+   "p_paddr": "0x94800000",
+   "p_filesz": "0x1c08",
+   "p_memsz": "0x2000",
+   "p_flags": "0x2200000",
+   "p_align": "0x1000",
+   "loadable": "0x0",
+   "is_hash": "0x1",
+   "relocatable": "0x0",
+   "note": "hash segment: skipped by loader, carried in metadata"
+  },
+  {
+   "i": 2,
+   "p_type": "0x1",
+   "p_offset": "0x3000",
+   "p_vaddr": "0xf0100000",
+   "p_paddr": "0x92a00000",
+   "p_filesz": "0x2468",
+   "p_memsz": "0x3000",
+   "p_flags": "0x8000005",
+   "p_align": "0x100000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x0",
+   "load_phys": "0x92a00000",
+   "split_file": "adsp.b02",
+   "split_file_size": 9320,
+   "split_file_sha256": "f554ebfd8d8d4a9fe4547c368cf63ec1e90369e007b2df4be8000e9c1d6587be"
+  },
+  {
+   "i": 3,
+   "p_type": "0x1",
+   "p_offset": "0x6000",
+   "p_vaddr": "0xf0103000",
+   "p_paddr": "0x92a03000",
+   "p_filesz": "0x1c100",
+   "p_memsz": "0x1d000",
+   "p_flags": "0x8000007",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x3000",
+   "load_phys": "0x92a03000",
+   "split_file": "adsp.b03",
+   "split_file_size": 114944,
+   "split_file_sha256": "239fc7d934694469922e303eb96389847350b2b75f6235040b2c0614e905ecf7"
+  },
+  {
+   "i": 4,
+   "p_type": "0x1",
+   "p_offset": "0x23000",
+   "p_vaddr": "0xf0120000",
+   "p_paddr": "0x92a20000",
+   "p_filesz": "0x18efec",
+   "p_memsz": "0x18f000",
+   "p_flags": "0x8000005",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x20000",
+   "load_phys": "0x92a20000",
+   "split_file": "adsp.b04",
+   "split_file_size": 1634284,
+   "split_file_sha256": "a71f1e492768912edfee362a958b41d50877351d597d81a8114100e207156572"
+  },
+  {
+   "i": 5,
+   "p_type": "0x1",
+   "p_offset": "0x1b2000",
+   "p_vaddr": "0xf02af000",
+   "p_paddr": "0x92baf000",
+   "p_filesz": "0x117be8",
+   "p_memsz": "0x3a9000",
+   "p_flags": "0x8000006",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x1af000",
+   "load_phys": "0x92baf000",
+   "split_file": "adsp.b05",
+   "split_file_size": 1145832,
+   "split_file_sha256": "7a4df3f185dbbaf05f90a7f54fe8e62a7445ed7ec216b20ed9c28044ce3853fd"
+  },
+  {
+   "i": 6,
+   "p_type": "0x1",
+   "p_offset": "0x2ca000",
+   "p_vaddr": "0xf0658000",
+   "p_paddr": "0x92f58000",
+   "p_filesz": "0x868",
+   "p_memsz": "0x1000",
+   "p_flags": "0x8000006",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x558000",
+   "load_phys": "0x92f58000",
+   "split_file": "adsp.b06",
+   "split_file_size": 2152,
+   "split_file_sha256": "9f0d3f2949539908ce92abdb7debee76d629eb54ba832c7cebbeae8717f2d7a5"
+  },
+  {
+   "i": 7,
+   "p_type": "0x1",
+   "p_offset": "0x2cb000",
+   "p_vaddr": "0xf0659000",
+   "p_paddr": "0x92f59000",
+   "p_filesz": "0x111ab",
+   "p_memsz": "0x12000",
+   "p_flags": "0x8000004",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x559000",
+   "load_phys": "0x92f59000",
+   "split_file": "adsp.b07",
+   "split_file_size": 70059,
+   "split_file_sha256": "88b9a2629080d45a4cdcf00d66d0bc6470dd8d05c3b4377589ffbd8c6377008a"
+  },
+  {
+   "i": 8,
+   "p_type": "0x1",
+   "p_offset": "0x2dd000",
+   "p_vaddr": "0xf0000000",
+   "p_paddr": "0x92f6b000",
+   "p_filesz": "0x17c18",
+   "p_memsz": "0x18000",
+   "p_flags": "0x8000007",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x56b000",
+   "load_phys": "0x92f6b000",
+   "split_file": "adsp.b08",
+   "split_file_size": 97304,
+   "split_file_sha256": "b1a9c34f5b49fb79cabdcf4ee8320452c17a05defe25ae6a2dedf13c47f0a860"
+  },
+  {
+   "i": 9,
+   "p_type": "0x1",
+   "p_offset": "0x2f5000",
+   "p_vaddr": "0xf0018000",
+   "p_paddr": "0x92f83000",
+   "p_filesz": "0xa624",
+   "p_memsz": "0xb000",
+   "p_flags": "0x8000005",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x583000",
+   "load_phys": "0x92f83000",
+   "split_file": "adsp.b09",
+   "split_file_size": 42532,
+   "split_file_sha256": "2f5b83f489a781a3c6832dae97857fbfc1ebca5fabb17708b335999c395e4c94"
+  },
+  {
+   "i": 10,
+   "p_type": "0x1",
+   "p_offset": "0x300000",
+   "p_vaddr": "0xe074e000",
+   "p_paddr": "0x92f8e000",
+   "p_filesz": "0x4b128",
+   "p_memsz": "0x4b128",
+   "p_flags": "0x8000004",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x58e000",
+   "load_phys": "0x92f8e000",
+   "split_file": "adsp.b10",
+   "split_file_size": 307496,
+   "split_file_sha256": "a096a8ffa1d332fb0e2e6f8af6cd414e29b8c1754f8e5b77af577f69b5ebdb92"
+  },
+  {
+   "i": 11,
+   "p_type": "0x1",
+   "p_offset": "0x34c000",
+   "p_vaddr": "0xe0740000",
+   "p_paddr": "0x92fda000",
+   "p_filesz": "0x64",
+   "p_memsz": "0x64",
+   "p_flags": "0x8000004",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x5da000",
+   "load_phys": "0x92fda000",
+   "split_file": "adsp.b11",
+   "split_file_size": 100,
+   "split_file_sha256": "cc819084e3968f993b85626f4cf5fdcaa933ee8d6a9b0e79656376039d8e9e2a"
+  },
+  {
+   "i": 12,
+   "p_type": "0x1",
+   "p_offset": "0x34d000",
+   "p_vaddr": "0xb2100000",
+   "p_paddr": "0x93000000",
+   "p_filesz": "0xaa324",
+   "p_memsz": "0xab000",
+   "p_flags": "0x8000005",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x600000",
+   "load_phys": "0x93000000",
+   "split_file": "adsp.b12",
+   "split_file_size": 697124,
+   "split_file_sha256": "be103b824d5d777795e05dd64c93bfa29bcd307d28a461c877807d8e22354d6f"
+  },
+  {
+   "i": 13,
+   "p_type": "0x1",
+   "p_offset": "0x3f8000",
+   "p_vaddr": "0xb21ab000",
+   "p_paddr": "0x930ab000",
+   "p_filesz": "0x4004",
+   "p_memsz": "0x247000",
+   "p_flags": "0x8000006",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x6ab000",
+   "load_phys": "0x930ab000",
+   "split_file": "adsp.b13",
+   "split_file_size": 16388,
+   "split_file_sha256": "96c3df480c6e43c2aac5e6ee43a19b06f43b576b8b85b667fa09116c8d2d0b1c"
+  },
+  {
+   "i": 14,
+   "p_type": "0x1",
+   "p_offset": "0x3fd000",
+   "p_vaddr": "0xb23f2000",
+   "p_paddr": "0x932f2000",
+   "p_filesz": "0xf7c8",
+   "p_memsz": "0x10000",
+   "p_flags": "0x8000004",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x8f2000",
+   "load_phys": "0x932f2000",
+   "split_file": "adsp.b14",
+   "split_file_size": 63432,
+   "split_file_sha256": "9df11ff78a5ca34fc184a63313282bd1f27fa665689e3fae475830752485ec54"
+  },
+  {
+   "i": 15,
+   "p_type": "0x1",
+   "p_offset": "0x40d000",
+   "p_vaddr": "0xb2000000",
+   "p_paddr": "0x93302000",
+   "p_filesz": "0x583c",
+   "p_memsz": "0x5858",
+   "p_flags": "0x8000006",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x902000",
+   "load_phys": "0x93302000",
+   "split_file": "adsp.b15",
+   "split_file_size": 22588,
+   "split_file_sha256": "f6ece118b1af3fe06e3b94e4d7b8dbc601847e05340d69623074a12448850bcc"
+  },
+  {
+   "i": 16,
+   "p_type": "0x1",
+   "p_offset": "0x412858",
+   "p_vaddr": "0xb2005858",
+   "p_paddr": "0x93307858",
+   "p_filesz": "0x25da0",
+   "p_memsz": "0x25da8",
+   "p_flags": "0x8000006",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x907858",
+   "load_phys": "0x93307858",
+   "split_file": "adsp.b16",
+   "split_file_size": 155040,
+   "split_file_sha256": "66ae19b267ef10d33a2d8d9b8d5e063f102ad2cbe47f517851844e167b9b2fb3"
+  },
+  {
+   "i": 17,
+   "p_type": "0x1",
+   "p_offset": "0x438600",
+   "p_vaddr": "0xb202b600",
+   "p_paddr": "0x9332d600",
+   "p_filesz": "0x2f850",
+   "p_memsz": "0x2fa00",
+   "p_flags": "0x8000005",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x92d600",
+   "load_phys": "0x9332d600",
+   "split_file": "adsp.b17",
+   "split_file_size": 194640,
+   "split_file_sha256": "39d344d530a09c446539f6232f4c9045b1f741c769a8d45d2d1b476011d050bc"
+  },
+  {
+   "i": 18,
+   "p_type": "0x1",
+   "p_offset": "0x468000",
+   "p_vaddr": "0xb0000000",
+   "p_paddr": "0x93400000",
+   "p_filesz": "0x5c9968",
+   "p_memsz": "0x5ca000",
+   "p_flags": "0x8000005",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0xa00000",
+   "load_phys": "0x93400000",
+   "split_file": "adsp.b18",
+   "split_file_size": 6068584,
+   "split_file_sha256": "e588baa30eb17aa6f813961245c71bc5335838e90dd4c7b364fe94f6c252fcff"
+  },
+  {
+   "i": 19,
+   "p_type": "0x1",
+   "p_offset": "0xa32000",
+   "p_vaddr": "0xb05ca000",
+   "p_paddr": "0x939ca000",
+   "p_filesz": "0x4b8e0",
+   "p_memsz": "0x9fc000",
+   "p_flags": "0x8000006",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0xfca000",
+   "load_phys": "0x939ca000",
+   "split_file": "adsp.b19",
+   "split_file_size": 309472,
+   "split_file_sha256": "a08d1ee2a5c7c5172d850db7a2beba4a061a7d7b3b315baac4bab795fb4734fd"
+  },
+  {
+   "i": 20,
+   "p_type": "0x1",
+   "p_offset": "0xa7e000",
+   "p_vaddr": "0xb0fc6000",
+   "p_paddr": "0x943c6000",
+   "p_filesz": "0x6d0",
+   "p_memsz": "0x1000",
+   "p_flags": "0x8000006",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x19c6000",
+   "load_phys": "0x943c6000",
+   "split_file": "adsp.b20",
+   "split_file_size": 1744,
+   "split_file_sha256": "8f7bdd269e20973854ea0692601c45bdbfe9750e90976934dc4044d810409b4e"
+  },
+  {
+   "i": 21,
+   "p_type": "0x1",
+   "p_offset": "0xa7f000",
+   "p_vaddr": "0xb0fc7000",
+   "p_paddr": "0x943c7000",
+   "p_filesz": "0x13598",
+   "p_memsz": "0x14000",
+   "p_flags": "0x8000004",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x19c7000",
+   "load_phys": "0x943c7000",
+   "split_file": "adsp.b21",
+   "split_file_size": 79256,
+   "split_file_sha256": "d2e21094bb3a721a3b6325aed43eb89db75d5ce847360d42b8410a6daba260e9"
+  },
+  {
+   "i": 22,
+   "p_type": "0x1",
+   "p_offset": "0xa93000",
+   "p_vaddr": "0xb0fdc000",
+   "p_paddr": "0x943dc000",
+   "p_filesz": "0x0",
+   "p_memsz": "0x424000",
+   "p_flags": "0x8000004",
+   "p_align": "0x1000",
+   "loadable": "0x1",
+   "is_hash": "0x0",
+   "relocatable": "0x1",
+   "load_offset_in_region": "0x19dc000",
+   "load_phys": "0x943dc000"
+  }
+ ],
+ "passed": true,
+ "metadata": {
+  "ehdr_size": 788,
+  "hash_size": 7176,
+  "metadata_len_to_PAS_INIT_IMAGE": 7964,
+  "split_packed_hash_after_ehdr": true,
+  "hash_within_mdt": false
+ },
+ "is_split": true,
+ "loader": {
+  "relocate": true,
+  "min_addr": "0x92a00000",
+  "max_addr_4k_aligned": "0x94800000",
+  "pas_mem_setup_size": "0x1e00000",
+  "mem_reloc": "0x92a00000",
+  "pas_mem_setup_call": "QCOM_SCM_PIL_PAS_MEM_SETUP(pas_id, addr=0x92a00000, size=0x1e00000)"
+ }
+}

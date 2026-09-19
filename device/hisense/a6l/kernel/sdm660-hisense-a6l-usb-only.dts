@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Diagnostic isolation: keep the V11 USB fix, but do not probe eMMC. */
+#include "sdm660-hisense-a6l-recovery.dts"
+
+&sdhc_1 {
+	status = "disabled";
+};

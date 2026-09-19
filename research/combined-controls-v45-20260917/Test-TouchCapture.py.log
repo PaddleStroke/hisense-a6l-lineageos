@@ -1,0 +1,12 @@
+{
+  "upstream_dimensions": true,
+  "stock_dimensions": true,
+  "rear_rejected": true,
+  "two_fingers": true,
+  "release": true,
+  "correct_edges": true,
+  "dropped_clears_contacts": true,
+  "bounds_rejected": true,
+  "idle_not_success": true,
+  "slot_axes_retained": true
+}

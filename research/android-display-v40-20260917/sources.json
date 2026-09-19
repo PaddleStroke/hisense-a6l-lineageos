@@ -1,0 +1,23 @@
+{
+  "/home/a6l/kernel/a6l-baseline-7.2/drivers/gpu/drm/sysfb/simpledrm.c": {
+    "sha256": "e4f687d6c50d9486d9f7ba768c6d45d4d768d2c45f04e69b92b77cf432355eea"
+  },
+  "/home/a6l/kernel/a6l-baseline-7.2/include/linux/platform_data/simplefb.h": {
+    "sha256": "fd375cd28e41fdf76d81ae87c454c9765d3645950389a5aec262530b95cb9577"
+  },
+  "/home/a6l/android/a6l-lineage24/external/minigbm/dumb_driver.c": {
+    "sha256": "d778e831ef75778ac4e2b3582f6d291807a70d51673cb9e370bc39dabef20b32"
+  },
+  "/home/a6l/android/a6l-lineage24/external/minigbm/drv.c": {
+    "sha256": "0bca874fb74e25fa21b96cf099fb359a4499467006dd59ae59bf38e614fec50e"
+  },
+  "/home/a6l/android/a6l-lineage24/external/minigbm/cros_gralloc/cros_gralloc_driver.cc": {
+    "sha256": "98e9054d5f98c3d107c25be6ac240c0b4bb858717860657641479595d3ec3103"
+  },
+  "/home/a6l/android/a6l-lineage24/external/swiftshader/src/Android.bp": {
+    "sha256": "9e9bb27ab39199e794b294815ae83d0fcdb1badb05548ceae2353f09fa9eed0e"
+  },
+  "/home/a6l/android/a6l-lineage24/external/drm_hwcomposer/Android.bp": {
+    "sha256": "35c3d950a5f66b4ced0cd05c95ef60557bdb032e844eb7ffb761372d9cce1e60"
+  }
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "system",
+    "diagnostic_partition": "mmcblk1p43",
+    "start_sector": 1589248,
+    "bytes": 6442450944,
+    "stock_image_sha256": "aed74f64bfc1b30b39d31c084328c4a15568bd79c91b331dff070a790bcde133",
+    "probe_mount_options": [
+      "ro",
+      "noload",
+      "nosuid",
+      "nodev",
+      "noexec"
+    ],
+    "block_readonly_required": true
+  },
+  {
+    "name": "vendor",
+    "diagnostic_partition": "mmcblk1p44",
+    "start_sector": 14172160,
+    "bytes": 1153433600,
+    "stock_image_sha256": "0f1872abd9eb4f2021e9d3ad6a3457a5281ae978996d4950b3f94d0b5867874e",
+    "probe_mount_options": [
+      "ro",
+      "noload",
+      "nosuid",
+      "nodev",
+      "noexec"
+    ],
+    "block_readonly_required": true
+  }
+]

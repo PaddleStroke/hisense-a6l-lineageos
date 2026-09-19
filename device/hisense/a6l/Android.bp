@@ -1,0 +1,201 @@
+cc_binary {
+    name: "a6l_present_services",
+    srcs: ["diagnostic/present_services.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_present_client",
+    srcs: ["diagnostic/present_client.cpp"],
+    vendor: true,
+    compile_multilib: "64",
+    header_libs: ["libhardware_headers"],
+    shared_libs: ["android.hardware.graphics.composer3-V5-ndk", "libbinder_ndk", "libui", "libutils", "libcutils", "liblog"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_graphics_services",
+    srcs: ["diagnostic/graphics_services.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_graphics_client",
+    srcs: ["diagnostic/graphics_client.cpp"],
+    vendor: true,
+    compile_multilib: "64",
+    header_libs: ["libhardware_headers"],
+    shared_libs: ["android.hardware.graphics.composer3-V5-ndk", "libbinder_ndk", "libui", "libutils", "libcutils", "liblog"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_gralloc_probe",
+    srcs: ["diagnostic/gralloc_probe.cpp"],
+    vendor: true,
+    compile_multilib: "64",
+    include_dirs: ["external/minigbm/cros_gralloc"],
+    header_libs: ["libhardware_headers", "libnativebase_headers", "libsystem_headers", "minigbm_headers"],
+    shared_libs: ["libminigbm_gralloc", "libgralloctypes", "libdrm", "libcutils", "liblog", "libdmabufheap", "libnativewindow"],
+    cflags: ["-Wall", "-Wextra", "-Werror", "-DANDROID_API_LEVEL=37", "-DHAS_DMABUF_SYSTEM_HEAP"],
+}
+
+cc_binary {
+    name: "a6l_drm_probe",
+    srcs: ["diagnostic/drm_probe.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libdrm", "libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_probe_init",
+    srcs: ["diagnostic/init.c", "diagnostic/storage_read.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc", "libcrypto_static"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_android_probe",
+    srcs: ["diagnostic/android_service.c", "diagnostic/storage_read.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc", "libcrypto_static"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_integration_probe",
+    srcs: ["diagnostic/integration_probe.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc", "libcrypto_static"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_binder_client",
+    srcs: ["diagnostic/binder_client.cpp"],
+    recovery: true,
+    compile_multilib: "64",
+    shared_libs: ["libbinder", "libutils", "libbase", "liblog"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_surface_services",
+    srcs: ["diagnostic/surface_services.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+cc_binary {
+    name: "a6l_surface_client",
+    srcs: ["diagnostic/surface_client.cpp"],
+    compile_multilib: "64",
+    shared_libs: ["libgui", "libbinder", "libui", "libutils", "libcutils", "liblog"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_haptic_probe",
+    srcs: ["diagnostic/haptic_probe.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_eink_abi_probe",
+    srcs: ["diagnostic/eink_abi_probe.c"],
+    compile_multilib: "64",
+    shared_libs: ["libdl"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_input_services",
+    srcs: ["diagnostic/input_services.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+cc_binary {
+    name: "a6l_input_fixture",
+    srcs: ["diagnostic/input_fixture.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_input_client",
+    srcs: ["diagnostic/input_client.cpp"],
+    compile_multilib: "64",
+    include_dirs: [
+        "frameworks/native/services/inputflinger/include",
+        "frameworks/native/services/inputflinger/reader/include",
+        "frameworks/native/services/inputflinger/dispatcher",
+        "frameworks/native/services/inputflinger",
+    ],
+    header_libs: ["libinputreporter_headers", "libbatteryservice_headers"],
+    shared_libs: ["libinputflinger", "libinput", "libgui", "libbinder", "libui", "libutils", "libcutils", "liblog", "libkll", "libstatslog_inputflinger", "libstatspull", "libstatssocket"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_framework_services",
+    srcs: ["diagnostic/framework_services.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "a6l_framework_root_services",
+    srcs: ["diagnostic/framework_root_services.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}

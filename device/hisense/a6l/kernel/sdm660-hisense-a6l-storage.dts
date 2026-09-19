@@ -1,0 +1,6 @@
+// First storage enumeration test: retain the physically verified V17 USB setup.
+#include "sdm660-hisense-a6l-usb-load.dts"
+
+&sdhc_1 {
+	status = "okay";
+};

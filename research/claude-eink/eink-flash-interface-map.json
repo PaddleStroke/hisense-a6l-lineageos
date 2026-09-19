@@ -1,0 +1,210 @@
+{
+  "scope": "Offline static analysis of the exact stock A6L (HLTE730T) kernel and vendor HWC. No hardware access, no writes, no ioctls. ELF virtual (link-time) addresses, not file offsets.",
+  "analyzed_binaries": {
+    "kernel_symbolized_elf": {
+      "file": "firmware/extracted/stock-symbolized.elf",
+      "sha256": "bac80712bb318d2beba5b7d0e60e38862eaedd031071100f95c500fc35a84958",
+      "note": "reconstructed analysis ELF (vmlinux-to-elf), text base 0xffffff8008080000; not the original vmlinux"
+    },
+    "kallsyms": {
+      "file": "firmware/extracted/stock.kallsyms",
+      "sha256_of_local_copy": "5f6a0299a134dda72e6017005104e524f1855aa6d7827072ce6001a2b4508516",
+      "note": "prior audit recorded raw_kernel_sha256 44b8228173d70f0798a3ee2f29aec4c352d153e08a823abc529500dac33395b6"
+    },
+    "vendor_hwc": {
+      "file": "firmware/extracted/vendor/lib64/hw/hwcomposer.sdm660.so",
+      "sha256": "d1dfac49c24e4329db38a53d7b4c862f479a893090c0d93cf7e67d54be5ec4db"
+    },
+    "vendor_hwc_lib32": {
+      "file": "firmware/extracted/vendor/lib/hw/hwcomposer.sdm660.so",
+      "sha256": "aa6e4bb809c3e2c62d98eb43493e5acbf3d9dd9c3a755549ca07b16d10f6425b"
+    },
+    "libtcon_eink": {
+      "file": "firmware/extracted/vendor/lib64/libtcon_eink.so",
+      "sha256": "4eaf6536bc5f2418b0945abde3404432083a0016491524da4635174518325b3c"
+    },
+    "device_trees": {
+      "stock-00.dtb": "ef0b93babaa97992003f3edb0795f8c4c44993a73d1b98fb9e494e8131100030",
+      "stock-01.dtb": "80dd10e309fd138d58ff740aa75643ea58e08dce5bbed174e16623c8e447280a",
+      "epd_nodes_identical_in_both": true
+    }
+  },
+  "spi_binding": {
+    "controller_node": "/soc/spi@c1b8000",
+    "controller_compatible": "qcom,spi-qup-v2",
+    "controller_reg": "0xc1b8000 length 0x600 ; bam 0xc184000 length 0x1f000",
+    "blsp": "spi8 (blsp_spi8_a), pins gpio28..gpio31, drive-strength 6",
+    "child_node": "/soc/spi@c1b8000/eink,ed052tc2@0",
+    "child_compatible": "eink,ed052tc2",
+    "chip_select": 0,
+    "spi_max_frequency_hz": 19200000,
+    "spi_max_frequency_hex": "0x124f800",
+    "controller_status": "okay",
+    "driver": {
+      "struct": "epd_spi_driver @ 0xffffff800a07f6a8",
+      "probe": "epd_spi_probe @ 0xffffff80084c429c",
+      "remove": "epd_spi_remove @ 0xffffff80084c3f84 (returns 0, stub)",
+      "of_match_id_string": "ed052tc2",
+      "of_match_table": "edp_flash_of_match @ 0xffffff800a07f818 -> compatible \"eink,ed052tc2\"",
+      "initcall": "epd_spi_init (device_initcall level 6)",
+      "spi_setup_bits_per_word": 8
+    }
+  },
+  "char_device": {
+    "name": "epd_flash",
+    "node": "/dev/epd_flash",
+    "major": "dynamic (alloc_chrdev_region / register_chrdev_region), stored in epd_major @ 0xffffff800a32e5f0",
+    "created_via": "class_create + device_create in epd_spi_probe (class stored in epd_flash_data->[0x8])",
+    "fops": {
+      "struct": "epd_spi_fops @ 0xffffff800a07f740",
+      "llseek": "no_llseek (file position is meaningless)",
+      "read": "epd_spi_read @ 0xffffff80084c44b0",
+      "write": "epd_spi_write @ 0xffffff80084c3f60 (returns 0; NO side effect - a stub)",
+      "open": "epd_spi_open @ 0xffffff80084c3f68 (stashes epd_flash_data into file private)",
+      "release": "epd_spi_release @ 0xffffff80084c3f7c (returns 0)",
+      "unlocked_ioctl": "NULL - no ioctl interface exists on this node",
+      "compat_ioctl": "NULL",
+      "mmap": "NULL"
+    },
+    "selinux": {
+      "type": "epd_flash_device (plat_sepolicy)",
+      "file_context": "/dev/epd_flash u:object_r:epd_flash_device:s0",
+      "read_open_allowed_domains": ["hal_graphics_composer_default", "surfaceflinger"],
+      "write_allowed_domains": [],
+      "note": "No domain is granted write on /dev/epd_flash; the write fop is a stub anyway. All persistent VCOM writes go through the fb1/epd_vcom sysfs -> kernel epd_write_vcom path."
+    },
+    "init_permissions": {
+      "owner": "system:system",
+      "mode": "0644",
+      "source": "vendor/etc/init/hw/init.product.rc and init.bsp.rc"
+    }
+  },
+  "read_paths": {
+    "epd_spi_read": {
+      "handler": "epd_spi_read @ 0xffffff80084c44b0",
+      "power_sequence": "mdss_epd_power_up(1) before, mdss_epd_power_up(0) after",
+      "spi_opcode": "0x03 (READ)",
+      "spi_command_bytes": "03 00 00 00",
+      "flash_address": "0x000000",
+      "tx_len": 4,
+      "rx_len": "0x70080 (458880) FIXED",
+      "buffer": "vmalloc(0x70080) cached in epd_flash_data->[0x78], memset 0 before each read, vfree after",
+      "ignores_caller_count": true,
+      "ignores_file_offset": true,
+      "user_copy": "__arch_copy_to_user, fixed 0x70080 bytes, with access_ok bounds check on (user_addr + 0x70080)",
+      "return_value": "copy_to_user residual (0 on full success) - NOT a byte count",
+      "side_effects": "asserts EPD power GPIOs high then low; allocates/frees vmalloc; issues real SPI transaction. Read is non-destructive to flash contents.",
+      "confidence": "high (disassembly + independent HWC corroboration)"
+    },
+    "epd_read_vcom": {
+      "handler": "epd_read_vcom @ 0xffffff80084c4648 (exported T)",
+      "invoked_by": "mdss_fb_get_epd_vcom (sysfs show for /sys/class/graphics/fb1/epd_vcom)",
+      "power_sequence": "mdss_epd_flash_power_on before, mdss_epd_flash_power_release after",
+      "spi_opcode": "0x03 (READ)",
+      "spi_command_bytes": "03 07 00 00",
+      "flash_address": "0x070000",
+      "tx_len": 4,
+      "rx_len": "0x100 (256)",
+      "buffer": "vmalloc(0x100), memset 0, vfree after",
+      "vcom_decode": "vcom_mV = buf[0x11]*1000 + buf[0x13]*100 + buf[0x14]*10  (absolute flash 0x070011/0x070013/0x070014)",
+      "return_value": "reconstructed vcom in millivolts",
+      "side_effects": "asserts epd_pwr_on GPIO high (flash power flag @ ctrl+0x935 set); non-destructive to flash",
+      "confidence": "high"
+    }
+  },
+  "write_capable_paths": {
+    "epd_write_vcom": {
+      "handler": "epd_write_vcom @ 0xffffff80084c4760 (exported T)",
+      "invoked_by": "mdss_fb_set_epd_vcom (sysfs store for /sys/class/graphics/fb1/epd_vcom)",
+      "input_validation": "accepts vcom in [2000,3000] mV; else logs 'vcom is invalid' and returns -1 without touching flash",
+      "sequence": [
+        "mdss_epd_flash_power_on",
+        "read config/security reg (opcode 0x2B, 1 tx / 1 rx)",
+        "epd_spi_read_rdsr (opcode 0x05)",
+        "epd_spi_set_wren (opcode 0x06)",
+        "epd_spi_write_wrsr (opcode 0x01 + 1 data byte) -- unprotect status register",
+        "epd_wait_wip_clean",
+        "vmalloc(0x104); read existing 256 bytes at 0x070000 (opcode 0x03) into data area",
+        "overwrite 3 digit bytes at data offsets 0x11/0x13/0x14 with new vcom digits",
+        "epd_spi_set_wren; SECTOR ERASE (opcode 0x20) at 0x070000; epd_wait_wip_clean",
+        "epd_spi_set_wren; PAGE PROGRAM (opcode 0x02) 256 bytes at 0x070000; epd_wait_wip_clean",
+        "epd_spi_set_wren; epd_spi_write_wrsr(original status) -- re-protect",
+        "mdss_epd_flash_power_release"
+      ],
+      "destructive_scope": "erases the 4 KiB sector at 0x070000; only 256 bytes (0x070000..0x0700FF) are re-programmed. Bytes 0x070100..0x070FFF in that sector are erased to 0xFF and NOT restored.",
+      "confidence": "high"
+    },
+    "other_write_opcodes_present_in_kernel": ["0x06 WREN", "0x01 WRSR", "0x20 SECTOR ERASE", "0x02 PAGE PROGRAM"],
+    "note": "These opcodes exist ONLY inside epd_write_vcom's call graph (epd_spi_set_wren/epd_spi_write_wrsr/epd_wait_wip_clean and inline erase/program). They are not reachable through /dev/epd_flash (whose write fop is a stub and whose ioctl is NULL). They are reachable ONLY through the fb1/epd_vcom sysfs store."
+  },
+  "power_and_gpio_prerequisites": {
+    "mdss_epd_power_up": {
+      "addr": "0xffffff8008489f90",
+      "drives_gpios": ["epd_pwr_on (ctrl+0x914)", "dsi2dpi_vdcc_en (ctrl+0x918)", "epd_i2c_en (ctrl+0x91c)"],
+      "guard": "requires mdss_dsi_res populated and ctrl_pdata->[0x18] non-null; early-returns (no-op, printk) otherwise; also gated by ctrl+0x198",
+      "used_by": "epd_spi_read"
+    },
+    "mdss_epd_flash_power_on": {
+      "addr": "0xffffff800848a02c",
+      "drives_gpios": ["epd_pwr_on (ctrl+0x914) high"],
+      "sets_flag": "ctrl+0x935 = 1 (prevents mdss_dsi_panel_power_ctrl from dropping epd_pwr_on during a flash op)",
+      "delay": "~10 ms (10 x udelay)",
+      "used_by": ["epd_read_vcom", "epd_write_vcom"]
+    },
+    "mdss_epd_flash_power_release": {
+      "addr": "0xffffff800848a0b8",
+      "action": "clears ctrl+0x935 = 0; does NOT drop the GPIO itself",
+      "used_by": ["epd_read_vcom", "epd_write_vcom"]
+    },
+    "dt_gpio_sources": {
+      "qcom,platform-epd-xon-gpio": "<0xa3 0x3d 0>  (ctrl+0x910)",
+      "qcom,platform-epd-power-on-gpio": "<0xa3 0x2a 0>  (ctrl+0x914)",
+      "qcom,platform-dsi2dpi-vdcc-en-gpio": "<0xa3 0x2d 0>  (ctrl+0x918)",
+      "qcom,platform-epd-i2c-en": "<0xa3 0x38 0>  (ctrl+0x91c)",
+      "parsed_in": "dsi_panel_device_register (secondary panel qcom,mdss_dsi_epd_eink_qhd_video)"
+    }
+  },
+  "vcom_two_stores": {
+    "persistent_digital_vcom": "SPI flash @ 0x070000 (read by epd_read_vcom, written by epd_write_vcom)",
+    "volatile_pmic_vcom": {
+      "device": "TI TPS65185 PMIC on i2c-2 @ 0x68 (/soc/i2c@c176000, node tps65185@68)",
+      "sysfs": "/sys/devices/soc/c176000.i2c/i2c-2/2-0068/vcom",
+      "kernel_store": "tps65185_set_vcom @ 0xffffff80084c30f0 (stores into pdata+0x14)",
+      "hwc_writer": "HWCDisplayExternalEpd::SetEpdVcom opens that i2c vcom node O_RDWR and writes \"%d\"",
+      "gpios": "pm-pwrup/pm-pwrcom/pm-power-en/pm-wake-up/pm-state via i2c pins",
+      "temperature_inputs": ["/sys/class/thermal/thermal_zone3/temp", "/sys/devices/soc/c176000.i2c/i2c-2/2-0068/thermal", "epd_therm VADC chan@0x50"]
+    }
+  },
+  "userspace_callers": {
+    "hwcomposer.sdm660.so": {
+      "ReadEpdFlash(void*, size_t)": {
+        "addr": "0x419e8",
+        "opens": "/dev/epd_flash via __open_2 with flags 0 (O_RDONLY)",
+        "reads": "read(fd, buf, count) once; returns byte count (>0) on success, 0 on error path",
+        "note": "This is the ONLY stock userspace reader of /dev/epd_flash."
+      },
+      "EinkSwTconInit()": {
+        "addr": "0x42078",
+        "behavior": "malloc(0x70080); memset; ReadEpdFlash(buf, 0x70080); Init_Eink_SWTcon(this+0x4f8, mode=5, cfg@sp, buf, 0x70080, out=this+0x5a4); SetEpdVcom(this+0x660); SaveEpdInfo(); frees buf",
+        "significance": "Confirms the 0x70080 flash window is the WAVEFORM data consumed by the software TCON. The request length exactly matches the kernel's fixed read length."
+      },
+      "SetEpdVcom(uint)": {
+        "addr": "0x41d34",
+        "target": "/sys/devices/soc/c176000.i2c/i2c-2/2-0068/vcom (O_RDWR), writes decimal mV",
+        "note": "runtime PMIC VCOM, not the flash copy"
+      },
+      "buffer_sizes_observed": {
+        "flash_read_buffer": "0x70080",
+        "tcon_target_buffers_x5": "0x10fe00 each (from EinkSwTconInit mallocs)",
+        "other_buffers": ["0x438000", "0x3f4800", "0x1fa400"]
+      }
+    }
+  },
+  "unresolved_or_untested": [
+    "JEDEC ID / RDID (0x9F) is never issued by the stock kernel; chip identity and true total capacity are unknown from static analysis.",
+    "Whether flash content beyond 0x070080 exists or matters; the fixed read never reaches it and no other opcode with a higher address was found.",
+    "Whether the 0x2B opcode in epd_write_vcom is a read-security-register or a vendor-specific op; only its 1-in/1-out shape is proven.",
+    "Live device-tree/overlay selection and whether the ed052tc2 SPI node is enabled at runtime on the modern port.",
+    "No capture has succeeded: the only attempt (2026-09-14) was denied at open (exit 10, 0 bytes)."
+  ]
+}

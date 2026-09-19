@@ -1,0 +1,2 @@
+NODE=/sys/class/sound/card*/id
+cat: /sys/class/sound/card*/id: No such file or directory

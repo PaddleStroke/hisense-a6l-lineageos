@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Offline bring-up candidate, not installed or physically validated.
+// FT8719 and wiring are confirmed by stock DT and live input capabilities.
+/dts-v1/;
+/plugin/;
+
+/ {
+    fragment@0 {
+        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-1";
+        __overlay__ {
+            a6l_touch_iovcc: l11 {
+                regulator-name = "pm660_l11";
+                regulator-min-microvolt = <1780000>;
+                regulator-max-microvolt = <1950000>;
+            };
+        };
+    };
+    fragment@1 {
+        target = <&tlmm>;
+        __overlay__ {
+            a6l_touch_irq: a6l-front-touch-irq-state {
+                pins = "gpio67";
+                function = "gpio";
+                drive-strength = <8>;
+                bias-pull-up;
+            };
+        };
+    };
+    fragment@2 {
+        target = <&blsp_i2c4>;
+        __overlay__ {
+            status = "okay";
+            #address-cells = <1>;
+            #size-cells = <0>;
+            touchscreen@38 {
+                compatible = "focaltech,ft8719";
+                reg = <0x38>;
+                interrupt-parent = <&tlmm>;
+                interrupts = <67 2>; // IRQ_TYPE_EDGE_FALLING, stock A6L
+                pinctrl-names = "default";
+                pinctrl-0 = <&a6l_touch_irq>;
+                iovcc-supply = <&a6l_touch_iovcc>;
+                touchscreen-size-x = <1080>;
+                touchscreen-size-y = <2340>;
+                // Initial bring-up retains boot-initialized LCD/touch state.
+                // No reset-gpios yet: stock uses GPIO66 and keeps it high
+                // with the integrated LCD. Panel power sequencing is unproven.
+                // Stock has no separate front vdd-supply; upstream uses a
+                // dummy vcc supply here. This is not a suspend-ready solution.
+            };
+        };
+    };
+};

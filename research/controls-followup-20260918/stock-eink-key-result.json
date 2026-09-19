@@ -1,0 +1,14 @@
+{
+  "date": "2026-09-18",
+  "environment": "stock Android 9",
+  "device": "/dev/input/event9",
+  "device_name": "gpio-keys",
+  "event_name": "KEY_LEFT_UP",
+  "event_code": 616,
+  "press_count": 13,
+  "release_count": 13,
+  "file_sha256": "d40fc25a1e32e6afde88c94ade62cb415cb1324b3d4616db76769e893ee8d7f7",
+  "passed": true,
+  "scope": "Physical button press and release observed in stock Android; no firmware changes",
+  "diagnostic_v45": "No corresponding event or IRQ in prior attended V45 test; pin configuration remains a hypothesis"
+}

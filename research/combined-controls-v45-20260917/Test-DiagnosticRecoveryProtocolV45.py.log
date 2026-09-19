@@ -1,0 +1,11 @@
+test_cross_mode_payload_and_unrecognized_modes_rejected (__main__.WriterChecks.test_cross_mode_payload_and_unrecognized_modes_rejected) ... ok
+test_final_ack_required_and_not_readback (__main__.WriterChecks.test_final_ack_required_and_not_readback) ... ok
+test_geometry_and_extra_operations_rejected (__main__.WriterChecks.test_geometry_and_extra_operations_rejected) ... ok
+test_initial_failure_never_sends_payload (__main__.WriterChecks.test_initial_failure_never_sends_payload) ... ok
+test_short_write_is_never_retried (__main__.WriterChecks.test_short_write_is_never_retried) ... ok
+test_wrong_image_rejected_before_usb (__main__.WriterChecks.test_wrong_image_rejected_before_usb) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.166s
+
+OK

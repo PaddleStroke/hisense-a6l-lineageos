@@ -1,0 +1,74 @@
+[
+  {
+    "sha": "94ad772ac95fe5df615f850ac5b74f87391ee72d",
+    "filename": "arch/arm64/boot/dts/qcom/sdm636-xiaomi-tulip.dts",
+    "status": "modified",
+    "additions": 1,
+    "deletions": 0,
+    "changes": 1,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-tulip.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-tulip.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-tulip.dts?ref=1c8c5657fb72abe4a6f2eb2db2407521fcd199cb",
+    "patch": "@@ -485,6 +485,7 @@\n \t\t\tregulator-max-microvolt = <1950000>;\n \t\t\tregulator-enable-ramp-delay = <250>;\n \t\t\tregulator-allow-set-load;\n+\t\t\tregulator-system-load = <14000>;\n \t\t};\n \n \t\tvreg_l11a_1p8: l11 {"
+  },
+  {
+    "sha": "79fc9a93a0e87809ecf0309b9bc9cf3dec97bb62",
+    "filename": "arch/arm64/boot/dts/qcom/sdm636-xiaomi-whyred.dts",
+    "status": "modified",
+    "additions": 1,
+    "deletions": 0,
+    "changes": 1,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-whyred.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-whyred.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm636-xiaomi-whyred.dts?ref=1c8c5657fb72abe4a6f2eb2db2407521fcd199cb",
+    "patch": "@@ -549,6 +549,7 @@\n \t\t\tregulator-max-microvolt = <1950000>;\n \t\t\tregulator-enable-ramp-delay = <250>;\n \t\t\tregulator-allow-set-load;\n+\t\t\tregulator-system-load = <14000>;\n \t\t};\n \n \t\tvreg_l11a_1p8: l11 {"
+  },
+  {
+    "sha": "1df1e0f416439e97c83daaf8a4bca3c1233a6266",
+    "filename": "arch/arm64/boot/dts/qcom/sdm660-xiaomi-clover-common.dtsi",
+    "status": "modified",
+    "additions": 1,
+    "deletions": 0,
+    "changes": 1,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-clover-common.dtsi",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-clover-common.dtsi",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-clover-common.dtsi?ref=1c8c5657fb72abe4a6f2eb2db2407521fcd199cb",
+    "patch": "@@ -496,6 +496,7 @@\n \t\t\tregulator-enable-ramp-delay = <250>;\n \t\t\tregulator-ramp-delay = <0>;\n \t\t\tregulator-allow-set-load;\n+\t\t\tregulator-system-load = <14000>;\n \t\t};\n \n \t\tvreg_l11a_1p8: l11 {"
+  },
+  {
+    "sha": "9f9bc91a8d10cbad39823aac3492af1ca8c71267",
+    "filename": "arch/arm64/boot/dts/qcom/sdm660-xiaomi-jasmine.dts",
+    "status": "modified",
+    "additions": 1,
+    "deletions": 0,
+    "changes": 1,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-jasmine.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-jasmine.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-jasmine.dts?ref=1c8c5657fb72abe4a6f2eb2db2407521fcd199cb",
+    "patch": "@@ -473,6 +473,7 @@\n \t\t\tregulator-max-microvolt = <1950000>;\n \t\t\tregulator-enable-ramp-delay = <250>;\n \t\t\tregulator-allow-set-load;\n+\t\t\tregulator-system-load = <14000>;\n \t\t};\n \n \t\tvreg_l11a_1p8: l11 {"
+  },
+  {
+    "sha": "ac6eadadabee11918bca22cd2f7b185adb7a5da4",
+    "filename": "arch/arm64/boot/dts/qcom/sdm660-xiaomi-lavender-common.dtsi",
+    "status": "modified",
+    "additions": 1,
+    "deletions": 0,
+    "changes": 1,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-lavender-common.dtsi",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-lavender-common.dtsi",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-lavender-common.dtsi?ref=1c8c5657fb72abe4a6f2eb2db2407521fcd199cb",
+    "patch": "@@ -478,6 +478,7 @@\n \t\t\tregulator-max-microvolt = <1950000>;\n \t\t\tregulator-enable-ramp-delay = <250>;\n \t\t\tregulator-allow-set-load;\n+\t\t\tregulator-system-load = <14000>;\n \t\t};\n \n \t\tvreg_l11a_1p8: l11 {"
+  },
+  {
+    "sha": "0110e34dd1c34b327c6d66e457f35e6216005bca",
+    "filename": "arch/arm64/boot/dts/qcom/sdm660-xiaomi-platina.dts",
+    "status": "modified",
+    "additions": 1,
+    "deletions": 0,
+    "changes": 1,
+    "blob_url": "https://github.com/sdm660-mainline/linux/blob/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts",
+    "raw_url": "https://github.com/sdm660-mainline/linux/raw/1c8c5657fb72abe4a6f2eb2db2407521fcd199cb/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts",
+    "contents_url": "https://api.github.com/repos/sdm660-mainline/linux/contents/arch%2Farm64%2Fboot%2Fdts%2Fqcom%2Fsdm660-xiaomi-platina.dts?ref=1c8c5657fb72abe4a6f2eb2db2407521fcd199cb",
+    "patch": "@@ -573,6 +573,7 @@\n \t\t\tregulator-enable-ramp-delay = <250>;\n \t\t\tregulator-ramp-delay = <0>;\n \t\t\tregulator-allow-set-load;\n+\t\t\tregulator-system-load = <14000>;\n \t\t};\n \n \t\tvreg_l11a_1p8: l11 {"
+  }
+]

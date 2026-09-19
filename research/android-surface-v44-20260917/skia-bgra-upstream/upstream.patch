@@ -1,0 +1,75 @@
+diff --git a/AUTHORS b/AUTHORS
+index 51148f9..6bbd130 100644
+--- a/AUTHORS
++++ b/AUTHORS
+@@ -134,6 +134,7 @@
+ LinXunFeng <linxunfeng@yeah.net>
+ Xiaohan Wang <wxh158849067@gmail.com>
+ Faijur Rahman <faijur.rahman@imagination.corp-partner.google.com>
++He Zhai <zhai.he@nxp.com>
+ 
+ # Trusted service accounts.
+ GitHub Dependabot <(\d+)\+dependabot\[bot\]@users.noreply.github.com>
+diff --git a/src/gpu/android/AHardwareBufferUtils.cpp b/src/gpu/android/AHardwareBufferUtils.cpp
+index 2b91c88..258533b 100644
+--- a/src/gpu/android/AHardwareBufferUtils.cpp
++++ b/src/gpu/android/AHardwareBufferUtils.cpp
+@@ -11,6 +11,13 @@
+ 
+ #include <android/hardware_buffer.h>
+ 
++#if __has_include(<vndk/hardware_buffer.h>)
++  // When building for the Android framework, there are formats defined outside of those publicly
++  // available in android/hardware_buffer.h.
++  #include <vndk/hardware_buffer.h>
++  #define HAS_AHB_BGRA8_UNORM
++#endif
++
+ namespace AHardwareBufferUtils {
+ 
+ SkColorType GetSkColorTypeFromBufferFormat(uint32_t bufferFormat) {
+@@ -35,6 +42,10 @@
+         case AHARDWAREBUFFER_FORMAT_R8_UNORM:
+             return kAlpha_8_SkColorType;
+ #endif
++#ifdef HAS_AHB_BGRA8_UNORM
++        case AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM:
++            return kBGRA_8888_SkColorType;
++#endif
+         default:
+             // Given that we only use this texture as a source, colorType will not impact how Skia
+             // uses the texture. The only potential affect this is anticipated to have is that for
+diff --git a/src/gpu/ganesh/gl/AHardwareBufferGL.cpp b/src/gpu/ganesh/gl/AHardwareBufferGL.cpp
+index b826a18..13b5b32 100644
+--- a/src/gpu/ganesh/gl/AHardwareBufferGL.cpp
++++ b/src/gpu/ganesh/gl/AHardwareBufferGL.cpp
+@@ -31,6 +31,13 @@
+ #define PROT_CONTENT_EXT_STR "EGL_EXT_protected_content"
+ #define EGL_PROTECTED_CONTENT_EXT 0x32C0
+ 
++#if __has_include(<vndk/hardware_buffer.h>)
++    // When building for the Android framework, there are formats defined outside of those publicly
++    // available in android/hardware_buffer.h.
++    #include <vndk/hardware_buffer.h>
++    #define HAS_AHB_BGRA8_UNORM
++#endif
++
+ namespace GrAHardwareBufferUtils {
+ 
+ GrBackendFormat GetGLBackendFormat(GrDirectContext* dContext,
+@@ -66,6 +73,15 @@
+             // (GrColorType and SkColorType can describe it).
+             return GrBackendFormats::MakeGLExternal();
+ #endif
++#ifdef HAS_AHB_BGRA8_UNORM
++        case AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM:
++            // On some platforms, HWComposer requests BGRA_8888 (DRM_FORMAT_AR24)
++            // as the GPU client-composition / framebuffer render target. Map it to a
++            // renderable GL_BGRA8 2D format (needs GL_EXT_texture_format_BGRA8888, which the
++            // driver exposes) so output/renderable buffers pass isFormatRenderable() instead
++            // of falling through to a non-renderable external format and aborting.
++            return GrBackendFormats::MakeGL(GR_GL_BGRA8);
++#endif
+         default:
+             if (requireKnownFormat) {
+                 return GrBackendFormat();

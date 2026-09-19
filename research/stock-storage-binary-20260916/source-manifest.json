@@ -1,0 +1,27 @@
+[
+  {
+    "source": "https://android.googlesource.com/kernel/msm/+/1f946a612986353e1484dbde8e7ed2eb6b0b456b/Makefile?format=TEXT",
+    "path": "qcom-Makefile",
+    "sha256": "22eb1aea7006cc227c9c25c3881783d583837fc66e9de10fa8d462d3a3829714"
+  },
+  {
+    "source": "https://android.googlesource.com/kernel/msm/+/1f946a612986353e1484dbde8e7ed2eb6b0b456b/drivers/mmc/host/sdhci.c?format=TEXT",
+    "path": "qcom-drivers-mmc-host-sdhci.c",
+    "sha256": "2c3438d0fcbf08565269e16193a11212f65a66040f6e87b065d7a025008ddd3b"
+  },
+  {
+    "source": "https://android.googlesource.com/kernel/msm/+/1f946a612986353e1484dbde8e7ed2eb6b0b456b/drivers/mmc/host/sdhci-msm.c?format=TEXT",
+    "path": "qcom-drivers-mmc-host-sdhci-msm.c",
+    "sha256": "4a9eef67cde7b87dc2c0288f41d942e2cff3c70c6b4f7ceafc008f6340ca8040"
+  },
+  {
+    "source": "https://android.googlesource.com/kernel/msm/+/1f946a612986353e1484dbde8e7ed2eb6b0b456b/drivers/mmc/host/sdhci.h?format=TEXT",
+    "path": "qcom-drivers-mmc-host-sdhci.h",
+    "sha256": "621cb473f4271fe5e995fdfede5781fda21b64bb9ec13838f2daad0e708c56a1"
+  },
+  {
+    "source": "https://android.googlesource.com/kernel/msm/+/1f946a612986353e1484dbde8e7ed2eb6b0b456b/arch/arm64/include/asm/io.h?format=TEXT",
+    "path": "qcom-arch-arm64-include-asm-io.h",
+    "sha256": "2cbb143d99a4ec4385f93fbe38777b9a2a90951ac9449100027b108bdcc44b33"
+  }
+]

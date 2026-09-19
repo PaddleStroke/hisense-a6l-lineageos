@@ -1,0 +1,15 @@
+diff --git a/ui/build/soong.go b/ui/build/soong.go
+index 4521b4a..ce7a9bb 100644
+--- a/ui/build/soong.go
++++ b/ui/build/soong.go
+@@ -215,6 +215,10 @@ func (pb PrimaryBuilderFactory) primaryBuilderInvocation(config Config) bootstra
+ 
+ 	commonArgs = append(commonArgs, "-l", filepath.Join(pb.config.FileListDir(), "Android.bp.list"))
+ 	invocationEnv := make(map[string]string)
++	// Local A6L host-build control; no effect unless explicitly configured.
++	if memoryLimit := os.Getenv("A6L_SOONG_GOMEMLIMIT"); memoryLimit != "" {
++		invocationEnv["GOMEMLIMIT"] = memoryLimit
++	}
+ 	if pb.debugPort != "" {
+ 		//debug mode
+ 		commonArgs = append(commonArgs, "--delve_listen", pb.debugPort,

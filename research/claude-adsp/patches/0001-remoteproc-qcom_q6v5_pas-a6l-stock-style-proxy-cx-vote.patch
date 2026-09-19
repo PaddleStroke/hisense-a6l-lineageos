@@ -1,0 +1,81 @@
+From: A6L ADSP research (claude-adsp) <none@localhost>
+Subject: [CANDIDATE B, NOT BUILT, NOT TESTED] remoteproc: qcom_q6v5_pas: Hisense A6L stock-style LPASS CX proxy vote
+
+Only for use if candidate A ("qcom,sdm660-adsp-pas", no proxy vote) times out
+waiting for the ADSP ready signal ("start timed out", qcom_q6v5_wait_for_start
+returns -ETIMEDOUT after 5 s) or the ADSP reports an early fatal error.
+
+Evidence for the difference (see research/claude-adsp/EVIDENCE.md, D5):
+  * stock DTB (firmware/extracted/device-trees/stock-00.dts, node
+    qcom,lpass@15700000): vdd_cx-supply = <&pm660l_l9_level>,
+    qcom,vdd_cx-uV-uA = <0x180 0x186a0>  => RPM resource "rwlc"/0
+    (LPASS/SSC CX, PM660L L9 in level mode) proxied at level 384 (TURBO),
+    load 100000 uA, both RPM sets, released on the proxy-unvote smp2p bit.
+  * pinned driver: adsp_resource_init has no proxy_pd_names, so the single
+    "cx" power domain (rpmpd RPMPD_VDDCX = RPM "rwcx"/0) is only attached by
+    the platform core; no performance level is ever voted on rwlc/0.
+
+This candidate adds a vendor match that:
+  * uses proxy_pd_names = {"cx"} so qcom_pas_pds_attach() takes the
+    single-domain path (devs[0] = dev, pm_runtime_enable) and qcom_pas_start()
+    votes dev_pm_genpd_set_performance_state(dev, INT_MAX) -> rpmpd clamps to
+    max_state = RPM_SMD_LEVEL_TURBO (384), exactly the stock level, released
+    at handover (qcom_pas_handover -> qcom_pas_pds_disable);
+  * sets auto_boot = false so the diagnostic controls the start explicitly.
+The companion overlay a6l-adsp-diag-ssccx.dtso points power-domains at
+<&rpmpd RPMPD_SSCCX> (RPM "rwlc"/0, dt-bindings/power/qcom-rpmpd.h value 6)
+so the vote lands on the same RPM resource as stock.
+
+Base: sdm660-mainline/linux e47d622cb6d2440a9eacdc8bb2df32c037bec7b8 (7.2.3)
+File: drivers/remoteproc/qcom_q6v5_pas.c (adsp_resource_init at lines 900-908,
+      of_match entry "qcom,sdm660-adsp-pas" at line 1613 of that revision).
+Rebuild only the qcom_q6v5_pas module in an isolated copy of the validated
+output directory, exactly as tools/Prepare-HapticBrakeFix.py did for the
+haptics module; vermagic must stay "7.2.3-a6l-probe+ SMP preempt mod_unload
+aarch64" and the Image/Module.symvers must remain unchanged.
+---
+ drivers/remoteproc/qcom_q6v5_pas.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/drivers/remoteproc/qcom_q6v5_pas.c b/drivers/remoteproc/qcom_q6v5_pas.c
+--- a/drivers/remoteproc/qcom_q6v5_pas.c
++++ b/drivers/remoteproc/qcom_q6v5_pas.c
+@@ -907,6 +907,27 @@ static const struct qcom_pas_data adsp_resource_init = {
+ 	.ssctl_id = 0x14,
+ };
+ 
++/*
++ * Hisense A6L (HLTE730T, SDM660): the stock pil-tz-generic node proxies the
++ * LPASS CX rail (RPM "rwlc"/0 via pm660l_l9_level) at TURBO until the ADSP
++ * signals proxy-unvote. Vote the single "cx" power domain (pointed at
++ * RPMPD_SSCCX by the board DT) at its maximum level during boot and release
++ * it at handover. Manual start only, for bounded diagnostics.
++ */
++static const struct qcom_pas_data a6l_adsp_proxycx_resource = {
++	.crash_reason_smem = 423,
++	.firmware_name = "adsp.mdt",
++	.pas_id = 1,
++	.auto_boot = false,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		NULL
++	},
++	.ssr_name = "lpass",
++	.sysmon_name = "adsp",
++	.ssctl_id = 0x14,
++};
++
+ static const struct qcom_pas_data sa8775p_adsp_resource = {
+ 	.crash_reason_smem = 423,
+ 	.firmware_name = "adsp.mbn",
+@@ -1577,6 +1598,7 @@ static const struct qcom_pas_data x1e80100_cdsp_resource = {
+ };
+ 
+ static const struct of_device_id qcom_pas_of_match[] = {
++	{ .compatible = "hisense,a6l-adsp-pas", .data = &a6l_adsp_proxycx_resource },
+ 	{ .compatible = "qcom,eliza-adsp-pas", .data = &sm8550_adsp_resource },
+ 	{ .compatible = "qcom,milos-adsp-pas", .data = &sm8550_adsp_resource },
+ 	{ .compatible = "qcom,milos-cdsp-pas", .data = &milos_cdsp_resource },
+--
+Hunk line numbers are from the raw file at the pinned revision and may need
+`patch -p1 --fuzz=3`; verify by inspection before building.

@@ -1,0 +1,25 @@
+# Minimal module set for the ADSP startup diagnostic (candidate A), in insmod
+# order. All files are the unmodified, QEMU-load-tested modules from
+# firmware/extracted/peripheral-prep-20260917/modules (kernel 7.2.3-a6l-probe+,
+# module-manifest.json). Copy them to $DIR/modules/ and this list as order.txt.
+# Nothing audio-related (apr, q6*, snd-*, codecs) is loaded: the diagnostic
+# proves authentication/startup/stop only.
+#
+# file                 sha256                                                              why
+qrtr.ko                2caf3f3367269cb26d7b8e0f1651293764c394ae466711dc90521df52d9159ba    AF_QIPCRTR: qcom_sysmon's qmi_handle_init() fails at qcom_q6v5_pas probe without it
+qrtr-smd.ko            8dc2ca9eb4acd817054c3df8836140108646ee9670821fff7e3b9cb5c2c75c4d    binds the ADSP "IPCRTR" glink channel -> QRTR service discovery evidence
+qmi_helpers.ko         29628716e534938f18bd30c3dbdaf5e6e9cc78d8e4b37a053afad5be58c04e16    dependency of qcom_sysmon
+qcom_common.ko         a76c6e02415c8c88688adcd6d92e45c600da1a45c28c5f7bf1e540547cc9b4a0    glink/ssr/pdm/sns-reg subdevs
+qcom_sysmon.ko         0afb1eb4318a16e923f74f944d7cfd431a35872884c5875766a7114d4f84e7e5    SSCTL (instance 0x14) graceful shutdown + sys_mon channel
+qcom_aoss.ko           38dd8005e7319760769008cfee6cb9fa0b9ace43ae9959e9809190efa3badf6b    symbol dependency of qcom_q6v5 (qmp_get returns -ENODEV here, harmless)
+qcom_q6v5.ko           a34016a8e1d8a35e004afbb1fad224fa5a91d96b15537c46991e9ef2ec08049c    wdog/fatal/ready/handover/stop-ack + smp2p stop
+mdt_loader.ko          1d1cfc126640aa860e37c27b568436f6e2352241c87ecd02bdf8b086780e617c    split .mdt/.bNN loading, PAS_INIT_IMAGE/MEM_SETUP
+qcom_pil_info.ko       1574d8c531025485ef2bd7ce3085b57b89f5858fcb5af7352fbfc5a43d0ff2cf    writes IMEM pil-reloc@94c entry "adsp" (optional)
+qcom_q6v5_pas.ko       fe2aabc87e27029bb166fabfc8f575501f15d4239be01b54af5dcf3d4f103104    the remoteproc driver (qcom,sdm660-adsp-pas)
+#
+# Not included on purpose (needed later, not for startup evidence):
+#   qcom_pd_mapper.ko / qcom_sns_reg.ko  - CONFIG_QCOM_PD_MAPPER=m / CONFIG_QCOM_SNS_REG=m are
+#       enabled in kernel.config but were NOT built into the prep bundle; the in-kernel PD
+#       mapper's sdm660 table matches the stock adspr/adsps/adspua.jsn (instance 74). Needed for
+#       q6afe/q6asm PDR ("avs/audio", "msm/adsp/audio_pd") in the audio follow-up.
+#   apr.ko, pdr_interface.ko, qcom_pdr_msg.ko, q6core/q6afe/q6asm/q6adm/q6routing, snd-*, codecs.

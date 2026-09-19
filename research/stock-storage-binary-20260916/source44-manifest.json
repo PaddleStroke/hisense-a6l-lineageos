@@ -1,0 +1,31 @@
+{
+  "ref": "refs/heads/android-msm-wahoo-4.4-oreo-dr1",
+  "commit": "594d847d09a14b0b2e5db288024a0f2c4f64ec9a",
+  "files": [
+    {
+      "source": "https://android.googlesource.com/kernel/msm/+/594d847d09a14b0b2e5db288024a0f2c4f64ec9a/Makefile?format=TEXT",
+      "path": "qcom44-Makefile",
+      "sha256": "2785163d856da012d5b46b28c9133fc0899c598cb1a4e59973e1d97a93704fab"
+    },
+    {
+      "source": "https://android.googlesource.com/kernel/msm/+/594d847d09a14b0b2e5db288024a0f2c4f64ec9a/drivers/mmc/host/sdhci.c?format=TEXT",
+      "path": "qcom44-drivers-mmc-host-sdhci.c",
+      "sha256": "29a23ae1a08d5c1185a255d883bdbd98595889f8af8cbca954efca323b6c541c"
+    },
+    {
+      "source": "https://android.googlesource.com/kernel/msm/+/594d847d09a14b0b2e5db288024a0f2c4f64ec9a/drivers/mmc/host/sdhci-msm.c?format=TEXT",
+      "path": "qcom44-drivers-mmc-host-sdhci-msm.c",
+      "sha256": "62600ba05a3ad55a02c50c10dd95cffa2c3aaf35a705d49c021fcf772e31424e"
+    },
+    {
+      "source": "https://android.googlesource.com/kernel/msm/+/594d847d09a14b0b2e5db288024a0f2c4f64ec9a/drivers/mmc/host/sdhci.h?format=TEXT",
+      "path": "qcom44-drivers-mmc-host-sdhci.h",
+      "sha256": "fbed6af553b7cc2a76452e4a531acb2b1e48f5e1a08534dd7bf2241d33158562"
+    },
+    {
+      "source": "https://android.googlesource.com/kernel/msm/+/594d847d09a14b0b2e5db288024a0f2c4f64ec9a/arch/arm64/include/asm/io.h?format=TEXT",
+      "path": "qcom44-arch-arm64-include-asm-io.h",
+      "sha256": "cddb3d19361668875fa8e9a2514761a525159c688c0429609d8e3902fbe1c291"
+    }
+  ]
+}

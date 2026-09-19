@@ -1,0 +1,7 @@
+{
+  "framework_head": "bc6573742889e49c42fc17c0dcdc6a60421b3320",
+  "upstream_change": "https://review.lineageos.org/c/LineageOS/android_frameworks_base/+/434585",
+  "upstream_commit": "5518dd64224c3dfe2674a496c771770904458a78",
+  "before_sha256": "85017aa127ca2e905eedfb3d49bbbd66d20f4fa3ba121b7a8f4a7ff36aa59d77",
+  "after_sha256": "ce9b329ed174ae3f4a9d795438c607b4fe33093d6f9f5233b7d8faa27995e851"
+}

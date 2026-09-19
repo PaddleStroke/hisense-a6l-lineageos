@@ -1,0 +1,36 @@
+{
+  "time": "2026-09-17T19:32:23.270204+00:00",
+  "read_only": true,
+  "results": {
+    "identity": {
+      "exit": 0,
+      "stdout": "Hisense/HLTE730T/HLTE730T:9/PKQ1.190723.001/L1632.6.01.04:user/release-keys\n1\n",
+      "stderr": ""
+    },
+    "bluetooth-uart": {
+      "exit": 0,
+      "stdout": "lrwxrwxrwx 1 root root 0 2020-10-14 17:23 /sys/class/tty/ttyHS0/device -> ../../../c1af000.uart\n\n\n\n",
+      "stderr": ""
+    },
+    "led-metadata": {
+      "exit": 0,
+      "stdout": "NODE=/sys/class/leds/*\n",
+      "stderr": ""
+    },
+    "input-capabilities": {
+      "exit": 0,
+      "stdout": "add device 1: /dev/input/event11\n  name:     \"sdm660-snd-card Button Jack\"\n  events:\n    KEY (0001): KEY_VOLUMEDOWN        KEY_VOLUMEUP          KEY_MEDIA             BTN_4                \n                BTN_5                 KEY_VOICECOMMAND     \n  input props:\n    INPUT_PROP_ACCELEROMETER\nadd device 2: /dev/input/event10\n  name:     \"sdm660-snd-card Headset Jack\"\n  events:\n    SW  (0005): SW_HEADPHONE_INSERT   SW_MICROPHONE_INSERT  SW_LINEOUT_INSERT     SW_JACK_PHYSICAL_INS    \n                SW_PEN_INSERTED       0010                  0011                  0012                 \n  input props:\n    <none>\nadd device 3: /dev/input/event7\n  name:     \"light_extend_front_1\"\n  events:\n    ABS (0003): ABS_MISC              : value 4522013, min 0, max 65535, fuzz 0, flat 0, resolution 0\n  input props:\n    <none>\nadd device 4: /dev/input/event8\n  name:     \"proximity_extend_front_1\"\n  events:\n    ABS (0003): ABS_DISTANCE          : value 0, min 0, max 1, fuzz 0, flat 0, resolution 0\n  input props:\n    <none>\nadd device 5: /dev/input/event0\n  name:     \"qpnp_pon\"\n  events:\n    KEY (0001): KEY_VOLUMEDOWN        KEY_POWER            \n  input props:\n    <none>\nadd device 6: /dev/input/event3\n  name:     \"sf-keys\"\n  events:\n    KEY (0001): KEY_HOME              KEY_MENU              KEY_WAKEUP            KEY_BACK             \n                KEY_TOUCHPAD_TOGGLE   KEY_TOUCHPAD_ON       KEY_TOUCHPAD_OFF      KEY_CAMERA_ZOOMIN    \n                KEY_CAMERA_ZOOMOUT    KEY_CAMERA_UP        \n  input props:\n    <none>\nadd device 7: /dev/input/event1\n  name:     \"ft8719_ts\"\n  events:\n    KEY (0001): BTN_TOUCH             01fd                  01fe                  01ff                 \n                KEY_NUMERIC_0         KEY_NUMERIC_1         KEY_NUMERIC_2         KEY_NUMERIC_3        \n                KEY_NUMERIC_4         KEY_NUMERIC_7         KEY_NUMERIC_8         022b                 \n    ABS (0003): ABS_MT_SLOT           : value 4, min 0, max 4, fuzz 0, flat 0, resolution 0\n                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0\n                ABS_MT_POSITION_X     : value 0, min 0, max 1080, fuzz 0, flat 0, resolution 0\n                ABS_MT_POSITION_Y     : value 0, min 0, max 2340, fuzz 0, flat 0, resolution 0\n                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0\n  input props:\n    INPUT_PROP_DIRECT\nadd device 8: /dev/input/event9\n  name:     \"gpio-keys\"\n  events:\n    KEY (0001): KEY_VOLUMEUP          KEY_F18               KEY_LEFT_UP          \n  input props:\n    <none>\nadd device 9: /dev/input/event4\n  name:     \"hall\"\n  events:\n    ABS (0003): ABS_DISTANCE          : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0\n  input props:\n    <none>\nadd device 10: /dev/input/event2\n  name:     \"ft5x06_ts\"\n  events:\n    KEY (0001): BTN_TOUCH             01fe                  01ff                  KEY_NUMERIC_1        \n                KEY_NUMERIC_3         KEY_NUMERIC_4         KEY_NUMERIC_7         KEY_NUMERIC_8        \n                022b                  KEY_3D_MODE           KEY_STOP_RECORD       KEY_PAUSE_RECORD     \n    ABS (0003): ABS_MT_SLOT           : value 4, min 0, max 4, fuzz 0, flat 0, resolution 0\n                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0\n                ABS_MT_POSITION_X     : value 0, min 0, max 720, fuzz 0, flat 0, resolution 0\n                ABS_MT_POSITION_Y     : value 0, min 0, max 1440, fuzz 0, flat 0, resolution 0\n                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0\n  input props:\n    INPUT_PROP_DIRECT\nadd device 11: /dev/input/event6\n  name:     \"proximity_extend_back_1\"\n  events:\n    ABS (0003): ABS_DISTANCE          : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0\n  input props:\n    <none>\nadd device 12: /dev/input/event5\n  name:     \"light_extend_back_1\"\n  events:\n    ABS (0003): ABS_X                 : value 589849, min 0, max 65535, fuzz 0, flat 0, resolution 0\n                ABS_MISC              : value 458777, min 0, max 65535, fuzz 0, flat 0, resolution 0\n  input props:\n    <none>\n",
+      "stderr": "could not get driver version for /dev/input/mice, Not a typewriter\n"
+    },
+    "audio-card": {
+      "exit": 1,
+      "stdout": "NODE=/sys/class/sound/card*/id\n",
+      "stderr": "cat: /sys/class/sound/card*/id: No such file or directory\n"
+    },
+    "stock-gnss-services": {
+      "exit": 0,
+      "stdout": "\n\nqcom\n",
+      "stderr": ""
+    }
+  }
+}

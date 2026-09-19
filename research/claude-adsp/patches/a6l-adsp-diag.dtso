@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Hisense A6L (HLTE730T) ADSP startup diagnostic overlay — candidate A.
+//
+// Scope: exactly three properties. Enables the pinned tree's existing
+// adsp_pil node (arch/arm64/boot/dts/qcom/sdm630.dtsi, sdm660-mainline/linux
+// e47d622cb6d2440a9eacdc8bb2df32c037bec7b8) that
+// device/hisense/a6l/kernel/sdm660-hisense-a6l-probe.dts currently disables,
+// and names the preserved stock split firmware. Nothing else changes: the
+// reserved region adsp@92a00000/0x1e00000, smp2p, glink, xo clock and the
+// rpmpd VDDCX power domain come unchanged from the base tree and were audited
+// against the stock DTB (research/claude-adsp/checks/adsp-dt-audit.json).
+//
+// Not physically tested. Apply offline to base.dtb with the existing
+// packaging pipeline (fdtoverlay, then captured-ABL recovery overlay) and
+// confirm the scoped diff equals checks/adsp-dt-audit.json overlay_effect_diff.
+/dts-v1/;
+/plugin/;
+
+&adsp_pil {
+	/* Split stock image: adsp.mdt (ELF header + hash) + adsp.b02..b21. */
+	firmware-name = "qcom/hisense/a6l/adsp.mdt";
+	status = "okay";
+};
+
+/ {
+	fragment@1 {
+		target-path = "/chosen";
+		__overlay__ {
+			/* Boot marker for the diagnostic collector. */
+			hisense,a6l-adsp = "diag1";
+		};
+	};
+};

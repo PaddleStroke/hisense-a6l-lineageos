@@ -1,0 +1,258 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style type="text/css">
+body { font-size: 16px; }
+.cal_brief { text-align: center; }
+.cal_brief td:first-child { background: inherit; }
+.cal_brief td { background: #ccc; width: 5ex; padding: 2px; }
+.cal_big { text-align: center; padding: 0; margin: 0; }
+.cal_big td { padding: 0 2px; }
+.cal_mon { text-align: center; }
+.cal_mon th { font-size: small; padding: 0; margin: 0; }
+.cal_mon td { background: #ccc; width: 5ex; height: 1.5em;
+	padding: 2px; text-align: right; }
+.cal_mon td[colspan] { background: inherit; }
+.cal_mon sup { color: #F0F0F0; text-align: left; float: left;
+	margin-top: -2pt; font-weight: bold; }
+.cal_mon a { text-align: right; margin-left: -4em; float: right; }
+</style>
+
+<title>linux-kernel - Re: [PATCH V3 0/4] Changes for SDCC5 version</title>
+
+
+</head>
+
+<BODY bgcolor="#E0E0E0" text="black" link="blue" alink="red" vlink="navy">
+
+
+
+<TABLE bgcolor="white" width="100%" border="0" cellspacing="0" cellpadding="0">
+<TR>
+<TD width="39%">
+<A HREF="https://lists.openwall.net">lists.openwall.net</A>
+<TD width="1%" rowspan="3">&nbsp;
+<TD width="60%" align="right" rowspan="3">
+<A HREF="/">lists</A>&nbsp;
+/&nbsp;
+<A HREF="https://www.openwall.com/lists/announce/">announce</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/owl-users/">owl-users</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/owl-dev/">owl-dev</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/john-users/">john-users</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/john-dev/">john-dev</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/passwdqc-users/">passwdqc-users</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/yescrypt/">yescrypt</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/popa3d-users/">popa3d-users</A>&nbsp;
+/&nbsp;
+<A HREF="https://www.openwall.com/lists/oss-security/">oss-security</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/kernel-hardening/">kernel-hardening</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/musl/">musl</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/sabotage/">sabotage</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/tlsify/">tlsify</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/passwords/">passwords</A>&nbsp;
+/&nbsp;
+<A HREF="https://www.openwall.com/lists/crypt-dev/">crypt-dev</A>&nbsp;
+<A HREF="https://www.openwall.com/lists/xvendor/">xvendor</A>&nbsp;
+/&nbsp;
+<A HREF="/bugtraq/">Bugtraq</A>&nbsp;
+<A HREF="/full-disclosure/">Full-Disclosure</A>&nbsp;
+<A HREF="/linux-kernel/">linux-kernel</A>&nbsp;
+linux-<A HREF="/netdev/">netdev</A>&nbsp;
+<A HREF="/linux-ext4/">linux-ext4</A>&nbsp;
+<a href="/linux-hardening/">linux-hardening</a>&nbsp;
+<a href="/linux-cve-announce/">linux-cve-announce</a>&nbsp;
+<a href="/phc-discussions/">PHC</a>&nbsp;
+<TR><TD>
+<DIV><FONT SIZE="-2"><I>Open Source and information security mailing list archives</I></FONT></DIV>
+<TR><TD>&nbsp;
+</TABLE>
+
+<TABLE bgcolor="#B4D0DC" width="100%" border="0" cellspacing="0" cellpadding="1">
+<TR><TD>
+<TABLE width="100%" border="0" cellspacing="0" cellpadding="2">
+<TR><TD bgcolor="#ECF8FF">
+
+<a href="https://hashsuite.openwall.net/tutorial">
+Hash Suite: Windows password security audit tool. GUI, reports in PDF.</a>
+
+
+</TABLE>
+</TABLE>
+
+
+<a href="158">[&lt;prev]</a> <a href="160">[next&gt;]</a> <a href="../../../2018/10/08/153">[&lt;thread-prev]</a> <a href="165">[thread-next&gt;]</a> <a href=".">[day]</a> <a href="..">[month]</a> <a href="../..">[year]</a> <a href="../../..">[list]</a>
+<pre style="white-space: pre-wrap">
+Message-ID: &lt;4881900d-c8e5-278f-012f-541ad13ffca8&#64;codeaurora.org&gt;
+Date:   Tue, 9 Oct 2018 11:31:57 +0530
+From:   Veerabhadrarao Badiganti &lt;vbadigan&#64;...eaurora.org&gt;
+To:     Bjorn Andersson &lt;bjorn.andersson&#64;...aro.org&gt;,
+        Craig &lt;ctatlor97&#64;...il.com&gt;
+Cc:     Vijay Viswanath &lt;vviswana&#64;...eaurora.org&gt;, adrian.hunter&#64;...el.com,
+        ulf.hansson&#64;...aro.org, robh+dt&#64;...nel.org, mark.rutland&#64;....com,
+        linux-mmc&#64;...r.kernel.org, linux-kernel&#64;...r.kernel.org,
+        shawn.lin&#64;...k-chips.com, linux-arm-msm&#64;...r.kernel.org,
+        georgi.djakov&#64;...aro.org, devicetree&#64;...r.kernel.org,
+        asutoshd&#64;...eaurora.org, stummala&#64;...eaurora.org,
+        venkatg&#64;...eaurora.org, jeremymc&#64;...hat.com,
+        riteshh&#64;...eaurora.org, dianders&#64;...gle.com, sayalil&#64;...eaurora.org
+Subject: Re: [PATCH V3 0/4] Changes for SDCC5 version
+
+Hi
+
+
+On 10/8/2018 12:26 PM, Bjorn Andersson wrote:
+&gt; On Sun 07 Oct 01:07 PDT 2018, Craig wrote:
+&gt;
+&gt;&gt; Any updates on this?
+&gt;&gt;
+&gt; FWIW I used qcom,sdhci-msm-v5 on QCS404 successfully.
+&gt;
+&gt; Regards,
+&gt; Bjorn
+
+The base address and interrupt numbers needs to be updated in your dt.
+you can refer the below link to update interrupt number and base address
+<a href="https://android.googlesource.com/kernel/msm/+/android-msm-wahoo-4.4-oreo-m2/arch/arm/boot/dts/qcom/sdm660.dtsi" rel="nofollow">https://android.googlesource.com/kernel/msm/+/android-msm-wahoo-4.4-oreo-m2/arch/arm/boot/dts/qcom/sdm660.dtsi</a>
+
+&gt;&gt; On 25 September 2018 16:39:33 BST, Craig &lt;ctatlor97&#64;...il.com&gt; wrote:
+&gt;&gt;&gt;
+&gt;&gt;&gt; On 25 September 2018 12:17:26 BST, Veerabhadrarao Badiganti
+&gt;&gt;&gt; &lt;vbadigan&#64;...eaurora.org&gt; wrote:
+&gt;&gt;&gt;&gt; On 9/25/2018 1:18 AM, Craig Tatlor wrote:
+&gt;&gt;&gt;&gt;&gt; What socs have you tested this on?
+&gt;&gt;&gt;&gt;&gt; On sdm660 it seems to crash device
+&gt;&gt;&gt;&gt;&gt; when writing pwr ctl.
+&gt;&gt;&gt;&gt; Hi
+&gt;&gt;&gt;&gt; We have tested this on SDM845.
+&gt;&gt;&gt;&gt; SDM660 also has SDCC5 controller, so you would need to define
+&gt;&gt;&gt;&gt; "qcom,sdhci-msm-v5" in your platform dt.
+&gt;&gt;&gt;&gt; Can you confirm if you have defined this?
+&gt;&gt;&gt;&gt;
+&gt;&gt;&gt; Hi,
+&gt;&gt;&gt; Yes my DT entry is as follows
+&gt;&gt;&gt;
+&gt;&gt;&gt; sdhc_1: sdhci&#64;...24900 {
+Update this address. This could be the reason for the crash that you are 
+observing.
+
+&gt;&gt;&gt;      
+&gt;&gt;&gt;               
+&gt;&gt;&gt; compatible = "qcom,sdhci-msm-v5";
+&gt;&gt;&gt;           
+&gt;&gt;&gt; reg = &lt;0xc0c4000 0x1000&gt;, &lt;0xc0c5000 0x1000&gt;;
+&gt;&gt;&gt;           
+&gt;&gt;&gt; interrupts = &lt;GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH&gt;;
+&gt;&gt;&gt;           
+
+Please update this interrupt map aswell.
+
+&gt;&gt;&gt; interrupt-names = "pwr_irq";
+&gt;&gt;&gt;           
+&gt;&gt;&gt;                                                                        
+&gt;&gt;&gt; bus-width = &lt;8&gt;;
+&gt;&gt;&gt;           
+&gt;&gt;&gt; non-removable;
+&gt;&gt;&gt;           
+&gt;&gt;&gt;                                                                        
+&gt;&gt;&gt; vmmc-supply = &lt;&amp;pm660l_l4&gt;;
+&gt;&gt;&gt;           
+&gt;&gt;&gt; vqmmc-supply = &lt;&amp;pm660_l8&gt;;
+&gt;&gt;&gt;           
+&gt;&gt;&gt;                                                                        
+&gt;&gt;&gt; pinctrl-names = "default";
+&gt;&gt;&gt;           
+&gt;&gt;&gt; pinctrl-0 = &lt;&amp;sdc1_clk &amp;sdc1_cmd &amp;sdc1_data &amp;sdc1_rclk&gt;;
+&gt;&gt;&gt;           
+&gt;&gt;&gt;                                                                        
+&gt;&gt;&gt; clocks = &lt;&amp;gcc GCC_SDCC1_APPS_CLK&gt;, &lt;&amp;gcc GCC_SDCC1_AHB_CLK&gt;;
+&gt;&gt;&gt;           
+&gt;&gt;&gt; clock-names = "core", "iface";
+&gt;&gt;&gt;           
+&gt;&gt;&gt;         };
+&gt;&gt;&gt;
+&gt;&gt;&gt;&gt; BTW, can you please share few details of the platform that you are
+&gt;&gt;&gt;&gt; checking?
+&gt;&gt;&gt;&gt; We are not aware of any dev platform based on SDM660. This is just for
+&gt;&gt;&gt;&gt; my info
+&gt;&gt;&gt; I'm checking on the sony xperia xa2 (pioneer) smartphone.
+&gt;&gt;&gt;&gt;&gt; On Tue, Jun 19, 2018 at 11:09:17AM +0530, Vijay Viswanath wrote:
+&gt;&gt;&gt;&gt;&gt;&gt; With SDCC5, the MCI register space got removed and the offset/order
+&gt;&gt;&gt;&gt; of
+&gt;&gt;&gt;&gt;&gt;&gt; several registers have changed. Based on SDCC version used and the
+&gt;&gt;&gt;&gt; register,
+&gt;&gt;&gt;&gt;&gt;&gt; we need to pick the base address and offset.
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt; Depends on patch series: "[PATCH V5 0/2] mmc: sdhci-msm:
+&gt;&gt;&gt; Configuring
+&gt;&gt;&gt;&gt; IO_PAD support for sdhci-msm"
+&gt;&gt;&gt;&gt;&gt;&gt; Changes since RFC:
+&gt;&gt;&gt;&gt;&gt;&gt; 	Dropped voltage regulator changes in sdhci-msm
+&gt;&gt;&gt;&gt;&gt;&gt; 	Split the "Register changes for sdcc V5" patch
+&gt;&gt;&gt;&gt;&gt;&gt; 	Instead of checking mci removal for deciding which base addr to
+&gt;&gt;&gt;&gt; use,
+&gt;&gt;&gt;&gt;&gt;&gt; 	new function pointers are defined for the 2 variants of sdcc:
+&gt;&gt;&gt;&gt;&gt;&gt; 		1) MCI present
+&gt;&gt;&gt;&gt;&gt;&gt; 		2) V5 (mci removed)
+&gt;&gt;&gt;&gt;&gt;&gt; 	Instead of string comparing with the compatible string from DT
+&gt;&gt;&gt;&gt; file,
+&gt;&gt;&gt;&gt;&gt;&gt; 	the sdhci_msm_probe will now pick the data associated with the
+&gt;&gt;&gt;&gt;&gt;&gt; 	compatible entry and use it to load variant specific address
+&gt;&gt;&gt;&gt; offsets
+&gt;&gt;&gt;&gt;&gt;&gt; 	and msm variant specific read/write ops.
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt; Changes since V1:
+&gt;&gt;&gt;&gt;&gt;&gt; 	Removed unused msm_reab &amp; msm_writeb APIs
+&gt;&gt;&gt;&gt;&gt;&gt; 	Changed certain register addresses from uppercase to lowercase hex
+&gt;&gt;&gt;&gt;&gt;&gt; 	letters
+&gt;&gt;&gt;&gt;&gt;&gt; 	Removed extra lines and spaces
+&gt;&gt;&gt;&gt;&gt;&gt; 	Split "[PATCH V1 0/3] Changes for SDCC5 version" patch into two,
+&gt;&gt;&gt;&gt;&gt;&gt; 	one for Documentation and other for the driver changes.
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt; Changes since V2:
+&gt;&gt;&gt;&gt;&gt;&gt; 	Used lower case for macro function defenitions
+&gt;&gt;&gt;&gt;&gt;&gt; 	Removed unused function pointers for msm_readb &amp; msm_writeb
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt; Sayali Lokhande (3):
+&gt;&gt;&gt;&gt;&gt;&gt;     mmc: sdhci-msm: Define new Register address map
+&gt;&gt;&gt;&gt;&gt;&gt;     Documentation: sdhci-msm: Add new compatible string for SDCC v5
+&gt;&gt;&gt;&gt;&gt;&gt;     mmc: host: Register changes for sdcc V5
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt; Vijay Viswanath (1):
+&gt;&gt;&gt;&gt;&gt;&gt;     mmc: sdhci-msm: Add msm version specific ops and data structures
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt;    .../devicetree/bindings/mmc/sdhci-msm.txt          |   7 +-
+&gt;&gt;&gt;&gt;&gt;&gt;    drivers/mmc/host/sdhci-msm.c                       | 511
+&gt;&gt;&gt;&gt; ++++++++++++++++-----
+&gt;&gt;&gt;&gt;&gt;&gt;    2 files changed, 391 insertions(+), 127 deletions(-)
+&gt;&gt;&gt;&gt;&gt;&gt;
+&gt;&gt;&gt;&gt;&gt;&gt; -- 
+&gt;&gt;&gt;&gt;&gt;&gt;    Qualcomm India Private Limited, on behalf of Qualcomm Innovation
+&gt;&gt;&gt;&gt; Center, Inc.
+&gt;&gt;&gt;&gt;&gt;&gt; Qualcomm Innovation Center, Inc. is a member of Code Aurora Forum,
+&gt;&gt;&gt; a
+&gt;&gt;&gt;&gt; Linux Foundation Collaborative Project.
+&gt;&gt;&gt;&gt;&gt;&gt; --
+&gt;&gt;&gt;&gt;&gt;&gt; To unsubscribe from this list: send the line "unsubscribe
+&gt;&gt;&gt;&gt; linux-arm-msm" in
+&gt;&gt;&gt;&gt;&gt;&gt; the body of a message to majordomo&#64;...r.kernel.org
+&gt;&gt;&gt;&gt;&gt;&gt; More majordomo info at  <a href="http://vger.kernel.org/majordomo-info.html" rel="nofollow">http://vger.kernel.org/majordomo-info.html</a>
+&gt;&gt;&gt;&gt; Thanks,
+&gt;&gt;&gt;&gt; Veera
+&gt;&gt; -- 
+&gt;&gt; Sent from my Android device with K-9 Mail. Please excuse my brevity.
+
+Thanks,
+Veera
+</pre>
+<p><a href="https://www.openwall.com/blists/">Powered by blists</a> - <a href="https://lists.openwall.net">more mailing lists</a>
+
+
+<p>
+
+
+
+
+</body>
+</html>

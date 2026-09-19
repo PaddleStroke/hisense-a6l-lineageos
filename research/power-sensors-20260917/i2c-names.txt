@@ -1,0 +1,2 @@
+NODE=/sys/bus/i2c/devices/*/name
+cat: /sys/bus/i2c/devices/*/name: No such file or directory

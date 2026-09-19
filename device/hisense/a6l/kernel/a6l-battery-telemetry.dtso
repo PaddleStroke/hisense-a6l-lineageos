@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Offline candidate only. Fuel-gauge probe writes PMIC memory-interface controls.
+// Charging control and parallel charging are deliberately not enabled here.
+/dts-v1/;
+/plugin/;
+
+/ {
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            a6l_battery: battery {
+                compatible = "simple-battery";
+                // From the exact stock A6L battery profile; no new charge limit.
+                charge-full-design-microamp-hours = <3800000>;
+                voltage-max-design-microvolt = <4400000>;
+            };
+        };
+    };
+    fragment@1 {
+        target = <&pm660_fg>;
+        __overlay__ {
+            status = "okay";
+            monitored-battery = <&a6l_battery>;
+            // No charger dependency until charger policy is reviewed separately.
+        };
+    };
+};

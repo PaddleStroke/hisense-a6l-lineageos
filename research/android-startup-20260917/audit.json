@@ -1,0 +1,32 @@
+{
+  "scope": "Offline startup prerequisites; no phone changes",
+  "source_files": {
+    "system/core/init/first_stage_init.cpp": "ddb34b37d470ad8266150865513ed25cbf29e1d404e248022765fbb1d9bc3b31",
+    "system/core/init/selinux.cpp": "fe0c79ed657ff7cffbde0026cebd0f741b2b5703dbd092d2e19b2df52b5a139e",
+    "system/core/init/util.cpp": "d692940f4954c4ed71246e1de0f9beefd9e2d45b2895b8d34375f94e4d3659c8",
+    "system/core/init/Android.bp": "1735cb1ed0e787c75d20b412abf55e4aaaa73750cfb0a7654dd096a148d9b363"
+  },
+  "kernel_gaps": [
+    "SECURITY_NETWORK disabled makes SECURITY_SELINUX unavailable",
+    "F2FS_FS_SECURITY disabled; stock userdata is ext4, fix is for future F2FS capability"
+  ],
+  "vendor_policy_version": "28.0",
+  "system_policy_mappings": [
+    "202404.cil",
+    "202404.compat.cil",
+    "202504.cil",
+    "202504.compat.cil",
+    "202604.cil",
+    "31.0.cil",
+    "31.0.compat.cil",
+    "32.0.cil",
+    "32.0.compat.cil",
+    "33.0.cil",
+    "33.0.compat.cil",
+    "34.0.cil",
+    "34.0.compat.cil"
+  ],
+  "next_test": "Actual first-stage init in diskless QEMU with recovery marker and diagnostic exec sentinel; old-kernel negative / new-kernel positive",
+  "init_source_revision": "1375cc767964bbac2070bc41ebc3c864589846b4",
+  "no_vendor28_mapping": true
+}

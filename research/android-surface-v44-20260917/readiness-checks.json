@@ -1,0 +1,10 @@
+{
+  "diagnostic": true,
+  "adb_failure_rejected": true,
+  "stock_kernel_rejected": true,
+  "insecure_adb_rejected": true,
+  "unprivileged_rejected": true,
+  "persistent_mount_rejected": true,
+  "missing_tmpfs_rejected": true,
+  "truncated_mount_rejected": true
+}

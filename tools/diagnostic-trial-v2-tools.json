@@ -1,0 +1,7 @@
+{
+  "Write-LaptopDiagnosticRecovery-v2.py": "790c93650b920197881da7bf0d19f95bf5c2917b3fc984a49836f26ee0acaff3",
+  "Run-LaptopDiagnosticInstall-v2.py": "3552b2852899b35efcf21dad26bee6112ed0b796817be3055b4acf43b923cace",
+  "Run-LaptopDiagnosticRestore-v2.py": "08b166befbb3ed0e37b1784fbfc8f3647fc3915103ab6c79dc0963f1ca7662ce",
+  "Inspect-DiagnosticRecovery-v2.py": "af3fe10613d329cc3ecf9c713215d46a7a59bca918be672491eea27aba94389f",
+  "Run-LaptopProbeCapture-v2.py": "823f4dc0621b4faa9ebda7c86c1bb56f5606beeb0dc07e4ba1b83db98ae37995"
+}

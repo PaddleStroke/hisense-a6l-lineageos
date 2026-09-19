@@ -1,0 +1,1613 @@
+
+sdhci_msm_pwr_irq [inferred inspection range, not debug-info size] at 0xffffff8008a2f4bc, 1372 bytes
+ffffff8008a2f4bc: stp      x29, x30, [sp, #-0x90]!                  
+ffffff8008a2f4c0: mov      x29, sp                                  
+ffffff8008a2f4c4: stp      x21, x22, [sp, #0x20]                    
+ffffff8008a2f4c8: stp      x25, x26, [sp, #0x40]                    
+ffffff8008a2f4cc: stp      x19, x20, [sp, #0x10]                    
+ffffff8008a2f4d0: stp      x27, x28, [sp, #0x50]                    
+ffffff8008a2f4d4: stp      x23, x24, [sp, #0x30]                    
+ffffff8008a2f4d8: adrp     x26, #0xffffff800a006000                 
+ffffff8008a2f4dc: mov      x22, x1                                  
+ffffff8008a2f4e0: ldr      x23, [x1, #0x488]                        
+ffffff8008a2f4e4: ldr      x0, [x26, #0x9c8]                        
+ffffff8008a2f4e8: ldr      x24, [x23, #0x1800]                      
+ffffff8008a2f4ec: str      x0, [x29, #0x88]                         
+ffffff8008a2f4f0: mov      x0, x1                                   
+ffffff8008a2f4f4: ldr      w1, [x24, #0x24]                         
+ffffff8008a2f4f8: bl       #0xffffff8008a2d7f8                      sdhci_msm_readb_relaxed
+ffffff8008a2f4fc: uxtb     w25, w0                                  
+ffffff8008a2f500: ldr      w2, [x24, #0x2c]                         
+ffffff8008a2f504: mov      x1, x22                                  
+ffffff8008a2f508: bl       #0xffffff8008a2d8c8                      sdhci_msm_writeb_relaxed
+ffffff8008a2f50c: dsb      sy                                       
+ffffff8008a2f510: mov      w20, #0xb                                
+ffffff8008a2f514: ldr      w1, [x24, #0x24]                         
+ffffff8008a2f518: mov      x0, x22                                  
+ffffff8008a2f51c: bl       #0xffffff8008a2d7f8                      sdhci_msm_readb_relaxed
+ffffff8008a2f520: tst      w0, w25                                  
+ffffff8008a2f524: b.eq     #0xffffff8008a2f578                      
+ffffff8008a2f528: subs     w20, w20, #1                             
+ffffff8008a2f52c: b.ne     #0xffffff8008a2f55c                      
+ffffff8008a2f530: ldr      x0, [x22, #0x28]                         
+ffffff8008a2f534: ldr      x1, [x0, #0x58]                          
+ffffff8008a2f538: cbnz     x1, #0xffffff8008a2f540                  
+ffffff8008a2f53c: ldr      x1, [x0, #0x18]                          
+ffffff8008a2f540: adrp     x0, #0xffffff800967a000                  
+ffffff8008a2f544: mov      w2, w25                                  
+ffffff8008a2f548: add      x0, x0, #0x580                           
+ffffff8008a2f54c: bl       #0xffffff800817e0b4                      printk
+ffffff8008a2f550: mov      x0, x22                                  
+ffffff8008a2f554: bl       #0xffffff8008a2f3ec                      sdhci_msm_dump_pwr_ctrl_regs
+ffffff8008a2f558: brk      #0x800                                   
+ffffff8008a2f55c: ldr      w2, [x24, #0x2c]                         
+ffffff8008a2f560: mov      w0, w25                                  
+ffffff8008a2f564: mov      x1, x22                                  
+ffffff8008a2f568: bl       #0xffffff8008a2d8c8                      sdhci_msm_writeb_relaxed
+ffffff8008a2f56c: mov      x0, #0xa7c6                              
+ffffff8008a2f570: bl       #0xffffff800839a488                      __const_udelay
+ffffff8008a2f574: b        #0xffffff8008a2f514                      
+ffffff8008a2f578: tbz      w25, #1, #0xffffff8008a2f68c             
+ffffff8008a2f57c: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f580: ldr      x0, [x0, #0x10]                          
+ffffff8008a2f584: cbz      x0, #0xffffff8008a2f654                  
+ffffff8008a2f588: ldr      x1, [x0]                                 
+ffffff8008a2f58c: mov      x21, #0                                  
+ffffff8008a2f590: ldr      x0, [x0, #8]                             
+ffffff8008a2f594: mov      w27, #1                                  
+ffffff8008a2f598: str      x1, [x29, #0x78]                         
+ffffff8008a2f59c: str      x0, [x29, #0x80]                         
+ffffff8008a2f5a0: add      x0, x29, #0x78                           
+ffffff8008a2f5a4: ldr      x20, [x21, x0]                           
+ffffff8008a2f5a8: cbz      x20, #0xffffff8008a2f5fc                 
+ffffff8008a2f5ac: ldrb     w0, [x20, #0x23]                         
+ffffff8008a2f5b0: ldr      w3, [x20, #0x1c]                         
+ffffff8008a2f5b4: cbz      w0, #0xffffff8008a2f60c                  
+ffffff8008a2f5b8: ldr      x0, [x20]                                
+ffffff8008a2f5bc: mov      w1, w3                                   
+ffffff8008a2f5c0: str      x3, [x29, #0x68]                         
+ffffff8008a2f5c4: bl       #0xffffff80085a277c                      regulator_set_load
+ffffff8008a2f5c8: mov      w19, w0                                  
+ffffff8008a2f5cc: ldr      x3, [x29, #0x68]                         
+ffffff8008a2f5d0: tbz      w19, #0x1f, #0xffffff8008a2f60c          
+ffffff8008a2f5d4: adrp     x1, #0xffffff80090e5000                  
+ffffff8008a2f5d8: adrp     x0, #0xffffff800967a000                  
+ffffff8008a2f5dc: add      x1, x1, #0x4b0                           
+ffffff8008a2f5e0: ldr      x2, [x20, #8]                            
+ffffff8008a2f5e4: add      x1, x1, #0x3b8                           
+ffffff8008a2f5e8: mov      w4, w19                                  
+ffffff8008a2f5ec: add      x0, x0, #0x5b7                           
+ffffff8008a2f5f0: bl       #0xffffff800817e0b4                      printk
+ffffff8008a2f5f4: b        #0xffffff8008a2f650                      
+ffffff8008a2f5f8: strb     w27, [x20, #0x20]                        
+ffffff8008a2f5fc: add      x21, x21, #8                             
+ffffff8008a2f600: cmp      x21, #0x10                               
+ffffff8008a2f604: b.eq     #0xffffff8008a2f654                      
+ffffff8008a2f608: b        #0xffffff8008a2f5a0                      
+ffffff8008a2f60c: ldrb     w0, [x20, #0x20]                         
+ffffff8008a2f610: cbnz     w0, #0xffffff8008a2f620                  
+ffffff8008a2f614: ldrb     w0, [x20, #0x23]                         
+ffffff8008a2f618: ldr      w1, [x20, #0x14]                         
+ffffff8008a2f61c: cbnz     w0, #0xffffff8008a2f6a0                  
+ffffff8008a2f620: ldr      x0, [x20]                                
+ffffff8008a2f624: bl       #0xffffff80085a2b18                      regulator_enable
+ffffff8008a2f628: mov      w19, w0                                  
+ffffff8008a2f62c: cbz      w0, #0xffffff8008a2f5f8                  
+ffffff8008a2f630: adrp     x1, #0xffffff80090e5000                  
+ffffff8008a2f634: adrp     x0, #0xffffff800967a000                  
+ffffff8008a2f638: add      x1, x1, #0x4b0                           
+ffffff8008a2f63c: ldr      x2, [x20, #8]                            
+ffffff8008a2f640: add      x0, x0, #0x5f3                           
+ffffff8008a2f644: add      x1, x1, #0x3d8                           
+ffffff8008a2f648: mov      w3, w19                                  
+ffffff8008a2f64c: bl       #0xffffff800817e0b4                      printk
+ffffff8008a2f650: cbnz     w19, #0xffffff8008a2f6b4                 
+ffffff8008a2f654: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f658: mov      w1, #1                                   
+ffffff8008a2f65c: mov      w20, #8                                  
+ffffff8008a2f660: mov      w28, #2                                  
+ffffff8008a2f664: mov      w21, #1                                  
+ffffff8008a2f668: bl       #0xffffff8008a2c004                      sdhci_msm_setup_pins
+ffffff8008a2f66c: mov      w19, w0                                  
+ffffff8008a2f670: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f674: mov      w1, #1                                   
+ffffff8008a2f678: ldr      x0, [x0, #0x10]                          
+ffffff8008a2f67c: bl       #0xffffff8008a2cbc0                      sdhci_msm_set_vdd_io_vol.isra.26.constprop.33
+ffffff8008a2f680: orr      w19, w0, w19                             
+ffffff8008a2f684: cbz      w19, #0xffffff8008a2f6c0                 
+ffffff8008a2f688: b        #0xffffff8008a2f6bc                      
+ffffff8008a2f68c: mov      w20, #0                                  
+ffffff8008a2f690: mov      w28, #0                                  
+ffffff8008a2f694: mov      w19, #0                                  
+ffffff8008a2f698: mov      w21, #0                                  
+ffffff8008a2f69c: b        #0xffffff8008a2f6c0                      
+ffffff8008a2f6a0: mov      x0, x20                                  
+ffffff8008a2f6a4: mov      w2, w1                                   
+ffffff8008a2f6a8: bl       #0xffffff8008a2c1c0                      sdhci_msm_vreg_set_voltage.part.25
+ffffff8008a2f6ac: mov      w19, w0                                  
+ffffff8008a2f6b0: cbz      w0, #0xffffff8008a2f620                  
+ffffff8008a2f6b4: mov      w20, #8                                  
+ffffff8008a2f6b8: mov      w28, #2                                  
+ffffff8008a2f6bc: mov      w21, w28                                 
+ffffff8008a2f6c0: add      x27, x23, #1, lsl #12                    
+ffffff8008a2f6c4: tbz      w25, #0, #0xffffff8008a2f840             
+ffffff8008a2f6c8: ldrb     w0, [x27, #0x809]                        
+ffffff8008a2f6cc: cbz      w0, #0xffffff8008a2f800                  
+ffffff8008a2f6d0: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f6d4: ldr      x0, [x0, #0x10]                          
+ffffff8008a2f6d8: cbz      x0, #0xffffff8008a2f80c                  
+ffffff8008a2f6dc: ldr      x1, [x0]                                 
+ffffff8008a2f6e0: mov      x28, #0                                  
+ffffff8008a2f6e4: ldr      x0, [x0, #8]                             
+ffffff8008a2f6e8: str      x1, [x29, #0x78]                         
+ffffff8008a2f6ec: str      x0, [x29, #0x80]                         
+ffffff8008a2f6f0: add      x0, x29, #0x78                           
+ffffff8008a2f6f4: ldr      x20, [x28, x0]                           
+ffffff8008a2f6f8: cbz      x20, #0xffffff8008a2f7f0                 
+ffffff8008a2f6fc: ldrb     w0, [x20, #0x20]                         
+ffffff8008a2f700: cbz      w0, #0xffffff8008a2f7f0                  
+ffffff8008a2f704: ldrb     w0, [x20, #0x21]                         
+ffffff8008a2f708: cbnz     w0, #0xffffff8008a2f780                  
+ffffff8008a2f70c: ldr      x0, [x20]                                
+ffffff8008a2f710: bl       #0xffffff80085a2a9c                      regulator_disable
+ffffff8008a2f714: mov      w19, w0                                  
+ffffff8008a2f718: cbz      w0, #0xffffff8008a2f740                  
+ffffff8008a2f71c: adrp     x1, #0xffffff80090e5000                  
+ffffff8008a2f720: adrp     x0, #0xffffff800967a000                  
+ffffff8008a2f724: add      x1, x1, #0x4b0                           
+ffffff8008a2f728: ldr      x2, [x20, #8]                            
+ffffff8008a2f72c: add      x1, x1, #0x3f0                           
+ffffff8008a2f730: mov      w3, w19                                  
+ffffff8008a2f734: add      x0, x0, #0x61e                           
+ffffff8008a2f738: bl       #0xffffff800817e0b4                      printk
+ffffff8008a2f73c: b        #0xffffff8008a2f800                      
+ffffff8008a2f740: ldrb     w0, [x20, #0x23]                         
+ffffff8008a2f744: strb     wzr, [x20, #0x20]                        
+ffffff8008a2f748: cbz      w0, #0xffffff8008a2f7d4                  
+ffffff8008a2f74c: ldr      x0, [x20]                                
+ffffff8008a2f750: mov      w1, #0                                   
+ffffff8008a2f754: bl       #0xffffff80085a277c                      regulator_set_load
+ffffff8008a2f758: tbz      w0, #0x1f, #0xffffff8008a2f7d4           
+ffffff8008a2f75c: adrp     x1, #0xffffff80090e5000                  
+ffffff8008a2f760: mov      w19, w0                                  
+ffffff8008a2f764: add      x1, x1, #0x4b0                           
+ffffff8008a2f768: adrp     x0, #0xffffff800967a000                  
+ffffff8008a2f76c: add      x0, x0, #0x5b7                           
+ffffff8008a2f770: add      x1, x1, #0x3b8                           
+ffffff8008a2f774: ldr      x2, [x20, #8]                            
+ffffff8008a2f778: mov      w3, #0                                   
+ffffff8008a2f77c: b        #0xffffff8008a2f7c8                      
+ffffff8008a2f780: ldrb     w0, [x20, #0x22]                         
+ffffff8008a2f784: cbz      w0, #0xffffff8008a2f7f0                  
+ffffff8008a2f788: ldrb     w0, [x20, #0x23]                         
+ffffff8008a2f78c: ldr      w3, [x20, #0x18]                         
+ffffff8008a2f790: cbz      w0, #0xffffff8008a2f7f0                  
+ffffff8008a2f794: ldr      x0, [x20]                                
+ffffff8008a2f798: mov      w1, w3                                   
+ffffff8008a2f79c: str      x3, [x29, #0x68]                         
+ffffff8008a2f7a0: bl       #0xffffff80085a277c                      regulator_set_load
+ffffff8008a2f7a4: mov      w19, w0                                  
+ffffff8008a2f7a8: ldr      x3, [x29, #0x68]                         
+ffffff8008a2f7ac: tbz      w19, #0x1f, #0xffffff8008a2f7f0          
+ffffff8008a2f7b0: adrp     x1, #0xffffff80090e5000                  
+ffffff8008a2f7b4: adrp     x0, #0xffffff800967a000                  
+ffffff8008a2f7b8: add      x1, x1, #0x4b0                           
+ffffff8008a2f7bc: ldr      x2, [x20, #8]                            
+ffffff8008a2f7c0: add      x0, x0, #0x5b7                           
+ffffff8008a2f7c4: add      x1, x1, #0x3b8                           
+ffffff8008a2f7c8: mov      w4, w19                                  
+ffffff8008a2f7cc: bl       #0xffffff800817e0b4                      printk
+ffffff8008a2f7d0: b        #0xffffff8008a2f800                      
+ffffff8008a2f7d4: ldrb     w0, [x20, #0x23]                         
+ffffff8008a2f7d8: ldr      w2, [x20, #0x14]                         
+ffffff8008a2f7dc: cbz      w0, #0xffffff8008a2f7f0                  
+ffffff8008a2f7e0: mov      x0, x20                                  
+ffffff8008a2f7e4: mov      w1, #0                                   
+ffffff8008a2f7e8: bl       #0xffffff8008a2c1c0                      sdhci_msm_vreg_set_voltage.part.25
+ffffff8008a2f7ec: cbnz     w0, #0xffffff8008a2f804                  
+ffffff8008a2f7f0: add      x28, x28, #8                             
+ffffff8008a2f7f4: cmp      x28, #0x10                               
+ffffff8008a2f7f8: b.eq     #0xffffff8008a2f80c                      
+ffffff8008a2f7fc: b        #0xffffff8008a2f6f0                      
+ffffff8008a2f800: cbz      w19, #0xffffff8008a2f80c                 
+ffffff8008a2f804: orr      w21, w21, #2                             
+ffffff8008a2f808: b        #0xffffff8008a2f838                      
+ffffff8008a2f80c: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f810: mov      w1, #0                                   
+ffffff8008a2f814: bl       #0xffffff8008a2c004                      sdhci_msm_setup_pins
+ffffff8008a2f818: mov      w19, w0                                  
+ffffff8008a2f81c: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f820: mov      w1, #0                                   
+ffffff8008a2f824: ldr      x0, [x0, #0x10]                          
+ffffff8008a2f828: bl       #0xffffff8008a2cbc0                      sdhci_msm_set_vdd_io_vol.isra.26.constprop.33
+ffffff8008a2f82c: orr      w0, w0, w19                              
+ffffff8008a2f830: cbnz     w0, #0xffffff8008a2f804                  
+ffffff8008a2f834: orr      w21, w21, #1                             
+ffffff8008a2f838: mov      w20, #4                                  
+ffffff8008a2f83c: mov      w28, #1                                  
+ffffff8008a2f840: tbz      w25, #2, #0xffffff8008a2f868             
+ffffff8008a2f844: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f848: mov      w1, #0                                   
+ffffff8008a2f84c: ldr      x0, [x0, #0x10]                          
+ffffff8008a2f850: bl       #0xffffff8008a2cbc0                      sdhci_msm_set_vdd_io_vol.isra.26.constprop.33
+ffffff8008a2f854: cbz      w0, #0xffffff8008a2f860                  
+ffffff8008a2f858: orr      w21, w21, #8                             
+ffffff8008a2f85c: b        #0xffffff8008a2f864                      
+ffffff8008a2f860: orr      w21, w21, #4                             
+ffffff8008a2f864: mov      w20, #4                                  
+ffffff8008a2f868: tbz      w25, #3, #0xffffff8008a2f890             
+ffffff8008a2f86c: ldr      x0, [x23, #0x58]                         
+ffffff8008a2f870: mov      w1, #1                                   
+ffffff8008a2f874: ldr      x0, [x0, #0x10]                          
+ffffff8008a2f878: bl       #0xffffff8008a2cbc0                      sdhci_msm_set_vdd_io_vol.isra.26.constprop.33
+ffffff8008a2f87c: cbz      w0, #0xffffff8008a2f888                  
+ffffff8008a2f880: orr      w21, w21, #8                             
+ffffff8008a2f884: b        #0xffffff8008a2f88c                      
+ffffff8008a2f888: orr      w21, w21, #4                             
+ffffff8008a2f88c: mov      w20, #8                                  
+ffffff8008a2f890: ldr      w2, [x24, #0x30]                         
+ffffff8008a2f894: mov      w0, w21                                  
+ffffff8008a2f898: mov      x1, x22                                  
+ffffff8008a2f89c: bl       #0xffffff8008a2d8c8                      sdhci_msm_writeb_relaxed
+ffffff8008a2f8a0: dsb      sy                                       
+ffffff8008a2f8a4: tbz      w20, #3, #0xffffff8008a2f924             
+ffffff8008a2f8a8: ldr      w0, [x23, #0x15e8]                       
+ffffff8008a2f8ac: tbz      w0, #0x19, #0xffffff8008a2f924           
+ffffff8008a2f8b0: ldrb     w0, [x27, #0x808]                        
+ffffff8008a2f8b4: cbnz     w0, #0xffffff8008a2f924                  
+ffffff8008a2f8b8: ldr      w0, [x24, #0x40]                         
+ffffff8008a2f8bc: ldr      x21, [x22, #0x18]                        
+ffffff8008a2f8c0: add      x21, x21, x0                             
+ffffff8008a2f8c4: mov      w0, #2                                   
+ffffff8008a2f8c8: mov      x1, x21                                  
+ffffff8008a2f8cc: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2f8d0: mov      w25, w0                                  
+ffffff8008a2f8d4: b        #0xffffff8008a2f8d8                      
+ffffff8008a2f8d8: nop                                               
+ffffff8008a2f8dc: b        #0xffffff8008a2f8e0                      
+ffffff8008a2f8e0: nop                                               
+ffffff8008a2f8e4: ldr      x0, [x22, #0x18]                         
+ffffff8008a2f8e8: ldr      w19, [x24, #0x40]                        
+ffffff8008a2f8ec: add      x19, x0, x19                             
+ffffff8008a2f8f0: mov      w0, #1                                   
+ffffff8008a2f8f4: mov      x1, x19                                  
+ffffff8008a2f8f8: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2f8fc: b        #0xffffff8008a2f900                      
+ffffff8008a2f900: nop                                               
+ffffff8008a2f904: b        #0xffffff8008a2f908                      
+ffffff8008a2f908: nop                                               
+ffffff8008a2f90c: ldr      w19, [x19]                               
+ffffff8008a2f910: cbz      w0, #0xffffff8008a2f91c                  
+ffffff8008a2f914: dsb      sy                                       
+ffffff8008a2f918: isb                                               
+ffffff8008a2f91c: and      w19, w19, #0xfffeffff                    
+ffffff8008a2f920: b        #0xffffff8008a2f998                      
+ffffff8008a2f924: tbnz     w20, #2, #0xffffff8008a2f930             
+ffffff8008a2f928: ldr      w0, [x23, #0x15e8]                       
+ffffff8008a2f92c: tbz      w0, #0x1a, #0xffffff8008a2f9a8           
+ffffff8008a2f930: ldr      w0, [x24, #0x40]                         
+ffffff8008a2f934: ldr      x21, [x22, #0x18]                        
+ffffff8008a2f938: add      x21, x21, x0                             
+ffffff8008a2f93c: mov      w0, #2                                   
+ffffff8008a2f940: mov      x1, x21                                  
+ffffff8008a2f944: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2f948: mov      w25, w0                                  
+ffffff8008a2f94c: b        #0xffffff8008a2f950                      
+ffffff8008a2f950: nop                                               
+ffffff8008a2f954: b        #0xffffff8008a2f958                      
+ffffff8008a2f958: nop                                               
+ffffff8008a2f95c: ldr      x0, [x22, #0x18]                         
+ffffff8008a2f960: ldr      w19, [x24, #0x40]                        
+ffffff8008a2f964: add      x19, x0, x19                             
+ffffff8008a2f968: mov      w0, #1                                   
+ffffff8008a2f96c: mov      x1, x19                                  
+ffffff8008a2f970: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2f974: b        #0xffffff8008a2f978                      
+ffffff8008a2f978: nop                                               
+ffffff8008a2f97c: b        #0xffffff8008a2f980                      
+ffffff8008a2f980: nop                                               
+ffffff8008a2f984: ldr      w19, [x19]                               
+ffffff8008a2f988: cbz      w0, #0xffffff8008a2f994                  
+ffffff8008a2f98c: dsb      sy                                       
+ffffff8008a2f990: isb                                               
+ffffff8008a2f994: orr      w19, w19, #0x10000                       
+ffffff8008a2f998: str      w19, [x21]                               
+ffffff8008a2f99c: cbz      w25, #0xffffff8008a2f9a8                 
+ffffff8008a2f9a0: dsb      sy                                       
+ffffff8008a2f9a4: isb                                               
+ffffff8008a2f9a8: dsb      sy                                       
+ffffff8008a2f9ac: add      x22, x22, #0x278                         
+ffffff8008a2f9b0: mov      x0, x22                                  
+ffffff8008a2f9b4: bl       #0xffffff8008f3c1d4                      _raw_spin_lock_irqsave
+ffffff8008a2f9b8: mov      x1, x0                                   
+ffffff8008a2f9bc: cbz      w28, #0xffffff8008a2f9c4                 
+ffffff8008a2f9c0: str      w28, [x23, #0x14d0]                      
+ffffff8008a2f9c4: cbz      w20, #0xffffff8008a2f9cc                 
+ffffff8008a2f9c8: str      w20, [x23, #0x14d4]                      
+ffffff8008a2f9cc: add      x0, x27, #0x4d8                          
+ffffff8008a2f9d0: str      x1, [x29, #0x68]                         
+ffffff8008a2f9d4: bl       #0xffffff80080f2768                      complete
+ffffff8008a2f9d8: ldr      x1, [x29, #0x68]                         
+ffffff8008a2f9dc: mov      x0, x22                                  
+ffffff8008a2f9e0: bl       #0xffffff8008f3c400                      _raw_spin_unlock_irqrestore
+ffffff8008a2f9e4: ldr      x2, [x29, #0x88]                         
+ffffff8008a2f9e8: mov      w0, #1                                   
+ffffff8008a2f9ec: ldr      x1, [x26, #0x9c8]                        
+ffffff8008a2f9f0: cmp      x2, x1                                   
+ffffff8008a2f9f4: b.eq     #0xffffff8008a2f9fc                      
+ffffff8008a2f9f8: bl       #0xffffff80080a51bc                      __stack_chk_fail
+ffffff8008a2f9fc: ldp      x19, x20, [sp, #0x10]                    
+ffffff8008a2fa00: ldp      x21, x22, [sp, #0x20]                    
+ffffff8008a2fa04: ldp      x23, x24, [sp, #0x30]                    
+ffffff8008a2fa08: ldp      x25, x26, [sp, #0x40]                    
+ffffff8008a2fa0c: ldp      x27, x28, [sp, #0x50]                    
+ffffff8008a2fa10: ldp      x29, x30, [sp], #0x90                    
+ffffff8008a2fa14: ret                                               
+
+sdhci_msm_check_power_status [inferred inspection range, not debug-info size] at 0xffffff8008a2fa18, 288 bytes
+ffffff8008a2fa18: stp      x29, x30, [sp, #-0x50]!                  
+ffffff8008a2fa1c: mov      x29, sp                                  
+ffffff8008a2fa20: stp      x19, x20, [sp, #0x10]                    
+ffffff8008a2fa24: stp      x21, x22, [sp, #0x20]                    
+ffffff8008a2fa28: stp      x23, x24, [sp, #0x30]                    
+ffffff8008a2fa2c: str      x25, [sp, #0x40]                         
+ffffff8008a2fa30: add      x23, x0, #0x278                          
+ffffff8008a2fa34: mov      x19, x0                                  
+ffffff8008a2fa38: mov      w20, w1                                  
+ffffff8008a2fa3c: ldr      x21, [x0, #0x488]                        
+ffffff8008a2fa40: mov      x0, x23                                  
+ffffff8008a2fa44: add      x22, x21, #1, lsl #12                    
+ffffff8008a2fa48: ldr      x24, [x21, #0x1800]                      
+ffffff8008a2fa4c: bl       #0xffffff8008f3c1d4                      _raw_spin_lock_irqsave
+ffffff8008a2fa50: mov      x25, x0                                  
+ffffff8008a2fa54: mov      w0, #0x20000000                          
+ffffff8008a2fa58: ldrb     w1, [x22, #0x7f9]                        
+ffffff8008a2fa5c: cbnz     w1, #0xffffff8008a2fa6c                  
+ffffff8008a2fa60: ldr      w1, [x24, #0x10]                         
+ffffff8008a2fa64: mov      x0, x19                                  
+ffffff8008a2fa68: bl       #0xffffff8008a2d860                      sdhci_msm_readl_relaxed
+ffffff8008a2fa6c: tst      w20, #0xc                                
+ffffff8008a2fa70: b.eq     #0xffffff8008a2fa94                      
+ffffff8008a2fa74: tbz      w0, #0x1d, #0xffffff8008a2fa84           
+ffffff8008a2fa78: tbz      w20, #3, #0xffffff8008a2fa94             
+ffffff8008a2fa7c: ldrb     w0, [x19, #0x294]                        
+ffffff8008a2fa80: cbnz     w0, #0xffffff8008a2fa94                  
+ffffff8008a2fa84: mov      x0, x23                                  
+ffffff8008a2fa88: mov      x1, x25                                  
+ffffff8008a2fa8c: bl       #0xffffff8008f3c400                      _raw_spin_unlock_irqrestore
+ffffff8008a2fa90: b        #0xffffff8008a2fb20                      
+ffffff8008a2fa94: ldr      w0, [x21, #0x14d0]                       
+ffffff8008a2fa98: mov      w24, #1                                  
+ffffff8008a2fa9c: tst      w20, w0                                  
+ffffff8008a2faa0: b.ne     #0xffffff8008a2fab0                      
+ffffff8008a2faa4: ldr      w0, [x21, #0x14d4]                       
+ffffff8008a2faa8: tst      w20, w0                                  
+ffffff8008a2faac: cset     w24, ne                                  
+ffffff8008a2fab0: mov      x0, x23                                  
+ffffff8008a2fab4: mov      x1, x25                                  
+ffffff8008a2fab8: bl       #0xffffff8008f3c400                      _raw_spin_unlock_irqrestore
+ffffff8008a2fabc: cbz      w24, #0xffffff8008a2fae4                 
+ffffff8008a2fac0: adrp     x2, #0xffffff800a527000                  
+ffffff8008a2fac4: adrp     x1, #0xffffff8009509000                  
+ffffff8008a2fac8: add      x2, x2, #0xb98                           
+ffffff8008a2facc: str      wzr, [x21, #0x14d8]                      
+ffffff8008a2fad0: add      x0, x22, #0x4e0                          
+ffffff8008a2fad4: add      x1, x1, #0x6ad                           
+ffffff8008a2fad8: add      x2, x2, #0x18                            
+ffffff8008a2fadc: bl       #0xffffff80080f1e40                      __init_waitqueue_head
+ffffff8008a2fae0: b        #0xffffff8008a2fb20                      
+ffffff8008a2fae4: add      x0, x22, #0x4d8                          
+ffffff8008a2fae8: mov      x1, #0x1f4                               
+ffffff8008a2faec: bl       #0xffffff8008f399c8                      wait_for_completion_timeout
+ffffff8008a2faf0: cbnz     x0, #0xffffff8008a2fb20                  
+ffffff8008a2faf4: ldr      x0, [x19, #0x28]                         
+ffffff8008a2faf8: ldr      x1, [x0, #0x58]                          
+ffffff8008a2fafc: cbnz     x1, #0xffffff8008a2fb04                  
+ffffff8008a2fb00: ldr      x1, [x0, #0x18]                          
+ffffff8008a2fb04: adrp     x0, #0xffffff800967a000                  
+ffffff8008a2fb08: mov      w2, w20                                  
+ffffff8008a2fb0c: add      x0, x0, #0x64a                           
+ffffff8008a2fb10: bl       #0xffffff800817e0b4                      printk
+ffffff8008a2fb14: brk      #0x800                                   
+ffffff8008a2fb18: mov      x0, x19                                  
+ffffff8008a2fb1c: bl       #0xffffff8008a2f3ec                      sdhci_msm_dump_pwr_ctrl_regs
+ffffff8008a2fb20: ldp      x19, x20, [sp, #0x10]                    
+ffffff8008a2fb24: ldp      x21, x22, [sp, #0x20]                    
+ffffff8008a2fb28: ldp      x23, x24, [sp, #0x30]                    
+ffffff8008a2fb2c: ldr      x25, [sp, #0x40]                         
+ffffff8008a2fb30: ldp      x29, x30, [sp], #0x50                    
+ffffff8008a2fb34: ret                                               
+
+mmc_go_idle [inferred inspection range, not debug-info size] at 0xffffff8008a089fc, 228 bytes
+ffffff8008a089fc: stp      x29, x30, [sp, #-0x80]!                  
+ffffff8008a08a00: adrp     x1, #0xffffff800a006000                  
+ffffff8008a08a04: mov      x29, sp                                  
+ffffff8008a08a08: stp      x19, x20, [sp, #0x10]                    
+ffffff8008a08a0c: str      x21, [sp, #0x20]                         
+ffffff8008a08a10: add      x20, x29, #0x38                          
+ffffff8008a08a14: ldr      x2, [x1, #0x9c8]                         
+ffffff8008a08a18: mov      x19, x0                                  
+ffffff8008a08a1c: str      x2, [x29, #0x78]                         
+ffffff8008a08a20: mov      x21, x1                                  
+ffffff8008a08a24: ldr      w2, [x0, #0x3fc]                         
+ffffff8008a08a28: stp      xzr, xzr, [x20]                          
+ffffff8008a08a2c: stp      xzr, xzr, [x20, #0x10]                   
+ffffff8008a08a30: stp      xzr, xzr, [x20, #0x20]                   
+ffffff8008a08a34: stp      xzr, xzr, [x20, #0x30]                   
+ffffff8008a08a38: tbnz     w2, #4, #0xffffff8008a08a54              
+ffffff8008a08a3c: mov      w1, #1                                   
+ffffff8008a08a40: bl       #0xffffff80089ffaa4                      mmc_set_chip_select
+ffffff8008a08a44: bl       #0xffffff8008f39048                      _cond_resched
+ffffff8008a08a48: mov      x0, #0x8958                              
+ffffff8008a08a4c: movk     x0, #0x41, lsl #16                       
+ffffff8008a08a50: bl       #0xffffff800839a488                      __const_udelay
+ffffff8008a08a54: mov      w0, #0xc0                                
+ffffff8008a08a58: mov      x1, x20                                  
+ffffff8008a08a5c: mov      w2, #0                                   
+ffffff8008a08a60: str      w0, [x29, #0x50]                         
+ffffff8008a08a64: mov      x0, x19                                  
+ffffff8008a08a68: str      wzr, [x29, #0x38]                        
+ffffff8008a08a6c: str      wzr, [x29, #0x3c]                        
+ffffff8008a08a70: bl       #0xffffff8008a00430                      mmc_wait_for_cmd
+ffffff8008a08a74: mov      w20, w0                                  
+ffffff8008a08a78: bl       #0xffffff8008f39048                      _cond_resched
+ffffff8008a08a7c: mov      x0, #0x8958                              
+ffffff8008a08a80: movk     x0, #0x41, lsl #16                       
+ffffff8008a08a84: bl       #0xffffff800839a488                      __const_udelay
+ffffff8008a08a88: ldr      w0, [x19, #0x3fc]                        
+ffffff8008a08a8c: tbnz     w0, #4, #0xffffff8008a08aac              
+ffffff8008a08a90: mov      x0, x19                                  
+ffffff8008a08a94: mov      w1, #0                                   
+ffffff8008a08a98: bl       #0xffffff80089ffaa4                      mmc_set_chip_select
+ffffff8008a08a9c: bl       #0xffffff8008f39048                      _cond_resched
+ffffff8008a08aa0: mov      x0, #0x8958                              
+ffffff8008a08aa4: movk     x0, #0x41, lsl #16                       
+ffffff8008a08aa8: bl       #0xffffff800839a488                      __const_udelay
+ffffff8008a08aac: ldrb     w0, [x19, #0x530]                        
+ffffff8008a08ab0: ldr      x2, [x29, #0x78]                         
+ffffff8008a08ab4: ldr      x1, [x21, #0x9c8]                        
+ffffff8008a08ab8: and      w0, w0, #0xfffffffe                      
+ffffff8008a08abc: strb     w0, [x19, #0x530]                        
+ffffff8008a08ac0: mov      w0, w20                                  
+ffffff8008a08ac4: cmp      x2, x1                                   
+ffffff8008a08ac8: b.eq     #0xffffff8008a08ad0                      
+ffffff8008a08acc: bl       #0xffffff80080a51bc                      __stack_chk_fail
+ffffff8008a08ad0: ldp      x19, x20, [sp, #0x10]                    
+ffffff8008a08ad4: ldr      x21, [sp, #0x20]                         
+ffffff8008a08ad8: ldp      x29, x30, [sp], #0x80                    
+ffffff8008a08adc: ret                                               
+
+sdhci_send_command [inferred inspection range, not debug-info size] at 0xffffff8008a23d54, 4084 bytes
+ffffff8008a23d54: stp      x29, x30, [sp, #-0xa0]!                  
+ffffff8008a23d58: mov      x29, sp                                  
+ffffff8008a23d5c: stp      x23, x24, [sp, #0x30]                    
+ffffff8008a23d60: adrp     x23, #0xffffff800a006000                 
+ffffff8008a23d64: stp      x19, x20, [sp, #0x10]                    
+ffffff8008a23d68: mov      x19, x0                                  
+ffffff8008a23d6c: str      x23, [x29, #0x88]                        
+ffffff8008a23d70: stp      x21, x22, [sp, #0x20]                    
+ffffff8008a23d74: stp      x25, x26, [sp, #0x40]                    
+ffffff8008a23d78: stp      x27, x28, [sp, #0x50]                    
+ffffff8008a23d7c: ldr      x0, [x23, #0x9c8]                        
+ffffff8008a23d80: mov      x21, x1                                  
+ffffff8008a23d84: str      x0, [x29, #0x98]                         
+ffffff8008a23d88: ldr      x0, [x19, #0x2a8]                        
+ffffff8008a23d8c: cbz      x0, #0xffffff8008a23d94                  
+ffffff8008a23d90: brk      #0x800                                   
+ffffff8008a23d94: ldr      x0, [x21, #0x30]                         
+ffffff8008a23d98: mov      w22, #3                                  
+ffffff8008a23d9c: cbnz     x0, #0xffffff8008a23db0                  
+ffffff8008a23da0: ldr      w0, [x21, #0x18]                         
+ffffff8008a23da4: and      w0, w0, #8                               
+ffffff8008a23da8: cmp      w0, wzr                                  
+ffffff8008a23dac: csinc    w22, w22, wzr, ne                        
+ffffff8008a23db0: ldr      x0, [x19, #0x2a0]                        
+ffffff8008a23db4: ldr      x0, [x0, #0x10]                          
+ffffff8008a23db8: cbz      x0, #0xffffff8008a23dc8                  
+ffffff8008a23dbc: ldr      x0, [x0, #0x20]                          
+ffffff8008a23dc0: cmp      x21, x0                                  
+ffffff8008a23dc4: csinc    w22, w22, wzr, ne                        
+ffffff8008a23dc8: mov      x24, #0x2711                             
+ffffff8008a23dcc: ldr      x20, [x19, #0x18]                        
+ffffff8008a23dd0: mov      w0, #1                                   
+ffffff8008a23dd4: add      x20, x20, #0x24                          
+ffffff8008a23dd8: mov      x1, x20                                  
+ffffff8008a23ddc: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a23de0: b        #0xffffff8008a23de4                      
+ffffff8008a23de4: nop                                               
+ffffff8008a23de8: b        #0xffffff8008a23dec                      
+ffffff8008a23dec: nop                                               
+ffffff8008a23df0: ldr      w20, [x20]                               
+ffffff8008a23df4: cbz      w0, #0xffffff8008a23e00                  
+ffffff8008a23df8: dsb      sy                                       
+ffffff8008a23dfc: isb                                               
+ffffff8008a23e00: dsb      ld                                       
+ffffff8008a23e04: tst      w20, w22                                 
+ffffff8008a23e08: b.eq     #0xffffff8008a23e4c                      
+ffffff8008a23e0c: subs     x24, x24, #1                             
+ffffff8008a23e10: b.ne     #0xffffff8008a23e40                      
+ffffff8008a23e14: ldr      x0, [x19, #0x28]                         
+ffffff8008a23e18: ldr      x1, [x0, #0x58]                          
+ffffff8008a23e1c: cbnz     x1, #0xffffff8008a23e24                  
+ffffff8008a23e20: ldr      x1, [x0, #0x18]                          
+ffffff8008a23e24: adrp     x0, #0xffffff8009678000                  
+ffffff8008a23e28: add      x0, x0, #0xd0a                           
+ffffff8008a23e2c: bl       #0xffffff800817e0b4                      printk
+ffffff8008a23e30: mov      x0, x19                                  
+ffffff8008a23e34: bl       #0xffffff8008a1fa64                      sdhci_dumpregs
+ffffff8008a23e38: mov      w0, #-5                                  
+ffffff8008a23e3c: b        #0xffffff8008a24ad4                      
+ffffff8008a23e40: mov      x0, #0x10c7                              
+ffffff8008a23e44: bl       #0xffffff800839a488                      __const_udelay
+ffffff8008a23e48: b        #0xffffff8008a23dcc                      
+ffffff8008a23e4c: adrp     x0, #0xffffff800a005000                  
+ffffff8008a23e50: ldr      x1, [x0, #0x180]                         
+ffffff8008a23e54: ldr      x0, [x21, #0x30]                         
+ffffff8008a23e58: cbnz     x0, #0xffffff8008a23e88                  
+ffffff8008a23e5c: ldr      w2, [x21, #0x24]                         
+ffffff8008a23e60: mov      w0, #0x2328                              
+ffffff8008a23e64: cmp      w2, w0                                   
+ffffff8008a23e68: b.ls     #0xffffff8008a23e88                      
+ffffff8008a23e6c: add      w2, w2, #0x3e7                           
+ffffff8008a23e70: mov      w3, #0x3e8                               
+ffffff8008a23e74: mov      w0, #0x64                                
+ffffff8008a23e78: udiv     w2, w2, w3                               
+ffffff8008a23e7c: madd     w0, w2, w0, w0                           
+ffffff8008a23e80: add      x1, x0, x1                               
+ffffff8008a23e84: b        #0xffffff8008a23e8c                      
+ffffff8008a23e88: add      x1, x1, #0x3e8                           
+ffffff8008a23e8c: add      x0, x19, #0x370                          
+ffffff8008a23e90: bl       #0xffffff800811d0ec                      mod_timer
+ffffff8008a23e94: str      x21, [x19, #0x2a8]                       
+ffffff8008a23e98: ldrb     w0, [x19, #0x2b8]                        
+ffffff8008a23e9c: and      w0, w0, #0xfffffffd                      
+ffffff8008a23ea0: strb     w0, [x19, #0x2b8]                        
+ffffff8008a23ea4: ldr      x0, [x19, #0x2b0]                        
+ffffff8008a23ea8: ldr      x20, [x21, #0x30]                        
+ffffff8008a23eac: cbz      x0, #0xffffff8008a23eb4                  
+ffffff8008a23eb0: brk      #0x800                                   
+ffffff8008a23eb4: cbnz     x20, #0xffffff8008a23ec0                 
+ffffff8008a23eb8: ldr      w0, [x21, #0x18]                         
+ffffff8008a23ebc: tbz      w0, #3, #0xffffff8008a247f0              
+ffffff8008a23ec0: ldr      x0, [x19, #0x20]                         
+ffffff8008a23ec4: ldr      x2, [x0, #0x30]                          
+ffffff8008a23ec8: cbz      x2, #0xffffff8008a23edc                  
+ffffff8008a23ecc: mov      x0, x19                                  
+ffffff8008a23ed0: mov      x1, x21                                  
+ffffff8008a23ed4: blr      x2                                       
+ffffff8008a23ed8: b        #0xffffff8008a23fe4                      
+ffffff8008a23edc: ldr      w0, [x19, #8]                            
+ffffff8008a23ee0: mov      w24, #0xe                                
+ffffff8008a23ee4: tbnz     w0, #0xc, #0xffffff8008a23fac            
+ffffff8008a23ee8: cbnz     x20, #0xffffff8008a23f00                 
+ffffff8008a23eec: ldr      w0, [x21, #0x24]                         
+ffffff8008a23ef0: cbz      w0, #0xffffff8008a23fac                  
+ffffff8008a23ef4: mov      w1, #0x3e8                               
+ffffff8008a23ef8: mul      w0, w0, w1                               
+ffffff8008a23efc: b        #0xffffff8008a23f44                      
+ffffff8008a23f00: ldr      w0, [x20]                                
+ffffff8008a23f04: mov      w1, #0x3e8                               
+ffffff8008a23f08: add      w0, w0, #0x3e7                           
+ffffff8008a23f0c: udiv     w0, w0, w1                               
+ffffff8008a23f10: ldr      w1, [x19, #0x290]                        
+ffffff8008a23f14: cbz      w1, #0xffffff8008a23f44                  
+ffffff8008a23f18: ldr      w2, [x20, #4]                            
+ffffff8008a23f1c: cbz      w2, #0xffffff8008a23f44                  
+ffffff8008a23f20: mov      w3, #0x4240                              
+ffffff8008a23f24: mov      w1, w1                                   
+ffffff8008a23f28: movk     w3, #0xf, lsl #16                        
+ffffff8008a23f2c: umull    x2, w2, w3                               
+ffffff8008a23f30: udiv     x3, x2, x1                               
+ffffff8008a23f34: msub     x1, x3, x1, x2                           
+ffffff8008a23f38: cmp      x1, xzr                                  
+ffffff8008a23f3c: cinc     w0, w0, ne                               
+ffffff8008a23f40: add      w0, w0, w3                               
+ffffff8008a23f44: ldr      w3, [x19, #0xc]                          
+ffffff8008a23f48: mov      w1, #0x7d0000                            
+ffffff8008a23f4c: tbz      w3, #0x13, #0xffffff8008a23f70           
+ffffff8008a23f50: ldr      w2, [x19, #0x290]                        
+ffffff8008a23f54: mov      w4, #0x3e8                               
+ffffff8008a23f58: udiv     w2, w2, w4                               
+ffffff8008a23f5c: and      w4, w3, #0x800000                        
+ffffff8008a23f60: cmp      w4, wzr                                  
+ffffff8008a23f64: lsr      w5, w2, #2                               
+ffffff8008a23f68: csel     w2, w5, w2, ne                           
+ffffff8008a23f6c: b        #0xffffff8008a23f74                      
+ffffff8008a23f70: ldr      w2, [x19, #0x288]                        
+ffffff8008a23f74: udiv     w2, w1, w2                               
+ffffff8008a23f78: mov      w1, #0                                   
+ffffff8008a23f7c: cmp      w2, w0                                   
+ffffff8008a23f80: b.hs     #0xffffff8008a23f98                      
+ffffff8008a23f84: add      w1, w1, #1                               
+ffffff8008a23f88: lsl      w2, w2, #1                               
+ffffff8008a23f8c: uxtb     w1, w1                                   
+ffffff8008a23f90: cmp      w1, #0xf                                 
+ffffff8008a23f94: b.ne     #0xffffff8008a23f7c                      
+ffffff8008a23f98: cmp      w1, #0xf                                 
+ffffff8008a23f9c: b.ne     #0xffffff8008a23fa8                      
+ffffff8008a23fa0: mov      w24, #0xe                                
+ffffff8008a23fa4: tbz      w3, #0x16, #0xffffff8008a23fac           
+ffffff8008a23fa8: mov      w24, w1                                  
+ffffff8008a23fac: dsb      st                                       
+ffffff8008a23fb0: ldr      x22, [x19, #0x18]                        
+ffffff8008a23fb4: mov      w0, #2                                   
+ffffff8008a23fb8: add      x22, x22, #0x2e                          
+ffffff8008a23fbc: mov      x1, x22                                  
+ffffff8008a23fc0: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a23fc4: b        #0xffffff8008a23fc8                      
+ffffff8008a23fc8: nop                                               
+ffffff8008a23fcc: b        #0xffffff8008a23fd0                      
+ffffff8008a23fd0: nop                                               
+ffffff8008a23fd4: strb     w24, [x22]                               
+ffffff8008a23fd8: cbz      w0, #0xffffff8008a23fe4                  
+ffffff8008a23fdc: dsb      sy                                       
+ffffff8008a23fe0: isb                                               
+ffffff8008a23fe4: cbz      x20, #0xffffff8008a247f0                 
+ffffff8008a23fe8: ldr      w1, [x20, #8]                            
+ffffff8008a23fec: ldr      w0, [x20, #0xc]                          
+ffffff8008a23ff0: ldr      x2, [x19, #0x28]                         
+ffffff8008a23ff4: mul      w4, w0, w1                               
+ffffff8008a23ff8: ldr      w3, [x2, #0x4d8]                         
+ffffff8008a23ffc: cmp      w4, w3                                   
+ffffff8008a24000: b.ls     #0xffffff8008a24008                      
+ffffff8008a24004: brk      #0x800                                   
+ffffff8008a24008: ldr      w2, [x2, #0x4dc]                         
+ffffff8008a2400c: cmp      w1, w2                                   
+ffffff8008a24010: b.ls     #0xffffff8008a24018                      
+ffffff8008a24014: brk      #0x800                                   
+ffffff8008a24018: mov      w1, #0xffff                              
+ffffff8008a2401c: cmp      w0, w1                                   
+ffffff8008a24020: b.ls     #0xffffff8008a24028                      
+ffffff8008a24024: brk      #0x800                                   
+ffffff8008a24028: ldrb     w0, [x19, #0x2b8]                        
+ffffff8008a2402c: str      x20, [x19, #0x2b0]                       
+ffffff8008a24030: and      w0, w0, #0xfffffffe                      
+ffffff8008a24034: strb     w0, [x19, #0x2b8]                        
+ffffff8008a24038: str      wzr, [x20, #0x18]                        
+ffffff8008a2403c: ldr      w0, [x19, #0x27c]                        
+ffffff8008a24040: and      w1, w0, #3                               
+ffffff8008a24044: cbz      w1, #0xffffff8008a24050                  
+ffffff8008a24048: orr      w0, w0, #4                               
+ffffff8008a2404c: str      w0, [x19, #0x27c]                        
+ffffff8008a24050: ldr      w0, [x19, #0xc]                          
+ffffff8008a24054: tbz      w0, #0x1d, #0xffffff8008a24070           
+ffffff8008a24058: ldr      w0, [x21]                                
+ffffff8008a2405c: cmp      w0, #0x15                                
+ffffff8008a24060: b.ne     #0xffffff8008a24070                      
+ffffff8008a24064: ldr      w0, [x19, #0x27c]                        
+ffffff8008a24068: and      w0, w0, #0xfffffffb                      
+ffffff8008a2406c: str      w0, [x19, #0x27c]                        
+ffffff8008a24070: ldr      w1, [x19, #0x27c]                        
+ffffff8008a24074: tbz      w1, #2, #0xffffff8008a240bc              
+ffffff8008a24078: ldr      w0, [x19, #8]                            
+ffffff8008a2407c: tbz      w1, #1, #0xffffff8008a24088              
+ffffff8008a24080: tbnz     w0, #9, #0xffffff8008a24cfc              
+ffffff8008a24084: b        #0xffffff8008a240bc                      
+ffffff8008a24088: tbnz     w0, #8, #0xffffff8008a24cfc              
+ffffff8008a2408c: b        #0xffffff8008a240bc                      
+ffffff8008a24090: add      w22, w22, #1                             
+ffffff8008a24094: bl       #0xffffff80083aba80                      sg_next
+ffffff8008a24098: ldr      w1, [x20, #0x30]                         
+ffffff8008a2409c: cmp      w22, w1                                  
+ffffff8008a240a0: b.hs     #0xffffff8008a240bc                      
+ffffff8008a240a4: ldr      w1, [x0, #0xc]                           
+ffffff8008a240a8: and      w1, w1, #3                               
+ffffff8008a240ac: cbz      w1, #0xffffff8008a24090                  
+ffffff8008a240b0: ldr      w0, [x19, #0x27c]                        
+ffffff8008a240b4: and      w0, w0, #0xfffffffb                      
+ffffff8008a240b8: str      w0, [x19, #0x27c]                        
+ffffff8008a240bc: ldr      w1, [x19, #0x27c]                        
+ffffff8008a240c0: tbz      w1, #2, #0xffffff8008a24108              
+ffffff8008a240c4: ldr      w0, [x19, #8]                            
+ffffff8008a240c8: tbz      w1, #1, #0xffffff8008a240d4              
+ffffff8008a240cc: tbnz     w0, #9, #0xffffff8008a24d08              
+ffffff8008a240d0: b        #0xffffff8008a24108                      
+ffffff8008a240d4: tbnz     w0, #7, #0xffffff8008a24d08              
+ffffff8008a240d8: b        #0xffffff8008a24108                      
+ffffff8008a240dc: add      w22, w22, #1                             
+ffffff8008a240e0: bl       #0xffffff80083aba80                      sg_next
+ffffff8008a240e4: ldr      w1, [x20, #0x30]                         
+ffffff8008a240e8: cmp      w22, w1                                  
+ffffff8008a240ec: b.hs     #0xffffff8008a24108                      
+ffffff8008a240f0: ldr      w1, [x0, #8]                             
+ffffff8008a240f4: and      w1, w1, #3                               
+ffffff8008a240f8: cbz      w1, #0xffffff8008a240dc                  
+ffffff8008a240fc: ldr      w0, [x19, #0x27c]                        
+ffffff8008a24100: and      w0, w0, #0xfffffffb                      
+ffffff8008a24104: str      w0, [x19, #0x27c]                        
+ffffff8008a24108: ldr      w0, [x19, #0x27c]                        
+ffffff8008a2410c: tbz      w0, #2, #0xffffff8008a24574              
+ffffff8008a24110: tbz      w0, #1, #0xffffff8008a24504              
+ffffff8008a24114: adrp     x1, #0xffffff800a265000                  
+ffffff8008a24118: ldr      w24, [x21]                               
+ffffff8008a2411c: add      x1, x1, #0xf20                           
+ffffff8008a24120: ldr      w25, [x20, #0x30]                        
+ffffff8008a24124: ldr      w0, [x1, #8]                             
+ffffff8008a24128: cmp      w0, wzr                                  
+ffffff8008a2412c: b.le     #0xffffff8008a241bc                      
+ffffff8008a24130: adrp     x0, #0xffffff8009886000                  
+ffffff8008a24134: adrp     x3, #0xffffff8009007000                  
+ffffff8008a24138: add      x0, x0, #0x10                            
+ffffff8008a2413c: mrs      x2, tpidr_el1                            
+ffffff8008a24140: ldr      w2, [x2, x0]                             
+ffffff8008a24144: mov      w0, #0x40                                
+ffffff8008a24148: ldr      x3, [x3, #0xa78]                         
+ffffff8008a2414c: sdiv     w0, w2, w0                               
+ffffff8008a24150: sbfiz    x0, x0, #3, #0x20                        
+ffffff8008a24154: ldr      x0, [x3, x0]                             
+ffffff8008a24158: lsr      x0, x0, x2                               
+ffffff8008a2415c: tbz      w0, #0, #0xffffff8008a241bc              
+ffffff8008a24160: mrs      x2, sp_el0                               
+ffffff8008a24164: ldr      w0, [x2, #0x18]                          
+ffffff8008a24168: add      w0, w0, #1                               
+ffffff8008a2416c: str      w0, [x2, #0x18]                          
+ffffff8008a24170: ldr      x22, [x1, #0x20]                         
+ffffff8008a24174: cbnz     x22, #0xffffff8008a24190                 
+ffffff8008a24178: mrs      x1, sp_el0                               
+ffffff8008a2417c: ldr      w0, [x1, #0x18]                          
+ffffff8008a24180: sub      w0, w0, #1                               
+ffffff8008a24184: str      w0, [x1, #0x18]                          
+ffffff8008a24188: cbz      w0, #0xffffff8008a241b0                  
+ffffff8008a2418c: b        #0xffffff8008a241bc                      
+ffffff8008a24190: ldr      x3, [x22]                                
+ffffff8008a24194: mov      w1, w24                                  
+ffffff8008a24198: ldr      x0, [x22, #8]                            
+ffffff8008a2419c: mov      w2, w25                                  
+ffffff8008a241a0: blr      x3                                       
+ffffff8008a241a4: ldr      x0, [x22, #0x18]!                        
+ffffff8008a241a8: cbnz     x0, #0xffffff8008a24190                  
+ffffff8008a241ac: b        #0xffffff8008a24178                      
+ffffff8008a241b0: ldr      x0, [x1]                                 
+ffffff8008a241b4: tbz      w0, #1, #0xffffff8008a241bc              
+ffffff8008a241b8: bl       #0xffffff8008f390e4                      preempt_schedule_notrace
+ffffff8008a241bc: ldr      w0, [x20, #0x14]                         
+ffffff8008a241c0: mov      w24, #2                                  
+ffffff8008a241c4: ldr      x2, [x19, #0x318]                        
+ffffff8008a241c8: and      w0, w0, #0x200                           
+ffffff8008a241cc: ldr      x3, [x19, #0x328]                        
+ffffff8008a241d0: cmp      w0, wzr                                  
+ffffff8008a241d4: ldr      x0, [x19, #0x28]                         
+ffffff8008a241d8: csinc    w24, w24, wzr, ne                        
+ffffff8008a241dc: ldr      x0, [x0]                                 
+ffffff8008a241e0: cbz      x0, #0xffffff8008a241ec                  
+ffffff8008a241e4: ldr      x1, [x0, #0x238]                         
+ffffff8008a241e8: cbnz     x1, #0xffffff8008a241f4                  
+ffffff8008a241ec: adrp     x1, #0xffffff800a018000                  
+ffffff8008a241f0: add      x1, x1, #0x5d8                           
+ffffff8008a241f4: ldr      x6, [x1, #0x20]                          
+ffffff8008a241f8: adrp     x5, #0xffffff800a006000                  
+ffffff8008a241fc: tbz      x2, #0x26, #0xffffff8008a24210           
+ffffff8008a24200: ldr      x4, [x5, #0x9f8]                         
+ffffff8008a24204: and      x1, x2, #0x3fffffffff                    
+ffffff8008a24208: add      x1, x1, x4                               
+ffffff8008a2420c: b        #0xffffff8008a2421c                      
+ffffff8008a24210: adrp     x1, #0xffffff800a006000                  
+ffffff8008a24214: ldr      x1, [x1, #0xa08]                         
+ffffff8008a24218: sub      x1, x2, x1                               
+ffffff8008a2421c: ldr      x4, [x5, #0x9f8]                         
+ffffff8008a24220: lsr      x1, x1, #0xc                             
+ffffff8008a24224: and      x2, x2, #0xfff                           
+ffffff8008a24228: mov      x5, #0                                   
+ffffff8008a2422c: asr      x4, x4, #0xc                             
+ffffff8008a24230: and      x4, x4, #0xfffffffffffc0000              
+ffffff8008a24234: sub      x1, x1, x4                               
+ffffff8008a24238: mov      x4, #-0x40000000                         
+ffffff8008a2423c: movk     x4, #0xffbd, lsl #32                     
+ffffff8008a24240: add      x1, x4, x1, lsl #6                       
+ffffff8008a24244: mov      w4, w24                                  
+ffffff8008a24248: blr      x6                                       
+ffffff8008a2424c: str      x0, [x19, #0x338]                        
+ffffff8008a24250: mov      x1, x0                                   
+ffffff8008a24254: ldr      x0, [x19, #0x28]                         
+ffffff8008a24258: ldr      x0, [x0]                                 
+ffffff8008a2425c: cbz      x0, #0xffffff8008a24268                  
+ffffff8008a24260: ldr      x2, [x0, #0x238]                         
+ffffff8008a24264: cbnz     x2, #0xffffff8008a24270                  
+ffffff8008a24268: adrp     x2, #0xffffff800a018000                  
+ffffff8008a2426c: add      x2, x2, #0x5d8                           
+ffffff8008a24270: ldr      x2, [x2, #0x60]                          
+ffffff8008a24274: cbz      x2, #0xffffff8008a24298                  
+ffffff8008a24278: cbz      x0, #0xffffff8008a24284                  
+ffffff8008a2427c: ldr      x2, [x0, #0x238]                         
+ffffff8008a24280: cbnz     x2, #0xffffff8008a2428c                  
+ffffff8008a24284: adrp     x2, #0xffffff800a018000                  
+ffffff8008a24288: add      x2, x2, #0x5d8                           
+ffffff8008a2428c: ldr      x2, [x2, #0x60]                          
+ffffff8008a24290: blr      x2                                       
+ffffff8008a24294: b        #0xffffff8008a242a0                      
+ffffff8008a24298: cmn      x1, #1                                   
+ffffff8008a2429c: cset     w0, eq                                   
+ffffff8008a242a0: cbnz     w0, #0xffffff8008a244a4                  
+ffffff8008a242a4: ldr      x0, [x19, #0x338]                        
+ffffff8008a242a8: and      x0, x0, #3                               
+ffffff8008a242ac: cbz      x0, #0xffffff8008a242b4                  
+ffffff8008a242b0: brk      #0x800                                   
+ffffff8008a242b4: mov      x1, x20                                  
+ffffff8008a242b8: add      x0, x19, #0x28                           
+ffffff8008a242bc: bl       #0xffffff8008a218fc                      sdhci_pre_dma_transfer.isra.34
+ffffff8008a242c0: str      w0, [x19, #0x30c]                        
+ffffff8008a242c4: ldr      x1, [x19, #0x338]                        
+ffffff8008a242c8: tbnz     w0, #0x1f, #0xffffff8008a24470           
+ffffff8008a242cc: ldr      x22, [x19, #0x310]                       
+ffffff8008a242d0: mov      x25, x1                                  
+ffffff8008a242d4: ldr      x26, [x19, #0x318]                       
+ffffff8008a242d8: mov      w23, #0                                  
+ffffff8008a242dc: ldr      x5, [x20, #0x38]                         
+ffffff8008a242e0: mov      w27, #0x21                               
+ffffff8008a242e4: ldr      w0, [x19, #0x30c]                        
+ffffff8008a242e8: cmp      w23, w0                                  
+ffffff8008a242ec: b.ge     #0xffffff8008a243e8                      
+ffffff8008a242f0: ldr      x3, [x5, #0x10]                          
+ffffff8008a242f4: ldr      w6, [x5, #0x18]                          
+ffffff8008a242f8: neg      w4, w3                                   
+ffffff8008a242fc: ands     w4, w4, #3                               
+ffffff8008a24300: b.eq     #0xffffff8008a24388                      
+ffffff8008a24304: ldr      w0, [x20, #0x14]                         
+ffffff8008a24308: sxtw     x28, w4                                  
+ffffff8008a2430c: tbz      w0, #8, #0xffffff8008a24354              
+ffffff8008a24310: mov      x0, x5                                   
+ffffff8008a24314: add      x1, x29, #0x90                           
+ffffff8008a24318: str      x4, [x29, #0x68]                         
+ffffff8008a2431c: str      x6, [x29, #0x70]                         
+ffffff8008a24320: str      x3, [x29, #0x78]                         
+ffffff8008a24324: str      x5, [x29, #0x80]                         
+ffffff8008a24328: bl       #0xffffff8008a1ef28                      sdhci_kmap_atomic
+ffffff8008a2432c: mov      x2, x28                                  
+ffffff8008a24330: mov      x1, x0                                   
+ffffff8008a24334: mov      x0, x26                                  
+ffffff8008a24338: bl       #0xffffff800839a700                      memcpy
+ffffff8008a2433c: add      x0, x29, #0x90                           
+ffffff8008a24340: bl       #0xffffff8008a21a40                      sdhci_kunmap_atomic.isra.35
+ffffff8008a24344: ldr      x4, [x29, #0x68]                         
+ffffff8008a24348: ldr      x6, [x29, #0x70]                         
+ffffff8008a2434c: ldr      x3, [x29, #0x78]                         
+ffffff8008a24350: ldr      x5, [x29, #0x80]                         
+ffffff8008a24354: strh     w27, [x22]                               
+ffffff8008a24358: strh     w4, [x22, #2]                            
+ffffff8008a2435c: str      w25, [x22, #4]                           
+ffffff8008a24360: ldr      w0, [x19, #0x27c]                        
+ffffff8008a24364: tbz      w0, #0xc, #0xffffff8008a24370            
+ffffff8008a24368: lsr      x0, x25, #0x20                           
+ffffff8008a2436c: str      w0, [x22, #8]                            
+ffffff8008a24370: ldr      w0, [x19, #0x340]                        
+ffffff8008a24374: add      x26, x26, #4                             
+ffffff8008a24378: add      x25, x25, #4                             
+ffffff8008a2437c: add      x3, x3, x28                              
+ffffff8008a24380: add      x22, x22, x0                             
+ffffff8008a24384: sub      w6, w6, w4                               
+ffffff8008a24388: cmp      w6, #0x10, lsl #12                       
+ffffff8008a2438c: b.le     #0xffffff8008a24394                      
+ffffff8008a24390: brk      #0x800                                   
+ffffff8008a24394: cbz      w6, #0xffffff8008a243bc                  
+ffffff8008a24398: strh     w27, [x22]                               
+ffffff8008a2439c: strh     w6, [x22, #2]                            
+ffffff8008a243a0: str      w3, [x22, #4]                            
+ffffff8008a243a4: ldr      w0, [x19, #0x27c]                        
+ffffff8008a243a8: tbz      w0, #0xc, #0xffffff8008a243b4            
+ffffff8008a243ac: lsr      x3, x3, #0x20                            
+ffffff8008a243b0: str      w3, [x22, #8]                            
+ffffff8008a243b4: ldr      w0, [x19, #0x340]                        
+ffffff8008a243b8: add      x22, x22, x0                             
+ffffff8008a243bc: ldr      x0, [x19, #0x310]                        
+ffffff8008a243c0: ldr      x1, [x19, #0x320]                        
+ffffff8008a243c4: sub      x0, x22, x0                              
+ffffff8008a243c8: cmp      x0, x1                                   
+ffffff8008a243cc: b.lo     #0xffffff8008a243d4                      
+ffffff8008a243d0: brk      #0x800                                   
+ffffff8008a243d4: mov      x0, x5                                   
+ffffff8008a243d8: add      w23, w23, #1                             
+ffffff8008a243dc: bl       #0xffffff80083aba80                      sg_next
+ffffff8008a243e0: mov      x5, x0                                   
+ffffff8008a243e4: b        #0xffffff8008a242e4                      
+ffffff8008a243e8: ldr      w0, [x19, #8]                            
+ffffff8008a243ec: tbz      w0, #0x1a, #0xffffff8008a24414           
+ffffff8008a243f0: ldr      x0, [x19, #0x310]                        
+ffffff8008a243f4: cmp      x22, x0                                  
+ffffff8008a243f8: b.eq     #0xffffff8008a24430                      
+ffffff8008a243fc: ldr      w0, [x19, #0x340]                        
+ffffff8008a24400: sub      x22, x22, x0                             
+ffffff8008a24404: ldrh     w0, [x22]                                
+ffffff8008a24408: orr      w0, w0, #2                               
+ffffff8008a2440c: strh     w0, [x22]                                
+ffffff8008a24410: b        #0xffffff8008a24430                      
+ffffff8008a24414: mov      w0, #3                                   
+ffffff8008a24418: strh     wzr, [x22, #2]                           
+ffffff8008a2441c: strh     w0, [x22]                                
+ffffff8008a24420: str      wzr, [x22, #4]                           
+ffffff8008a24424: ldr      w0, [x19, #0x27c]                        
+ffffff8008a24428: tbz      w0, #0xc, #0xffffff8008a24430            
+ffffff8008a2442c: str      wzr, [x22, #8]                           
+ffffff8008a24430: ldr      w0, [x20, #0x14]                         
+ffffff8008a24434: tbz      w0, #8, #0xffffff8008a244ac              
+ffffff8008a24438: ldr      x0, [x19, #0x28]                         
+ffffff8008a2443c: ldr      x1, [x19, #0x338]                        
+ffffff8008a24440: ldr      x2, [x19, #0x328]                        
+ffffff8008a24444: ldr      x0, [x0]                                 
+ffffff8008a24448: cbz      x0, #0xffffff8008a24454                  
+ffffff8008a2444c: ldr      x3, [x0, #0x238]                         
+ffffff8008a24450: cbnz     x3, #0xffffff8008a2445c                  
+ffffff8008a24454: adrp     x3, #0xffffff800a018000                  
+ffffff8008a24458: add      x3, x3, #0x5d8                           
+ffffff8008a2445c: ldr      x4, [x3, #0x48]                          
+ffffff8008a24460: cbz      x4, #0xffffff8008a244ac                  
+ffffff8008a24464: mov      w3, w24                                  
+ffffff8008a24468: blr      x4                                       
+ffffff8008a2446c: b        #0xffffff8008a244ac                      
+ffffff8008a24470: ldr      x0, [x19, #0x28]                         
+ffffff8008a24474: ldr      x2, [x19, #0x328]                        
+ffffff8008a24478: ldr      x0, [x0]                                 
+ffffff8008a2447c: cbz      x0, #0xffffff8008a24488                  
+ffffff8008a24480: ldr      x3, [x0, #0x238]                         
+ffffff8008a24484: cbnz     x3, #0xffffff8008a24490                  
+ffffff8008a24488: adrp     x3, #0xffffff800a018000                  
+ffffff8008a2448c: add      x3, x3, #0x5d8                           
+ffffff8008a24490: ldr      x5, [x3, #0x28]                          
+ffffff8008a24494: cbz      x5, #0xffffff8008a244a4                  
+ffffff8008a24498: mov      w3, w24                                  
+ffffff8008a2449c: mov      x4, #0                                   
+ffffff8008a244a0: blr      x5                                       
+ffffff8008a244a4: brk      #0x800                                   
+ffffff8008a244a8: b        #0xffffff8008a2451c                      
+ffffff8008a244ac: ldr      x24, [x19, #0x330]                       
+ffffff8008a244b0: dsb      st                                       
+ffffff8008a244b4: ldr      x22, [x19, #0x18]                        
+ffffff8008a244b8: mov      w0, #2                                   
+ffffff8008a244bc: add      x22, x22, #0x58                          
+ffffff8008a244c0: mov      x1, x22                                  
+ffffff8008a244c4: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a244c8: b        #0xffffff8008a244cc                      
+ffffff8008a244cc: nop                                               
+ffffff8008a244d0: b        #0xffffff8008a244d4                      
+ffffff8008a244d4: nop                                               
+ffffff8008a244d8: str      w24, [x22]                               
+ffffff8008a244dc: cbz      w0, #0xffffff8008a244e8                  
+ffffff8008a244e0: dsb      sy                                       
+ffffff8008a244e4: isb                                               
+ffffff8008a244e8: ldr      w0, [x19, #0x27c]                        
+ffffff8008a244ec: tbz      w0, #0xc, #0xffffff8008a24574            
+ffffff8008a244f0: ldr      w24, [x19, #0x334]                       
+ffffff8008a244f4: dsb      st                                       
+ffffff8008a244f8: ldr      x22, [x19, #0x18]                        
+ffffff8008a244fc: add      x22, x22, #0x5c                          
+ffffff8008a24500: b        #0xffffff8008a24548                      
+ffffff8008a24504: add      x0, x19, #0x28                           
+ffffff8008a24508: mov      x1, x20                                  
+ffffff8008a2450c: bl       #0xffffff8008a218fc                      sdhci_pre_dma_transfer.isra.34
+ffffff8008a24510: cmp      w0, wzr                                  
+ffffff8008a24514: b.gt     #0xffffff8008a2452c                      
+ffffff8008a24518: brk      #0x800                                   
+ffffff8008a2451c: ldr      w0, [x19, #0x27c]                        
+ffffff8008a24520: and      w0, w0, #0xfffffffb                      
+ffffff8008a24524: str      w0, [x19, #0x27c]                        
+ffffff8008a24528: b        #0xffffff8008a24574                      
+ffffff8008a2452c: cmp      w0, #1                                   
+ffffff8008a24530: b.eq     #0xffffff8008a24538                      
+ffffff8008a24534: brk      #0x800                                   
+ffffff8008a24538: ldr      x0, [x20, #0x38]                         
+ffffff8008a2453c: ldr      x24, [x0, #0x10]                         
+ffffff8008a24540: dsb      st                                       
+ffffff8008a24544: ldr      x22, [x19, #0x18]                        
+ffffff8008a24548: mov      x1, x22                                  
+ffffff8008a2454c: mov      w0, #2                                   
+ffffff8008a24550: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24554: b        #0xffffff8008a24558                      
+ffffff8008a24558: nop                                               
+ffffff8008a2455c: b        #0xffffff8008a24560                      
+ffffff8008a24560: nop                                               
+ffffff8008a24564: str      w24, [x22]                               
+ffffff8008a24568: cbz      w0, #0xffffff8008a24574                  
+ffffff8008a2456c: dsb      sy                                       
+ffffff8008a24570: isb                                               
+ffffff8008a24574: ldr      w0, [x19, #0x280]                        
+ffffff8008a24578: cbz      w0, #0xffffff8008a24618                  
+ffffff8008a2457c: ldr      x22, [x19, #0x18]                        
+ffffff8008a24580: mov      w0, #1                                   
+ffffff8008a24584: add      x22, x22, #0x28                          
+ffffff8008a24588: mov      x1, x22                                  
+ffffff8008a2458c: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24590: b        #0xffffff8008a24594                      
+ffffff8008a24594: nop                                               
+ffffff8008a24598: b        #0xffffff8008a2459c                      
+ffffff8008a2459c: nop                                               
+ffffff8008a245a0: ldrb     w22, [x22]                               
+ffffff8008a245a4: uxtb     w22, w22                                 
+ffffff8008a245a8: cbz      w0, #0xffffff8008a245b4                  
+ffffff8008a245ac: dsb      sy                                       
+ffffff8008a245b0: isb                                               
+ffffff8008a245b4: dsb      ld                                       
+ffffff8008a245b8: ldr      w0, [x19, #0x27c]                        
+ffffff8008a245bc: and      w22, w22, #0xffffffe7                    
+ffffff8008a245c0: and      w1, w0, #6                               
+ffffff8008a245c4: uxtb     w22, w22                                 
+ffffff8008a245c8: cmp      w1, #6                                   
+ffffff8008a245cc: b.ne     #0xffffff8008a245e0                      
+ffffff8008a245d0: tbz      w0, #0xc, #0xffffff8008a245dc            
+ffffff8008a245d4: orr      w22, w22, #0x18                          
+ffffff8008a245d8: b        #0xffffff8008a245e0                      
+ffffff8008a245dc: orr      w22, w22, #0x10                          
+ffffff8008a245e0: dsb      st                                       
+ffffff8008a245e4: ldr      x24, [x19, #0x18]                        
+ffffff8008a245e8: mov      w0, #2                                   
+ffffff8008a245ec: add      x24, x24, #0x28                          
+ffffff8008a245f0: mov      x1, x24                                  
+ffffff8008a245f4: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a245f8: b        #0xffffff8008a245fc                      
+ffffff8008a245fc: nop                                               
+ffffff8008a24600: b        #0xffffff8008a24604                      
+ffffff8008a24604: nop                                               
+ffffff8008a24608: strb     w22, [x24]                               
+ffffff8008a2460c: cbz      w0, #0xffffff8008a24618                  
+ffffff8008a24610: dsb      sy                                       
+ffffff8008a24614: isb                                               
+ffffff8008a24618: ldr      w0, [x19, #0x27c]                        
+ffffff8008a2461c: tbnz     w0, #2, #0xffffff8008a24654              
+ffffff8008a24620: ldr      x0, [x19, #0x2b0]                        
+ffffff8008a24624: mov      w4, #3                                   
+ffffff8008a24628: ldr      x1, [x20, #0x38]                         
+ffffff8008a2462c: mov      w3, #5                                   
+ffffff8008a24630: ldr      w2, [x20, #0x30]                         
+ffffff8008a24634: ldr      w0, [x0, #0x14]                          
+ffffff8008a24638: and      w0, w0, #0x200                           
+ffffff8008a2463c: cmp      w0, wzr                                  
+ffffff8008a24640: add      x0, x19, #0x2c0                          
+ffffff8008a24644: csel     w3, w4, w3, ne                           
+ffffff8008a24648: bl       #0xffffff80083abcc0                      sg_miter_start
+ffffff8008a2464c: ldr      w0, [x20, #0xc]                          
+ffffff8008a24650: str      w0, [x19, #0x308]                        
+ffffff8008a24654: ldr      w0, [x19, #0x27c]                        
+ffffff8008a24658: ldr      w22, [x19, #0x3c0]                       
+ffffff8008a2465c: tbz      w0, #2, #0xffffff8008a24674              
+ffffff8008a24660: mov      w0, #8                                   
+ffffff8008a24664: and      w22, w22, #0xffffffcf                    
+ffffff8008a24668: movk     w0, #0x200, lsl #16                      
+ffffff8008a2466c: orr      w22, w22, w0                             
+ffffff8008a24670: b        #0xffffff8008a24684                      
+ffffff8008a24674: mov      w0, #0xfff7                              
+ffffff8008a24678: movk     w0, #0xfdff, lsl #16                     
+ffffff8008a2467c: and      w22, w22, w0                             
+ffffff8008a24680: orr      w22, w22, #0x30                          
+ffffff8008a24684: str      w22, [x19, #0x3c0]                       
+ffffff8008a24688: dsb      st                                       
+ffffff8008a2468c: ldr      x24, [x19, #0x18]                        
+ffffff8008a24690: mov      w0, #2                                   
+ffffff8008a24694: add      x24, x24, #0x34                          
+ffffff8008a24698: mov      x1, x24                                  
+ffffff8008a2469c: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a246a0: b        #0xffffff8008a246a4                      
+ffffff8008a246a4: nop                                               
+ffffff8008a246a8: b        #0xffffff8008a246ac                      
+ffffff8008a246ac: nop                                               
+ffffff8008a246b0: str      w22, [x24]                               
+ffffff8008a246b4: cbz      w0, #0xffffff8008a246c0                  
+ffffff8008a246b8: dsb      sy                                       
+ffffff8008a246bc: isb                                               
+ffffff8008a246c0: ldr      w24, [x19, #0x3c0]                       
+ffffff8008a246c4: dsb      st                                       
+ffffff8008a246c8: ldr      x22, [x19, #0x18]                        
+ffffff8008a246cc: mov      w0, #2                                   
+ffffff8008a246d0: add      x22, x22, #0x38                          
+ffffff8008a246d4: mov      x1, x22                                  
+ffffff8008a246d8: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a246dc: b        #0xffffff8008a246e0                      
+ffffff8008a246e0: nop                                               
+ffffff8008a246e4: b        #0xffffff8008a246e8                      
+ffffff8008a246e8: nop                                               
+ffffff8008a246ec: str      w24, [x22]                               
+ffffff8008a246f0: cbz      w0, #0xffffff8008a246fc                  
+ffffff8008a246f4: dsb      sy                                       
+ffffff8008a246f8: isb                                               
+ffffff8008a246fc: ldr      w1, [x20, #8]                            
+ffffff8008a24700: mov      x0, x19                                  
+ffffff8008a24704: mov      w2, #7                                   
+ffffff8008a24708: bl       #0xffffff8008a20a70                      sdhci_set_blk_size_reg
+ffffff8008a2470c: ldrh     w22, [x20, #0xc]                         
+ffffff8008a24710: dsb      st                                       
+ffffff8008a24714: ldr      x20, [x19, #0x18]                        
+ffffff8008a24718: mov      w0, #2                                   
+ffffff8008a2471c: add      x20, x20, #6                             
+ffffff8008a24720: mov      x1, x20                                  
+ffffff8008a24724: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24728: b        #0xffffff8008a2472c                      
+ffffff8008a2472c: nop                                               
+ffffff8008a24730: b        #0xffffff8008a24734                      
+ffffff8008a24734: nop                                               
+ffffff8008a24738: strh     w22, [x20]                               
+ffffff8008a2473c: cbz      w0, #0xffffff8008a24748                  
+ffffff8008a24740: dsb      sy                                       
+ffffff8008a24744: isb                                               
+ffffff8008a24748: ldr      x20, [x19, #0x18]                        
+ffffff8008a2474c: mov      w0, #1                                   
+ffffff8008a24750: add      x20, x20, #0x28                          
+ffffff8008a24754: mov      x1, x20                                  
+ffffff8008a24758: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2475c: b        #0xffffff8008a24760                      
+ffffff8008a24760: nop                                               
+ffffff8008a24764: b        #0xffffff8008a24768                      
+ffffff8008a24768: nop                                               
+ffffff8008a2476c: ldrb     w20, [x20]                               
+ffffff8008a24770: cbz      w0, #0xffffff8008a2477c                  
+ffffff8008a24774: dsb      sy                                       
+ffffff8008a24778: isb                                               
+ffffff8008a2477c: dsb      ld                                       
+ffffff8008a24780: ldr      x20, [x19, #0x18]                        
+ffffff8008a24784: mov      w0, #1                                   
+ffffff8008a24788: add      x20, x20, #0x3e                          
+ffffff8008a2478c: mov      x1, x20                                  
+ffffff8008a24790: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24794: b        #0xffffff8008a24798                      
+ffffff8008a24798: nop                                               
+ffffff8008a2479c: b        #0xffffff8008a247a0                      
+ffffff8008a247a0: nop                                               
+ffffff8008a247a4: ldrh     w20, [x20]                               
+ffffff8008a247a8: cbz      w0, #0xffffff8008a247b4                  
+ffffff8008a247ac: dsb      sy                                       
+ffffff8008a247b0: isb                                               
+ffffff8008a247b4: dsb      ld                                       
+ffffff8008a247b8: ldr      x20, [x19, #0x18]                        
+ffffff8008a247bc: mov      w0, #1                                   
+ffffff8008a247c0: add      x20, x20, #6                             
+ffffff8008a247c4: mov      x1, x20                                  
+ffffff8008a247c8: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a247cc: b        #0xffffff8008a247d0                      
+ffffff8008a247d0: nop                                               
+ffffff8008a247d4: b        #0xffffff8008a247d8                      
+ffffff8008a247d8: nop                                               
+ffffff8008a247dc: ldrh     w20, [x20]                               
+ffffff8008a247e0: cbz      w0, #0xffffff8008a247ec                  
+ffffff8008a247e4: dsb      sy                                       
+ffffff8008a247e8: isb                                               
+ffffff8008a247ec: dsb      ld                                       
+ffffff8008a247f0: ldr      w22, [x21, #4]                           
+ffffff8008a247f4: dsb      st                                       
+ffffff8008a247f8: ldr      x20, [x19, #0x18]                        
+ffffff8008a247fc: mov      w0, #2                                   
+ffffff8008a24800: add      x20, x20, #8                             
+ffffff8008a24804: mov      x1, x20                                  
+ffffff8008a24808: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2480c: b        #0xffffff8008a24810                      
+ffffff8008a24810: nop                                               
+ffffff8008a24814: b        #0xffffff8008a24818                      
+ffffff8008a24818: nop                                               
+ffffff8008a2481c: str      w22, [x20]                               
+ffffff8008a24820: cbz      w0, #0xffffff8008a2482c                  
+ffffff8008a24824: dsb      sy                                       
+ffffff8008a24828: isb                                               
+ffffff8008a2482c: ldr      x22, [x21, #0x30]                        
+ffffff8008a24830: ldr      w0, [x19, #0xc]                          
+ffffff8008a24834: cbnz     x22, #0xffffff8008a248ec                 
+ffffff8008a24838: tbz      w0, #0xa, #0xffffff8008a24870            
+ffffff8008a2483c: dsb      st                                       
+ffffff8008a24840: ldr      x20, [x19, #0x18]                        
+ffffff8008a24844: mov      w0, #2                                   
+ffffff8008a24848: add      x20, x20, #0xc                           
+ffffff8008a2484c: mov      x1, x20                                  
+ffffff8008a24850: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24854: b        #0xffffff8008a24858                      
+ffffff8008a24858: nop                                               
+ffffff8008a2485c: b        #0xffffff8008a24860                      
+ffffff8008a24860: nop                                               
+ffffff8008a24864: mov      w1, #0                                   
+ffffff8008a24868: strh     w1, [x20]                                
+ffffff8008a2486c: b        #0xffffff8008a248dc                      
+ffffff8008a24870: ldr      x20, [x19, #0x18]                        
+ffffff8008a24874: mov      w0, #1                                   
+ffffff8008a24878: add      x20, x20, #0xc                           
+ffffff8008a2487c: mov      x1, x20                                  
+ffffff8008a24880: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24884: b        #0xffffff8008a24888                      
+ffffff8008a24888: nop                                               
+ffffff8008a2488c: b        #0xffffff8008a24890                      
+ffffff8008a24890: nop                                               
+ffffff8008a24894: ldrh     w20, [x20]                               
+ffffff8008a24898: uxth     w20, w20                                 
+ffffff8008a2489c: cbz      w0, #0xffffff8008a248a8                  
+ffffff8008a248a0: dsb      sy                                       
+ffffff8008a248a4: isb                                               
+ffffff8008a248a8: dsb      ld                                       
+ffffff8008a248ac: dsb      st                                       
+ffffff8008a248b0: ldr      x22, [x19, #0x18]                        
+ffffff8008a248b4: mov      w0, #2                                   
+ffffff8008a248b8: add      x22, x22, #0xc                           
+ffffff8008a248bc: mov      x1, x22                                  
+ffffff8008a248c0: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a248c4: b        #0xffffff8008a248c8                      
+ffffff8008a248c8: nop                                               
+ffffff8008a248cc: b        #0xffffff8008a248d0                      
+ffffff8008a248d0: nop                                               
+ffffff8008a248d4: and      w20, w20, #0xfffffff3                    
+ffffff8008a248d8: strh     w20, [x22]                               
+ffffff8008a248dc: cbz      w0, #0xffffff8008a24aa0                  
+ffffff8008a248e0: dsb      sy                                       
+ffffff8008a248e4: isb                                               
+ffffff8008a248e8: b        #0xffffff8008a24aa0                      
+ffffff8008a248ec: ldr      x1, [x19, #0x2b0]                        
+ffffff8008a248f0: cbnz     x1, #0xffffff8008a248f8                  
+ffffff8008a248f4: brk      #0x800                                   
+ffffff8008a248f8: and      w0, w0, #0x2000                          
+ffffff8008a248fc: mov      w20, #2                                  
+ffffff8008a24900: cmp      w0, wzr                                  
+ffffff8008a24904: ldr      w0, [x21]                                
+ffffff8008a24908: csel     w20, wzr, w20, ne                        
+ffffff8008a2490c: cmp      w0, #0x12                                
+ffffff8008a24910: b.eq     #0xffffff8008a24928                      
+ffffff8008a24914: cmp      w0, #0x19                                
+ffffff8008a24918: b.eq     #0xffffff8008a24928                      
+ffffff8008a2491c: ldr      w1, [x22, #0xc]                          
+ffffff8008a24920: cmp      w1, #1                                   
+ffffff8008a24924: b.ls     #0xffffff8008a24994                      
+ffffff8008a24928: ldr      x1, [x19, #0x2a0]                        
+ffffff8008a2492c: ldr      w2, [x19, #0x27c]                        
+ffffff8008a24930: ldr      x1, [x1]                                 
+ffffff8008a24934: cbnz     x1, #0xffffff8008a24950                  
+ffffff8008a24938: tbz      w2, #6, #0xffffff8008a24948              
+ffffff8008a2493c: cmp      w0, #0x35                                
+ffffff8008a24940: mov      w20, #0x26                               
+ffffff8008a24944: b.ne     #0xffffff8008a24994                      
+ffffff8008a24948: mov      w20, #0x22                               
+ffffff8008a2494c: b        #0xffffff8008a24994                      
+ffffff8008a24950: mov      w20, #0x22                               
+ffffff8008a24954: tbz      w2, #7, #0xffffff8008a24994              
+ffffff8008a24958: ldr      w24, [x1, #4]                            
+ffffff8008a2495c: dsb      st                                       
+ffffff8008a24960: ldr      x20, [x19, #0x18]                        
+ffffff8008a24964: mov      w0, #2                                   
+ffffff8008a24968: mov      x1, x20                                  
+ffffff8008a2496c: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24970: b        #0xffffff8008a24974                      
+ffffff8008a24974: nop                                               
+ffffff8008a24978: b        #0xffffff8008a2497c                      
+ffffff8008a2497c: nop                                               
+ffffff8008a24980: str      w24, [x20]                               
+ffffff8008a24984: mov      w20, #0x2a                               
+ffffff8008a24988: cbz      w0, #0xffffff8008a24994                  
+ffffff8008a2498c: dsb      sy                                       
+ffffff8008a24990: isb                                               
+ffffff8008a24994: ldr      w0, [x22, #0x14]                         
+ffffff8008a24998: tbz      w0, #9, #0xffffff8008a249d0              
+ffffff8008a2499c: ldr      x0, [x19, #0x20]                         
+ffffff8008a249a0: orr      w20, w20, #0x10                          
+ffffff8008a249a4: ldr      x2, [x0, #0xf8]                          
+ffffff8008a249a8: cbz      x2, #0xffffff8008a249d0                  
+ffffff8008a249ac: ldr      w0, [x21]                                
+ffffff8008a249b0: sub      w0, w0, #0x13                            
+ffffff8008a249b4: tst      w0, #0xfffffffd                          
+ffffff8008a249b8: mov      x0, x19                                  
+ffffff8008a249bc: b.ne     #0xffffff8008a249c8                      
+ffffff8008a249c0: mov      w1, #0                                   
+ffffff8008a249c4: b        #0xffffff8008a249cc                      
+ffffff8008a249c8: mov      w1, #1                                   
+ffffff8008a249cc: blr      x2                                       
+ffffff8008a249d0: ldr      x0, [x19, #0x20]                         
+ffffff8008a249d4: ldr      x2, [x0, #0xf8]                          
+ffffff8008a249d8: cbz      x2, #0xffffff8008a249f0                  
+ffffff8008a249dc: ldr      w0, [x22, #0x14]                         
+ffffff8008a249e0: tbz      w0, #8, #0xffffff8008a249f0              
+ffffff8008a249e4: mov      x0, x19                                  
+ffffff8008a249e8: mov      w1, #0                                   
+ffffff8008a249ec: blr      x2                                       
+ffffff8008a249f0: ldr      w0, [x19, #0x27c]                        
+ffffff8008a249f4: tbz      w0, #2, #0xffffff8008a249fc              
+ffffff8008a249f8: orr      w20, w20, #1                             
+ffffff8008a249fc: dsb      st                                       
+ffffff8008a24a00: ldr      x22, [x19, #0x18]                        
+ffffff8008a24a04: mov      w0, #2                                   
+ffffff8008a24a08: add      x22, x22, #0xc                           
+ffffff8008a24a0c: mov      x1, x22                                  
+ffffff8008a24a10: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24a14: b        #0xffffff8008a24a18                      
+ffffff8008a24a18: nop                                               
+ffffff8008a24a1c: b        #0xffffff8008a24a20                      
+ffffff8008a24a20: nop                                               
+ffffff8008a24a24: strh     w20, [x22]                               
+ffffff8008a24a28: cbz      w0, #0xffffff8008a24a34                  
+ffffff8008a24a2c: dsb      sy                                       
+ffffff8008a24a30: isb                                               
+ffffff8008a24a34: ldr      x20, [x19, #0x18]                        
+ffffff8008a24a38: mov      w0, #1                                   
+ffffff8008a24a3c: mov      x1, x20                                  
+ffffff8008a24a40: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24a44: b        #0xffffff8008a24a48                      
+ffffff8008a24a48: nop                                               
+ffffff8008a24a4c: b        #0xffffff8008a24a50                      
+ffffff8008a24a50: nop                                               
+ffffff8008a24a54: ldrh     w20, [x20]                               
+ffffff8008a24a58: cbz      w0, #0xffffff8008a24a64                  
+ffffff8008a24a5c: dsb      sy                                       
+ffffff8008a24a60: isb                                               
+ffffff8008a24a64: dsb      ld                                       
+ffffff8008a24a68: ldr      x20, [x19, #0x18]                        
+ffffff8008a24a6c: mov      w0, #1                                   
+ffffff8008a24a70: add      x20, x20, #0xc                           
+ffffff8008a24a74: mov      x1, x20                                  
+ffffff8008a24a78: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24a7c: b        #0xffffff8008a24a80                      
+ffffff8008a24a80: nop                                               
+ffffff8008a24a84: b        #0xffffff8008a24a88                      
+ffffff8008a24a88: nop                                               
+ffffff8008a24a8c: ldrh     w20, [x20]                               
+ffffff8008a24a90: cbz      w0, #0xffffff8008a24a9c                  
+ffffff8008a24a94: dsb      sy                                       
+ffffff8008a24a98: isb                                               
+ffffff8008a24a9c: dsb      ld                                       
+ffffff8008a24aa0: ldr      w0, [x21, #0x18]                         
+ffffff8008a24aa4: mov      w1, #0xa                                 
+ffffff8008a24aa8: and      w1, w0, w1                               
+ffffff8008a24aac: cmp      w1, #0xa                                 
+ffffff8008a24ab0: b.ne     #0xffffff8008a24af8                      
+ffffff8008a24ab4: ldr      x0, [x19, #0x28]                         
+ffffff8008a24ab8: ldr      x1, [x0, #0x58]                          
+ffffff8008a24abc: cbnz     x1, #0xffffff8008a24ac4                  
+ffffff8008a24ac0: ldr      x1, [x0, #0x18]                          
+ffffff8008a24ac4: adrp     x0, #0xffffff8009678000                  
+ffffff8008a24ac8: add      x0, x0, #0xd3f                           
+ffffff8008a24acc: bl       #0xffffff800817e0b4                      printk
+ffffff8008a24ad0: mov      w0, #-0x16                               
+ffffff8008a24ad4: str      w0, [x21, #0x20]                         
+ffffff8008a24ad8: add      x1, x19, #0x350                          
+ffffff8008a24adc: mov      w0, #0                                   
+ffffff8008a24ae0: add      x20, x19, #0x348                         
+ffffff8008a24ae4: bl       #0xffffff8008399ce0                      test_and_set_bit
+ffffff8008a24ae8: cbnz     w0, #0xffffff8008a24d14                  
+ffffff8008a24aec: mov      x0, x20                                  
+ffffff8008a24af0: bl       #0xffffff80080aa434                      __tasklet_schedule
+ffffff8008a24af4: b        #0xffffff8008a24d14                      
+ffffff8008a24af8: mov      w20, #0                                  
+ffffff8008a24afc: tbz      w0, #0, #0xffffff8008a24b1c              
+ffffff8008a24b00: mov      w20, #1                                  
+ffffff8008a24b04: tbnz     w0, #1, #0xffffff8008a24b1c              
+ffffff8008a24b08: and      w1, w0, #8                               
+ffffff8008a24b0c: mov      w20, #2                                  
+ffffff8008a24b10: cmp      w1, wzr                                  
+ffffff8008a24b14: mov      w1, #3                                   
+ffffff8008a24b18: csel     w20, w20, w1, eq                         
+ffffff8008a24b1c: and      w2, w0, #4                               
+ffffff8008a24b20: orr      w1, w20, #8                              
+ffffff8008a24b24: cmp      w2, wzr                                  
+ffffff8008a24b28: and      w0, w0, #0x10                            
+ffffff8008a24b2c: csel     w20, w1, w20, ne                         
+ffffff8008a24b30: ldr      x1, [x21, #0x30]                         
+ffffff8008a24b34: orr      w20, w20, w0                             
+ffffff8008a24b38: cbnz     x1, #0xffffff8008a24b4c                  
+ffffff8008a24b3c: ldr      w0, [x21]                                
+ffffff8008a24b40: sub      w0, w0, #0x13                            
+ffffff8008a24b44: tst      w0, #0xfffffffd                          
+ffffff8008a24b48: b.ne     #0xffffff8008a24b5c                      
+ffffff8008a24b4c: orr      w20, w20, #0x20                          
+ffffff8008a24b50: cbz      x1, #0xffffff8008a24b5c                  
+ffffff8008a24b54: bl       #0xffffff800812359c                      ktime_get
+ffffff8008a24b58: str      x0, [x19, #0x3f0]                        
+ffffff8008a24b5c: adrp     x1, #0xffffff800a265000                  
+ffffff8008a24b60: ldr      w24, [x21]                               
+ffffff8008a24b64: add      x1, x1, #0xf98                           
+ffffff8008a24b68: ldr      w25, [x21, #4]                           
+ffffff8008a24b6c: ldr      w26, [x21, #0x18]                        
+ffffff8008a24b70: ldr      w0, [x1, #8]                             
+ffffff8008a24b74: cmp      w0, wzr                                  
+ffffff8008a24b78: b.le     #0xffffff8008a24c0c                      
+ffffff8008a24b7c: adrp     x0, #0xffffff8009886000                  
+ffffff8008a24b80: adrp     x3, #0xffffff8009007000                  
+ffffff8008a24b84: add      x0, x0, #0x10                            
+ffffff8008a24b88: mrs      x2, tpidr_el1                            
+ffffff8008a24b8c: ldr      w2, [x2, x0]                             
+ffffff8008a24b90: mov      w0, #0x40                                
+ffffff8008a24b94: ldr      x3, [x3, #0xa78]                         
+ffffff8008a24b98: sdiv     w0, w2, w0                               
+ffffff8008a24b9c: sbfiz    x0, x0, #3, #0x20                        
+ffffff8008a24ba0: ldr      x0, [x3, x0]                             
+ffffff8008a24ba4: lsr      x0, x0, x2                               
+ffffff8008a24ba8: tbz      w0, #0, #0xffffff8008a24c0c              
+ffffff8008a24bac: mrs      x2, sp_el0                               
+ffffff8008a24bb0: ldr      w0, [x2, #0x18]                          
+ffffff8008a24bb4: add      w0, w0, #1                               
+ffffff8008a24bb8: str      w0, [x2, #0x18]                          
+ffffff8008a24bbc: ldr      x22, [x1, #0x20]                         
+ffffff8008a24bc0: cbnz     x22, #0xffffff8008a24bdc                 
+ffffff8008a24bc4: mrs      x1, sp_el0                               
+ffffff8008a24bc8: ldr      w0, [x1, #0x18]                          
+ffffff8008a24bcc: sub      w0, w0, #1                               
+ffffff8008a24bd0: str      w0, [x1, #0x18]                          
+ffffff8008a24bd4: cbz      w0, #0xffffff8008a24c00                  
+ffffff8008a24bd8: b        #0xffffff8008a24c0c                      
+ffffff8008a24bdc: ldr      x4, [x22]                                
+ffffff8008a24be0: mov      w1, w24                                  
+ffffff8008a24be4: ldr      x0, [x22, #8]                            
+ffffff8008a24be8: mov      w2, w25                                  
+ffffff8008a24bec: mov      w3, w26                                  
+ffffff8008a24bf0: blr      x4                                       
+ffffff8008a24bf4: ldr      x0, [x22, #0x18]!                        
+ffffff8008a24bf8: cbnz     x0, #0xffffff8008a24bdc                  
+ffffff8008a24bfc: b        #0xffffff8008a24bc4                      
+ffffff8008a24c00: ldr      x0, [x1]                                 
+ffffff8008a24c04: tbz      w0, #1, #0xffffff8008a24c0c              
+ffffff8008a24c08: bl       #0xffffff8008f390e4                      preempt_schedule_notrace
+ffffff8008a24c0c: ldr      w0, [x21]                                
+ffffff8008a24c10: orr      w20, w20, w0, lsl #8                     
+ffffff8008a24c14: uxth     w20, w20                                 
+ffffff8008a24c18: dsb      st                                       
+ffffff8008a24c1c: ldr      x21, [x19, #0x18]                        
+ffffff8008a24c20: mov      w0, #2                                   
+ffffff8008a24c24: add      x21, x21, #0xe                           
+ffffff8008a24c28: mov      x1, x21                                  
+ffffff8008a24c2c: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24c30: b        #0xffffff8008a24c34                      
+ffffff8008a24c34: nop                                               
+ffffff8008a24c38: b        #0xffffff8008a24c3c                      
+ffffff8008a24c3c: nop                                               
+ffffff8008a24c40: strh     w20, [x21]                               
+ffffff8008a24c44: cbz      w0, #0xffffff8008a24c50                  
+ffffff8008a24c48: dsb      sy                                       
+ffffff8008a24c4c: isb                                               
+ffffff8008a24c50: ldr      x20, [x19, #0x18]                        
+ffffff8008a24c54: mov      w0, #1                                   
+ffffff8008a24c58: add      x20, x20, #8                             
+ffffff8008a24c5c: mov      x1, x20                                  
+ffffff8008a24c60: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24c64: b        #0xffffff8008a24c68                      
+ffffff8008a24c68: nop                                               
+ffffff8008a24c6c: b        #0xffffff8008a24c70                      
+ffffff8008a24c70: nop                                               
+ffffff8008a24c74: ldr      w20, [x20]                               
+ffffff8008a24c78: cbz      w0, #0xffffff8008a24c84                  
+ffffff8008a24c7c: dsb      sy                                       
+ffffff8008a24c80: isb                                               
+ffffff8008a24c84: dsb      ld                                       
+ffffff8008a24c88: ldr      x20, [x19, #0x18]                        
+ffffff8008a24c8c: mov      w0, #1                                   
+ffffff8008a24c90: add      x20, x20, #0xc                           
+ffffff8008a24c94: mov      x1, x20                                  
+ffffff8008a24c98: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24c9c: b        #0xffffff8008a24ca0                      
+ffffff8008a24ca0: nop                                               
+ffffff8008a24ca4: b        #0xffffff8008a24ca8                      
+ffffff8008a24ca8: nop                                               
+ffffff8008a24cac: ldrh     w20, [x20]                               
+ffffff8008a24cb0: cbz      w0, #0xffffff8008a24cbc                  
+ffffff8008a24cb4: dsb      sy                                       
+ffffff8008a24cb8: isb                                               
+ffffff8008a24cbc: dsb      ld                                       
+ffffff8008a24cc0: ldr      x19, [x19, #0x18]                        
+ffffff8008a24cc4: mov      w0, #1                                   
+ffffff8008a24cc8: add      x19, x19, #0xe                           
+ffffff8008a24ccc: mov      x1, x19                                  
+ffffff8008a24cd0: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a24cd4: b        #0xffffff8008a24cd8                      
+ffffff8008a24cd8: nop                                               
+ffffff8008a24cdc: b        #0xffffff8008a24ce0                      
+ffffff8008a24ce0: nop                                               
+ffffff8008a24ce4: ldrh     w19, [x19]                               
+ffffff8008a24ce8: cbz      w0, #0xffffff8008a24cf4                  
+ffffff8008a24cec: dsb      sy                                       
+ffffff8008a24cf0: isb                                               
+ffffff8008a24cf4: dsb      ld                                       
+ffffff8008a24cf8: b        #0xffffff8008a24d14                      
+ffffff8008a24cfc: ldr      x0, [x20, #0x38]                         
+ffffff8008a24d00: mov      w22, #0                                  
+ffffff8008a24d04: b        #0xffffff8008a24098                      
+ffffff8008a24d08: ldr      x0, [x20, #0x38]                         
+ffffff8008a24d0c: mov      w22, #0                                  
+ffffff8008a24d10: b        #0xffffff8008a240e4                      
+ffffff8008a24d14: ldr      x0, [x29, #0x88]                         
+ffffff8008a24d18: ldr      x1, [x29, #0x98]                         
+ffffff8008a24d1c: ldr      x0, [x0, #0x9c8]                         
+ffffff8008a24d20: cmp      x1, x0                                   
+ffffff8008a24d24: b.eq     #0xffffff8008a24d2c                      
+ffffff8008a24d28: bl       #0xffffff80080a51bc                      __stack_chk_fail
+ffffff8008a24d2c: ldp      x19, x20, [sp, #0x10]                    
+ffffff8008a24d30: ldp      x21, x22, [sp, #0x20]                    
+ffffff8008a24d34: ldp      x23, x24, [sp, #0x30]                    
+ffffff8008a24d38: ldp      x25, x26, [sp, #0x40]                    
+ffffff8008a24d3c: ldp      x27, x28, [sp, #0x50]                    
+ffffff8008a24d40: ldp      x29, x30, [sp], #0xa0                    
+ffffff8008a24d44: ret                                               
+
+sdhci_msm_readb_relaxed [inferred inspection range, not debug-info size] at 0xffffff8008a2d7f8, 104 bytes
+ffffff8008a2d7f8: stp      x29, x30, [sp, #-0x20]!                  
+ffffff8008a2d7fc: mov      x29, sp                                  
+ffffff8008a2d800: str      x19, [sp, #0x10]                         
+ffffff8008a2d804: ldr      x2, [x0, #0x488]                         
+ffffff8008a2d808: add      x3, x2, #1, lsl #12                      
+ffffff8008a2d80c: ldrb     w3, [x3, #0x7f9]                         
+ffffff8008a2d810: cbz      w3, #0xffffff8008a2d81c                  
+ffffff8008a2d814: ldr      x19, [x0, #0x18]                         
+ffffff8008a2d818: b        #0xffffff8008a2d820                      
+ffffff8008a2d81c: ldr      x19, [x2, #8]                            
+ffffff8008a2d820: add      x19, x19, w1, uxtw                       
+ffffff8008a2d824: mov      w0, #1                                   
+ffffff8008a2d828: mov      x1, x19                                  
+ffffff8008a2d82c: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2d830: b        #0xffffff8008a2d834                      
+ffffff8008a2d834: nop                                               
+ffffff8008a2d838: b        #0xffffff8008a2d83c                      
+ffffff8008a2d83c: nop                                               
+ffffff8008a2d840: ldrb     w19, [x19]                               
+ffffff8008a2d844: cbz      w0, #0xffffff8008a2d850                  
+ffffff8008a2d848: dsb      sy                                       
+ffffff8008a2d84c: isb                                               
+ffffff8008a2d850: mov      w0, w19                                  
+ffffff8008a2d854: ldr      x19, [sp, #0x10]                         
+ffffff8008a2d858: ldp      x29, x30, [sp], #0x20                    
+ffffff8008a2d85c: ret                                               
+
+sdhci_msm_readl_relaxed [inferred inspection range, not debug-info size] at 0xffffff8008a2d860, 104 bytes
+ffffff8008a2d860: stp      x29, x30, [sp, #-0x20]!                  
+ffffff8008a2d864: mov      x29, sp                                  
+ffffff8008a2d868: str      x19, [sp, #0x10]                         
+ffffff8008a2d86c: ldr      x2, [x0, #0x488]                         
+ffffff8008a2d870: add      x3, x2, #1, lsl #12                      
+ffffff8008a2d874: ldrb     w3, [x3, #0x7f9]                         
+ffffff8008a2d878: cbz      w3, #0xffffff8008a2d884                  
+ffffff8008a2d87c: ldr      x19, [x0, #0x18]                         
+ffffff8008a2d880: b        #0xffffff8008a2d888                      
+ffffff8008a2d884: ldr      x19, [x2, #8]                            
+ffffff8008a2d888: add      x19, x19, w1, uxtw                       
+ffffff8008a2d88c: mov      w0, #1                                   
+ffffff8008a2d890: mov      x1, x19                                  
+ffffff8008a2d894: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2d898: b        #0xffffff8008a2d89c                      
+ffffff8008a2d89c: nop                                               
+ffffff8008a2d8a0: b        #0xffffff8008a2d8a4                      
+ffffff8008a2d8a4: nop                                               
+ffffff8008a2d8a8: ldr      w19, [x19]                               
+ffffff8008a2d8ac: cbz      w0, #0xffffff8008a2d8b8                  
+ffffff8008a2d8b0: dsb      sy                                       
+ffffff8008a2d8b4: isb                                               
+ffffff8008a2d8b8: mov      w0, w19                                  
+ffffff8008a2d8bc: ldr      x19, [sp, #0x10]                         
+ffffff8008a2d8c0: ldp      x29, x30, [sp], #0x20                    
+ffffff8008a2d8c4: ret                                               
+
+sdhci_msm_writeb_relaxed [inferred inspection range, not debug-info size] at 0xffffff8008a2d8c8, 104 bytes
+ffffff8008a2d8c8: stp      x29, x30, [sp, #-0x20]!                  
+ffffff8008a2d8cc: mov      x29, sp                                  
+ffffff8008a2d8d0: stp      x19, x20, [sp, #0x10]                    
+ffffff8008a2d8d4: uxtb     w20, w0                                  
+ffffff8008a2d8d8: ldr      x0, [x1, #0x488]                         
+ffffff8008a2d8dc: add      x3, x0, #1, lsl #12                      
+ffffff8008a2d8e0: ldrb     w3, [x3, #0x7f9]                         
+ffffff8008a2d8e4: cbz      w3, #0xffffff8008a2d8f0                  
+ffffff8008a2d8e8: ldr      x19, [x1, #0x18]                         
+ffffff8008a2d8ec: b        #0xffffff8008a2d8f4                      
+ffffff8008a2d8f0: ldr      x19, [x0, #8]                            
+ffffff8008a2d8f4: add      x19, x19, w2, uxtw                       
+ffffff8008a2d8f8: mov      w0, #2                                   
+ffffff8008a2d8fc: mov      x1, x19                                  
+ffffff8008a2d900: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2d904: b        #0xffffff8008a2d908                      
+ffffff8008a2d908: nop                                               
+ffffff8008a2d90c: b        #0xffffff8008a2d910                      
+ffffff8008a2d910: nop                                               
+ffffff8008a2d914: strb     w20, [x19]                               
+ffffff8008a2d918: cbz      w0, #0xffffff8008a2d924                  
+ffffff8008a2d91c: dsb      sy                                       
+ffffff8008a2d920: isb                                               
+ffffff8008a2d924: ldp      x19, x20, [sp, #0x10]                    
+ffffff8008a2d928: ldp      x29, x30, [sp], #0x20                    
+ffffff8008a2d92c: ret                                               
+
+sdhci_msm_writel_relaxed [inferred inspection range, not debug-info size] at 0xffffff8008a2d930, 104 bytes
+ffffff8008a2d930: stp      x29, x30, [sp, #-0x20]!                  
+ffffff8008a2d934: mov      x29, sp                                  
+ffffff8008a2d938: stp      x19, x20, [sp, #0x10]                    
+ffffff8008a2d93c: mov      w20, w0                                  
+ffffff8008a2d940: ldr      x0, [x1, #0x488]                         
+ffffff8008a2d944: add      x3, x0, #1, lsl #12                      
+ffffff8008a2d948: ldrb     w3, [x3, #0x7f9]                         
+ffffff8008a2d94c: cbz      w3, #0xffffff8008a2d958                  
+ffffff8008a2d950: ldr      x19, [x1, #0x18]                         
+ffffff8008a2d954: b        #0xffffff8008a2d95c                      
+ffffff8008a2d958: ldr      x19, [x0, #8]                            
+ffffff8008a2d95c: add      x19, x19, w2, uxtw                       
+ffffff8008a2d960: mov      w0, #2                                   
+ffffff8008a2d964: mov      x1, x19                                  
+ffffff8008a2d968: bl       #0xffffff800816d688                      uncached_logk
+ffffff8008a2d96c: b        #0xffffff8008a2d970                      
+ffffff8008a2d970: nop                                               
+ffffff8008a2d974: b        #0xffffff8008a2d978                      
+ffffff8008a2d978: nop                                               
+ffffff8008a2d97c: str      w20, [x19]                               
+ffffff8008a2d980: cbz      w0, #0xffffff8008a2d98c                  
+ffffff8008a2d984: dsb      sy                                       
+ffffff8008a2d988: isb                                               
+ffffff8008a2d98c: ldp      x19, x20, [sp, #0x10]                    
+ffffff8008a2d990: ldp      x29, x30, [sp], #0x20                    
+ffffff8008a2d994: ret                                               

@@ -1,0 +1,329 @@
+{
+  "model": "HLTE730T",
+  "marketing_name": "Hisense A6L",
+  "platform": "sdm660",
+  "stock_android_api": 28,
+  "stock_vndk": 28,
+  "stock_build": "L1632.6.01.04",
+  "kernel": "4.4.153-perf",
+  "stock_boot": {
+    "header_version": 1,
+    "page_size": 4096,
+    "kernel_size": 12378977,
+    "kernel_address": 32768,
+    "ramdisk_size": 1024,
+    "ramdisk_address": 16777216,
+    "tags_address": 256,
+    "cmdline": "console=ttyMSM0,115200,n8 androidboot.console=ttyMSM0 earlycon=msm_serial_dm,0xc170000 androidboot.hardware=qcom user_debug=31 msm_rtb.filter=0x37 ehci-hcd.park=3 lpm_levels.sleep_disabled=1 sched_enable_hmp=1 sched_enable_power_aware=1 service_locator.enable=1 swiotlb=1 firmware_class.path=/vendor/firmware_mnt/image loop.max_part=7 buildvariant=user"
+  },
+  "displays": [
+    {
+      "role": "lcd",
+      "width": 1080,
+      "height": 2340
+    },
+    {
+      "role": "eink",
+      "width": 720,
+      "height": 1440,
+      "panel": "ed052tc2"
+    }
+  ],
+  "partitions": [
+    {
+      "name": "xbl",
+      "offset": 67108864,
+      "bytes": 3670016
+    },
+    {
+      "name": "tz",
+      "offset": 70778880,
+      "bytes": 4194304
+    },
+    {
+      "name": "rpm",
+      "offset": 74973184,
+      "bytes": 524288
+    },
+    {
+      "name": "hyp",
+      "offset": 75497472,
+      "bytes": 524288
+    },
+    {
+      "name": "pmic",
+      "offset": 76021760,
+      "bytes": 524288
+    },
+    {
+      "name": "fsg",
+      "offset": 76546048,
+      "bytes": 2097152
+    },
+    {
+      "name": "keymaster",
+      "offset": 78643200,
+      "bytes": 1048576
+    },
+    {
+      "name": "cmnlib",
+      "offset": 79691776,
+      "bytes": 1048576
+    },
+    {
+      "name": "cmnlib64",
+      "offset": 80740352,
+      "bytes": 1048576
+    },
+    {
+      "name": "mdtpsecapp",
+      "offset": 81788928,
+      "bytes": 4194304
+    },
+    {
+      "name": "mdtp",
+      "offset": 85983232,
+      "bytes": 33554432
+    },
+    {
+      "name": "modem",
+      "offset": 119537664,
+      "bytes": 115343360
+    },
+    {
+      "name": "dsp",
+      "offset": 234881024,
+      "bytes": 16777216
+    },
+    {
+      "name": "abl",
+      "offset": 251658240,
+      "bytes": 1048576
+    },
+    {
+      "name": "dip",
+      "offset": 252706816,
+      "bytes": 1048576
+    },
+    {
+      "name": "devinfo",
+      "offset": 253755392,
+      "bytes": 4096
+    },
+    {
+      "name": "apdp",
+      "offset": 253759488,
+      "bytes": 262144
+    },
+    {
+      "name": "msadp",
+      "offset": 254021632,
+      "bytes": 262144
+    },
+    {
+      "name": "dpo",
+      "offset": 254283776,
+      "bytes": 1024
+    },
+    {
+      "name": "splash",
+      "offset": 254287872,
+      "bytes": 34226176
+    },
+    {
+      "name": "limits",
+      "offset": 288514048,
+      "bytes": 4096
+    },
+    {
+      "name": "toolsfv",
+      "offset": 288518144,
+      "bytes": 1048576
+    },
+    {
+      "name": "ddr",
+      "offset": 289566720,
+      "bytes": 1048576
+    },
+    {
+      "name": "sec",
+      "offset": 290615296,
+      "bytes": 16384
+    },
+    {
+      "name": "bluetooth",
+      "offset": 290631680,
+      "bytes": 1048576
+    },
+    {
+      "name": "storsec",
+      "offset": 291680256,
+      "bytes": 131072
+    },
+    {
+      "name": "vbmeta",
+      "offset": 291811328,
+      "bytes": 65536
+    },
+    {
+      "name": "logfs",
+      "offset": 335544320,
+      "bytes": 8388608
+    },
+    {
+      "name": "boot",
+      "offset": 343932928,
+      "bytes": 67108864
+    },
+    {
+      "name": "recovery",
+      "offset": 469762048,
+      "bytes": 67108864
+    },
+    {
+      "name": "fsc",
+      "offset": 536870912,
+      "bytes": 1024
+    },
+    {
+      "name": "ssd",
+      "offset": 536875008,
+      "bytes": 8192
+    },
+    {
+      "name": "modemst1",
+      "offset": 536883200,
+      "bytes": 2097152
+    },
+    {
+      "name": "modemst2",
+      "offset": 538980352,
+      "bytes": 2097152
+    },
+    {
+      "name": "flag",
+      "offset": 541077504,
+      "bytes": 1048576
+    },
+    {
+      "name": "diag",
+      "offset": 542126080,
+      "bytes": 1048576
+    },
+    {
+      "name": "kdebug",
+      "offset": 543174656,
+      "bytes": 104857600
+    },
+    {
+      "name": "logo",
+      "offset": 648032256,
+      "bytes": 104857600
+    },
+    {
+      "name": "prospecfg",
+      "offset": 752889856,
+      "bytes": 1048576
+    },
+    {
+      "name": "metadata",
+      "offset": 753938432,
+      "bytes": 10485760
+    },
+    {
+      "name": "reserve",
+      "offset": 764424192,
+      "bytes": 10485760
+    },
+    {
+      "name": "dtbo",
+      "offset": 805306368,
+      "bytes": 8388608
+    },
+    {
+      "name": "system",
+      "offset": 813694976,
+      "bytes": 6442450944
+    },
+    {
+      "name": "vendor",
+      "offset": 7256145920,
+      "bytes": 1153433600
+    },
+    {
+      "name": "cache",
+      "offset": 8455716864,
+      "bytes": 268435456
+    },
+    {
+      "name": "persist",
+      "offset": 8724152320,
+      "bytes": 33554432
+    },
+    {
+      "name": "misc",
+      "offset": 8757706752,
+      "bytes": 1048576
+    },
+    {
+      "name": "keystore",
+      "offset": 8758755328,
+      "bytes": 524288
+    },
+    {
+      "name": "devcfg",
+      "offset": 8759279616,
+      "bytes": 1048576
+    },
+    {
+      "name": "frp",
+      "offset": 8760328192,
+      "bytes": 524288
+    },
+    {
+      "name": "phonelog",
+      "offset": 8760852480,
+      "bytes": 104857600
+    },
+    {
+      "name": "kdebuginfo",
+      "offset": 8865710080,
+      "bytes": 209715200
+    },
+    {
+      "name": "logdump",
+      "offset": 9075425280,
+      "bytes": 67108864
+    },
+    {
+      "name": "sti",
+      "offset": 9142534144,
+      "bytes": 2097152
+    },
+    {
+      "name": "rawdump",
+      "offset": 9144631296,
+      "bytes": 134217728
+    },
+    {
+      "name": "databackup",
+      "offset": 9278849024,
+      "bytes": 52428800
+    },
+    {
+      "name": "reserve2",
+      "offset": 9331277824,
+      "bytes": 1073741824
+    },
+    {
+      "name": "grow",
+      "offset": 125074122752,
+      "bytes": 5120
+    }
+  ],
+  "limitations": [
+    "userdata excluded from firmware backup",
+    "not a build-tested hardware definition",
+    "kernel source not yet located"
+  ]
+}

@@ -1,0 +1,61 @@
+package {
+    default_applicable_licenses: ["external_highway_license"],
+}
+
+license {
+    name: "external_highway_license",
+    visibility: [":__subpackages__"],
+    license_kinds: [
+        "SPDX-license-identifier-Apache-2.0",
+        "SPDX-license-identifier-BSD-3-Clause",
+    ],
+    license_text: [
+        "LICENSE",
+    ],
+}
+
+cc_library_headers {
+    name: "hwy_headers_only",
+    host_supported: true,
+    export_include_dirs: [
+        ".",
+    ],
+    visibility: [
+        "//bionic:__subpackages__",
+    ],
+    stl: "none",
+    native_bridge_supported: true,
+    system_shared_libs: [],
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.runtime",
+    ],
+}
+
+cc_library {
+    name: "libhwy",
+    vendor_available: true,
+    host_supported: true,
+    sdk_version: "current",
+    stl: "c++_shared",
+    export_include_dirs: [
+        ".",
+    ],
+    srcs: [
+        "hwy/contrib/sort/qgsort_*.cc",
+        "hwy/contrib/image/image.cc",
+        "hwy/contrib/thread_pool/topology.cc",
+        "hwy/abort.cc",
+        "hwy/aligned_allocator.cc",
+        "hwy/nanobenchmark.cc",
+        "hwy/per_target.cc",
+        "hwy/print.cc",
+        "hwy/targets.cc",
+        "hwy/timer.cc",
+    ],
+    visibility: [
+        ":__subpackages__",
+        "//external/libjxl:__subpackages__",
+        "//external/dng_sdk/fuzzer:__subpackages__",
+    ],
+}

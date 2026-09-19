@@ -1,0 +1,9 @@
+# V33 optional controller reset comparison
+
+V32 captured expected framework supply voltages, 400 kHz startup clock, SDCC version 1.0x6b and low-speed DLL/pad setup. It still lost USB after the preissue checkpoint. No exact fault instruction or reset reason was recovered.
+
+Concrete difference: stock resolved /soc/sdhci@c0c4000 has no resets property. Current inherited /soc@0/mmc@c0c4000 has resets=<GCC phandle0x20 selector10>. Selector10 is GCC_SDCC1_BCR mapped to GCC offset0x16000. This is not a local uncommitted DT change. The modern driver calls sdhci_msm_gcc_reset before requesting/enabling clocks; an absent optional reset returns without hardware reset. Public Qualcomm4.4 comparator has no reset_control or sdhci_msm_gcc_reset call. This does NOT prove stock never resets the hardware through another path.
+
+V33 removes that single reset property from the packaged DT; all kernel/module/RAM/init bytes and other DT properties stay V32. Normal SDHCI software resets still occur. No voltage, IRQ, regulator, command or timing change. Existing staged command success/error branches and precommand snapshot remain. This isolates whether clearing bootloader-initialized block state contributes to the failure. A pass warrants careful register/setup comparison; another identical failure weakens this explanation.
+
+Primary-source research: 2022 driver review explains optional reset semantics and notes reset occurs before clock resources are acquired: https://lkml.rescloud.iu.edu/2203.1/09005.html . 2025 SDM660 U-Boot driver review notes older Linux bindings/DT did not use the SDCC BCR resets: https://www.mail-archive.com/u-boot%40lists.denx.de/msg532700.html . Search excerpts retrieved; full-page web fetch returned cache miss, so do not claim full-thread resolution. Neither is an A6L fix report.

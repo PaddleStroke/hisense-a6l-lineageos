@@ -1,0 +1,12 @@
+{
+  "pins": {
+    "Run-AndroidAllocatorV41.py": "24f2b2801b804a9dfe3ce0648c7e22482bd1eaa6d857eb853ab15ff2c520aa62",
+    "Run-LaptopAllocatorCapture-v41.py": "958f804f7b0a5834279e2ceda20946107f15cc0a59696e3aea89ce3fe0d8aed3",
+    "android-allocator-v41/manifest.json": "6ac49bef570eef231cbba2fd166a872e7217b31f81f6d6c8e2793e1745859e5c",
+    "android-allocator-v41/qemu-report.json": "cfce01a2f7ca3c6807874812569824a6aff8468ba04425f715b3f1eea00072cc"
+  },
+  "old_files_verified": 9,
+  "payload_files_verified": 38,
+  "qemu_passed": true,
+  "phone_test_started": false
+}

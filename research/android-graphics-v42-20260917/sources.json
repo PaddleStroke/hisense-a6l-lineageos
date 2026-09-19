@@ -1,0 +1,23 @@
+{
+  "external/minigbm": {
+    "head": "ce79bbee67b3e2ea7abb110e1415e9ceceaa6471",
+    "status": "M drv.c\n M dumb_driver.c"
+  },
+  "external/drm_hwcomposer": {
+    "head": "87daba89b05fabc7f1e9316e3f283f19fd0c45cd",
+    "status": ""
+  },
+  "frameworks/native": {
+    "head": "0ec1966edafb792ffefa81879b24364528f823aa",
+    "status": ""
+  },
+  "system/libvintf": {
+    "head": "df89ad736e14ac375f61d50fa543ae7cd746a140",
+    "status": ""
+  },
+  "sources": [
+    "https://android.googlesource.com/platform/external/minigbm/",
+    "https://android.googlesource.com/platform/external/drm_hwcomposer/+/refs/heads/main/hwc3/",
+    "https://android.googlesource.com/platform/frameworks/native/"
+  ]
+}

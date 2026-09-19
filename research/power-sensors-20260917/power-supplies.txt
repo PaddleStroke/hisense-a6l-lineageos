@@ -1,0 +1,7 @@
+SUPPLY=/sys/class/power_supply/battery
+SUPPLY=/sys/class/power_supply/bms
+SUPPLY=/sys/class/power_supply/dc
+SUPPLY=/sys/class/power_supply/main
+SUPPLY=/sys/class/power_supply/parallel
+SUPPLY=/sys/class/power_supply/pc_port
+SUPPLY=/sys/class/power_supply/usb

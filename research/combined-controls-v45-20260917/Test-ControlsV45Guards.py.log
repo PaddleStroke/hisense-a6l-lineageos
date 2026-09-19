@@ -1,0 +1,12 @@
+test_corrupted_payload_rejected (__main__.Guards.test_corrupted_payload_rejected) ... ok
+test_insecure_adb_rejected (__main__.Guards.test_insecure_adb_rejected) ... ok
+test_missing_ram_mount_rejected (__main__.Guards.test_missing_ram_mount_rejected) ... ok
+test_mounted_userdata_rejected (__main__.Guards.test_mounted_userdata_rejected) ... ok
+test_previous_diagnostic_rejected (__main__.Guards.test_previous_diagnostic_rejected) ... ok
+test_stock_android_rejected (__main__.Guards.test_stock_android_rejected) ... ok
+test_unprivileged_rejected (__main__.Guards.test_unprivileged_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.044s
+
+OK

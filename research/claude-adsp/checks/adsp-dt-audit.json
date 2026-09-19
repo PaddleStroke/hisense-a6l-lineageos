@@ -1,0 +1,444 @@
+{
+ "input": "/mnt/user-data/uploads/A6L/firmware/extracted/recovery-controls-v46-20260918/merged-captured-abl.dtb",
+ "input_sha256": "4ed016fdf38baedd85a6046467486e09f679abffafee0311b770d88f3487f2ac",
+ "checks": [
+  {
+   "check": "__symbols__/adsp_pil resolves",
+   "ok": true,
+   "detail": "/soc@0/remoteproc@15700000"
+  },
+  {
+   "check": "compatible",
+   "ok": true,
+   "detail": "['qcom,sdm660-adsp-pas']"
+  },
+  {
+   "check": "reg base matches stock QDSP6SS base",
+   "ok": true,
+   "detail": "0x15700000"
+  },
+  {
+   "check": "status currently disabled (baseline)",
+   "ok": true,
+   "detail": "['disabled']"
+  },
+  {
+   "check": "clock-names",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "clocks -> rpmcc (RPM XO)",
+   "ok": true,
+   "detail": "/remoteproc/glink-edge/rpm-requests/clock-controller index 0 (RPM_SMD_XO_CLK_SRC=0)"
+  },
+  {
+   "check": "interrupt-names",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "wdog SPI matches stock",
+   "ok": true,
+   "detail": "SPI 162"
+  },
+  {
+   "check": "fatal/ready/handover/stop-ack use adsp_smp2p_in bits 0..3 (stock err-fatal/err-ready/proxy-unvote/stop-ack)",
+   "ok": true,
+   "detail": "[1, 0, 162, 1, 114, 0, 1, 114, 1, 1, 114, 2, 1, 114, 3, 1]"
+  },
+  {
+   "check": "stop state -> adsp_smp2p_out bit 0 (stock force-stop bit 0)",
+   "ok": true,
+   "detail": "[116, 0]"
+  },
+  {
+   "check": "smp2p-adsp remote-pid 2 / SPI 158 / apcs bit 10",
+   "ok": true,
+   "detail": "pid [2] irq [0, 158, 1] mbox [26, 10]"
+  },
+  {
+   "check": "smp2p-adsp smem items 443/429",
+   "ok": true,
+   "detail": "[443, 429]"
+  },
+  {
+   "check": "glink-edge present with label lpass, SPI 157, apcs bit 9, remote-pid 2",
+   "ok": true,
+   "detail": "['lpass'] [0, 157, 1] [26, 9]"
+  },
+  {
+   "check": "glink mailbox -> apcs mailbox@17911000",
+   "ok": true,
+   "detail": "/soc@0/mailbox@17911000"
+  },
+  {
+   "check": "memory-region == stock adsp_fw_region 0x92a00000/0x1e00000 with no-map",
+   "ok": true,
+   "detail": "/reserved-memory/adsp@92a00000 0x92a00000/0x1e00000"
+  },
+  {
+   "check": "power-domains -> sdm660 rpmpd index 0 (RPMPD_VDDCX = RPM \"rwcx\"/0)",
+   "ok": true,
+   "detail": "/remoteproc/glink-edge/rpm-requests/power-controller idx 0"
+  },
+  {
+   "check": "power-domain-names",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "no iommus property (rproc->has_iommu false; use_tzmem false)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "no firmware-name yet in baseline (driver default adsp.mdt)",
+   "ok": true,
+   "detail": "None"
+  },
+  {
+   "check": "smem node with memory-region smem-mem@86000000 and hwlock",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "firmware/scm present",
+   "ok": true,
+   "detail": "['qcom,scm-msm8998', 'qcom,scm']"
+  },
+  {
+   "check": "imem pil-reloc-info node (optional; qcom_pil_info_store only)",
+   "ok": true,
+   "detail": "/soc@0/sram@146bf000/pil-reloc@94c"
+  },
+  {
+   "check": "no overlapping fixed reserved regions",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "every stock fixed reserved region is covered by the merged tree",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "ADSP region has no other fixed claimant",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "remoteproc_mss remains disabled",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "remoteproc_cdsp remains disabled",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "overlay scope is exactly 3 properties",
+   "ok": true,
+   "detail": "['/chosen/hisense,a6l-adsp', '/soc@0/remoteproc@15700000/firmware-name', '/soc@0/remoteproc@15700000/status']"
+  },
+  {
+   "check": "candidate re-parses; adsp_pil okay + firmware-name",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "passed": true,
+ "stock_reference": {
+  "lpass_node": "qcom,lpass@15700000",
+  "compatible": "qcom,pil-tz-generic",
+  "reg": [
+   359661568,
+   256
+  ],
+  "wdog_spi": 162,
+  "pas_id": 1,
+  "smem_id": 423,
+  "sysmon_id": 1,
+  "ssctl_instance_id": 20,
+  "firmware_name": "adsp",
+  "memory_region": [
+   2459959296,
+   31457280
+  ],
+  "smp2p_remote_pid": 2,
+  "smp2p_irq_spi": 158,
+  "smp2p_irq_bitmask": 1024,
+  "glink_irq_spi": 157,
+  "glink_irq_mask": 512,
+  "smp2p_in_bits": {
+   "err-fatal": 0,
+   "err-ready": 1,
+   "proxy-unvote": 2,
+   "stop-ack": 3
+  },
+  "smp2p_out_bits": {
+   "force-stop": 0
+  },
+  "proxy_supply": "pm660l_l9_level -> RPM resource \"rwlc\" id 0, level 0x180 (384, TURBO), load 100000 uA, qcom,set=3",
+  "proxy_clock": "qcom,rpmcc-sdm660 index 0x52 (downstream numbering), name \"xo\"",
+  "proxy_timeout_ms": 10000,
+  "reserved": [
+   [
+    "wlan_msa_guard",
+    2237661184,
+    1048576
+   ],
+   [
+    "wlan_msa_mem",
+    2238709760,
+    1048576
+   ],
+   [
+    "removed_regions",
+    2239758336,
+    57671680
+   ],
+   [
+    "modem_fw_region",
+    2327838720,
+    132120576
+   ],
+   [
+    "adsp_fw_region",
+    2459959296,
+    31457280
+   ],
+   [
+    "pil_mba_region",
+    2491416576,
+    2097152
+   ],
+   [
+    "cdsp_fw_region",
+    2493513728,
+    6291456
+   ],
+   [
+    "splash_region",
+    2638217216,
+    37744640
+   ],
+   [
+    "dfps_data_mem",
+    2675961856,
+    4096
+   ],
+   [
+    "boot_log_region",
+    2952790016,
+    524288
+   ],
+   [
+    "subsys_trap_region",
+    2953314304,
+    1048576
+   ],
+   [
+    "rs_recorder_region",
+    2954362880,
+    4194304
+   ]
+  ]
+ },
+ "driver_needs": {
+  "compatible": "qcom,sdm660-adsp-pas",
+  "clock-names": [
+   "xo"
+  ],
+  "interrupt-names": [
+   "wdog",
+   "fatal",
+   "ready",
+   "handover",
+   "stop-ack"
+  ],
+  "qcom,smem-state-names": [
+   "stop"
+  ],
+  "power-domain-names": [
+   "cx"
+  ],
+  "match_data": {
+   "crash_reason_smem": 423,
+   "firmware_name": "adsp.mdt",
+   "pas_id": 1,
+   "auto_boot": true,
+   "ssr_name": "lpass",
+   "sysmon_name": "adsp",
+   "ssctl_id": 20,
+   "proxy_pd_names": null
+  }
+ },
+ "adsp_pil": {
+  "path": "/soc@0/remoteproc@15700000",
+  "props": {
+   "compatible": "71636f6d2c73646d3636302d616473702d70617300",
+   "reg": "1570000000004040",
+   "interrupts-extended": "0000000100000000000000a200000001000000720000000000000001000000720000000100000001000000720000000200000001000000720000000300000001",
+   "interrupt-names": "77646f6700666174616c0072656164790068616e646f7665720073746f702d61636b00",
+   "clocks": "0000002100000000",
+   "clock-names": "786f00",
+   "memory-region": "00000073",
+   "power-domains": "0000002700000000",
+   "power-domain-names": "637800",
+   "qcom,smem-states": "0000007400000000",
+   "qcom,smem-state-names": "73746f7000",
+   "status": "64697361626c656400",
+   "phandle": "000000c8"
+  }
+ },
+ "power_domain_note": "DIFFERENCE: stock proxies vdd_cx via pm660l_l9_level = RPM resource \"rwlc\"/0 (LPASS/SSC CX) at level 384 until proxy-unvote; pinned DT names rpmpd VDDCX (\"rwcx\"/0) and the pinned driver match data has no proxy_pd_names, so no level is voted on either resource during boot. See EVIDENCE.md D5.",
+ "pil_reloc_info_node": "/soc@0/sram@146bf000/pil-reloc@94c",
+ "reserved_memory": [
+  {
+   "name": "wlan-msa-guard@85600000",
+   "base": "0x85600000",
+   "size": "0x100000",
+   "end": "0x85700000"
+  },
+  {
+   "name": "wlan-msa-mem@85700000",
+   "base": "0x85700000",
+   "size": "0x100000",
+   "end": "0x85800000"
+  },
+  {
+   "name": "qhee-code@85800000",
+   "base": "0x85800000",
+   "size": "0x600000",
+   "end": "0x85e00000"
+  },
+  {
+   "name": "memory@85e00000",
+   "base": "0x85e00000",
+   "size": "0x200000",
+   "end": "0x86000000"
+  },
+  {
+   "name": "smem-mem@86000000",
+   "base": "0x86000000",
+   "size": "0x200000",
+   "end": "0x86200000"
+  },
+  {
+   "name": "memory@86200000",
+   "base": "0x86200000",
+   "size": "0x2d00000",
+   "end": "0x88f00000"
+  },
+  {
+   "name": "mpss@8ac00000",
+   "base": "0x8ac00000",
+   "size": "0x7e00000",
+   "end": "0x92a00000"
+  },
+  {
+   "name": "adsp@92a00000",
+   "base": "0x92a00000",
+   "size": "0x1e00000",
+   "end": "0x94800000"
+  },
+  {
+   "name": "mba@94800000",
+   "base": "0x94800000",
+   "size": "0x200000",
+   "end": "0x94a00000"
+  },
+  {
+   "name": "cdsp@94a00000",
+   "base": "0x94a00000",
+   "size": "0x600000",
+   "end": "0x95000000"
+  },
+  {
+   "name": "framebuffer@9d400000",
+   "base": "0x9d400000",
+   "size": "0x23ff000",
+   "end": "0x9f7ff000"
+  },
+  {
+   "name": "memory@9f7ff000",
+   "base": "0x9f7ff000",
+   "size": "0x1000",
+   "end": "0x9f800000"
+  },
+  {
+   "name": "venus@9f800000",
+   "base": "0x9f800000",
+   "size": "0x800000",
+   "end": "0xa0000000"
+  },
+  {
+   "name": "memory@b0000000",
+   "base": "0xb0000000",
+   "size": "0x80000",
+   "end": "0xb0080000"
+  },
+  {
+   "name": "memory@b0080000",
+   "base": "0xb0080000",
+   "size": "0x100000",
+   "end": "0xb0180000"
+  },
+  {
+   "name": "memory@b0180000",
+   "base": "0xb0180000",
+   "size": "0x400000",
+   "end": "0xb0580000"
+  },
+  {
+   "name": "qseecom-region@f6800000",
+   "base": "0xf6800000",
+   "size": "0x1400000",
+   "end": "0xf7c00000"
+  },
+  {
+   "name": "gpu@fed00000",
+   "base": "0xfed00000",
+   "size": "0xa00000",
+   "end": "0xff700000"
+  }
+ ],
+ "fixed_regions_not_in_stock": [
+  [
+   "venus@9f800000",
+   "0x9f800000",
+   "0x800000"
+  ],
+  [
+   "qseecom-region@f6800000",
+   "0xf6800000",
+   "0x1400000"
+  ],
+  [
+   "gpu@fed00000",
+   "0xfed00000",
+   "0xa00000"
+  ]
+ ],
+ "candidate_dtb": {
+  "path": "/home/claude/adsp/out/candidate-adsp-merged.dtb",
+  "sha256": "c63e901602ae2c62bc111706f11b6e090ad884f3955ed1c4a45673495eef32e2",
+  "bytes": 69932
+ },
+ "overlay_effect_diff": {
+  "/chosen/hisense,a6l-adsp": {
+   "before": null,
+   "after": "646961673100"
+  },
+  "/soc@0/remoteproc@15700000/firmware-name": {
+   "before": null,
+   "after": "71636f6d2f686973656e73652f61366c2f616473702e6d647400"
+  },
+  "/soc@0/remoteproc@15700000/status": {
+   "before": "64697361626c656400",
+   "after": "6f6b617900"
+  }
+ }
+}

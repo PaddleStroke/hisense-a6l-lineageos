@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* This overlay is embedded in our recovery image, not the dtbo partition. */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	/* Preserve the captured recovery overlay's board/PMIC match information. */
+	/* Old Hisense ufdt also merges root properties: retain the base model. */
+	qcom,board-id = <0x12000b 0>;
+	qcom,pmic-id = <0x1001b 0x101011a 0 0>,
+		       <0x1001b 0x201011a 0 0>,
+		       <0x1001b 0x102001a 0 0>;
+
+	fragment@0 {
+		/* Generate the external __fixups__ table required by Hisense ufdt. */
+		target = <&a6l_recovery_chosen>;
+
+		__overlay__ {
+			hisense,a6l-recovery-probe = "v1";
+		};
+	};
+};

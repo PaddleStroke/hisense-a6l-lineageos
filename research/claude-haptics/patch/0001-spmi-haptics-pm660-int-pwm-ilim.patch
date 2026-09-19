@@ -1,0 +1,115 @@
+--- candidate.c.orig	2026-09-18 10:35:49.803435500 +0000
++++ candidate.c.new	2026-09-18 10:35:49.852411600 +0000
+@@ -86,6 +86,19 @@
+ #define HAP_RATE_CFG2_REG		0x55
+ #define HAP_RATE_CFG2_MASK		GENMASK(3, 0)
+ 
++/* PM660/qpnp internal-PWM drive-synthesis carrier. Programmed by the stock
++ * qpnp-haptic driver in direct/buffer LRA modes; absent from the pmi8998
++ * mainline driver. Candidate addition, see claude-haptics EVIDENCE.md. */
++#define HAP_INT_PWM_REG			0x56
++#define HAP_INT_PWM_FREQ_MASK		GENMASK(1, 0)
++#define HAP_PWM_CAP_REG			0x58
++#define HAP_PWM_CAP_MASK		GENMASK(1, 0)
++
++#define HAP_INT_PWM_FREQ_253_KHZ	253
++#define HAP_INT_PWM_FREQ_505_KHZ	505
++#define HAP_INT_PWM_FREQ_739_KHZ	739
++#define HAP_INT_PWM_FREQ_1076_KHZ	1076
++
+ #define HAP_SC_CLR_REG			0x59
+ #define SC_CLR_BIT			BIT(0)
+ 
+@@ -187,6 +200,7 @@
+ 	int magnitude;
+ 	u32 vmax;
+ 	u32 current_limit;
++	u32 int_pwm_freq_khz;
+ 	u32 play_wave_rate;
+ 
+ 	u32 wave_samp[HAP_WAVE_SAMP_SET_LEN];
+@@ -326,6 +340,45 @@
+ 			HAP_ILIM_SEL_MASK, haptics->current_limit);
+ }
+ 
++/*
++ * spmi_haptics_write_int_pwm() - program the internal PWM drive carrier.
++ *
++ * The stock A6L qpnp-haptic driver programs HAP_INT_PWM_REG (0x56) and
++ * HAP_PWM_CAP_REG (0x58) to the board value (qcom,int-pwm-freq-khz = 505 kHz)
++ * for LRA direct-mode drive synthesis. The pmi8998 mainline driver never wrote
++ * these, leaving the PM660 carrier at its reset default. A zero freq means the
++ * property was absent: keep prior (unprogrammed) behavior so this is opt-in.
++ */
++static int spmi_haptics_write_int_pwm(struct spmi_haptics *haptics)
++{
++	u8 sel, val;
++	int ret;
++
++	if (!haptics->int_pwm_freq_khz)
++		return 0;
++
++	switch (haptics->int_pwm_freq_khz) {
++	case HAP_INT_PWM_FREQ_253_KHZ:  sel = 0; break;
++	case HAP_INT_PWM_FREQ_505_KHZ:  sel = 1; break;
++	case HAP_INT_PWM_FREQ_739_KHZ:  sel = 2; break;
++	case HAP_INT_PWM_FREQ_1076_KHZ: sel = 3; break;
++	default:
++		dev_err(haptics->dev, "unsupported qcom,int-pwm-freq-khz: %u\n",
++			haptics->int_pwm_freq_khz);
++		return -EINVAL;
++	}
++
++	val = FIELD_PREP(HAP_INT_PWM_FREQ_MASK, sel);
++	ret = spmi_haptics_write_masked(haptics, haptics->base + HAP_INT_PWM_REG,
++					HAP_INT_PWM_FREQ_MASK, val);
++	if (ret < 0)
++		return ret;
++
++	val = FIELD_PREP(HAP_PWM_CAP_MASK, sel);
++	return spmi_haptics_write_masked(haptics, haptics->base + HAP_PWM_CAP_REG,
++					 HAP_PWM_CAP_MASK, val);
++}
++
+ static int spmi_haptics_write_play_mode(struct spmi_haptics *haptics)
+ {
+ 	u8 val = 0;
+@@ -560,6 +613,11 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
++	/* Program the PM660 internal-PWM drive carrier (opt-in via DT). */
++	ret = spmi_haptics_write_int_pwm(haptics);
++	if (ret < 0)
++		return ret;
++
+ 	// Configure the debounce for short-circuit detection.
+ 	ret = spmi_haptics_write_masked(haptics, haptics->base + HAP_SC_DEB_REG,
+ 			HAP_SC_DEB_MASK, HAP_SC_DEB_CYCLES_MAX);
+@@ -912,6 +970,26 @@
+ 
+ 	haptics->current_limit = HAP_ILIM_400_MA;
+ 
++	/* Optional stock current limit (400 or 800 mA). Absent -> keep 400 mA. */
++	ret = of_property_read_u32(node, "qcom,ilim-ma", &val);
++	if (!ret) {
++		if (val == 400)
++			haptics->current_limit = HAP_ILIM_400_MA;
++		else if (val == 800)
++			haptics->current_limit = HAP_ILIM_800_MA;
++		else {
++			dev_err(&pdev->dev, "qcom,ilim-ma (%u) unsupported\n", val);
++			ret = -EINVAL;
++			goto register_fail;
++		}
++	}
++
++	/* Optional internal-PWM carrier freq. Absent -> 0 -> not programmed. */
++	haptics->int_pwm_freq_khz = 0;
++	ret = of_property_read_u32(node, "qcom,int-pwm-freq-khz", &val);
++	if (!ret)
++		haptics->int_pwm_freq_khz = val;
++
+ 	for (i = 0; i < HAP_WAVE_SAMP_LEN; i++)
+ 		haptics->wave_samp[i] = HAP_WF_SAMP_MAX;
+ 

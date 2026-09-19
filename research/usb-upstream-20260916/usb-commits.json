@@ -1,0 +1,876 @@
+[
+  {
+    "sha": "010382937fb69892b3469ac4d30af072262f59e8",
+    "node_id": "C_kwDOG86efNoAKDAxMDM4MjkzN2ZiNjk4OTJiMzQ2OWFjNGQzMGFmMDcyMjYyZjU5ZTg",
+    "commit": {
+      "author": {
+        "name": "Runyu Xiao",
+        "email": "runyu.xiao@seu.edu.cn",
+        "date": "2026-06-12T05:20:05Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-07-08T11:35:22Z"
+      },
+      "message": "usb: dwc3: run gadget disconnect from sleepable suspend context\n\ndwc3_gadget_suspend() takes dwc->lock with IRQs disabled and then calls\ndwc3_disconnect_gadget().  For async callbacks that helper only uses\nplain spin_unlock()/spin_lock(), so the gadget ->disconnect() callback\nstill runs with IRQs disabled and any sleepable callback trips Lockdep.\n\nThis issue was found by our static analysis tool and then manually\nreviewed against the current tree.\n\nThe grounded PoC kept the dwc3_gadget_suspend() ->\ndwc3_disconnect_gadget() -> gadget_driver->disconnect() chain, and\nLockdep reported:\n\n  BUG: sleeping function called from invalid context\n  gadget_disconnect+0x21/0x39 [vuln_msv]\n  dwc3_gadget_suspend.constprop.0+0x2b/0x42 [vuln_msv]\n\nKeep the disconnect callback selection in one common helper, but add a\nsleepable suspend-side wrapper which snapshots the callback under\ndwc->lock and then runs it after spin_unlock_irqrestore().  The regular\nevent path still uses the existing spin_unlock()/spin_lock() window.\n\nFixes: c8540870af4c (\"usb: dwc3: gadget: Improve dwc3_gadget_suspend() and dwc3_gadget_resume()\")\nCc: stable <stable@kernel.org>\nSigned-off-by: Runyu Xiao <runyu.xiao@seu.edu.cn>\nAcked-by: Thinh Nguyen <Thinh.Nguyen@synopsys.com>\nLink: https://patch.msgid.link/20260612052005.3849659-1-runyu.xiao@seu.edu.cn\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "402c3a1d5a5d1990eca3f4728324d44c18b29bc5",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/402c3a1d5a5d1990eca3f4728324d44c18b29bc5"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/010382937fb69892b3469ac4d30af072262f59e8",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/010382937fb69892b3469ac4d30af072262f59e8",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/010382937fb69892b3469ac4d30af072262f59e8",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/010382937fb69892b3469ac4d30af072262f59e8/comments",
+    "author": null,
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "4e8ba83ac4d311992e6a4c21de5dd705010df06e",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/4e8ba83ac4d311992e6a4c21de5dd705010df06e",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/4e8ba83ac4d311992e6a4c21de5dd705010df06e"
+      }
+    ]
+  },
+  {
+    "sha": "e0f844d9d74200d311c6438a0f04270834ba5365",
+    "node_id": "C_kwDOG86efNoAKGUwZjg0NGQ5ZDc0MjAwZDMxMWM2NDM4YTBmMDQyNzA4MzRiYTUzNjU",
+    "commit": {
+      "author": {
+        "name": "Ben Dooks",
+        "email": "ben.dooks@codethink.co.uk",
+        "date": "2026-07-03T16:20:33Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-07-08T11:33:43Z"
+      },
+      "message": "usb: dwc3: fix dwc3_readl() and dwc3_writel() calls in dwc3_ulpi_setup()\n\nThe dwc3_ulpi_setup() calls the register read and write calls with\ndwc3->regs when both these calls take the dwc3 structure directly.\n\nChnage these two calls to fix the following sparse warning, and\npossibly a nasty bug in the dwc3_ulpi_setup() code:\n\ndrivers/usb/dwc3/core.c:796:45: warning: incorrect type in argument 1 (different address spaces)\ndrivers/usb/dwc3/core.c:796:45:    expected struct dwc3 *dwc\ndrivers/usb/dwc3/core.c:796:45:    got void [noderef] __iomem *regs\ndrivers/usb/dwc3/core.c:798:40: warning: incorrect type in argument 1 (different address spaces)\ndrivers/usb/dwc3/core.c:798:40:    expected struct dwc3 *dwc\ndrivers/usb/dwc3/core.c:798:40:    got void [noderef] __iomem *regs\n\nCc: stable <stable@kernel.org>\nFixes: 9accc68b1cf0 (\"usb: dwc3: Add dwc pointer to dwc3_readl/writel\")\nAcked-by: Thinh Nguyen <Thinh.Nguyen@synopsys.com>\nSigned-off-by: Ben Dooks <ben.dooks@codethink.co.uk>\nLink: https://patch.msgid.link/20260703162033.2847599-1-ben.dooks@codethink.co.uk\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "702a8465cdb9c6b3c7463bc5199cbea7e94b98bc",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/702a8465cdb9c6b3c7463bc5199cbea7e94b98bc"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/e0f844d9d74200d311c6438a0f04270834ba5365",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/e0f844d9d74200d311c6438a0f04270834ba5365",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/e0f844d9d74200d311c6438a0f04270834ba5365",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/e0f844d9d74200d311c6438a0f04270834ba5365/comments",
+    "author": {
+      "login": "bjdooks-ct",
+      "id": 1774300,
+      "node_id": "MDQ6VXNlcjE3NzQzMDA=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1774300?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/bjdooks-ct",
+      "html_url": "https://github.com/bjdooks-ct",
+      "followers_url": "https://api.github.com/users/bjdooks-ct/followers",
+      "following_url": "https://api.github.com/users/bjdooks-ct/following{/other_user}",
+      "gists_url": "https://api.github.com/users/bjdooks-ct/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/bjdooks-ct/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/bjdooks-ct/subscriptions",
+      "organizations_url": "https://api.github.com/users/bjdooks-ct/orgs",
+      "repos_url": "https://api.github.com/users/bjdooks-ct/repos",
+      "events_url": "https://api.github.com/users/bjdooks-ct/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/bjdooks-ct/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "b4ecbdc4f8830f5586c4a5cfc384c00f20f8f8b3",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/b4ecbdc4f8830f5586c4a5cfc384c00f20f8f8b3",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/b4ecbdc4f8830f5586c4a5cfc384c00f20f8f8b3"
+      }
+    ]
+  },
+  {
+    "sha": "692c354bef03b77b30e57e61934da502c8a12d45",
+    "node_id": "C_kwDOG86efNoAKDY5MmMzNTRiZWYwM2I3N2IzMGU1N2U2MTkzNGRhNTAyYzhhMTJkNDU",
+    "commit": {
+      "author": {
+        "name": "WenTao Liang",
+        "email": "vulab@iscas.ac.cn",
+        "date": "2026-06-11T13:11:21Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-06-25T15:04:11Z"
+      },
+      "message": "usb: dwc3: meson-g12a: fix refcount leak in dwc3_meson_g12a_resume()\n\nIf dwc3_meson_g12a_resume() succeeds in calling\nreset_control_reset(), an internal triggered_count reference is\nacquired. If any later step fails (usb_init, phy_init,\nphy_power_on, regulator_enable, or usb_post_init), the function\nreturns the error without rearming the reset control. This leaks\nthe reference and leaves the reset control in a triggered state,\ncausing future reset_control_reset() calls to incorrectly return\nearly as if already reset.\n\nAdd an error path that calls reset_control_rearm() to balance\nthe reference before returning the error.\n\nCc: stable <stable@kernel.org>\nFixes: 5b0ba0caaf3a (\"usb: dwc3: meson-g12a: refactor usb init\")\nSigned-off-by: WenTao Liang <vulab@iscas.ac.cn>\nLink: https://patch.msgid.link/20260611131121.81784-1-vulab@iscas.ac.cn\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "c84b1427b03f5378944d33a0e122ede322874715",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/c84b1427b03f5378944d33a0e122ede322874715"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/692c354bef03b77b30e57e61934da502c8a12d45",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/692c354bef03b77b30e57e61934da502c8a12d45",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/692c354bef03b77b30e57e61934da502c8a12d45",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/692c354bef03b77b30e57e61934da502c8a12d45/comments",
+    "author": {
+      "login": "ISCAS-Vulab",
+      "id": 45587566,
+      "node_id": "MDQ6VXNlcjQ1NTg3NTY2",
+      "avatar_url": "https://avatars.githubusercontent.com/u/45587566?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ISCAS-Vulab",
+      "html_url": "https://github.com/ISCAS-Vulab",
+      "followers_url": "https://api.github.com/users/ISCAS-Vulab/followers",
+      "following_url": "https://api.github.com/users/ISCAS-Vulab/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ISCAS-Vulab/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ISCAS-Vulab/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ISCAS-Vulab/subscriptions",
+      "organizations_url": "https://api.github.com/users/ISCAS-Vulab/orgs",
+      "repos_url": "https://api.github.com/users/ISCAS-Vulab/repos",
+      "events_url": "https://api.github.com/users/ISCAS-Vulab/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ISCAS-Vulab/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "f8f680609c2b3ab795ffcd6f21585b6dfc46d395",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/f8f680609c2b3ab795ffcd6f21585b6dfc46d395",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/f8f680609c2b3ab795ffcd6f21585b6dfc46d395"
+      }
+    ]
+  },
+  {
+    "sha": "55311a92bc9564b058a036074f85200a5954ccd2",
+    "node_id": "C_kwDOG86efNoAKDU1MzExYTkyYmM5NTY0YjA1OGEwMzYwNzRmODUyMDBhNTk1NGNjZDI",
+    "commit": {
+      "author": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-06-01T15:39:51Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-06-01T15:39:51Z"
+      },
+      "message": "Merge tag 'v7.1-rc6' into usb-next\n\nWe need the USB and Thunderbolt fixes in here as well.\n\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "7326b04dfe9ddbabff9f91ddca22c0f10e88b7df",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/7326b04dfe9ddbabff9f91ddca22c0f10e88b7df"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/55311a92bc9564b058a036074f85200a5954ccd2",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/55311a92bc9564b058a036074f85200a5954ccd2",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/55311a92bc9564b058a036074f85200a5954ccd2",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/55311a92bc9564b058a036074f85200a5954ccd2/comments",
+    "author": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "22d91cef94b5b86cff0d68ebfce7741740672704",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/22d91cef94b5b86cff0d68ebfce7741740672704",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/22d91cef94b5b86cff0d68ebfce7741740672704"
+      },
+      {
+        "sha": "e43ffb69e0438cddd72aaa30898b4dc446f664f8",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/e43ffb69e0438cddd72aaa30898b4dc446f664f8",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/e43ffb69e0438cddd72aaa30898b4dc446f664f8"
+      }
+    ]
+  },
+  {
+    "sha": "b45172f4f6172b18c0ee598bf171aea47d898c86",
+    "node_id": "C_kwDOG86efNoAKGI0NTE3MmY0ZjYxNzJiMThjMGVlNTk4YmYxNzFhZWE0N2Q4OThjODY",
+    "commit": {
+      "author": {
+        "name": "Hans Zhang",
+        "email": "18255117159@163.com",
+        "date": "2026-04-30T16:39:16Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-05-21T14:43:04Z"
+      },
+      "message": "usb: dwc3: dwc3-octeon: Use FIELD_MODIFY()\n\nUse FIELD_MODIFY() to remove open-coded bit manipulation.\nNo functional change intended.\n\nSigned-off-by: Hans Zhang <18255117159@163.com>\nLink: https://patch.msgid.link/20260430163919.47372-4-18255117159@163.com\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "9de5dd11773ddc0e5e430a9d11df538c6db55250",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/9de5dd11773ddc0e5e430a9d11df538c6db55250"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/b45172f4f6172b18c0ee598bf171aea47d898c86",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/b45172f4f6172b18c0ee598bf171aea47d898c86",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/b45172f4f6172b18c0ee598bf171aea47d898c86",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/b45172f4f6172b18c0ee598bf171aea47d898c86/comments",
+    "author": null,
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137"
+      }
+    ]
+  },
+  {
+    "sha": "dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137",
+    "node_id": "C_kwDOG86efNoAKGRkOWJiMzQ5YTBiNGY0YTVmYjhiMDNmOGI5ZjFhMWUwYzJiM2IxMzc",
+    "commit": {
+      "author": {
+        "name": "Hans Zhang",
+        "email": "18255117159@163.com",
+        "date": "2026-04-30T16:39:15Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-05-21T14:43:04Z"
+      },
+      "message": "usb: dwc3: google: Use FIELD_MODIFY()\n\nUse FIELD_MODIFY() to remove open-coded bit manipulation.\nNo functional change intended.\n\nSigned-off-by: Hans Zhang <18255117159@163.com>\nLink: https://patch.msgid.link/20260430163919.47372-3-18255117159@163.com\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "2ee8e23762378d8e737330f2a2fb53d0c7b8e184",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/2ee8e23762378d8e737330f2a2fb53d0c7b8e184"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/dd9bb349a0b4f4a5fb8b03f8b9f1a1e0c2b3b137/comments",
+    "author": null,
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6dea5fcffbc5a6137932ddc84059a0b868505626",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/6dea5fcffbc5a6137932ddc84059a0b868505626",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/6dea5fcffbc5a6137932ddc84059a0b868505626"
+      }
+    ]
+  },
+  {
+    "sha": "6dea5fcffbc5a6137932ddc84059a0b868505626",
+    "node_id": "C_kwDOG86efNoAKDZkZWE1ZmNmZmJjNWE2MTM3OTMyZGRjODQwNTlhMGI4Njg1MDU2MjY",
+    "commit": {
+      "author": {
+        "name": "Hans Zhang",
+        "email": "18255117159@163.com",
+        "date": "2026-04-30T16:39:14Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-05-21T14:43:04Z"
+      },
+      "message": "usb: dwc3: Use FIELD_MODIFY()\n\nUse FIELD_MODIFY() to remove open-coded bit manipulation.\nNo functional change intended.\n\nSigned-off-by: Hans Zhang <18255117159@163.com>\nLink: https://patch.msgid.link/20260430163919.47372-2-18255117159@163.com\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "4b7df7873c9099149bf7dcde8409000bd71f0455",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/4b7df7873c9099149bf7dcde8409000bd71f0455"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/6dea5fcffbc5a6137932ddc84059a0b868505626",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/6dea5fcffbc5a6137932ddc84059a0b868505626",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/6dea5fcffbc5a6137932ddc84059a0b868505626",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/6dea5fcffbc5a6137932ddc84059a0b868505626/comments",
+    "author": null,
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "5d928bd82cb3c96250cc5b77455d148c317baf7d",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/5d928bd82cb3c96250cc5b77455d148c317baf7d",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/5d928bd82cb3c96250cc5b77455d148c317baf7d"
+      }
+    ]
+  },
+  {
+    "sha": "df64224e712187745b783fcc4d2f29b40cf4b4dc",
+    "node_id": "C_kwDOG86efNoAKGRmNjQyMjRlNzEyMTg3NzQ1Yjc4M2ZjYzRkMmYyOWI0MGNmNGI0ZGM",
+    "commit": {
+      "author": {
+        "name": "Shuping Bu",
+        "email": "bushuping007@163.com",
+        "date": "2026-05-20T05:50:23Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-05-21T14:42:59Z"
+      },
+      "message": "usb: dwc3: core: Fix incorrect kernel-doc comment for dwc3_alloc_event_buffers\n\nThe kernel-doc comment for dwc3_alloc_event_buffers states that the\nfunction \"Allocates @num event buffers\", but the function does not have\na @num parameter and only allocates a single event buffer.\n\nRemove the misleading \"@num\" reference from the brief description to\naccurately reflect the function's behavior.\n\nSigned-off-by: Shuping Bu <bushuping007@163.com>\nLink: https://patch.msgid.link/20260520055023.2415635-1-bushuping007@163.com\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "d7a3a54f4afcad7a27f9978022664b5ab076369e",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/d7a3a54f4afcad7a27f9978022664b5ab076369e"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/df64224e712187745b783fcc4d2f29b40cf4b4dc",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/df64224e712187745b783fcc4d2f29b40cf4b4dc",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/df64224e712187745b783fcc4d2f29b40cf4b4dc",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/df64224e712187745b783fcc4d2f29b40cf4b4dc/comments",
+    "author": null,
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "e18b0dbb6ec6030e3369e5dfb2520d7bdbde20d1",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/e18b0dbb6ec6030e3369e5dfb2520d7bdbde20d1",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/e18b0dbb6ec6030e3369e5dfb2520d7bdbde20d1"
+      }
+    ]
+  },
+  {
+    "sha": "c1a0ecbf32c4b397353204e2ec94c5bb9f3300ed",
+    "node_id": "C_kwDOG86efNoAKGMxYTBlY2JmMzJjNGIzOTczNTMyMDRlMmVjOTRjNWJiOWYzMzAwZWQ",
+    "commit": {
+      "author": {
+        "name": "Radhey Shyam Pandey",
+        "email": "radhey.shyam.pandey@amd.com",
+        "date": "2026-05-19T11:55:29Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-05-21T14:40:50Z"
+      },
+      "message": "usb: dwc3: xilinx: fix error handling in zynqmp init error paths\n\nFix error handling and resource cleanup i.e remove invalid\nphy_exit() after failed phy_init(), route failures through\nproper cleanup paths and return 0 explicitly on success.\n\nFixes: 84770f028fab (\"usb: dwc3: Add driver for Xilinx platforms\")\nCc: stable@vger.kernel.org\nAcked-by: Thinh Nguyen <Thinh.Nguyen@synopsys.com>\nSigned-off-by: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>\nLink: https://patch.msgid.link/20260519115529.2980421-1-radhey.shyam.pandey@amd.com\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "a6b97462c9716219b35dffabfc7ab6c768a1ea9d",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/a6b97462c9716219b35dffabfc7ab6c768a1ea9d"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/c1a0ecbf32c4b397353204e2ec94c5bb9f3300ed",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/c1a0ecbf32c4b397353204e2ec94c5bb9f3300ed",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/c1a0ecbf32c4b397353204e2ec94c5bb9f3300ed",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/c1a0ecbf32c4b397353204e2ec94c5bb9f3300ed/comments",
+    "author": null,
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "288a81a8507052bcfbf884d39a463c44c42c5fd9",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/288a81a8507052bcfbf884d39a463c44c42c5fd9",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/288a81a8507052bcfbf884d39a463c44c42c5fd9"
+      }
+    ]
+  },
+  {
+    "sha": "aad35f9c926ec220b0742af1ada45666ae667956",
+    "node_id": "C_kwDOG86efNoAKGFhZDM1ZjljOTI2ZWMyMjBiMDc0MmFmMWFkYTQ1NjY2YWU2Njc5NTY",
+    "commit": {
+      "author": {
+        "name": "Selvarasu Ganesan",
+        "email": "selvarasu.g@samsung.com",
+        "date": "2026-04-17T06:33:11Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-04-27T15:57:26Z"
+      },
+      "message": "usb: dwc3: Move GUID programming after PHY initialization\n\nThe Linux Version Code is currently written to the GUID register before\nPHY initialization. Certain PHY implementations (such as Synopsys eUSB\nPHY performing link_sw_reset) clear the GUID register to its default\nvalue during initialization, causing the kernel version information to\nbe lost.\n\nMove the GUID register programming to occur after PHY initialization\ncompletes to ensure the Linux version information persists.\n\nFixes: fa0ea13e9f1c (\"usb: dwc3: core: write LINUX_VERSION_CODE to our GUID register\")\nCc: stable <stable@kernel.org>\nReported-by: Pritam Manohar Sutar <pritam.sutar@samsung.com>\nSigned-off-by: Selvarasu Ganesan <selvarasu.g@samsung.com>\nAcked-by: Thinh Nguyen <Thinh.Nguyen@synopsys.com>\nLink: https://patch.msgid.link/20260417063314.2359-1-selvarasu.g@samsung.com\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "190a9a5bfdc6813bf5801624c5ea8b8f0ec79e15",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/190a9a5bfdc6813bf5801624c5ea8b8f0ec79e15"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/aad35f9c926ec220b0742af1ada45666ae667956",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/aad35f9c926ec220b0742af1ada45666ae667956",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/aad35f9c926ec220b0742af1ada45666ae667956",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/aad35f9c926ec220b0742af1ada45666ae667956/comments",
+    "author": {
+      "login": "selvarasu-g",
+      "id": 282226286,
+      "node_id": "U_kgDOENJubg",
+      "avatar_url": "https://avatars.githubusercontent.com/u/282226286?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/selvarasu-g",
+      "html_url": "https://github.com/selvarasu-g",
+      "followers_url": "https://api.github.com/users/selvarasu-g/followers",
+      "following_url": "https://api.github.com/users/selvarasu-g/following{/other_user}",
+      "gists_url": "https://api.github.com/users/selvarasu-g/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/selvarasu-g/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/selvarasu-g/subscriptions",
+      "organizations_url": "https://api.github.com/users/selvarasu-g/orgs",
+      "repos_url": "https://api.github.com/users/selvarasu-g/repos",
+      "events_url": "https://api.github.com/users/selvarasu-g/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/selvarasu-g/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "f6ec9bb4acc7182b25a793ad094a764e1cb819a7",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/f6ec9bb4acc7182b25a793ad094a764e1cb819a7",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/f6ec9bb4acc7182b25a793ad094a764e1cb819a7"
+      }
+    ]
+  },
+  {
+    "sha": "87117347a0e77f528f357faa2230d5caffcd1b4e",
+    "node_id": "C_kwDOG86efNoAKDg3MTE3MzQ3YTBlNzdmNTI4ZjM1N2ZhYTIyMzBkNWNhZmZjZDFiNGU",
+    "commit": {
+      "author": {
+        "name": "Minda Chen",
+        "email": "minda.chen@starfivetech.com",
+        "date": "2026-04-10T11:25:00Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-04-11T10:02:43Z"
+      },
+      "message": "usb: dwc3: starfive: Add JHB100 USB 2.0 DRD controller\n\nJHB100 contains 2 dwc3 USB controllers and PHYs and working\nas USB 2.0 speed. It can working in generic platform and\nsetting default properties.\n\nSigned-off-by: Minda Chen <minda.chen@starfivetech.com>\nLink: https://patch.msgid.link/20260410112500.90432-3-minda.chen@starfivetech.com\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "9f9ac6c244f39334aeedb71362ef051b7a2ed2f5",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/9f9ac6c244f39334aeedb71362ef051b7a2ed2f5"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/87117347a0e77f528f357faa2230d5caffcd1b4e",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/87117347a0e77f528f357faa2230d5caffcd1b4e",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/87117347a0e77f528f357faa2230d5caffcd1b4e",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/87117347a0e77f528f357faa2230d5caffcd1b4e/comments",
+    "author": {
+      "login": "mindachen1987",
+      "id": 105210687,
+      "node_id": "U_kgDOBkVjPw",
+      "avatar_url": "https://avatars.githubusercontent.com/u/105210687?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/mindachen1987",
+      "html_url": "https://github.com/mindachen1987",
+      "followers_url": "https://api.github.com/users/mindachen1987/followers",
+      "following_url": "https://api.github.com/users/mindachen1987/following{/other_user}",
+      "gists_url": "https://api.github.com/users/mindachen1987/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/mindachen1987/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/mindachen1987/subscriptions",
+      "organizations_url": "https://api.github.com/users/mindachen1987/orgs",
+      "repos_url": "https://api.github.com/users/mindachen1987/repos",
+      "events_url": "https://api.github.com/users/mindachen1987/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/mindachen1987/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "d7a8d8b40800f51a6281ea330233a0ef22982513",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/d7a8d8b40800f51a6281ea330233a0ef22982513",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/d7a8d8b40800f51a6281ea330233a0ef22982513"
+      }
+    ]
+  },
+  {
+    "sha": "3723393cc284e09107c0f55c47458b75b29be2c3",
+    "node_id": "C_kwDOG86efNoAKDM3MjMzOTNjYzI4NGUwOTEwN2MwZjU1YzQ3NDU4Yjc1YjI5YmUyYzM",
+    "commit": {
+      "author": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-04-06T07:06:39Z"
+      },
+      "committer": {
+        "name": "Greg Kroah-Hartman",
+        "email": "gregkh@linuxfoundation.org",
+        "date": "2026-04-06T07:06:39Z"
+      },
+      "message": "Merge tag 'v7.0-rc7' into usb-next\n\nWe need the USB fixes in here to build on and for testing\n\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+      "tree": {
+        "sha": "185380308f3c57ac61e339d73f530639e2241451",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/git/trees/185380308f3c57ac61e339d73f530639e2241451"
+      },
+      "url": "https://api.github.com/repos/sdm660-mainline/linux/git/commits/3723393cc284e09107c0f55c47458b75b29be2c3",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/3723393cc284e09107c0f55c47458b75b29be2c3",
+    "html_url": "https://github.com/sdm660-mainline/linux/commit/3723393cc284e09107c0f55c47458b75b29be2c3",
+    "comments_url": "https://api.github.com/repos/sdm660-mainline/linux/commits/3723393cc284e09107c0f55c47458b75b29be2c3/comments",
+    "author": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "gregkh",
+      "id": 14953,
+      "node_id": "MDQ6VXNlcjE0OTUz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/14953?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/gregkh",
+      "html_url": "https://github.com/gregkh",
+      "followers_url": "https://api.github.com/users/gregkh/followers",
+      "following_url": "https://api.github.com/users/gregkh/following{/other_user}",
+      "gists_url": "https://api.github.com/users/gregkh/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/gregkh/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/gregkh/subscriptions",
+      "organizations_url": "https://api.github.com/users/gregkh/orgs",
+      "repos_url": "https://api.github.com/users/gregkh/repos",
+      "events_url": "https://api.github.com/users/gregkh/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/gregkh/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "1df7a7652f032cf1abe1c102a031c2128e24c31d",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/1df7a7652f032cf1abe1c102a031c2128e24c31d",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/1df7a7652f032cf1abe1c102a031c2128e24c31d"
+      },
+      {
+        "sha": "591cd656a1bf5ea94a222af5ef2ee76df029c1d2",
+        "url": "https://api.github.com/repos/sdm660-mainline/linux/commits/591cd656a1bf5ea94a222af5ef2ee76df029c1d2",
+        "html_url": "https://github.com/sdm660-mainline/linux/commit/591cd656a1bf5ea94a222af5ef2ee76df029c1d2"
+      }
+    ]
+  }
+]

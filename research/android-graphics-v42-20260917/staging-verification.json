@@ -1,0 +1,14 @@
+{
+  "pins": {
+    "Run-AndroidGraphicsV42.py": "0fc9b0041645d9f4298ace856beab20cf4711973a5e54d3158ed92deca2c46d5",
+    "Run-LaptopGraphicsCapture-v42.py": "e39814286a3ee711097bc407cc562dae423a2c2948d428ae7c5b7573b39356b4",
+    "Verify-GraphicsV42Stage.py": "1f457b44cbae7dceaa24cecd8718774863c6846cebdfc15b73d6723d5953fc89",
+    "diagnostic-user-v38-tools.json": "3e316c37033414b958aedb24412be8e156cb90249150a413590517be72e11d40",
+    "android-graphics-v42/manifest.json": "5a48b726ff7b51cf31efb04fb413020974a1a895b407f9900b8255c9fcc61f17",
+    "android-graphics-v42/qemu-report.json": "35eea6144c4f2a047d2c53a84c62efa2bd2dc2faeeefed3ee19b2e147481839a"
+  },
+  "old_files_verified": 9,
+  "payload_files_verified": 74,
+  "qemu_passed": true,
+  "phone_test_started": false
+}

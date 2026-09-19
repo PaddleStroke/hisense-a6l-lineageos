@@ -1,0 +1,61 @@
+{
+  "sha": "d4f721c5222fe3e47c37e009479542cd44b44dd9",
+  "node_id": "MDY6Q29tbWl0Mjg2NTM1ODU6ZDRmNzIxYzUyMjJmZTNlNDdjMzdlMDA5NDc5NTQyY2Q0NGI0NGRkOQ==",
+  "commit": {
+    "author": {
+      "name": "Abhijeet Dharmapurikar",
+      "email": "adharmap@codeaurora.org",
+      "date": "2016-01-25T20:21:20Z"
+    },
+    "committer": {
+      "name": "Rohit Vaswani",
+      "email": "rvaswani@codeaurora.org",
+      "date": "2016-03-01T20:22:42Z"
+    },
+    "message": "regulator: proxy-consumer: replace set_optimum_mode with set_load\n\n4.4 kernel has renamed regulator_set_optimum_mode api as regulator_set_load.\nUpdate proxy-consumer to use it.\n\nChange-Id: Ie56f8d26c1eadd4f2a12a5529683b8f402511e80\nSigned-off-by: Abhijeet Dharmapurikar <adharmap@codeaurora.org>",
+    "tree": {
+      "sha": "f2974742ef7c4e4820a02cb82522697094e310fb",
+      "url": "https://api.github.com/repos/MiCode/Xiaomi_Kernel_OpenSource/git/trees/f2974742ef7c4e4820a02cb82522697094e310fb"
+    },
+    "url": "https://api.github.com/repos/MiCode/Xiaomi_Kernel_OpenSource/git/commits/d4f721c5222fe3e47c37e009479542cd44b44dd9",
+    "comment_count": 0,
+    "verification": {
+      "verified": false,
+      "reason": "unsigned",
+      "signature": null,
+      "payload": null,
+      "verified_at": null
+    }
+  },
+  "url": "https://api.github.com/repos/MiCode/Xiaomi_Kernel_OpenSource/commits/d4f721c5222fe3e47c37e009479542cd44b44dd9",
+  "html_url": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource/commit/d4f721c5222fe3e47c37e009479542cd44b44dd9",
+  "comments_url": "https://api.github.com/repos/MiCode/Xiaomi_Kernel_OpenSource/commits/d4f721c5222fe3e47c37e009479542cd44b44dd9/comments",
+  "author": null,
+  "committer": null,
+  "parents": [
+    {
+      "sha": "aa93a28f1ec3bafece77e4e75b2fb90cb25c81ab",
+      "url": "https://api.github.com/repos/MiCode/Xiaomi_Kernel_OpenSource/commits/aa93a28f1ec3bafece77e4e75b2fb90cb25c81ab",
+      "html_url": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource/commit/aa93a28f1ec3bafece77e4e75b2fb90cb25c81ab"
+    }
+  ],
+  "stats": {
+    "total": 10,
+    "additions": 5,
+    "deletions": 5
+  },
+  "files": [
+    {
+      "sha": "37241bc41f11732135bbcb84fc937eab61561f6c",
+      "filename": "drivers/regulator/proxy-consumer.c",
+      "status": "modified",
+      "additions": 5,
+      "deletions": 5,
+      "changes": 10,
+      "blob_url": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource/blob/d4f721c5222fe3e47c37e009479542cd44b44dd9/drivers%2Fregulator%2Fproxy-consumer.c",
+      "raw_url": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource/raw/d4f721c5222fe3e47c37e009479542cd44b44dd9/drivers%2Fregulator%2Fproxy-consumer.c",
+      "contents_url": "https://api.github.com/repos/MiCode/Xiaomi_Kernel_OpenSource/contents/drivers%2Fregulator%2Fproxy-consumer.c?ref=d4f721c5222fe3e47c37e009479542cd44b44dd9",
+      "patch": "@@ -116,10 +116,10 @@ struct proxy_consumer *regulator_proxy_consumer_register(struct device *reg_dev,\n \t}\n \n \tif (consumer->current_uA > 0) {\n-\t\trc = regulator_set_optimum_mode(consumer->reg,\n+\t\trc = regulator_set_load(consumer->reg,\n \t\t\t\t\t\tconsumer->current_uA);\n \t\tif (rc < 0) {\n-\t\t\tpr_err(\"regulator_set_optimum_mode %s failed, rc=%d\\n\",\n+\t\t\tpr_err(\"regulator_set_load %s failed, rc=%d\\n\",\n \t\t\t\treg_name, rc);\n \t\t\tgoto remove_voltage;\n \t\t}\n@@ -140,7 +140,7 @@ struct proxy_consumer *regulator_proxy_consumer_register(struct device *reg_dev,\n \treturn consumer;\n \n remove_current:\n-\tregulator_set_optimum_mode(consumer->reg, 0);\n+\tregulator_set_load(consumer->reg, 0);\n remove_voltage:\n \tregulator_set_voltage(consumer->reg, 0, INT_MAX);\n free_regulator:\n@@ -163,9 +163,9 @@ static int regulator_proxy_consumer_remove(struct proxy_consumer *consumer)\n \t}\n \n \tif (consumer->current_uA > 0) {\n-\t\trc = regulator_set_optimum_mode(consumer->reg, 0);\n+\t\trc = regulator_set_load(consumer->reg, 0);\n \t\tif (rc < 0)\n-\t\t\tpr_err(\"regulator_set_optimum_mode failed, rc=%d\\n\",\n+\t\t\tpr_err(\"regulator_set_load failed, rc=%d\\n\",\n \t\t\t\trc);\n \t}\n "
+    }
+  ]
+}

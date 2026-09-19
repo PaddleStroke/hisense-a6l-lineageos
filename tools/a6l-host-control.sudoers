@@ -1,0 +1,1 @@
+pierrelouis system76-pc = (root) NOPASSWD: /usr/local/sbin/a6l-host-control status, /usr/local/sbin/a6l-host-control pause, /usr/local/sbin/a6l-host-control resume

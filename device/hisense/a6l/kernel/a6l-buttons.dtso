@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Offline candidate. Stock PMIC GPIO specifiers are one-based, as upstream.
+/dts-v1/;
+/plugin/;
+&pon_pwrkey { status = "okay"; };
+&pon_resin { status = "okay"; linux,code = <114>; };
+/ {
+    fragment@10 {
+        target-path = "/";
+        __overlay__ {
+            a6l-buttons {
+                compatible = "gpio-keys";
+                label = "A6L side keys";
+                volume-up {
+                    label = "volume_up";
+                    gpios = <&pm660l_gpios 7 1>;
+                    linux,code = <115>;
+                    debounce-interval = <15>;
+                    wakeup-source;
+                };
+                eink-key {
+                    label = "epd_pwr";
+                    gpios = <&pm660_gpios 11 1>;
+                    linux,code = <616>;
+                    debounce-interval = <15>;
+                    wakeup-source;
+                };
+            };
+        };
+    };
+};

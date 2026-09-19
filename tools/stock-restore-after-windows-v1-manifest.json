@@ -1,0 +1,9 @@
+{
+  "purpose": "Stock recovery rollback after native Windows COM timeout",
+  "source_worker_sha256": "e71ccc4f15caf5728623d777c618536c2d6c768c95eb5d8ab1df6219376473ad",
+  "changes": "Worker capture directory renamed only; coordinator uses new names and pins worker hash. Linux transport, fixed stock payload, identity, before/after reads and power guards unchanged.",
+  "files": {
+    "Write-LaptopStockRestoreAfterWindows-v1.py": "b1536f93ae66b041c945563d3577beb7de4d06a1cd48325fbc9e4ff678ab61d5",
+    "Run-LaptopStockRestoreAfterWindows-v1.py": "c15920bbb7d2b0bca51d35e34968bd897efe02ddc1e073a2c0a97f5f0fa317d8"
+  }
+}

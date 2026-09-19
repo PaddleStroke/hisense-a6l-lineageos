@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// CANDIDATE overlay — pairs with 0001-spmi-haptics-pm660-int-pwm-ilim.patch.
+// NOT VALIDATED ON HARDWARE. Adds the two stock PM660 drive parameters the
+// pmi8998 mainline driver never programmed. Everything else is unchanged from
+// device/hisense/a6l/kernel/a6l-haptics.dtso (brake 3/3/0/0, direct, 6667us).
+//
+// Stock qpnp values (firmware/extracted/device-trees/stock-00.dts qcom,haptic@c000):
+//   qcom,vmax-mv = 3200   qcom,ilim-ma = 800   qcom,int-pwm-freq-khz = 505
+//   qcom,lra-auto-res-mode = "qwd"   qcom,correct-lra-drive-freq
+// This overlay adds ilim + int-pwm only; auto-res mode is a driver-side gap
+// (see EVIDENCE.md) not expressible against the current mainline driver.
+/dts-v1/;
+/plugin/;
+&pm660_haptics {
+    status = "okay";
+    qcom,actuator-type = <0>;
+    qcom,wave-shape = <1>;
+    qcom,play-mode = <0>;
+    qcom,wave-play-rate-us = <6667>;
+    qcom,brake-pattern = <3 3 0 0>;
+    qcom,ilim-ma = <800>;
+    qcom,int-pwm-freq-khz = <505>;
+};

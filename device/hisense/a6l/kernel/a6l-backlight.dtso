@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Offline candidate. All electrical values below come from A6L stock DT.
+// No auto-string-detection: use the known two strings. Probe configures PMIC.
+// WLED3/4 max-brightness property is not a PWM safety cap; retain native range.
+/dts-v1/;
+/plugin/;
+&pm660l_wled {
+    status = "okay";
+    qcom,current-limit-microamp = <20000>;
+    qcom,current-boost-limit = <970>;
+    qcom,switching-freq = <800>;
+    qcom,ovp-millivolt = <29600>;
+    qcom,num-strings = <2>;
+    qcom,enabled-strings = <0 1>;
+    max-brightness = <4095>;
+    default-brightness = <256>;
+};

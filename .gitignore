@@ -1,0 +1,37 @@
+/captures/
+/firmware/
+/tools/platform-tools/
+/tools/google-fastboot-*-linux/
+/tools/a6l-fastboot-vendor-linux/
+/tools/a6l-recovery-kit/
+/tools/a6l-edl-linux-wheels/
+/tools/*.zip
+/tools/edl/
+/tools/edl-venv/
+/tools/qualcomm-driver*/
+/tools/qualcomm-driver*.log
+/logs/
+/log.txt
+/lineage-manifest/
+/references/
+*.img
+*.bin
+*.elf
+*.7z
+
+# Added for the initial GitHub commit
+__pycache__/
+*.pyc
+/tools/video-deps/
+# Third-party binaries / installers (re-downloadable, not ours to redistribute)
+/tools/hisense-adb-driver/
+/tools/hisense-adb-package/
+/tools/google-usb-driver/
+/tools/usbipd-inspected/
+*.msi
+*.exe
+*.dll
+*.sys
+# Large build staging archives
+*.tar
+*.tar.gz

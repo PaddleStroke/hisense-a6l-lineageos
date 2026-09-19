@@ -1,0 +1,10 @@
+[
+  {
+    "file": "/home/a6l/android/a6l-lineage24/external/skia/Android.bp",
+    "module": "libskia_skcms"
+  },
+  {
+    "file": "/home/a6l/android/a6l-lineage24/external/google-highway/Android.bp",
+    "module": "libhwy"
+  }
+]

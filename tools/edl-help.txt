@@ -1,0 +1,119 @@
+Usage:
+    edl.py -h | --help
+    edl.py [--vid=vid] [--pid=pid] [--portname=portname] [--serial]
+    edl.py [--loader=filename] [--memory=memtype] [--portname=portname] [--serial]
+    edl.py [--debugmode] [--portname=portname] [--serial]
+    edl.py [--gpt-num-part-entries=number] [--gpt-part-entry-size=number] [--gpt-part-entry-start-lba=number] [--portname=portname] [--serial]
+    edl.py [--memory=memtype] [--skipstorageinit] [--maxpayload=bytes] [--sectorsize==bytes] [--pagesperblock=number] [--portname=portname] [--serial]
+    edl.py server [--tcpport=portnumber] [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py memorydump [--partitions=partnames] [--debugmode] [--vid=vid] [--pid=pid] [--portname=portname] [--serial] [--serial_number=serial_number]
+    edl.py printgpt [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--loader=filename] [--debugmode]  [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py gpt <directory> [--memory=memtype] [--lun=lun] [--genxml] [--loader=filename]  [--skipresponse] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--pagesperblock=number] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py r <partitionname> <filename> [--memory=memtype] [--sectorsize==bytes] [--pagesperblock=number] [--lun=lun] [--loader=filename]  [--skipresponse] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py rl <directory> [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--skip=partnames] [--genxml]  [--skipresponse] [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py rf <filename> [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--loader=filename] [--debugmode]  [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py rs <start_sector> <sectors> <filename> [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--memory=memtype] [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py w <partitionname> <filename> [--partitionfilename=filename] [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--skipwrite] [--skipresponse] [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--devicemodel=value] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py wl <directory> [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--skip=partnames] [--skipresponse] [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--devicemodel=value] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py wf <filename> [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--loader=filename] [--skipresponse] [--debugmode] [--vid=vid] [--pid=pid] [--devicemodel=value] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py ws <start_sector> <filename> [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--skipwrite] [--skipresponse] [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--devicemodel=value] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py e <partitionname> [--memory=memtype] [--skipwrite] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--devicemodel=value] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py es <start_sector> <sectors> [--memory=memtype] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--skipwrite] [--loader=filename] [--skipresponse] [--debugmode] [--vid=vid] [--pid=pid] [--devicemodel=value] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py ep <partitionname> <sectors> [--memory=memtype] [--skipwrite] [--lun=lun] [--sectorsize==bytes] [--pagesperblock=number] [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--devicemodel=value] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py footer <filename> [--memory=memtype] [--lun=lun] [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py peek <offset> <length> <filename> [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]
+    edl.py peekhex <offset> <length> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]
+    edl.py peekdword <offset> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py peekqword <offset> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py memtbl <filename> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py poke <offset> <filename> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py pokehex <offset> <data> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py pokedword <offset> <data> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py pokeqword <offset> <data> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py memcpy <offset> <size> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]
+    edl.py secureboot [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py pbl <filename> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py qfp <filename> [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]
+    edl.py getstorageinfo [--loader=filename] [--memory=memtype] [--pagesperblock=number] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py setbootablestoragedrive <lun> [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py getactiveslot [--memory=memtype] [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py setactiveslot <slot> [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py send <command> [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py xml <xmlfile> [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py rawxml <xmlstring> [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py reset [--resetmode=mode] [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py nop [--loader=filename] [--debugmode] [--vid=vid] [--pid=pid] [--skipstorageinit] [--portname=portname] [--serial] [--devicemodel=value]
+    edl.py modules <command> <options> [--memory=memtype] [--lun=lun] [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--devicemodel=value] [--portname=portname] [--serial]
+    edl.py provision <xmlfile> [--loader=filename] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]  [--devicemodel=value]
+    edl.py qfil <rawprogram> <patch> <imagedir> [--loader=filename] [--memory=memtype] [--pagesperblock=number] [--debugmode] [--skipresponse] [--vid=vid] [--pid=pid] [--portname=portname] [--serial]  [--devicemodel=value]
+
+Description:
+    server                      # Run tcp/ip server
+    printgpt                    # Print GPT Table information
+    gpt                         # Save gpt table to given directory
+    r                           # Read flash to filename
+    rl                          # Read all partitions from flash to a directory
+    rf                          # Read whole flash to file
+    rs                          # Read sectors starting at start_sector to filename
+    w                           # Write filename to partition to flash
+    wl                          # Write all files from directory to flash
+    wf                          # Write whole filename to flash
+    ws                          # Write filename to flash at start_sector
+    e                           # Erase partition from flash
+    es                          # Erase sectors at start_sector from flash
+    ep                          # Erase sector count from flash partition
+    footer                      # Read crypto footer from flash
+    peek                        # Dump memory at offset with given length to filename
+    peekhex                     # Dump memory at offset and given length
+    peekdword                   # Dump DWORD at memory offset
+    peekqword                   # Dump QWORD at memory offset
+    memtbl                      # Dump memory table to file
+    poke                        # Write filename to memory at offset to memory
+    pokehex                     # Write hex string data at offset to memory
+    pokedword                   # Write DWORD to memory at offset
+    pokeqword                   # Write QWORD to memory at offset
+    memcpy                      # Copy memory from srcoffset with given size to dstoffset
+    secureboot                  # Print secureboot fields from qfprom fuses
+    pbl                         # Dump primary bootloader to filename
+    qfp                         # Dump QFPROM fuses to filename
+    getstorageinfo              # Print storage info in firehose mode
+    setbootablestoragedrive     # Change bootable storage drive to lun number
+    send                        # Send firehose command
+    xml                         # Send firehose xml file
+    rawxml                      # Send firehose xml raw string
+    reset                       # Send firehose reset command, reset modes: reset, off, edl
+    nop                         # Send firehose nop command
+    modules                     # Enable submodules, for example: "oemunlock enable"
+    setactiveslot               # Set partition as active (Slot A/B)
+    provision                   # UFS provision
+    qfil                        # Write rawprogram xml files
+                                # <rawprogram> : program config xml, such as rawprogram_unsparse.xml or rawprogram*.xml
+                                # <patch> : patch config xml, such as patch0.xml or patch*.xml
+                                # <imagedir> : directory name of image files
+
+Options:
+    --loader=filename                  Use specific EDL loader, disable autodetection [default: None]
+    --vid=vid                          Set usb vendor id used for EDL [default: -1]
+    --pid=pid                          Set usb product id used for EDL [default: -1]
+    --lun=lun                          Set lun to read/write from (UFS memory only)
+    --maxpayload=bytes                 Set the maximum payload for EDL [default: 0x100000]
+    --sectorsize=bytes                 Set default sector size
+    --pagesperblock=number             Set NAND pages per block (firehose configure attribute)
+    --memory=memtype                   Set memory type ("NAND", "eMMC", "UFS", "spinor")
+    --partitionfilename=filename       Set partition table as filename for streaming mode
+    --partitions=partnames             Skip reading partition with names != "partname1,partname2,etc."
+    --skipwrite                        Do not allow any writes to flash (simulate only)
+    --skipresponse                     Do not expect a response from phone on read/write (some Qualcomms)
+    --skipstorageinit                  Skip storage initialisation
+    --debugmode                        Enable verbose mode
+    --gpt-num-part-entries=number      Set GPT entry count [default: 0]
+    --gpt-part-entry-size=number       Set GPT entry size [default: 0]
+    --gpt-part-entry-start-lba=number  Set GPT entry start lba sector [default: 0]
+    --tcpport=portnumber               Set port for tcp server [default: 1340]
+    --skip=partnames                   Skip reading partition with names "partname1,partname2,etc."
+    --genxml                           Generate rawprogram[lun].xml
+    --devicemodel=value                Set device model
+    --portname=portname                Set serial port name (/dev/ttyUSB0 for Linux/MAC; \\.\COM1 for Windows)
+    --serial                           Use serial port (port autodetection)
+    --slot                             Set active slot for setactiveslot [a or b]
+    --resetmode=mode                   Resetmode for reset (poweroff, reset, edl, etc.)

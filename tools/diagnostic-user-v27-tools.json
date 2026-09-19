@@ -1,0 +1,25 @@
+{
+  "candidate_sha256": "a52505613120c8635d67947b76f937b6615b96665a408e75a119843183fcbdf6",
+  "sources": {
+    "Write-LaptopDiagnosticRecovery-user-v26.py": "dad1cf580d3c1b90b7025fa7f22757128027214b9f08b7e17f76d09bec265909",
+    "Inspect-DiagnosticRecovery-user-v26.py": "3b5c5c48a3d0c40eb95ef8ca50dcda7538101338ea50763907aa22f703d521be",
+    "Run-LaptopDiagnosticInstall-user-v26.py": "284ead9aa2b568858afbe57533c3b58d7aaf6ef052bee49930b3fdf2f1b92fb5",
+    "Run-LaptopDiagnosticRestore-user-v26.py": "ba1d9aed8e8904be450d6d2cefdc5a557b2558d034d3c2e4f9929ec5b8e11072",
+    "Run-LaptopProbeCapture-user-v26.py": "84d4caa3ed0beed68fccc8f277fefecd3cbd9cf55e5cd3e100c18cf64f0d11fb",
+    "DiagnosticRecoveryProtocolV26.py": "8b21b3271638dee06d7a2dbe0fe9db04871d4b3a69665b6357b61d6cf841def8",
+    "Test-DiagnosticRecoveryProtocolV26.py": "c52812e4f636dc27233fc02de55e7d6d66125f745ec40e7234bef3e5822d56af",
+    "RecoveryTransitionV26.py": "ebefbee06a7a1abc0fec916eb6f117995528fec6c4ce5aab49190e4c29ab640d",
+    "Collect-ProbeSerial-v26.py": "fb862f6e5c402b5c2eb9c1d8f731c590940310b7390c79e6fd21b9bb70a10c03"
+  },
+  "files": {
+    "Write-LaptopDiagnosticRecovery-user-v27.py": "c82feb2735bc2631868776961ec80db8c6b4d49166951b74e371539ecb37dd28",
+    "Inspect-DiagnosticRecovery-user-v27.py": "6b788148a4a1f0f14e313a97fc460035b4c05992788250222c8b9f32c65b1d81",
+    "Run-LaptopDiagnosticInstall-user-v27.py": "a37a881be8d2d329194bb0a868ee6ffd90cb26548ab7daff46fa3ccc723bb6c7",
+    "Run-LaptopDiagnosticRestore-user-v27.py": "ac13270037a967dc592ca81459cca706bd8db52711d7770a222584b8d3d26952",
+    "Run-LaptopProbeCapture-user-v27.py": "161c1be5f9cc0ca04bf81d117575c4785df45e833e4e0a035696e892cf2332b6",
+    "DiagnosticRecoveryProtocolV27.py": "232792702738018141e063428c2472fada6beb54e5162bda74105c0b6eae4ec6",
+    "Test-DiagnosticRecoveryProtocolV27.py": "c2af553ca46fb372adda36301afd4c7a458bfc92b04c9d137e1d608cb7a65efb",
+    "RecoveryTransitionV27.py": "0c3bf1ce4196e0188f5ff51bb2e015fa7b92be8ff8c54146d1483a3ad8239cf8",
+    "Collect-ProbeSerial-v27.py": "17a548a4942732ae03f535789446b641a909559a183b49fdaf4b97423d847ebf"
+  }
+}

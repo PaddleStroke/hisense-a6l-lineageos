@@ -1,0 +1,602 @@
+{
+  "stock": {
+    "/soc/sdhci@c0c4000": {
+      "compatible": [
+        "qcom,sdhci-msm-v5"
+      ],
+      "reg": [
+        "0xc0c4000",
+        "0x1000",
+        "0xc0c5000",
+        "0x1000"
+      ],
+      "reg-names": [
+        "hc_mem",
+        "cmdq_mem"
+      ],
+      "interrupts": [
+        "0x0",
+        "0x6e",
+        "0x0",
+        "0x0",
+        "0x70",
+        "0x0"
+      ],
+      "interrupt-names": [
+        "hc_irq",
+        "pwr_irq"
+      ],
+      "qcom,bus-width": [
+        "0x8"
+      ],
+      "qcom,large-address-bus": true,
+      "sdhc-msm-crypto": [
+        "0xca"
+      ],
+      "qcom,devfreq,freq-table": [
+        "0x2faf080",
+        "0xbebc200"
+      ],
+      "qcom,msm-bus,name": [
+        "sdhc1"
+      ],
+      "qcom,msm-bus,num-cases": [
+        "0x9"
+      ],
+      "qcom,msm-bus,num-paths": [
+        "0x2"
+      ],
+      "qcom,msm-bus,vectors-KBps": [
+        "0x4e",
+        "0x200",
+        "0x0",
+        "0x0",
+        "0x1",
+        "0x25e",
+        "0x0",
+        "0x0",
+        "0x4e",
+        "0x200",
+        "0x416",
+        "0x640",
+        "0x1",
+        "0x25e",
+        "0x640",
+        "0x640",
+        "0x4e",
+        "0x200",
+        "0xcc3e",
+        "0x13880",
+        "0x1",
+        "0x25e",
+        "0x13880",
+        "0x13880",
+        "0x4e",
+        "0x200",
+        "0xff50",
+        "0x186a0",
+        "0x1",
+        "0x25e",
+        "0x186a0",
+        "0x186a0",
+        "0x4e",
+        "0x200",
+        "0x1fe9e",
+        "0x30d40",
+        "0x1",
+        "0x25e",
+        "0x208c8",
+        "0x208c8",
+        "0x4e",
+        "0x200",
+        "0x1fe9e",
+        "0x30d40",
+        "0x1",
+        "0x25e",
+        "0x249f0",
+        "0x249f0",
+        "0x4e",
+        "0x200",
+        "0x3fd3e",
+        "0x61a80",
+        "0x1",
+        "0x25e",
+        "0x493e0",
+        "0x493e0",
+        "0x4e",
+        "0x200",
+        "0x3fd3e",
+        "0x61a80",
+        "0x1",
+        "0x25e",
+        "0x493e0",
+        "0x493e0",
+        "0x4e",
+        "0x200",
+        "0x146cc2",
+        "0x3e8000",
+        "0x1",
+        "0x25e",
+        "0x146cc2",
+        "0x3e8000"
+      ],
+      "qcom,bus-bw-vectors-bps": [
+        "0x0",
+        "0x61a80",
+        "0x1312d00",
+        "0x17d7840",
+        "0x2faf080",
+        "0x5f5e100",
+        "0xbebc200",
+        "0x17d78400",
+        "0xffffffff"
+      ],
+      "clocks": [
+        "0xa1",
+        "0x5a",
+        "0xa1",
+        "0x5b",
+        "0xa1",
+        "0x5c"
+      ],
+      "clock-names": [
+        "iface_clk",
+        "core_clk",
+        "ice_core_clk"
+      ],
+      "qcom,ice-clk-rates": [
+        "0x11e1a300",
+        "0x47868c0"
+      ],
+      "status": [
+        "ok"
+      ],
+      "qcom,pm-qos-irq-type": [
+        "affine_irq"
+      ],
+      "qcom,pm-qos-irq-latency": [
+        "0x2b",
+        "0x206"
+      ],
+      "qcom,pm-qos-cpu-groups": [
+        "0xf",
+        "0xf0"
+      ],
+      "qcom,pm-qos-cmdq-latency-us": [
+        "0x2b",
+        "0x206",
+        "0x28",
+        "0x206"
+      ],
+      "qcom,pm-qos-legacy-latency-us": [
+        "0x2b",
+        "0x206",
+        "0x28",
+        "0x206"
+      ],
+      "qcom,clk-rates": [
+        "0x61a80",
+        "0x1312d00",
+        "0x17d7840",
+        "0x2faf080",
+        "0x5f5e100",
+        "0xb71b000",
+        "0x16e36000"
+      ],
+      "qcom,nonremovable": true,
+      "qcom,bus-speed-mode": [
+        "HS400_1p8v",
+        "HS200_1p8v",
+        "DDR_1p8v"
+      ],
+      "qcom,scaling-lower-bus-speed-mode": [
+        "DDR52"
+      ],
+      "vdd-supply": [
+        "0xcb"
+      ],
+      "qcom,vdd-voltage-level": [
+        "0x2d0370",
+        "0x2d0370"
+      ],
+      "qcom,vdd-current-level": [
+        "0xc8",
+        "0x8b290"
+      ],
+      "vdd-io-supply": [
+        "0xcc"
+      ],
+      "qcom,vdd-io-always-on": true,
+      "qcom,vdd-io-lpm-sup": true,
+      "qcom,vdd-io-voltage-level": [
+        "0x1b7740",
+        "0x1b7740"
+      ],
+      "qcom,vdd-io-current-level": [
+        "0xc8",
+        "0x4f588"
+      ],
+      "pinctrl-names": [
+        "active",
+        "sleep"
+      ],
+      "pinctrl-0": [
+        "0xcd",
+        "0xce",
+        "0xcf",
+        "0xd0"
+      ],
+      "pinctrl-1": [
+        "0xd1",
+        "0xd2",
+        "0xd3",
+        "0xd4"
+      ],
+      "phandle": [
+        "0x2e1"
+      ]
+    },
+    "/soc/qcom,rpm-smd/rpm-regulator-ldob4/regulator-l4": {
+      "compatible": [
+        "qcom,rpm-smd-regulator"
+      ],
+      "regulator-name": [
+        "pm660l_l4"
+      ],
+      "qcom,set": [
+        "0x3"
+      ],
+      "status": [
+        "okay"
+      ],
+      "regulator-min-microvolt": [
+        "0x19f0a0"
+      ],
+      "regulator-max-microvolt": [
+        "0x2d0370"
+      ],
+      "phandle": [
+        "0xcb"
+      ]
+    },
+    "/soc/qcom,rpm-smd/rpm-regulator-ldoa8/regulator-l8": {
+      "compatible": [
+        "qcom,rpm-smd-regulator"
+      ],
+      "regulator-name": [
+        "pm660_l8"
+      ],
+      "qcom,set": [
+        "0x3"
+      ],
+      "status": [
+        "okay"
+      ],
+      "regulator-min-microvolt": [
+        "0x1ab3f0"
+      ],
+      "regulator-max-microvolt": [
+        "0x1cfde0"
+      ],
+      "phandle": [
+        "0xcc"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_clk_on": {
+      "phandle": [
+        "0xcd"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_clk_on/config": {
+      "pins": [
+        "sdc1_clk"
+      ],
+      "bias-disable": true,
+      "drive-strength": [
+        "0x10"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_cmd_on": {
+      "phandle": [
+        "0xce"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_cmd_on/config": {
+      "pins": [
+        "sdc1_cmd"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0xa"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_data_on": {
+      "phandle": [
+        "0xcf"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_data_on/config": {
+      "pins": [
+        "sdc1_data"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0xa"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_rclk_on": {
+      "phandle": [
+        "0xd0"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_rclk_on/config": {
+      "pins": [
+        "sdc1_rclk"
+      ],
+      "bias-pull-down": true
+    },
+    "/soc/pinctrl@03000000/sdc1_clk_off": {
+      "phandle": [
+        "0xd1"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_clk_off/config": {
+      "pins": [
+        "sdc1_clk"
+      ],
+      "bias-disable": true,
+      "drive-strength": [
+        "0x2"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_cmd_off": {
+      "phandle": [
+        "0xd2"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_cmd_off/config": {
+      "pins": [
+        "sdc1_cmd"
+      ],
+      "num-grp-pins": [
+        "0x1"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0x2"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_data_off": {
+      "phandle": [
+        "0xd3"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_data_off/config": {
+      "pins": [
+        "sdc1_data"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0x2"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_rclk_off": {
+      "phandle": [
+        "0xd4"
+      ]
+    },
+    "/soc/pinctrl@03000000/sdc1_rclk_off/config": {
+      "pins": [
+        "sdc1_rclk"
+      ],
+      "bias-pull-down": true
+    }
+  },
+  "v31": {
+    "/soc@0/mmc@c0c4000": {
+      "no-sdio": true,
+      "compatible": [
+        "qcom,sdm630-sdhci",
+        "qcom,sdhci-msm-v5"
+      ],
+      "reg": [
+        "0xc0c4000",
+        "0x1000",
+        "0xc0c5000",
+        "0x1000",
+        "0xc0c8000",
+        "0x8000"
+      ],
+      "reg-names": [
+        "hc",
+        "cqhci",
+        "ice"
+      ],
+      "interrupts": [
+        "0x0",
+        "0x6e",
+        "0x4",
+        "0x0",
+        "0x70",
+        "0x4"
+      ],
+      "interrupt-names": [
+        "hc_irq",
+        "pwr_irq"
+      ],
+      "clocks": [
+        "0x20",
+        "0x4a",
+        "0x20",
+        "0x4b",
+        "0x1e",
+        "0x20",
+        "0x4c"
+      ],
+      "clock-names": [
+        "iface",
+        "core",
+        "xo",
+        "ice"
+      ],
+      "resets": [
+        "0x20",
+        "0xa"
+      ],
+      "interconnects": [
+        "0x3a",
+        "0x2",
+        "0x3a",
+        "0xa",
+        "0x3b",
+        "0x0",
+        "0x3c",
+        "0x1b"
+      ],
+      "interconnect-names": [
+        "sdhc-ddr",
+        "cpu-sdhc"
+      ],
+      "operating-points-v2": [
+        "0x41"
+      ],
+      "pinctrl-names": [
+        "default",
+        "sleep"
+      ],
+      "pinctrl-0": [
+        "0x42"
+      ],
+      "pinctrl-1": [
+        "0x43"
+      ],
+      "power-domains": [
+        "0x27",
+        "0x0"
+      ],
+      "bus-width": [
+        "0x8"
+      ],
+      "non-removable": true,
+      "status": [
+        "okay"
+      ],
+      "vmmc-supply": [
+        "0x44"
+      ],
+      "vqmmc-supply": [
+        "0x45"
+      ],
+      "max-frequency": [
+        "0x2faf080"
+      ],
+      "phandle": [
+        "0xab"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-on-state": {
+      "phandle": [
+        "0x42"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-on-state/clk-pins": {
+      "pins": [
+        "sdc1_clk"
+      ],
+      "bias-disable": true,
+      "drive-strength": [
+        "0x10"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-on-state/cmd-pins": {
+      "pins": [
+        "sdc1_cmd"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0xa"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-on-state/data-pins": {
+      "pins": [
+        "sdc1_data"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0xa"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-on-state/rclk-pins": {
+      "pins": [
+        "sdc1_rclk"
+      ],
+      "bias-pull-down": true
+    },
+    "/soc@0/pinctrl@3100000/sdc1-off-state": {
+      "phandle": [
+        "0x43"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-off-state/clk-pins": {
+      "pins": [
+        "sdc1_clk"
+      ],
+      "bias-disable": true,
+      "drive-strength": [
+        "0x2"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-off-state/cmd-pins": {
+      "pins": [
+        "sdc1_cmd"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0x2"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-off-state/data-pins": {
+      "pins": [
+        "sdc1_data"
+      ],
+      "bias-pull-up": true,
+      "drive-strength": [
+        "0x2"
+      ]
+    },
+    "/soc@0/pinctrl@3100000/sdc1-off-state/rclk-pins": {
+      "pins": [
+        "sdc1_rclk"
+      ],
+      "bias-pull-down": true
+    },
+    "/remoteproc/glink-edge/rpm-requests/regulators-0/l4": {
+      "regulator-name": [
+        "pm660l_l4"
+      ],
+      "regulator-min-microvolt": [
+        "0x2cec00"
+      ],
+      "regulator-max-microvolt": [
+        "0x2d0370"
+      ],
+      "phandle": [
+        "0x44"
+      ]
+    },
+    "/remoteproc/glink-edge/rpm-requests/regulators-1/l8": {
+      "regulator-name": [
+        "pm660_l8"
+      ],
+      "regulator-min-microvolt": [
+        "0x1b7740"
+      ],
+      "regulator-max-microvolt": [
+        "0x1b7740"
+      ],
+      "phandle": [
+        "0x45"
+      ]
+    }
+  }
+}
