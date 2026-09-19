@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# V59: supervisor (open property service + idmap2d ctl.start) and the control-socket launcher.
+# Rebuild the VM supervisor (framework_root_services + property header) and the control-socket launcher.
 set -eo pipefail
 cd /home/a6l/android/a6l-lineage24
-log=/home/a6l/logs/build-framework-netd-v59-r${1:-1}.log
+log=/home/a6l/logs/build-framework-supervisor-$(date +%Y%m%d-%H%M%S).log
 test ! -e "$log"
 exec > "$log" 2>&1
 W=/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l

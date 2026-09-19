@@ -9,8 +9,8 @@ mkdir -p /data/misc/audioserver /data/misc/audio /data/misc/media
 # V61+: AOSP example AIDL audio HAL from the vendor APEX (no sound hardware behind it).
 hal_dir=/apex/com.android.hardware.audio/bin/hw
 if [ -x "$hal_dir/android.hardware.audio.service-aidl.example" ]; then
-    timeout --foreground -k 3 400 "$hal_dir/android.hardware.audio.service-aidl.example" > /logs/audio-hal.log 2>&1 &
-    timeout --foreground -k 3 400 "$hal_dir/android.hardware.audio.effect.service-aidl.example" > /logs/audio-effect-hal.log 2>&1 &
+    timeout --foreground -k 3 1500 "$hal_dir/android.hardware.audio.service-aidl.example" > /logs/audio-hal.log 2>&1 &
+    timeout --foreground -k 3 1500 "$hal_dir/android.hardware.audio.effect.service-aidl.example" > /logs/audio-effect-hal.log 2>&1 &
     k=0
     while [ "$k" -lt 30 ]; do
         service check android.hardware.audio.core.IModule/default | grep -q ': found' && { echo A6L_AUDIO_HAL_SERVICE_PASS; break; }
@@ -31,22 +31,12 @@ if [ -x "$hal_dir/android.hardware.audio.service-aidl.example" ]; then
 else
     echo A6L_AUDIO_HAL_APEX_ABSENT
 fi
-timeout --foreground -k 3 400 /system/bin/audioserver > /logs/audioserver.log 2>&1 &
+timeout --foreground -k 3 1500 /system/bin/audioserver > /logs/audioserver.log 2>&1 &
 audio_pid=$!
-i=0
-while [ "$i" -lt 90 ]; do
-    if service check media.audio_flinger | grep -q ': found'; then
-        echo A6L_AUDIOFLINGER_SERVICE_PASS
-        j=0
-        while [ "$j" -lt 20 ]; do
-            service check media.audio_policy | grep -q ': found' && { echo A6L_AUDIOPOLICY_SERVICE_PASS; exit 0; }
-            sleep 1; j=$((j+1))
-        done
-        echo A6L_AUDIOPOLICY_SERVICE_MISSING
-        exit 0
-    fi
-    kill -0 "$audio_pid" || { echo A6L_AUDIOSERVER_EXITED; tail -n 30 /logs/audioserver.log; exit 91; }
-    sleep 1
-    i=$((i+1))
-done
-exit 92
+# audioserver only publishes media.audio_flinger after AudioPolicy initialises, which
+# waits for the framework's 'activity' service: do not block here. The harness checks
+# registration after SystemServer has run (A6L_POST_SERVICE lines).
+sleep 3
+kill -0 "$audio_pid" || { echo A6L_AUDIOSERVER_EXITED; exit 91; }
+echo A6L_AUDIOSERVER_STARTED
+exit 0

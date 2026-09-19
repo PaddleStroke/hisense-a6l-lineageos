@@ -9,7 +9,7 @@ mkdir -p /data/apex/active /data/apex/decompressed /data/apex/backup /data/apex/
 # Remove the expanded-package fixture: only apexd may emit the new inventory.
 rm /apex/apex-info-list.xml
 cat /dev/kmsg > /logs/apex-kernel.log &
-timeout --foreground -k 3 300 /system/bin/apexd > /logs/apexd.log 2>&1 &
+timeout --foreground -k 3 1500 /system/bin/apexd > /logs/apexd.log 2>&1 &
 apex_pid=$!
 i=0
 while [ "$i" -lt 80 ]; do

@@ -21,7 +21,7 @@ fi
 # Capture independent suspend/runtime results even if flag initialization fails.
 # /sys is read-only in this VM. AOSP SystemSuspend explicitly supports this
 # configuration for virtual devices: real Binder/wakelocks, no host suspend.
-timeout --foreground -k 3 300 /system/bin/hw/android.system.suspend-service > /logs/system-suspend.log 2>&1 &
+timeout --foreground -k 3 1500 /system/bin/hw/android.system.suspend-service > /logs/system-suspend.log 2>&1 &
 suspend_pid=$!
 i=0
 while [ "$i" -lt 15 ]; do

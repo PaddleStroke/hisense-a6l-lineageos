@@ -3,7 +3,7 @@
 set -eu
 grep -q virt /proc/device-tree/model || exit 60
 echo A6L_HEALTH_BEGIN
-timeout --foreground -k 3 300 /vendor/bin/hw/android.hardware.health-service.example > /logs/health-hal.log 2>&1 &
+timeout --foreground -k 3 1500 /vendor/bin/hw/android.hardware.health-service.example > /logs/health-hal.log 2>&1 &
 health_pid=$!
 i=0
 while [ "$i" -lt 15 ]; do

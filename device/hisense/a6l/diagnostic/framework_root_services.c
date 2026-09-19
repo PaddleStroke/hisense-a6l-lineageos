@@ -153,7 +153,7 @@ int main(int argc,char **argv) {
     if(argc==2&&!strcmp(argv[1],"--zygote")){launch_zygote();return 1;}
     need(argc==1,"framework arguments");
     umask(022); /* Android init may start this supervisor with umask 077. */
-    setbuf(stdout,NULL);atexit(cleanup);signal(SIGALRM,timedout);signal(SIGTERM,timedout);alarm(300);
+    setbuf(stdout,NULL);atexit(cleanup);signal(SIGALRM,timedout);signal(SIGTERM,timedout);alarm(1800); /* V62: whole-VM budget; 300 s no longer covers the staged daemons + SystemServer under TCG */
     char model[128]={0};int mf=open("/proc/device-tree/model",O_RDONLY);need(mf>=0,"QEMU model");need(read(mf,model,127)>0,"model read");close(mf);need(strstr(model,"virt")!=NULL,"V48 offline QEMU only");
     char prop[PROP_VALUE_MAX];__system_property_get("ro.a6l.ramdiag",prop);need(getuid()==0&&!strcmp(prop,"v38"),"V38 root only");
     struct statfs fs;need(!statfs(ROOT,&fs)&&(unsigned long)fs.f_type==0x01021994,"RAM root required");

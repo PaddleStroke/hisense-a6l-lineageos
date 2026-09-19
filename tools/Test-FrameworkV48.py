@@ -183,6 +183,17 @@ if opts.series and opts.series>=61:
     for name in ['primary_audio_policy_configuration.xml','r_submix_audio_policy_configuration.xml','audio_policy_volumes.xml','default_volume_tables.xml','surround_sound_configuration_5_0.xml']:
         put('root/vendor/etc/'+name,policy/name)
     put('root/vendor/etc/audio_effects_config.xml',A/'hardware/interfaces/audio/aidl/default/audio_effects_config.xml')
+if opts.series and opts.series>=62:
+    for name in ['keystore2','gatekeeperd']:put('root/system/bin/'+name,P/'system/bin'/name)
+    put('root/system/bin/framework-security-v62.sh',R/'device/hisense/a6l/diagnostic/framework-security-v62.sh',0o755)
+if opts.series and opts.series>=63:
+    # Genuine AOSP software ("nonsecure") KeyMint/SharedSecret/SecureClock HAL: keystore2 panics without a TEE-level KeyMint.
+    keymint='root/vendor/bin/hw/android.hardware.security.keymint-service.nonsecure'
+    put(keymint,P/'vendor/bin/hw/android.hardware.security.keymint-service.nonsecure',0o755)
+    for lib in re.findall(r'\(NEEDED\).*\[(.*?)\]',subprocess.check_output(['readelf','-d',entries[keymint][1]],text=True)):
+        if 'root/vendor/lib64/'+lib not in entries and (P/'vendor/lib64'/lib).is_file():put('root/vendor/lib64/'+lib,(P/'vendor/lib64'/lib).resolve())
+    for name in ['keymint','secureclock','sharedsecret']:
+        put(f'root/vendor/etc/vintf/manifest/android.hardware.security.{name}-service.xml',P/f'vendor/etc/vintf/manifest/android.hardware.security.{name}-service.xml')
 if opts.bpf:
     put('root/system/bin/bpfloader',P/'system/bin/bpfloader')
     put('root/vendor/etc/bpf/filterPowerSupplyEvents.o',P/'vendor/etc/bpf/filterPowerSupplyEvents.o')
@@ -310,10 +321,11 @@ if opts.series and opts.series>=60:
     text=text.replace('/system/bin/framework-apex-v51.sh || exit 12',
         'timeout --foreground -k 3 400 /system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 > /logs/vold.log 2>&1 &\necho $! > /logs/vold-early.pid\n/system/bin/framework-apex-v51.sh || exit 12',1)
     text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-media-v60.sh || echo A6L_MEDIA_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
+    if opts.series>=62:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-security-v62.sh || echo A6L_SECURITY_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     # Reap daemons that detach from the supervisor's process group before binderfs/bpffs cleanup.
-    text=text.replace('  echo A6L_SYSTEMSERVER_EXIT=$?','  echo A6L_SYSTEMSERVER_EXIT=$?\n  killall -9 netd audioserver vold idmap2d iptables-restore ip6tables-restore 2>/dev/null || true\n  sleep 2',1)
+    text=text.replace('  echo A6L_SYSTEMSERVER_EXIT=$?','  echo A6L_SYSTEMSERVER_EXIT=$?\n  for svc in media.audio_flinger media.audio_policy android.system.keystore2.IKeystoreService/default android.service.gatekeeper.IGateKeeperService netd vold; do service check $svc | grep -q ": found" && echo A6L_POST_SERVICE_PASS name=$svc || echo A6L_POST_SERVICE_MISSING name=$svc; done\n  killall -9 android.hardware.security.keymint-service.nonsecure netd audioserver vold idmap2d keystore2 gatekeeperd android.hardware.audio.service-aidl.example android.hardware.audio.effect.service-aidl.example iptables-restore ip6tables-restore 2>/dev/null || true\n  sleep 2',1)
     assert text.count('-k 3 180 /system/bin/framework-services --zygote')==1
-    text=text.replace('-k 3 180 /system/bin/framework-services --zygote','-k 3 480 /system/bin/framework-services --zygote',1)
+    text=text.replace('-k 3 180 /system/bin/framework-services --zygote','-k 3 900 /system/bin/framework-services --zygote',1)
     probe.write_text(text)
 if opts.series and opts.series>=59:
     probe.write_text(probe.read_text().replace('echo A6L_CLASSPATH_BEGIN',
@@ -423,7 +435,7 @@ args=['qemu-system-aarch64','-machine','virt,gic-version=3','-cpu','cortex-a53',
 with (O/'console.log').open('wb') as f:
     p=subprocess.Popen(args,stdout=f,stderr=subprocess.STDOUT)
     try:
-        deadline=time.monotonic()+(1000 if (opts.series or 0)>=60 else 420)
+        deadline=time.monotonic()+(1700 if (opts.series or 0)>=60 else 420)
         while p.poll() is None and time.monotonic()<deadline:
             if b'A6L_QEMU_FRAMEWORK_DONE' in (O/'console.log').read_bytes():break
             time.sleep(2)
@@ -448,9 +460,11 @@ if opts.series and opts.series>=58:
 if opts.series and opts.series>=59:
     checks.update(netd_service='A6L_NETD_SERVICE_PASS' in log)
 if opts.series and opts.series>=60:
-    checks.update(audioflinger_service='A6L_AUDIOFLINGER_SERVICE_PASS' in log)
+    checks.update(audioflinger_service='A6L_POST_SERVICE_PASS name=media.audio_flinger' in log)
 if opts.series and opts.series>=61:
     checks.update(audio_hal_service='A6L_AUDIO_HAL_SERVICE_PASS' in log)
+if opts.series and opts.series>=62:
+    checks.update(keystore2_service='A6L_KEYSTORE2_SERVICE_PASS' in log or 'A6L_POST_SERVICE_PASS name=android.system.keystore2' in log,gatekeeperd_service='A6L_GATEKEEPERD_SERVICE_PASS' in log)
 if opts.hint_compat:
     # RoleManager is reached only after the HintManager constructor returns.
     checks.update(hint_no_aidl_compat='SystemServerTiming StartRoleManagerService' in log)
@@ -480,6 +494,8 @@ if opts.series and opts.series>=59:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-netd-v59.sh',archive/'framework-netd-v59.sh')
 if opts.series and opts.series>=60:
     shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-media-v60.sh',archive/'framework-media-v60.sh')
+if opts.series and opts.series>=62:
+    shutil.copyfile(R/'device/hisense/a6l/diagnostic/framework-security-v62.sh',archive/'framework-security-v62.sh')
 if opts.hint_compat:
     # copyfile only: copytree's copystat fails with EPERM on the Windows-backed /mnt/c archive
     (archive/'hint-compat-source').mkdir(exist_ok=True)

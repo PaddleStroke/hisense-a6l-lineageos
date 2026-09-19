@@ -10,7 +10,7 @@ mkdir -p /data/misc/net /data/misc/netd /data/misc/ethernet
 iptables -w -t filter -L -n > /logs/iptables-filter.txt 2>&1 && echo A6L_IPTABLES_FILTER_PASS || echo A6L_IPTABLES_FILTER_FAILED
 ip6tables -w -t mangle -L -n > /logs/ip6tables-mangle.txt 2>&1 && echo A6L_IP6TABLES_MANGLE_PASS || echo A6L_IP6TABLES_MANGLE_FAILED
 ulimit -l 1048576
-timeout --foreground -k 3 300 /system/bin/a6l_socket_exec dnsproxyd:0666 mdns:0666 fwmarkd:0666 -- /system/bin/netd > /logs/netd.log 2>&1 &
+timeout --foreground -k 3 1500 /system/bin/a6l_socket_exec dnsproxyd:0666 mdns:0666 fwmarkd:0666 -- /system/bin/netd > /logs/netd.log 2>&1 &
 netd_pid=$!
 i=0
 while [ "$i" -lt 40 ]; do
