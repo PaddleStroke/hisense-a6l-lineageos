@@ -37,14 +37,24 @@ tools were generated from the hash-pinned V46 tools by `tools/Prepare-V68Trial.p
    Failure modes are benign: no JEDEC answer (power GPIO/pins wrong) → nothing else happens.
 4. **ADSP candidate A**: push `adsp/` to `/tmp/adsp-diag`, run `adsp_diag_r2.sh`. PASS = running for 20 s and
    clean stop. `FAIL-START*` with "start timed out" → candidate B (CX proxy vote) is the prepared next step.
-5. Return to stock Android; verify host cleanup as usual.
+5. **Framework observation run (optional, after 2–4 are clean)**: bundle
+   `firmware/extracted/framework-phone-bundle-v71-from-v70r2` (1.7 GB: `payload.erofs` = byte-identical to what VM run
+   V70 r2 booted to the LineageOS welcome screen, `overlay.ko`, launcher, `SHA256SUMS`).
+   `adb push` it to `/tmp/a6l-fw/`, `adb shell touch /tmp/a6l-framework-phone-approved` (the explicit attended
+   approval the guards require), then `adb shell /system/bin/sh /tmp/a6l-fw/framework-phone-v71.sh`; follow
+   `/tmp/a6l-fw/logs/console.log`. The run lives in a private mount namespace with a private `/dev` (no eMMC nodes)
+   and a read-only `/sys`, has a 20-minute limit, and leaves nothing behind after the reboot. Expect software
+   rendering to be slow; touch only works if the front-touch module was loaded beforehand; the success criterion is
+   SurfaceFlinger on the LCD and `sys.boot_completed`, not usability.
+6. Return to stock Android; verify host cleanup as usual.
 
 Not in V68 on purpose: modem/Wi-Fi (`device/hisense/a6l/kernel/a6l-modem-wifi.dtso`, candidate M1 — RF-capable,
 needs rmtfs on RAM copies and a decision about SIM/antenna state), haptics changes, charger changes.
 
-## After V68: framework on the phone
+## Background: framework on the phone
 
 The VM boots the complete framework (V65/V66). The phone version needs the same payload delivered over ADB
 into RAM (6 GB total, ~4 GB free under stock; plan: one read-only EROFS image loop-mounted from tmpfs
-instead of an expanded tree) and phone variants of the `framework-*.sh` scripts, which deliberately refuse
-to run outside QEMU today. That work is offline and continues independently of steps 1–5.
+instead of an expanded tree). This was validated in the VM as V70 (phone kernel binary, EROFS delivery, 6 GiB,
+24/25 checks; the failing one is the harness teardown). The supervisor and helper scripts now accept exactly two
+environments: QEMU, or the V68 image plus the attended approval file.
