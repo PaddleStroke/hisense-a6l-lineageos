@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE, never booted. Exposes the e-ink panel's SPI NOR (waveform + VCOM, stock
+// /dev/epd_flash) to a READ-ONLY userspace tool under the diagnostic kernel, so it can be backed
+// up completely without needing stock SELinux permissions.
+// Stock evidence (research/claude-eink): /soc/spi@c1b8000 = BLSP2 QUP4 as SPI ("spi8"), pins
+// gpio28..31 function blsp_spi8_a drive 6, child eink,ed052tc2@0, CS0, max 19.2 MHz.
+// Mainline sdm630.dtsi describes this QUP only as i2c8, so the SPI personality is added here.
+// No MTD/spi-nor driver is bound on purpose: nothing in the kernel can erase or program the chip.
+// The child keeps the stock compatible (no mainline driver); userspace binds spidev through
+// driver_override. Flash power (TLMM gpio42 "epd_pwr_on") is driven by the tool via the GPIO
+// character device for the duration of the read only.
+/dts-v1/;
+/plugin/;
+// Numeric constants (plain dtc, no cpp): GCC_BLSP2_QUP4_SPI_APPS_CLK=44, GCC_BLSP2_AHB_CLK=36,
+// GIC_SPI=0, IRQ_TYPE_LEVEL_HIGH=4 — checked against the pinned tree headers.
+&blsp_i2c8 { status = "disabled"; };
+&tlmm {
+    a6l_spi8_default: a6l-spi8-default-state {
+        pins = "gpio28", "gpio29", "gpio30", "gpio31";
+        function = "blsp_spi8_a";
+        drive-strength = <6>;
+        bias-disable;
+    };
+};
+/ {
+    fragment@20 {
+        target-path = "/soc@0";
+        __overlay__ {
+            a6l_blsp_spi8: spi@c1b8000 {
+                compatible = "qcom,spi-qup-v2.2.1";
+                reg = <0x0c1b8000 0x600>;
+                interrupts = <0 104 4>;
+                clocks = <&gcc 44>, <&gcc 36>;
+                clock-names = "core", "iface";
+                /* PIO only: no dmas, keeps BAM pipes 10/11 untouched */
+                pinctrl-names = "default";
+                pinctrl-0 = <&a6l_spi8_default>;
+                #address-cells = <1>;
+                #size-cells = <0>;
+                status = "okay";
+                epd-flash@0 {
+                    compatible = "eink,ed052tc2";
+                    reg = <0>;
+                    spi-max-frequency = <4000000>; /* stock 19.2 MHz; conservative for a backup */
+                };
+            };
+        };
+    };
+    fragment@21 {
+        target-path = "/chosen";
+        __overlay__ { hisense,a6l-eink-flash = "read1"; };
+    };
+};

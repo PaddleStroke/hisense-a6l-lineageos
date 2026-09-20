@@ -220,3 +220,14 @@ cc_binary {
     stl: "none",
     cflags: ["-Wall", "-Wextra", "-Werror"],
 }
+
+cc_binary {
+    name: "a6l_epd_nor_read",
+    srcs: ["diagnostic/epd_nor_read.c"],
+    static_executable: true,
+    compile_multilib: "64",
+    system_shared_libs: [],
+    static_libs: ["libc"],
+    stl: "none",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
