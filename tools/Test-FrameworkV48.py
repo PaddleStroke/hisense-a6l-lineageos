@@ -332,7 +332,7 @@ if opts.series and opts.series>=60:
     text=probe.read_text()
     assert text.count('/system/bin/framework-apex-v51.sh || exit 12')==1 and text.count('  echo A6L_SYSTEMSERVER_EXIT=$?')==1
     text=text.replace('/system/bin/framework-apex-v51.sh || exit 12',
-        'timeout --foreground -k 3 400 /system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 > /logs/vold.log 2>&1 &\necho $! > /logs/vold-early.pid\n/system/bin/framework-apex-v51.sh || exit 12',1)
+        'timeout --foreground -k 3 3000 /system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 > /logs/vold.log 2>&1 &\necho $! > /logs/vold-early.pid\n/system/bin/framework-apex-v51.sh || exit 12',1)
     text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-media-v60.sh || echo A6L_MEDIA_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     if opts.series>=62:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-security-v62.sh || echo A6L_SECURITY_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     if opts.series>=64:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-datadirs-v64.sh || echo A6L_DATADIRS_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)

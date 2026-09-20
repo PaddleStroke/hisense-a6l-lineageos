@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "E1", never booted, NOT part of the V68 image.
+// (a) TI TPS65185 e-paper PMIC — upstream driver drivers/regulator/tps65185.c exists in the pinned 7.2 tree
+//     (needs CONFIG_REGULATOR_TPS65185=m; built as an external module for the V67 kernel).
+//     Stock: i2c@c176000 (blsp_i2c2) addr 0x68; TLMM gpios: pm-pwrup=35, pm-pwrcom=3, pm-power-en=2,
+//     pm-wake-up=80, pm-state=0; all pull-down, 2 mA.
+//     HYPOTHESIS to verify against the stock tps65185 driver disassembly before use:
+//       pwrup->enable-gpios, pwrcom->vcom-ctrl-gpios, wake-up->wakeup-gpios, state->pwr-good-gpios,
+//       power-en = external VIN load switch (modelled as a fixed regulator).
+//     With no consumer the rails stay off: probing only talks I2C (revision, temperature, VCOM register).
+// (b) Rear (e-ink side) touch: FocalTech "5x06" at i2c@c1b7000 (blsp_i2c7) addr 0x38, irq gpio73 falling,
+//     reset gpio65, 720x1440, 5 touches, supplies pm660l L3 (vdd) and pm660 L11 (i2c pull-ups, already
+//     described for the front touch). Upstream edt-ft5x06 is built (=m).
+/dts-v1/;
+/plugin/;
+&tlmm {
+    a6l_tps65185_default: a6l-tps65185-default-state {
+        pins = "gpio0", "gpio2", "gpio3", "gpio35", "gpio80";
+        function = "gpio";
+        drive-strength = <2>;
+        bias-pull-down;
+    };
+    a6l_rear_touch_default: a6l-rear-touch-default-state {
+        pins = "gpio65", "gpio73";
+        function = "gpio";
+        drive-strength = <2>;
+        bias-pull-up;
+    };
+};
+&blsp_i2c2 {
+    status = "okay";
+    clock-frequency = <400000>;
+    epd_pmic: pmic@68 {
+        compatible = "ti,tps65185";
+        reg = <0x68>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&a6l_tps65185_default>;
+        enable-gpios = <&tlmm 35 0>;
+        vcom-ctrl-gpios = <&tlmm 3 0>;
+        wakeup-gpios = <&tlmm 80 0>;
+        pwr-good-gpios = <&tlmm 0 0>;
+        vin-supply = <&a6l_epd_vin>;
+        regulators {
+            epd_vcom: vcom { regulator-name = "epd-vcom"; };
+            epd_vposneg: vposneg { regulator-name = "epd-vposneg"; regulator-min-microvolt = <15000000>; regulator-max-microvolt = <15000000>; };
+            epd_v3p3: v3p3 { regulator-name = "epd-v3p3"; };
+        };
+    };
+};
+&blsp_i2c7 {
+    status = "okay";
+    clock-frequency = <400000>;
+    rear_touch: touchscreen@38 {
+        compatible = "edt,edt-ft5406";
+        reg = <0x38>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&a6l_rear_touch_default>;
+        interrupts-extended = <&tlmm 73 2>;   /* IRQ_TYPE_EDGE_FALLING */
+        reset-gpios = <&tlmm 65 1>;           /* GPIO_ACTIVE_LOW */
+        vcc-supply = <&a6l_vreg_l3b>;
+        iovcc-supply = <&a6l_touch_iovcc>;
+        touchscreen-size-x = <720>;
+        touchscreen-size-y = <1440>;
+    };
+};
+/ {
+    fragment@50 {
+        target-path = "/";
+        __overlay__ {
+            a6l_epd_vin: regulator-epd-vin {
+                compatible = "regulator-fixed";
+                regulator-name = "epd-pmic-vin";
+                gpio = <&tlmm 2 0>;
+                enable-active-high;
+            };
+        };
+    };
+    fragment@51 {
+        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-0";   // pm660l ("b")
+        __overlay__ {
+            a6l_vreg_l3b: l3 { regulator-min-microvolt = <1710000>; regulator-max-microvolt = <3600000>; };
+        };
+    };
+    fragment@52 {
+        target-path = "/chosen";
+        __overlay__ { hisense,a6l-eink-side = "e1"; };
+    };
+};

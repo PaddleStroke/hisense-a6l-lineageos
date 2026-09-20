@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "G1", never booted, NOT part of the V68 image. Adreno 512 render node only.
+// Display stays on the preserved boot framebuffer (simpledrm); MDSS/DSI/native panel init is separate work.
+// Stock firmware present in vendor/firmware: a512_zap.{mdt,b00-b02}, a530_pm4.fw, a530_pfp.fw, a530v3_gpmu.fw2.
+// msm.ko is a module (CONFIG_DRM_MSM=m): nothing probes until the attended runner loads it with the
+// firmware staged in RAM. Open points before any attempt: GPU rail/GDSC state left by the bootloader,
+// kgsl SMMU ownership (same question as the LPASS SMMU in the ADSP work), thermal limits.
+/dts-v1/;
+/plugin/;
+&adreno_gpu { status = "okay"; };
+&adreno_gpu_zap { firmware-name = "qcom/hisense/a6l/a512_zap.mdt"; };
+/ {
+    fragment@40 {
+        target-path = "/chosen";
+        __overlay__ { hisense,a6l-gpu = "g1"; };
+    };
+};
