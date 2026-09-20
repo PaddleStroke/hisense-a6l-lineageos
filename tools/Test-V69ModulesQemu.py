@@ -1,8 +1,8 @@
 """insmod every V69 bundle module, in bundle order, on the V67 phone kernel in diskless QEMU (ABI/dependency check only)."""
 import gzip,json,subprocess,time,sys
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1];B=ROOT/'firmware/extracted/v69-attended-bundle-20260921'
-OUT=Path(f'/home/a6l/kernel/v69-modules-qemu-r{sys.argv[1]}');OUT.mkdir(exist_ok=False)
+ROOT=Path(__file__).resolve().parents[1];B=ROOT/('firmware/extracted/'+(sys.argv[2] if len(sys.argv)>2 else 'v69-attended-bundle-20260921'))
+OUT=Path(f'/home/a6l/kernel/modules-qemu-r{sys.argv[1]}');OUT.mkdir(exist_ok=False)
 areas=[d.name for d in sorted(B.iterdir()) if (d/'modules/order.txt').exists()]
 script=OUT/'test.sh';script.write_text('#!/system/bin/sh\n/system/bin/toybox mknod /dev/mc c 204 64\nexec > /dev/mc 2>&1\n'+''.join(
  f'for m in $(/system/bin/toybox cat /mods/{a}/order.txt); do n=$(echo ${{m%.ko}} | /system/bin/toybox tr - _); /system/bin/toybox grep -q "^$n " /proc/modules && continue; /system/bin/toybox insmod /mods/{a}/$m && echo A6L_MOD_OK {a} $m || echo A6L_MOD_FAIL {a} $m; done\n' for a in areas)+'echo A6L_MOD_DONE\n')

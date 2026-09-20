@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "A1", never booted, not in V69. Internal audio path only (earpiece, wired headset, microphones):
+// ADSP (candidate A, proven 20 Sep) -> APR/Q6 -> LPASS digital codec @152c0000 -> PM660L analog codec.
+// Copied from the mainline SDM660 reference board (xiaomi-lavender) in the pinned tree; the stock A6L DT uses the same
+// supplies: codec IO/CX = pm660 S4, mic bias = pm660l L7 (already described as vreg_l7b). The TFA9894 speaker amplifier
+// is deliberately NOT part of this candidate. All drivers are modules; no sound plays unless a test asks for it.
+/dts-v1/;
+/plugin/;
+&lpass_codec { status = "okay"; };
+&pm660l_codec {
+    vdd-cdc-io-supply = <&a6l_vreg_s4a>;
+    vdd-cdc-tx-rx-cx-supply = <&a6l_vreg_s4a>;
+    vdd-micbias-supply = <&vreg_l7b>;
+    qcom,micbias-lvl = <2600>;
+    qcom,micbias1-ext-cap;
+    status = "okay";
+};
+&q6afedai {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    dai@137 { reg = <137>; qcom,sd-lines = <0 1>; };   /* LPI_MI2S_RX_0 */
+    dai@144 { reg = <144>; qcom,sd-lines = <0 1>; };   /* LPI_MI2S_TX_3 */
+};
+&q6asmdai {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    dai@0 { reg = <0>; };
+    dai@1 { reg = <1>; };
+};
+&sound {
+    compatible = "qcom,sdm660-sndcard";
+    model = "Hisense A6L";
+    pinctrl-names = "default";
+    pinctrl-0 = <&cdc_pdm_default>, <&cdc_dmic_default>;
+    audio-routing = "PDM_RX1", "Digital PDM_RX1", "PDM_RX2", "Digital PDM_RX2", "PDM_RX3", "Digital PDM_RX3",
+                    "Digital LPASS_PDM_TX", "PDM_TX", "AMIC1", "MIC BIAS External1", "AMIC2", "MIC BIAS External2";
+    mm1-dai-link { link-name = "MultiMedia1"; cpu { sound-dai = <&q6asmdai 0>; }; };
+    mm2-dai-link { link-name = "MultiMedia2"; cpu { sound-dai = <&q6asmdai 1>; }; };
+    int0-mi2s-dai-link {
+        link-name = "Internal MI2S Playback";
+        cpu { sound-dai = <&q6afedai 137>; };
+        platform { sound-dai = <&q6routing>; };
+        codec { sound-dai = <&pm660l_codec 0>, <&lpass_codec 0>; };
+    };
+    int3-mi2s-dai-link {
+        link-name = "Internal MI2S Capture";
+        cpu { sound-dai = <&q6afedai 144>; };
+        platform { sound-dai = <&q6routing>; };
+        codec { sound-dai = <&pm660l_codec 1>, <&lpass_codec 1>; };
+    };
+};
+/ {
+    fragment@90 {
+        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-1";
+        __overlay__ { a6l_vreg_s4a: s4 { regulator-min-microvolt = <1805000>; regulator-max-microvolt = <2040000>; regulator-enable-ramp-delay = <200>; regulator-always-on; }; };
+    };
+    fragment@91 { target-path = "/chosen"; __overlay__ { hisense,a6l-audio = "a1"; }; };
+};
