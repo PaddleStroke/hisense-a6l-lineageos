@@ -62,8 +62,12 @@ int main(int argc, char **argv) {
     printf("A6L_EPD_NOR_JEDEC %02x %02x %02x\n", id[0][0], id[0][1], id[0][2]);
     if (memcmp(id[0], id[1], 3) || memcmp(id[0], id[2], 3)) { printf("A6L_EPD_NOR_FAIL unstable id\n"); goto out; }
     if ((id[0][0] == 0xff && id[0][1] == 0xff) || (id[0][0] == 0 && id[0][1] == 0)) { printf("A6L_EPD_NOR_FAIL no device answered (power/pins?)\n"); goto out; }
-    if (id[0][2] < 0x10 || id[0][2] > 0x18) { printf("A6L_EPD_NOR_FAIL implausible capacity code 0x%02x\n", id[0][2]); goto out; }
-    uint32_t size = 1u << id[0][2];
+    /* Capacity: most vendors encode log2(bytes) (0x10..0x18). Macronix 1.8 V MX25U (c2 25 xx) counts from
+     * 0x32 = 2 Mbit: 0x33 = 4 Mbit = 512 KiB (seen on the A6L panel, 20 Sep 2026), 0x34 = 8 Mbit, ... */
+    uint32_t size = 0;
+    if (id[0][2] >= 0x10 && id[0][2] <= 0x18) size = 1u << id[0][2];
+    else if (id[0][0] == 0xc2 && id[0][1] == 0x25 && id[0][2] >= 0x32 && id[0][2] <= 0x38) size = 1u << (id[0][2] - 0x32 + 18);
+    if (!size) { printf("A6L_EPD_NOR_FAIL unknown capacity code 0x%02x\n", id[0][2]); goto out; }
     uint8_t sr, rdsr = 0x05; if (!xfer(&rdsr, 1, &sr, 1)) printf("A6L_EPD_NOR_STATUS 0x%02x\n", sr);
     uint8_t sfdp_cmd[5] = {0x5a, 0, 0, 0, 0}, sfdp[16]; if (!xfer(sfdp_cmd, 5, sfdp, 16)) { printf("A6L_EPD_NOR_SFDP"); for (int i = 0; i < 16; i++) printf(" %02x", sfdp[i]); printf("\n"); }
     a = malloc(size); b = malloc(size); if (!a || !b) goto out;

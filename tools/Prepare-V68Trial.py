@@ -16,9 +16,9 @@ def source(name):
 def v68(text):
     # order matters: the V46 tools name V45 as "previous" and V46 as "candidate"
     text=text.replace(V45,'@@PREV@@').replace(V46,V68).replace('@@PREV@@',V46)
-    text=text.replace('verified-v45','verified-v46').replace('verified V45 predecessor','verified V46 predecessor')
+    text=text.replace('verified-v45','@@LABEL@@').replace('verified V45 predecessor','@@PRED@@')
     text=text.replace('recovery-controls-v46-20260918','recovery-v68-candidate-20260920')
-    return text.replace('V46','V68').replace('v46','v68')
+    return text.replace('V46','V68').replace('v46','v68').replace('@@LABEL@@','verified-v46').replace('@@PRED@@','verified V46 predecessor')
 def put(name,text):
     p=T/name;p.write_text(text);py_compile.compile(str(p),doraise=True);manifest['files'][name]=digest(p)
 for old in pins:

@@ -32,7 +32,7 @@ MARK="A6L_ADSP_DIAG_R2_$$_$(date +%s)"
 mkdir -p "$EV" || exit 10
 up() { cut -d' ' -f1 /proc/uptime 2>/dev/null || echo '?'; }
 log() { echo "[$(up)] $*" | tee -a "$EV/diag.log"; }
-since_mark() { dmesg 2>/dev/null | awk -v m="$MARK" 'f{print} index($0,m){f=1}'; }
+since_mark() { dmesg 2>/dev/null | sed -n "/$MARK/,\$p"; }   # no awk in the RAM toybox (20 Sep phone run)
 bad_dmesg() {
     since_mark | grep -E -q 'watchdog received|fatal error received|start timed out|failed to authenticate|Unhandled context fault|Unexpected global fault|remoteproc.*crash|error [0-9-]+ (initializing|setting up) firmware|segment outside memory range|BUG:|Oops|Call trace'
 }
@@ -90,7 +90,10 @@ done
 # RAM-only paths: both the staging dir and the firmware dir must live on tmpfs/rootfs/ramfs.
 for p in "$DIR" "$(dirname "$FWDIR")"; do
     mkdir -p "$p" || die PATH "cannot create $p"
-    fs=$(awk -v p="$p" 'index(p,$2)==1 && length($2)>=l {l=length($2); t=$3} END{print t}' "$MOUNTS")
+    fs=""; best=0
+    while read -r _dev mp type _rest; do
+        case "$p" in "$mp"*) [ "${#mp}" -ge "$best" ] && { best=${#mp}; fs=$type; };; esac
+    done < "$MOUNTS"
     case "$fs" in tmpfs|rootfs|ramfs) ;; *) die PATH "$p is on '$fs', not RAM";; esac
 done
 [ -e "$FWDIR/adsp.mdt" ] && die ORDER "firmware already installed before module load (auto_boot would fire uncontrolled)"

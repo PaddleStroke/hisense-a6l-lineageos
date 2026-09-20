@@ -16,7 +16,7 @@ STOCK = '9688e3dfb349186fb60efc057a618aeaf696b030ad52974932ea83a077b31621'
 
 PREVIOUS = 'ce3727dda592065becb883ef3fe663cb3579290edb841854e01f4fc49d02a3c6'
 
-RECOVERIES = {PREVIOUS: 'verified-v68'}
+RECOVERIES = {PREVIOUS: 'verified-v46'}
 
 DEVINFO = '7d6a4855f19d498a092ff0ffb44a69e114cd915d4d49acb2640035cf70e854ed'
 
@@ -32,7 +32,7 @@ def verify_transition(recovery_digest, bcb, devinfo):
 
     if recovery_digest not in RECOVERIES:
 
-        raise ValueError('Existing recovery is not the verified V68 predecessor')
+        raise ValueError('Existing recovery is not the verified V46 predecessor')
 
     if len(devinfo) != 4096 or hashlib.sha256(devinfo).hexdigest() != DEVINFO:
 
