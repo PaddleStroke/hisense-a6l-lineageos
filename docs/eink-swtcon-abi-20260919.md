@@ -78,3 +78,29 @@ Only six library functions are called from the HWC (call sites in parentheses):
 4. Still unknown: exact meaning of `temp_a/temp_b` units, the `info` structure written at `this+0x5a4`,
    the pixel encoding of drive frames (expected: 2 bits per pixel source-driver codes, 4 pixels/byte
    giving 360 data bytes + 24 control bytes per half-line), and the DSI/bridge timing that carries them.
+
+## 20 September: real waveform + drive-frame format decoded (eink-swtcon r5, emulator)
+
+Input: first 0x70080 bytes of the panel NOR captured on the phone (`firmware/extracted/eink-spi-nor-20260920`).
+`Init_Eink_SWTcon` now fills `info` with `ED058TC7U2` and `320_R301_AFD521_ED058TC7U2_TC…`: the panel is an
+**E Ink ED058TC7** (5.84", 720×1440), waveform file by TCL; NOR = Macronix MX25U4033E, VCOM −2.40 V.
+
+**Drive frame = a 192 × 1450 XRGB8888 video frame** (768 bytes per row = 192 "pixels" × 4 bytes), exactly what an
+LCD-style DSI video pipe would carry to the DSI→parallel-RGB bridge:
+
+| byte in each 4-byte pixel | observed values | meaning |
+|---|---|---|
+| 0 ("blue"/first colour lane) | `00`, `55`, `aa` | **source-driver data, 4 EPD pixels × 2 bits**: `00` no drive, `01` = one polarity, `10` = the other. 180 data bytes × 4 = 720 pixels per line; 1440 data rows → 259 200 bytes (histogram matches exactly) |
+| 1 (second lane) | `00 01 02 06 08 0a` | **gate/source control strobes** (start pulses, clock, latch/output-enable) at line/frame boundaries; 12 columns + 10 rows of blanking carry them |
+| 2 | `00` | unused |
+| 3 | `ff` | alpha/padding |
+
+So the e-ink "display driver" needed on the modern kernel is an ordinary **DSI video-mode panel of 192×1450 at
+cfg[2] = 50 Hz** behind the bridge; the TCON library output can be flipped to it unchanged as XRGB8888. No
+per-pixel protocol has to be reimplemented. The first update after init is a fixed 116-frame clearing sequence
+(alternating full-panel `aa`/`00`/… phases, identical with a zero waveform, i.e. built in); a second, different image
+took 38 frames (`55` data = opposite polarity visible), which is where the waveform tables matter.
+
+Open: DSI1 + bridge (Toshiba, per stock DT) register init and the exact video timings (porches/clock) from the
+stock panel node `qcom,mdss_dsi_epd_eink_qhd_video`; TPS65185 rail sequencing around updates (candidate E1);
+temperature input units for `ModeDecision_MirrorMode`.
