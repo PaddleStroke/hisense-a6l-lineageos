@@ -29,3 +29,22 @@ Fallback at any point: reinstall V68 (known good) with `Run-LaptopDiagnosticRest
 
 Not prepared (needs design, not just bring-up): audio card DT/codec routing, Bluetooth, charging/thermal policy, cameras,
 fingerprint/TEE, e-ink DSI1+bridge transport (format now known: 384×725 XRGB video @85 Hz, see eink-swtcon doc), cpufreq (OSM/CPR port).
+
+## Second stage, same session if V69 went well: V70
+`recovery-v70-candidate-20260921`, SHA-256 `b93771e701d677c58e377feae794a25d3a9c4c1f5cd379bb904910e4661a4373`
+= V69 + four more overlays (same kernel/ramdisk; transition tool accepts only V69 as predecessor; captured-ABL check,
+transition and protocol tests pass; 59/59 bundle modules load in QEMU):
+- **D1 native display**: MDSS + DSI0 + generated FT8719 Tianma panel driver. When `msm.ko` loads it replaces the boot
+  framebuffer. Success = the LCD stays alive under the real display driver (enables true screen off/on and is the
+  prerequisite for e-ink). Failure mode = dark LCD until reboot; ADB unaffected. Known risk: enabling the MMSS SMMU node
+  may disturb the bootloader splash/console at boot even before any module loads — if V70 boots with a dead LCD but ADB
+  works, that is the cause (then reinstall V69).
+- **E2 e-ink transport**: DSI1 → TC358762 (mainline bridge driver with the three stock register values) → 384×725@85 DPI
+  panel. Test = binding + connector/mode only. No panel rails, no refresh yet.
+- **A1 internal audio**: sound card registration through ADSP/APR/Q6 + LPASS digital + PM660L analog codec. No playback.
+- **B1 Bluetooth** (RF-capable, needs `A6L_BT_APPROVED=1`): controller init + version read only.
+Bundles: `v70-attended-bundle-20260921/{display,eink-dsi,audio,bluetooth}`. Order: baseline → display → eink-dsi →
+(ADSP start) → audio → bluetooth if approved → framework run on the native display if D1 passed.
+
+Framework payload for both stages: `framework-phone-bundle-v71-from-v72r2` (VM: 25/26, only harness teardown failing),
+already copied to the laptop under `~/A6L-usb-20260915/v69/fw/`.
