@@ -3,7 +3,7 @@
 # AudioFlinger/AudioPolicy Binder endpoints exist so AudioService can start;
 # says nothing about A6L codec, amplifier, ADSP or routing.
 set -eu
-grep -q virt /proc/device-tree/model || exit 90
+/system/bin/a6l-guard.sh || exit 90
 echo A6L_MEDIA_BEGIN
 mkdir -p /data/misc/audioserver /data/misc/audio /data/misc/media
 # V61+: AOSP example AIDL audio HAL from the vendor APEX (no sound hardware behind it).

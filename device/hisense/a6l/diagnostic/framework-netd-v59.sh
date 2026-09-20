@@ -3,7 +3,7 @@
 # network interface; this checks Binder registration and firewall/BPF setup on
 # the V59 runtime kernel, not A6L Wi-Fi, modem or tethering behaviour.
 set -eu
-grep -q virt /proc/device-tree/model || exit 80
+/system/bin/a6l-guard.sh || exit 80
 echo A6L_NETD_BEGIN
 grep -q ' /sys/fs/cgroup cgroup2 ' /proc/mounts || { mkdir -p /sys/fs/cgroup; mount -t cgroup2 none /sys/fs/cgroup || echo A6L_NETD_CGROUP2_MOUNT_FAILED; }
 mkdir -p /data/misc/net /data/misc/netd /data/misc/ethernet

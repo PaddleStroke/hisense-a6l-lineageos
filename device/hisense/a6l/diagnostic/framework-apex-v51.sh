@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # Disposable, diskless QEMU only. Called within the guarded VM supervisor.
 set -eu
-grep -q virt /proc/device-tree/model || exit 40
+/system/bin/a6l-guard.sh || exit 40
 echo A6L_APEX_BEGIN
 mkdir -p /data/apex/active /data/apex/decompressed /data/apex/backup /data/apex/hashtree /data/apex/sessions /metadata/apex/sessions /metadata/apex/images /data/misc_de/0 /data/misc_ce/0
 # Native guarded VM supervisor creates loop/mapper nodes without 256 execs.

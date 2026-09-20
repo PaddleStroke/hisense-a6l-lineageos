@@ -98,10 +98,18 @@ static void setup_vm_cgroups(void) {
     }
     puts("A6L_VM_CGROUPS_READY cpu_v1=1 blkio_v1=1 memory_v2=1 cpuset_v1=0");
 }
+/* Where may the framework supervisor run?  (1) the diskless QEMU "virt" machine, or (2) V71+: the spare phone,
+ * but only on the reviewed V68 diagnostic image AND after the attended host runner created the approval file.
+ * Returns 1 for QEMU, 2 for an approved phone run, 0 otherwise. */
+static int a6l_environment(void) {
+    char model[128]={0},mark[16]={0};int f=open("/proc/device-tree/model",O_RDONLY);
+    if(f>=0){(void)!read(f,model,127);close(f);}
+    if(strstr(model,"virt"))return 1;
+    f=open("/proc/device-tree/chosen/hisense,a6l-controls",O_RDONLY);if(f>=0){(void)!read(f,mark,15);close(f);}
+    return !strcmp(mark,"v68")&&!access("/tmp/a6l-framework-phone-approved",F_OK)?2:0;
+}
 static void launch_zygote(void) {
-    char model[128]={0};int mf=open("/proc/device-tree/model",O_RDONLY);
-    need(mf>=0&&read(mf,model,127)>0,"zygote QEMU model");close(mf);
-    need(strstr(model,"virt")!=NULL&&getuid()==0,"QEMU root zygote only");
+    need(a6l_environment()!=0&&getuid()==0,"QEMU or approved-phone root zygote only");
     /* Match init's descriptor hygiene; never leak supervisor/shell log FDs. */
     int nullfd=open("/dev/null",O_RDWR);need(nullfd>=0,"zygote null stdio");
     need(dup2(nullfd,0)>=0&&dup2(nullfd,1)>=0&&dup2(nullfd,2)>=0,"zygote stdio");
@@ -154,7 +162,7 @@ int main(int argc,char **argv) {
     need(argc==1,"framework arguments");
     umask(022); /* Android init may start this supervisor with umask 077. */
     setbuf(stdout,NULL);atexit(cleanup);signal(SIGALRM,timedout);signal(SIGTERM,timedout);alarm(1800); /* V62: whole-VM budget; 300 s no longer covers the staged daemons + SystemServer under TCG */
-    char model[128]={0};int mf=open("/proc/device-tree/model",O_RDONLY);need(mf>=0,"QEMU model");need(read(mf,model,127)>0,"model read");close(mf);need(strstr(model,"virt")!=NULL,"V48 offline QEMU only");
+    need(a6l_environment()!=0,"QEMU or approved V68 phone run only");printf("A6L_ENVIRONMENT=%s\n",a6l_environment()==1?"qemu":"phone-approved");
     char prop[PROP_VALUE_MAX];__system_property_get("ro.a6l.ramdiag",prop);need(getuid()==0&&!strcmp(prop,"v38"),"V38 root only");
     struct statfs fs;need(!statfs(ROOT,&fs)&&(unsigned long)fs.f_type==0x01021994,"RAM root required");
     need(!unshare(CLONE_NEWNS),"private mount namespace");need(!mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL),"private propagation");
@@ -175,6 +183,13 @@ int main(int argc,char **argv) {
     setup_vm_apex_nodes();
     dir(ROOT "/dev/dri");need(!mknod(ROOT "/dev/dri/card0",S_IFCHR|0600,makedev(226,0)),"DRM node");
     need(!chown(ROOT "/dev/dri/card0",1000,1000),"system DRM ownership");
+    /* V71: expose existing evdev nodes (touch, keys) inside the private /dev so EventHub can see them. Best effort. */
+    dir(ROOT "/dev/input");
+    for(unsigned i=0;i<16;i++){char sp[64],dp[64],v[32]={0};unsigned ma,mi;snprintf(sp,sizeof(sp),"/sys/class/input/event%u/dev",i);
+        int sf=open(sp,O_RDONLY|O_CLOEXEC);if(sf<0)continue;ssize_t n=read(sf,v,sizeof(v)-1);close(sf);
+        if(n<=0||sscanf(v,"%u:%u",&ma,&mi)!=2)continue;snprintf(dp,sizeof(dp),ROOT "/dev/input/event%u",i);
+        if(!mknod(dp,S_IFCHR|0660,makedev(ma,mi))){(void)!chown(dp,0,1004);printf("A6L_INPUT_NODE event%u %u:%u\n",i,ma,mi);}
+    }
     dir(ROOT "/dev/binderfs");need(!mount("binder",ROOT "/dev/binderfs","binder",MS_NOSUID|MS_NOEXEC,NULL),"private binderfs");
     int fd=open(ROOT "/dev/binderfs/binder-control",O_RDONLY|O_CLOEXEC);need(fd>=0,"binder control");
     struct binderfs_device b={0};strcpy(b.name,"a6l-v48");need(!ioctl(fd,BINDER_CTL_ADD,&b),"private binder add");strcpy(b.name,"a6l-v48-hw");need(!ioctl(fd,BINDER_CTL_ADD,&b),"private hwbinder add");close(fd);

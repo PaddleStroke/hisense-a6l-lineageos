@@ -2,7 +2,7 @@
 import argparse,gzip,hashlib,json,os,re,shutil,subprocess,time,xml.etree.ElementTree as ET,zipfile,io
 from pathlib import Path
 R=Path(__file__).resolve().parents[1];A=Path('/home/a6l/android/a6l-lineage24');P=A/'out/target/product/a6l'
-ap=argparse.ArgumentParser();ap.add_argument('--attempt',required=True,type=int);ap.add_argument('--rooted',action='store_true');ap.add_argument('--runtime-kernel',action='store_true');ap.add_argument('--apex-service',action='store_true');ap.add_argument('--native-bootstrap',action='store_true');ap.add_argument('--applications',action='store_true');ap.add_argument('--health',action='store_true');ap.add_argument('--bpf',action='store_true');ap.add_argument('--hint-compat',action='store_true');ap.add_argument('--series',type=int,help='V57+: explicit test series number (requires --hint-compat)');opts=ap.parse_args();n=opts.attempt
+ap=argparse.ArgumentParser();ap.add_argument('--attempt',required=True,type=int);ap.add_argument('--rooted',action='store_true');ap.add_argument('--runtime-kernel',action='store_true');ap.add_argument('--apex-service',action='store_true');ap.add_argument('--native-bootstrap',action='store_true');ap.add_argument('--applications',action='store_true');ap.add_argument('--health',action='store_true');ap.add_argument('--bpf',action='store_true');ap.add_argument('--hint-compat',action='store_true');ap.add_argument('--erofs',action='store_true',help='V70+: phone-style delivery: one read-only EROFS payload + tmpfs overlay, phone kernel candidate, 6 GiB');ap.add_argument('--series',type=int,help='V57+: explicit test series number (requires --hint-compat)');opts=ap.parse_args();n=opts.attempt
 assert not opts.runtime_kernel or opts.rooted, 'Runtime kernel follow-up requires the normal-root harness'
 assert not opts.apex_service or opts.runtime_kernel, 'Real APEX test requires the runtime kernel'
 assert not opts.native_bootstrap or opts.apex_service, 'Native bootstrap requires real APEX activation'
@@ -13,7 +13,8 @@ assert not opts.hint_compat or opts.bpf, 'Hint compatibility test requires BPF/H
 assert not opts.series or (opts.hint_compat and opts.series>=57), 'Series numbers extend the V56 fixture'
 version=opts.series if opts.series else 56 if opts.hint_compat else (55 if opts.bpf else (54 if opts.health else (53 if opts.applications else (52 if opts.native_bootstrap else (51 if opts.apex_service else (50 if opts.runtime_kernel else (49 if opts.rooted else 48)))))))
 import glob
-kernel_archive=R/(sorted(glob.glob(str(R/'firmware/extracted/framework-kernel-v59-*')))[-1] if (opts.series or 0)>=59 else 'firmware/extracted/framework-kernel-v50-20260918' if opts.runtime_kernel else 'firmware/extracted/android-init-kernel-20260917')
+assert not opts.erofs or (opts.series or 0)>=70,'--erofs needs --series>=70'
+kernel_archive=R/(sorted(glob.glob(str(R/'firmware/extracted/phone-kernel-v67-candidate-*')))[-1] if opts.erofs else sorted(glob.glob(str(R/'firmware/extracted/framework-kernel-v59-*')))[-1] if (opts.series or 0)>=59 else 'firmware/extracted/framework-kernel-v50-20260918' if opts.runtime_kernel else 'firmware/extracted/android-init-kernel-20260917')
 O=Path(f'/home/a6l/kernel/framework-v{version}-r{n}');O.mkdir(exist_ok=False)
 import datetime
 stamp='20260918' if version<57 else datetime.date.today().strftime('%Y%m%d')
@@ -102,6 +103,8 @@ for name in apexes:
                   preinstalledModulePath='/system/apex/'+package.name,versionCode=str(version),
                   versionName=str(version),isFactory='true',isActive='true',lastUpdateMillis='0')
 textfile('root/apex/apex-info-list.xml',ET.tostring(info,encoding='unicode'))
+put('root/system/bin/a6l-guard.sh',R/'device/hisense/a6l/diagnostic/a6l-guard.sh',0o755)
+entries['root/system/bin/tr']=('slink','toybox',0o777)
 for name in ['app_process64','sh','toybox','logcat','linker64','installd']:
     put('root/system/bin/'+name,P/'system/bin'/name)
 for name in ['timeout','cat','mkdir','sleep','chmod','chown','grep','sed']:
@@ -427,7 +430,38 @@ lines=[f'file /system/etc/init/hw/init.rc {rc} 0644 0 0' if l.startswith('file /
 dirs={'/v48','/v48/payload'}
 for name in entries:dirs.update('/v48/payload/'+str(p) for p in Path(name).parents if str(p)!='.')
 lines += [f'dir {p} 0755 0 0' for p in sorted(dirs)]
-for name,(kind,src,mode) in entries.items():lines.append(f'{kind} /v48/payload/{name} {src} {mode:04o} 0 0')
+if opts.erofs:
+    # Phone-style delivery: the whole payload is ONE compressed read-only image (what `adb push` would place in
+    # tmpfs); a tmpfs overlay provides the few writable paths. RAM cost ~ image size instead of the expanded tree.
+    import tarfile
+    stage=O/'stage';stage.mkdir()
+    for name,(kind,src,mode) in entries.items():
+        dest=stage/name;dest.parent.mkdir(parents=True,exist_ok=True)
+        if kind=='slink':os.symlink(src,dest)
+        else:shutil.copyfile(src,dest);os.chmod(dest,mode)
+    image=O/'payload.erofs'
+    subprocess.run(['/home/a6l/android/a6l-lineage24/out/host/linux-x86/bin/mkfs.erofs','-zlz4hc','--all-root','-T','1789344000',str(image),str(stage)],check=True,stdout=subprocess.DEVNULL)
+    shutil.rmtree(stage)
+    with tarfile.open(kernel_archive/'modules.tar.gz') as t:
+        (O/'overlay.ko').write_bytes(t.extractfile(next(m for m in t.getmembers() if m.name.endswith('/overlay.ko'))).read())
+    lines=[l for l in lines if not l.startswith('dir /v48/payload/')]
+    lines+=[f'file /v48/payload.erofs {image} 0400 0 0',f'file /v48/overlay.ko {O/"overlay.ko"} 0400 0 0','dir /v48/lower 0755 0 0','dir /v48/rw 0755 0 0']
+    prelude='''echo A6L_EROFS_DELIVERY_BEGIN
+/system/bin/toybox mknod /dev/loop-control c 10 237 2>/dev/null
+/system/bin/toybox mknod /dev/loop7 b 7 7 2>/dev/null
+/system/bin/toybox losetup -r /dev/loop7 /v48/payload.erofs || exit 30
+/system/bin/toybox mount -t erofs -o ro /dev/loop7 /v48/lower || exit 31
+/system/bin/toybox insmod /v48/overlay.ko || exit 32
+/system/bin/toybox mount -t tmpfs -o size=1024m tmpfs /v48/rw || exit 33
+/system/bin/toybox mkdir -p /v48/rw/upper /v48/rw/work
+/system/bin/toybox mount -t overlay -o lowerdir=/v48/lower,upperdir=/v48/rw/upper,workdir=/v48/rw/work overlay /v48/payload || exit 34
+echo A6L_EROFS_DELIVERY_PASS
+'''
+    text=script.read_text();marker='# This VM has no physical or virtual disks. All overlays are initramfs files.\n'
+    assert text.count(marker)==1;script.write_text(text.replace(marker,prelude,1))
+    print(f'EROFS image_bytes={image.stat().st_size} sha256={sha(image)}',flush=True)
+else:
+    for name,(kind,src,mode) in entries.items():lines.append(f'{kind} /v48/payload/{name} {src} {mode:04o} 0 0')
 lines += [f'file /v48/qemu.sh {script} 0755 0 0']
 recipe=O/'ramdisk.list';recipe.write_text('\n'.join(lines)+'\n')
 manifest={name:{'kind':kind,'source':src,'mode':mode,'sha256':sha(Path(src)) if kind=='file' else None} for name,(kind,src,mode) in entries.items()}
@@ -442,9 +476,9 @@ if opts.apex_service:
     # The V40 fixture advertises only 2 GiB, regardless of QEMU's -m value.
     vm_dtb=O/'virt.dtb';shutil.copyfile(R/'firmware/extracted/android-display-v40-20260917-r1/positive/virt.dtb',vm_dtb)
     subprocess.run(['fdtput','-t','x',str(vm_dtb),'/memory@40000000','reg','0','40000000',
-                    '2' if opts.applications else '1','0' if opts.applications else '80000000'],check=True)
+                    '2' if opts.applications and not opts.erofs else '1','0' if opts.applications and not opts.erofs else '80000000'],check=True)  # --erofs: 6 GiB like the phone
     shutil.copyfile(vm_dtb,archive/'virt.dtb')
-args=['qemu-system-aarch64','-machine','virt,gic-version=3','-cpu','cortex-a53','-smp','4','-m','8192' if opts.applications else ('6144' if opts.apex_service else '3072'),'-nodefaults','-nographic','-monitor','none','-serial','stdio','-nic','none','-no-reboot','-dtb',str(vm_dtb),'-kernel',str(kernel_archive/'Image'),'-initrd',str(O/'ramdisk.gz'),'-append','console=ttyAMA0,115200 earlycon loglevel=7 panic=0 androidboot.selinux=permissive androidboot.init_rc=/system/etc/init/hw/init.rc']
+args=['qemu-system-aarch64','-machine','virt,gic-version=3','-cpu','cortex-a53','-smp','4','-m','6144' if opts.erofs else '8192' if opts.applications else ('6144' if opts.apex_service else '3072'),'-nodefaults','-nographic','-monitor','none','-serial','stdio','-nic','none','-no-reboot','-dtb',str(vm_dtb),'-kernel',str(kernel_archive/'Image'),'-initrd',str(O/'ramdisk.gz'),'-append','console=ttyAMA0,115200 earlycon loglevel=7 panic=0 androidboot.selinux=permissive androidboot.init_rc=/system/etc/init/hw/init.rc']
 with (O/'console.log').open('wb') as f:
     p=subprocess.Popen(args,stdout=f,stderr=subprocess.STDOUT)
     try:
@@ -478,6 +512,8 @@ if opts.series and opts.series>=61:
     checks.update(audio_hal_service='A6L_AUDIO_HAL_SERVICE_PASS' in log)
 if opts.series and opts.series>=62:
     checks.update(keystore2_service='A6L_KEYSTORE2_SERVICE_PASS' in log or 'A6L_POST_SERVICE_PASS name=android.system.keystore2' in log,gatekeeperd_service='A6L_GATEKEEPERD_SERVICE_PASS' in log)
+if opts.erofs:
+    checks.update(erofs_delivery='A6L_EROFS_DELIVERY_PASS' in log,boot_completed='name=sys.boot_completed result=0' in log)
 if opts.hint_compat:
     # RoleManager is reached only after the HintManager constructor returns.
     checks.update(hint_no_aidl_compat='SystemServerTiming StartRoleManagerService' in log)

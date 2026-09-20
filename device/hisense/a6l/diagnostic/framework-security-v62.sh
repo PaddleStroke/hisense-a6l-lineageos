@@ -3,7 +3,7 @@
 # TEE or persistent storage exists here (gatekeeperd uses its software fallback);
 # this establishes framework Binder peers, not A6L security properties.
 set -eu
-grep -q virt /proc/device-tree/model || exit 95
+/system/bin/a6l-guard.sh || exit 95
 echo A6L_SECURITY_BEGIN
 mkdir -p /data/misc/keystore /data/misc/gatekeeper
 # V63+: standard post-fs-data directories that framework services expect.

@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # Run the genuine Android loader chain only inside the diskless VM.
 set -eu
-grep -q virt /proc/device-tree/model || exit 70
+/system/bin/a6l-guard.sh || exit 70
 echo A6L_BPF_LOADER_BEGIN
 mount -t bpf -o nodev,noexec,nosuid bpf /sys/fs/bpf
 ulimit -l 1048576

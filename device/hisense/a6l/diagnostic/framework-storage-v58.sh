@@ -3,7 +3,7 @@
 # idmap requests have their genuine Binder peers. No block device, fstab entry,
 # encryption or A6L storage behaviour is exercised or implied here.
 set -eu
-grep -q virt /proc/device-tree/model || exit 70
+/system/bin/a6l-guard.sh || exit 70
 echo A6L_STORAGE_DAEMONS_BEGIN
 mkdir -p /dev/block/vold /data/resource-cache /data/misc/vold /mnt/user /mnt/runtime /storage
 if [ -s /logs/vold-early.pid ]; then

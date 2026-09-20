@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # Offline VM dependency check, not a phone suspend/charging test.
 set -eu
-grep -q virt /proc/device-tree/model || exit 50
+/system/bin/a6l-guard.sh || exit 50
 echo A6L_NATIVE_BOOTSTRAP_BEGIN
 mkdir -p /metadata/aconfig/flags /metadata/aconfig/maps /metadata/aconfig/boot
 chmod 0775 /metadata/aconfig /metadata/aconfig/maps /metadata/aconfig/boot
