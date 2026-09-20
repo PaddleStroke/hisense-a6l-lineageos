@@ -6,7 +6,7 @@
 // STK3338 chip id is untested (upstream warns and continues on unknown ids). Stock register presets for
 // reference: state 0x08, psctrl 0x71, alsctrl 0x21, ledctrl 0x40, wait 0x20, int 0x01.
 // L13 (sensor I/O pull-up rail) is voted always-on here because upstream stk3310 only manages vdd; review before use.
-// NOTE: a6l_vreg_l3b is also defined by candidate E1; merge the two before applying both.
+// Apply AFTER candidate E1, which defines a6l_vreg_l3b (pm660l L3).
 /dts-v1/;
 /plugin/;
 &tlmm {
@@ -28,10 +28,6 @@
     };
 };
 / {
-    fragment@60 {
-        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-0";
-        __overlay__ { a6l_vreg_l3b: l3 { regulator-min-microvolt = <1710000>; regulator-max-microvolt = <3600000>; }; };
-    };
     fragment@61 {
         target-path = "/remoteproc/glink-edge/rpm-requests/regulators-1";
         __overlay__ { a6l_vreg_l13a: l13 { regulator-min-microvolt = <1780000>; regulator-max-microvolt = <1950000>; regulator-always-on; }; };

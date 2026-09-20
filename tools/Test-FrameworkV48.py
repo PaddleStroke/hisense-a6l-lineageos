@@ -207,6 +207,32 @@ if opts.series and opts.series>=64:
     lines+=['mkdir -p /data/misc/profiles/cur/0 /data/misc/profiles/ref /data/data /data/user /data/user_de/0 /data/media/0','[ -e /data/user/0 ] || ln -s /data/data /data/user/0  # init.rc: symlink /data/data /data/user/0','chmod 0771 /data/data','chown system:system /data/misc/profiles/cur/0 /data/data /data/user_de/0','echo A6L_DATADIRS_DONE count=%d'%(len(lines)-3)]
     textfile('root/system/bin/framework-datadirs-v64.sh','\n'.join(lines)+'\n',0o755)
     put('root/system/bin/vold_prepare_subdirs',P/'system/bin/vold_prepare_subdirs')
+if opts.series and opts.series>=72:
+    # Lessons of the first hardware boot (20 Sep): shell tools for settings/input, no screen timeout (simpledrm cannot
+    # power the CRTC off and Android then never wakes), and the optional Mesa freedreno GLES stack beside ANGLE.
+    for name in ['cmd','input','settings','svc','wm','am','screencap']:
+        if (P/'system/bin'/name).exists():put('root/system/bin/'+name,P/'system/bin'/name,0o755)
+    textfile('root/system/bin/framework-postboot-v72.sh','''#!/system/bin/sh
+# Runs beside SystemServer: waits for the settings service, then keeps the display awake.
+/system/bin/a6l-guard.sh || exit 98
+i=0
+while [ "$i" -lt 300 ]; do
+    if /system/bin/cmd settings put system screen_off_timeout 2147483647 2>/dev/null; then
+        /system/bin/cmd settings put global stay_on_while_plugged_in 7
+        /system/bin/cmd settings put secure lockscreen.disabled 1
+        echo A6L_POSTBOOT_SETTINGS_PASS after=$i
+        exit 0
+    fi
+    sleep 2; i=$((i+2))
+done
+echo A6L_POSTBOOT_SETTINGS_FAILED
+''',0o755)
+    mesa=Path('/home/a6l/mesa-a6l/build')
+    if (mesa/'src/egl/libEGL.so').exists():
+        put('root/vendor/lib64/libgallium_dri.so',mesa/'src/gallium/targets/dri/libgallium_dri.so')
+        put('root/vendor/lib64/egl/libEGL_mesa.so',mesa/'src/egl/libEGL.so')
+        put('root/vendor/lib64/egl/libGLESv1_CM_mesa.so',mesa/'src/mesa/glapi/es1api/libGLESv1_CM.so')
+        put('root/vendor/lib64/egl/libGLESv2_mesa.so',mesa/'src/mesa/glapi/es2api/libGLESv2.so')
 if opts.bpf:
     put('root/system/bin/bpfloader',P/'system/bin/bpfloader')
     put('root/vendor/etc/bpf/filterPowerSupplyEvents.o',P/'vendor/etc/bpf/filterPowerSupplyEvents.o')
@@ -338,6 +364,7 @@ if opts.series and opts.series>=60:
     if opts.series>=64:text=text.replace('echo A6L_CLASSPATH_BEGIN','/system/bin/framework-datadirs-v64.sh || echo A6L_DATADIRS_FAILED result=$?\necho A6L_CLASSPATH_BEGIN',1)
     # init.rc gives zygote 'rlimit nofile 32768'; the shell default (1024) made NetworkStats fail with EMFILE after boot (V65).
     if opts.series>=66:text=text.replace('  echo A6L_SYSTEMSERVER_BEGIN','  ulimit -n 32768\n  echo A6L_SYSTEMSERVER_BEGIN',1)
+    if opts.series>=72:text=text.replace('  echo A6L_SYSTEMSERVER_BEGIN','  /system/bin/framework-postboot-v72.sh &\n  echo A6L_SYSTEMSERVER_BEGIN',1)
     # Reap daemons that detach from the supervisor's process group before binderfs/bpffs cleanup.
     text=text.replace('  echo A6L_SYSTEMSERVER_EXIT=$?','  echo A6L_SYSTEMSERVER_EXIT=$?\n  for svc in media.audio_flinger media.audio_policy android.system.keystore2.IKeystoreService/default android.service.gatekeeper.IGateKeeperService netd vold; do service check $svc | grep -q ": found" && echo A6L_POST_SERVICE_PASS name=$svc || echo A6L_POST_SERVICE_MISSING name=$svc; done\n  killall -9 android.hardware.security.keymint-service.nonsecure netd audioserver vold idmap2d keystore2 gatekeeperd android.hardware.audio.service-aidl.example android.hardware.audio.effect.service-aidl.example iptables-restore ip6tables-restore 2>/dev/null || true\n  sleep 2',1)
     assert text.count('-k 3 180 /system/bin/framework-services --zygote')==1
@@ -514,6 +541,8 @@ if opts.series and opts.series>=62:
     checks.update(keystore2_service='A6L_KEYSTORE2_SERVICE_PASS' in log or 'A6L_POST_SERVICE_PASS name=android.system.keystore2' in log,gatekeeperd_service='A6L_GATEKEEPERD_SERVICE_PASS' in log)
 if opts.erofs:
     checks.update(erofs_delivery='A6L_EROFS_DELIVERY_PASS' in log,boot_completed='name=sys.boot_completed result=0' in log)
+if opts.series and opts.series>=72:
+    checks.update(postboot_settings='A6L_POSTBOOT_SETTINGS_PASS' in log)
 if opts.hint_compat:
     # RoleManager is reached only after the HintManager constructor returns.
     checks.update(hint_no_aidl_compat='SystemServerTiming StartRoleManagerService' in log)

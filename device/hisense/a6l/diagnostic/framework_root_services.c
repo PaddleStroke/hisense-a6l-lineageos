@@ -28,6 +28,7 @@
 #define ROOT "/"
 static pid_t children[9];
 
+static char backlight_mount[256];
 static void cleanup(void) {
     for(int i=8;i>=0;i--)if(children[i]>0){kill(-children[i],SIGKILL);waitpid(children[i],NULL,0);children[i]=0;}
 }
@@ -171,6 +172,11 @@ int main(int argc,char **argv) {
     need(!mount("/sys/fs/selinux","/v49-oldselinux",NULL,MS_BIND,NULL),"preserve SELinux mount");
     bind_ro("/sys",ROOT "/sys");
     need(!mount("/v49-oldselinux",ROOT "/sys/fs/selinux",NULL,MS_BIND,NULL),"SELinux status bind");
+    if(a6l_environment()==2){ /* V72: only the LCD backlight directory becomes writable again so HWC can set brightness */
+        char real[256];if(realpath("/sys/class/backlight/backlight",real)&&!mount(real,real,NULL,MS_BIND,NULL)){
+            if(!mount(NULL,real,NULL,MS_BIND|MS_REMOUNT,NULL)){strncpy(backlight_mount,real,sizeof(backlight_mount)-1);printf("A6L_BACKLIGHT_WRITABLE %s\n",real);}
+            else umount(real);}
+    }
     bind_ro("/dev","/v49-olddev");
     dir(ROOT "/dev");need(!mount("tmpfs",ROOT "/dev","tmpfs",MS_NOSUID,"size=16m,mode=0755"),"private devices");
     need(!mknod(ROOT "/dev/null",S_IFCHR|0666,makedev(1,3)),"null node");
@@ -188,8 +194,12 @@ int main(int argc,char **argv) {
     for(unsigned i=0;i<16;i++){char sp[64],dp[64],v[32]={0};unsigned ma,mi;snprintf(sp,sizeof(sp),"/sys/class/input/event%u/dev",i);
         int sf=open(sp,O_RDONLY|O_CLOEXEC);if(sf<0)continue;ssize_t n=read(sf,v,sizeof(v)-1);close(sf);
         if(n<=0||sscanf(v,"%u:%u",&ma,&mi)!=2)continue;snprintf(dp,sizeof(dp),ROOT "/dev/input/event%u",i);
-        if(!mknod(dp,S_IFCHR|0660,makedev(ma,mi))){(void)!chown(dp,0,1004);printf("A6L_INPUT_NODE event%u %u:%u\n",i,ma,mi);}
+        if(!mknod(dp,S_IFCHR|0666,makedev(ma,mi))){(void)!chmod(dp,0666);(void)!chown(dp,0,1004);printf("A6L_INPUT_NODE event%u %u:%u\n",i,ma,mi);}
     }
+    for(unsigned i=0;i<4;i++){const char *kinds[2]={"card","renderD"};for(unsigned k=0;k<2;k++){char sp[80],dp[80],v[32]={0};unsigned ma,mi,idx=k?128+i:i;
+        snprintf(sp,sizeof(sp),"/sys/class/drm/%s%u/dev",kinds[k],idx);int sf=open(sp,O_RDONLY|O_CLOEXEC);if(sf<0)continue;ssize_t n=read(sf,v,sizeof(v)-1);close(sf);
+        if(n<=0||sscanf(v,"%u:%u",&ma,&mi)!=2)continue;snprintf(dp,sizeof(dp),ROOT "/dev/dri/%s%u",kinds[k],idx);
+        if(!mknod(dp,S_IFCHR|0666,makedev(ma,mi))||errno==EEXIST){(void)!chmod(dp,0666);printf("A6L_DRM_NODE %s%u %u:%u\n",kinds[k],idx,ma,mi);}}}
     dir(ROOT "/dev/binderfs");need(!mount("binder",ROOT "/dev/binderfs","binder",MS_NOSUID|MS_NOEXEC,NULL),"private binderfs");
     int fd=open(ROOT "/dev/binderfs/binder-control",O_RDONLY|O_CLOEXEC);need(fd>=0,"binder control");
     struct binderfs_device b={0};strcpy(b.name,"a6l-v48");need(!ioctl(fd,BINDER_CTL_ADD,&b),"private binder add");strcpy(b.name,"a6l-v48-hw");need(!ioctl(fd,BINDER_CTL_ADD,&b),"private hwbinder add");close(fd);
@@ -222,6 +232,7 @@ int main(int argc,char **argv) {
     need(!umount(ROOT "/dev"),"devices cleanup");
     need(!umount(ROOT "/sys/fs/selinux"),"SELinux cleanup");
     need(!umount("/v49-oldselinux"),"old selinux cleanup");
+    if(backlight_mount[0])(void)!umount(backlight_mount);
     need(!umount(ROOT "/sys"),"sys cleanup");need(!umount(ROOT "/proc"),"proc cleanup");
     need(!umount("/v49-olddev"),"old devices cleanup");
     puts("A6L_FRAMEWORK_SERVICES_PASS runtime=1 namespace_cleanup=1");return 0;

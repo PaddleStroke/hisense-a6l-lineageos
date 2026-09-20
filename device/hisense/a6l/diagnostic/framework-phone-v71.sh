@@ -41,6 +41,13 @@ echo A6L_EROFS_DELIVERY_PASS
 # "QEMU only" guard (exit 97), so user storage could not be prepared. Patch it through the writable overlay.
 h=/v48/payload/root/system/bin/framework-datadirs-v64.sh
 [ -f "$h" ] && /system/bin/toybox sed -i 's#^grep -q virt /proc/device-tree/model || exit 97$#/system/bin/a6l-guard.sh || exit 97#' "$h" && echo A6L_PHONE_FW_DATADIRS_GUARD_PATCHED
+# Optional GPU userspace (A6L_EGL=mesa): only when the msm render node exists; ANGLE/SwiftShader stays the default.
+if [ "${A6L_EGL:-angle}" = mesa ] && [ -e /sys/class/drm/renderD128 ] && [ -e /v48/payload/root/vendor/lib64/egl/libEGL_mesa.so ]; then
+    printf 'ro.hardware.egl=mesa\ndebug.renderengine.backend=skiaglthreaded\ndebug.hwui.renderer=skiagl\n' >> /v48/payload/root/system/etc/a6l-runtime.prop
+    echo A6L_PHONE_FW_EGL=mesa
+else
+    echo A6L_PHONE_FW_EGL=angle
+fi
 # Keep the kernel log off the framebuffer console while Android owns the display (restored on exit).
 old_printk=$(/system/bin/toybox cat /proc/sys/kernel/printk); echo 1 > /proc/sys/kernel/printk
 /system/bin/toybox grep -q '^a6l_simplefb ' /proc/modules || /system/bin/toybox insmod /v48/payload/a6l_simplefb.ko || echo A6L_PHONE_FW_NOTE simplefb module not loaded
