@@ -173,8 +173,8 @@ int main(int argc,char **argv) {
     bind_ro("/sys",ROOT "/sys");
     need(!mount("/v49-oldselinux",ROOT "/sys/fs/selinux",NULL,MS_BIND,NULL),"SELinux status bind");
     if(a6l_environment()==2){ /* V72: only the LCD backlight directory becomes writable again so HWC can set brightness */
-        char real[256];if(realpath("/sys/class/backlight/backlight",real)&&!mount(real,real,NULL,MS_BIND,NULL)){
-            if(!mount(NULL,real,NULL,MS_BIND|MS_REMOUNT,NULL)){strncpy(backlight_mount,real,sizeof(backlight_mount)-1);printf("A6L_BACKLIGHT_WRITABLE %s\n",real);}
+        char real[4096];if(realpath("/sys/class/backlight/backlight",real)&&!mount(real,real,NULL,MS_BIND,NULL)){
+            if(!mount(NULL,real,NULL,MS_BIND|MS_REMOUNT,NULL)){snprintf(backlight_mount,sizeof(backlight_mount),"%s",real);printf("A6L_BACKLIGHT_WRITABLE %s\n",real);}
             else umount(real);}
     }
     bind_ro("/dev","/v49-olddev");

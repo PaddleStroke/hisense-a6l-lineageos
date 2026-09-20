@@ -78,9 +78,23 @@ int main(int argc, char **argv) {
     while (more && frames < 300) {
         struct buf *b = &ring[frames % RING];
         more = update(b, handle);
-        if (frames < 6 || !more) printf("A6L_EINK_FRAME n=%d more=%u fnv=%08x\n", frames, more, fnv(b->data, FRAME));
+        uint32_t hsh = fnv(b->data, FRAME); static uint32_t last; static int distinct;
+        if (hsh != last || !more) { distinct++; printf("A6L_EINK_FRAME n=%d more=%u fnv=%08x distinct=%d\n", frames, more, hsh, distinct); last = hsh; }
+        if (frames == 40 || frames == 100) { /* value histogram + one data row, to decode the drive-frame format */
+            unsigned hist[256] = {0}; const uint8_t *q = b->data; for (unsigned i = 0; i < FRAME; i++) hist[q[i]]++;
+            printf("A6L_EINK_HIST n=%d", frames); for (int v = 0; v < 256; v++) if (hist[v]) printf(" %02x:%u", v, hist[v]); printf("\n");
+            for (unsigned row = 0; row < 1450; row += 362) { printf("A6L_EINK_ROW n=%d y=%u", frames, row); for (int x = 0; x < 48; x++) printf(" %02x", q[row * 768u + x]); printf(" .. "); for (int x = 744; x < 768; x++) printf(" %02x", q[row * 768u + x]); printf("\n"); }
+        }
         frames++;
     }
+    for (unsigned y = 0; y < 1440; y++) for (unsigned x = 0; x < 720; x++) { uint8_t v = (uint8_t)((x / 45) * 17); uint8_t *q2 = px + 4 * (y * 720u + x); q2[0] = q2[1] = q2[2] = v; }
+    stage = "mode-decision-2"; int n2 = decide(&img, handle, 25, 25, 0, 0); printf("A6L_EINK_MODE_DECISION_2 returned=%d\n", n2);
+    stage = "update-2"; more = 1; int f2 = 0; uint32_t lasth = 0; int d2 = 0;
+    while (more && f2 < 300) { struct buf *b = &ring[f2 % RING]; more = update(b, handle); uint32_t hsh = fnv(b->data, FRAME); if (hsh != lasth) { d2++; lasth = hsh; }
+        if (f2 == 10) { unsigned hist[256] = {0}; const uint8_t *q = b->data; for (unsigned i = 0; i < FRAME; i++) hist[q[i]]++; printf("A6L_EINK_HIST2 n=%d", f2); for (int v = 0; v < 256; v++) if (hist[v]) printf(" %02x:%u", v, hist[v]); printf("\n");
+            printf("A6L_EINK_ROW2 y=700"); for (int x = 0; x < 768; x += 8) printf(" %02x", q[700u * 768u + x]); printf("\n"); }
+        f2++; }
+    printf("A6L_EINK_UPDATE_2 frames=%d distinct=%d\n", f2, d2);
     printf("A6L_EINK_SWTCON_DONE init_rejected=0 frames=%d terminated=%d waveform=%s\n", frames, !more, real ? "file" : "zeros");
     return 0;
 }
