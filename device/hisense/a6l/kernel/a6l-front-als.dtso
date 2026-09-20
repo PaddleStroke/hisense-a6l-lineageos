@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "S1", never booted, NOT part of the V68 image. Front ambient-light/proximity sensor.
+// Stock: stk,stk3x3x (STK3338) at i2c@c1b6000 (blsp_i2c6) addr 0x47, IRQ TLMM gpio71 falling,
+// vdd = pm660l L3 (1.71-3.6 V), vio = pm660 L13 (1.78-1.95 V). AP-side sensor: does NOT need the ADSP.
+// Upstream stk3310 (external module for V67) handles the STK33xx register layout; whether it accepts the
+// STK3338 chip id is untested (upstream warns and continues on unknown ids). Stock register presets for
+// reference: state 0x08, psctrl 0x71, alsctrl 0x21, ledctrl 0x40, wait 0x20, int 0x01.
+// L13 (sensor I/O pull-up rail) is voted always-on here because upstream stk3310 only manages vdd; review before use.
+// NOTE: a6l_vreg_l3b is also defined by candidate E1; merge the two before applying both.
+/dts-v1/;
+/plugin/;
+&tlmm {
+    a6l_front_als_default: a6l-front-als-default-state {
+        pins = "gpio71"; function = "gpio"; drive-strength = <2>; bias-pull-up;
+    };
+};
+&blsp_i2c6 {
+    status = "okay";
+    clock-frequency = <400000>;
+    front_als: light-sensor@47 {
+        compatible = "sensortek,stk3335";
+        reg = <0x47>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&a6l_front_als_default>;
+        interrupts-extended = <&tlmm 71 2>;
+        vdd-supply = <&a6l_vreg_l3b>;
+        proximity-near-level = <25>;
+    };
+};
+/ {
+    fragment@60 {
+        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-0";
+        __overlay__ { a6l_vreg_l3b: l3 { regulator-min-microvolt = <1710000>; regulator-max-microvolt = <3600000>; }; };
+    };
+    fragment@61 {
+        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-1";
+        __overlay__ { a6l_vreg_l13a: l13 { regulator-min-microvolt = <1780000>; regulator-max-microvolt = <1950000>; regulator-always-on; }; };
+    };
+    fragment@62 { target-path = "/chosen"; __overlay__ { hisense,a6l-front-als = "s1"; }; };
+};
