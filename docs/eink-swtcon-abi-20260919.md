@@ -104,3 +104,11 @@ took 38 frames (`55` data = opposite polarity visible), which is where the wavef
 Open: DSI1 + bridge (Toshiba, per stock DT) register init and the exact video timings (porches/clock) from the
 stock panel node `qcom,mdss_dsi_epd_eink_qhd_video`; TPS65185 rail sequencing around updates (candidate E1);
 temperature input units for `ModeDecision_MirrorMode`.
+
+### Correction from the stock panel node (same evening)
+Stock `qcom,mdss_dsi_epd_eink_qhd_video` ("eink epd qhd", destination display_2): **384 × 725, 24 bpp, 85 Hz,
+2 DSI lanes, non-burst sync-pulse**, h fp/bp/pw = 126/125/6, v fp/bp/pw = 4/4/2, clock lane forced HS.
+384 × 725 × 4 bytes = 0x10FE00 = the TCON buffer, and matches `Request_ProcessBuf_Size` (384, 725). So the drive
+frame is a **384×725 XRGB8888** image (not 192×1450): every video line carries **two** EPD gate lines of 192 byte
+slots (180 source-data bytes + 12 control slots). Everything else above stands. This gives the mainline DRM panel
+description directly: a `panel-simple`-style DSI video panel with those timings behind the bridge on DSI1.
