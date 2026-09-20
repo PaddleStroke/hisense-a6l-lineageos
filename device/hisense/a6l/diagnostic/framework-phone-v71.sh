@@ -26,7 +26,7 @@ if [ "${1:-}" != --inner ]; then
     exec /system/bin/toybox unshare -m /system/bin/sh "$0" --inner > "$P/logs/console.log" 2>&1
 fi
 echo A6L_PHONE_FW_INNER_START
-/system/bin/toybox mount --make-rprivate / || exit 20
+/system/bin/toybox mount -o rprivate none / || exit 20   # toybox syntax; the recovery root is a shared mount
 mkdir -p /v48/lower /v48/rw /v48/payload
 [ -e /dev/loop-control ] || /system/bin/toybox mknod /dev/loop-control c 10 237
 [ -e /dev/loop7 ] || /system/bin/toybox mknod /dev/loop7 b 7 7
@@ -37,6 +37,12 @@ mkdir -p /v48/lower /v48/rw /v48/payload
 mkdir -p /v48/rw/upper /v48/rw/work
 /system/bin/toybox mount -t overlay -o lowerdir=/v48/lower,upperdir=/v48/rw/upper,workdir=/v48/rw/work overlay /v48/payload || exit 34
 echo A6L_EROFS_DELIVERY_PASS
+# r3 (20 Sep phone run 1): the generated data-directory helper inside the image still carried an inline
+# "QEMU only" guard (exit 97), so user storage could not be prepared. Patch it through the writable overlay.
+h=/v48/payload/root/system/bin/framework-datadirs-v64.sh
+[ -f "$h" ] && /system/bin/toybox sed -i 's#^grep -q virt /proc/device-tree/model || exit 97$#/system/bin/a6l-guard.sh || exit 97#' "$h" && echo A6L_PHONE_FW_DATADIRS_GUARD_PATCHED
+# Keep the kernel log off the framebuffer console while Android owns the display (restored on exit).
+old_printk=$(/system/bin/toybox cat /proc/sys/kernel/printk); echo 1 > /proc/sys/kernel/printk
 /system/bin/toybox grep -q '^a6l_simplefb ' /proc/modules || /system/bin/toybox insmod /v48/payload/a6l_simplefb.ko || echo A6L_PHONE_FW_NOTE simplefb module not loaded
 for part in apex vendor system_ext product system; do
     mkdir -p /$part; /system/bin/toybox mount --bind /v48/payload/root/$part /$part || exit 40
@@ -49,5 +55,6 @@ watchdog=$!
 result=$?
 kill "$watchdog" 2>/dev/null
 echo A6L_PHONE_FW_SUPERVISOR_EXIT=$result
+echo "$old_printk" > /proc/sys/kernel/printk
 for f in /logs/*; do echo "LOGFILE:$f"; /system/bin/toybox cat "$f"; done
 echo A6L_PHONE_FW_DONE

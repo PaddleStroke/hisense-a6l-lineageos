@@ -199,7 +199,7 @@ if opts.series and opts.series>=63:
         put(f'root/vendor/etc/vintf/manifest/android.hardware.security.{name}-service.xml',P/f'vendor/etc/vintf/manifest/android.hardware.security.{name}-service.xml')
 if opts.series and opts.series>=64:
     # Recreate init.rc's own /data directory layout (paths, modes, owners) instead of guessing names one crash at a time.
-    lines=['#!/system/bin/sh','# Generated from system/core/rootdir/init.rc mkdir entries; diskless VM only.','grep -q virt /proc/device-tree/model || exit 97']
+    lines=['#!/system/bin/sh','# Generated from system/core/rootdir/init.rc mkdir entries; diskless VM only.','/system/bin/a6l-guard.sh || exit 97']
     for m in re.finditer(r'^\s*mkdir (/data/\S+)[ \t]+(\d+)[ \t]+(\w+)[ \t]+(\w+)',(A/'system/core/rootdir/init.rc').read_text(),re.M):
         path,mode,owner,group=m.groups()
         lines.append(f'mkdir -p {path} && chmod {mode} {path} && chown {owner}:{group} {path} || echo A6L_DATADIR_FAILED path={path}')
