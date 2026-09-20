@@ -1,6 +1,6 @@
 # A6L port checklist
 
-Updated 19 September 2026, after physical V47 and offline V64. This is the current status index. Dated
+Updated 20 September 2026, after physical V47 and offline V70. This is the current status index. Dated
 reports are historical evidence; the newest entry in `resume-next-session.md`
 records the exact installed image and any running operation.
 
@@ -30,6 +30,12 @@ bounded fail-closed ADSP start/stop diagnostic `device/hisense/a6l/diagnostic/ad
 11-case mock test (not yet run on the phone); phone kernel **V67 candidate** (V38 config + Android
 networking + RMTFS_MEM, all modules rebuilt; build-only, never flashed); Android builds of `rmtfs`,
 `tqftpserv`, `qrtr-lookup`, `libqrtr` for the modem/Wi-Fi/sensor service path.
+**20 September, offline + read-only stock ADB:** see [attended-session plan](attended-session-v68-plan-20260920.md)
+and [hardware readiness](hardware-readiness-20260920.md). V68 recovery candidate packaged and ABL-emulation-checked
+(V67 kernel, e-ink SPI NOR read path, ADSP candidate A) — **not flashed**. V70: complete framework boot in the VM on
+the phone kernel binary with phone-style EROFS delivery in 6 GiB. New DT candidates M1/E1/G1/S1. Stock inventory shows
+front/rear ALS-proximity and both touch controllers are AP-side I²C parts with upstream driver families; TPS65185 e-ink
+PMIC has an upstream driver in the pinned tree.
 **Target:** a usable modern LineageOS phone with both displays.
 The full LineageOS interface has not booted on the phone. Linux 7.2.3 is the
 working diagnostic kernel; this checklist does not claim it is the latest release.
