@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "E2", never booted. Apply after D1 and E1. E-ink transport: DSI1 -> Toshiba TC358762 -> DPI panel.
+// Timings from stock "eink epd qhd": 384x725, h fp/bp/pw 126/125/6, v fp/bp/pw 4/4/2, 85 Hz => 40.05 MHz, 2 lanes.
+// Stock GPIOs: bridge supply enable gpio45 (dsi2dpi-vdcc-en), DSI1 panel reset gpio12. See docs/eink-transport-tc358762-20260920.md
+// for the three register values where stock differs from the mainline tc358762 driver.
+/dts-v1/;
+/plugin/;
+&mdss_dsi1 {
+    status = "okay";
+    #address-cells = <1>;
+    #size-cells = <0>;
+    vdd-supply = <&vreg_l1b>;
+    vdda-supply = <&a6l_vreg_l1a>;
+    a6l_epd_bridge: bridge@0 {
+        compatible = "toshiba,tc358762";
+        reg = <0>;
+        vddc-supply = <&a6l_dsi2dpi_vdcc>;
+        reset-gpios = <&tlmm 12 1>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 { reg = <0>; a6l_epd_bridge_in: endpoint { remote-endpoint = <&mdss_dsi1_out>; }; };
+            port@1 { reg = <1>; a6l_epd_bridge_out: endpoint { remote-endpoint = <&a6l_epd_panel_in>; }; };
+        };
+    };
+};
+&mdss_dsi1_out { data-lanes = <0 1>; remote-endpoint = <&a6l_epd_bridge_in>; };
+&mdss_dsi1_phy { vcca-supply = <&vreg_l1b>; status = "okay"; };
+/ {
+    fragment@80 {
+        target-path = "/";
+        __overlay__ {
+            a6l_dsi2dpi_vdcc: regulator-dsi2dpi-vdcc { compatible = "regulator-fixed"; regulator-name = "dsi2dpi-vdcc"; gpio = <&tlmm 45 0>; enable-active-high; };
+            a6l-epd-panel {
+                compatible = "panel-dpi";
+                power-supply = <&epd_v3p3>;
+                width-mm = <65>; height-mm = <130>;
+                panel-timing {
+                    clock-frequency = <40046475>;
+                    hactive = <384>; hfront-porch = <126>; hback-porch = <125>; hsync-len = <6>;
+                    vactive = <725>; vfront-porch = <4>; vback-porch = <4>; vsync-len = <2>;
+                };
+                port { a6l_epd_panel_in: endpoint { remote-endpoint = <&a6l_epd_bridge_out>; }; };
+            };
+        };
+    };
+    fragment@81 { target-path = "/chosen"; __overlay__ { hisense,a6l-eink-dsi = "e2"; }; };
+};

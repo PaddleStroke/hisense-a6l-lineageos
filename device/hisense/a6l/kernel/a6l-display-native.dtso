@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "D1", never booted, not in V69. Native MSM display pipeline for the main LCD:
+// MDSS/MDP5 + DSI0 + generated panel driver (panels/panel-ft8719-tianma-1080x2340.c, from the stock DT init sequence).
+// Stock evidence: reset = TLMM gpio53, vddio = pm660 L11 (already described for the front touch), DSI rails as on the
+// mainline SDM660 reference (L1B 0.925 V, L1A 1.225 V). LAB/IBB bias is left as the bootloader configured it (same
+// approach as the mainline lavender board: no labibb node in pm660l.dtsi). msm.ko is a module: until the attended
+// runner loads it, the boot framebuffer (simpledrm) stays in charge. When it loads, simpledrm is replaced; if the panel
+// fails to light, ADB still works and a reboot restores the previous behaviour.
+/dts-v1/;
+/plugin/;
+&mdss { status = "okay"; };
+&mmss_smmu { status = "okay"; };
+&mdss_dsi0 {
+    status = "okay";
+    #address-cells = <1>;
+    #size-cells = <0>;
+    vdd-supply = <&vreg_l1b>;
+    vdda-supply = <&a6l_vreg_l1a>;
+    a6l_lcd: panel@0 {
+        compatible = "mdss,ft8719-tianma-1080x2340";
+        reg = <0>;
+        reset-gpios = <&tlmm 53 1>;
+        port { a6l_lcd_in: endpoint { remote-endpoint = <&mdss_dsi0_out>; }; };
+    };
+};
+&mdss_dsi0_out { data-lanes = <0 1 2 3>; remote-endpoint = <&a6l_lcd_in>; };
+&mdss_dsi0_phy { vcca-supply = <&vreg_l1b>; status = "okay"; };
+/ {
+    fragment@70 {
+        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-1";
+        __overlay__ { a6l_vreg_l1a: l1 { regulator-min-microvolt = <1150000>; regulator-max-microvolt = <1250000>; }; };
+    };
+    fragment@71 { target-path = "/chosen"; __overlay__ { hisense,a6l-display = "d1"; }; };
+};
