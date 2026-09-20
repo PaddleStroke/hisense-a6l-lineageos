@@ -15,7 +15,7 @@ set -u
 P=${P:-/tmp/a6l-fw}
 LIMIT_S=${LIMIT_S:-1200}
 if [ "${1:-}" != --inner ]; then
-    [ "$(tr -d '\0' < /proc/device-tree/chosen/hisense,a6l-controls 2>/dev/null)" = v68 ] || { echo A6L_PHONE_FW_FAIL wrong image; exit 2; }
+    case "$(tr -d '\0' < /proc/device-tree/chosen/hisense,a6l-controls 2>/dev/null)" in v68|v69) ;; *) echo A6L_PHONE_FW_FAIL wrong image; exit 2;; esac
     [ -e /tmp/a6l-framework-phone-approved ] || { echo A6L_PHONE_FW_FAIL not approved by the attended host runner; exit 3; }
     [ "$(id -u)" = 0 ] || { echo A6L_PHONE_FW_FAIL root required; exit 4; }
     ( cd "$P" && /system/bin/toybox sha256sum -c SHA256SUMS ) || { echo A6L_PHONE_FW_FAIL payload hash; exit 5; }
