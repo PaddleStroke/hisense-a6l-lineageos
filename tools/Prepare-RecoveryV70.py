@@ -48,14 +48,14 @@ def main():
     assert 'A6L_PHONE_KERNEL_V67_CANDIDATE_BUILD_PASS' in (KERNEL/'build.log').read_text(errors='replace')
     # --- device tree -------------------------------------------------------------------
     base=OUT/'base.dtb';base.write_bytes((OLD/'base.dtb').read_bytes())
-    for label,source in [('display',ROOT/'device/hisense/a6l/kernel/a6l-display-native.dtso'),('eink-dsi',ROOT/'device/hisense/a6l/kernel/a6l-eink-dsi.dtso'),('audio',ROOT/'device/hisense/a6l/kernel/a6l-audio-internal.dtso')]:
+    for label,source in [('display',ROOT/'device/hisense/a6l/kernel/a6l-display-native.dtso'),('eink-dsi',ROOT/'device/hisense/a6l/kernel/a6l-eink-dsi.dtso'),('audio',ROOT/'device/hisense/a6l/kernel/a6l-audio-internal.dtso'),('bluetooth',ROOT/'device/hisense/a6l/kernel/a6l-bluetooth.dtso')]:
         overlay=OUT/f'a6l-{label}.dtbo';run('dtc','-@','-I','dts','-O','dtb','-o',overlay,source)
         merged=OUT/f'{label}-merged.dtb';run('fdtoverlay','-i',base,'-o',merged,overlay);base.write_bytes(merged.read_bytes())
     run('fdtput','-t','s',base,'/chosen','hisense,a6l-controls','v70')
     before=read_fdt((OLD/'base.dtb').read_bytes());after=read_fdt(base.read_bytes())
     find=lambda suffix:next(n for n in after if n.endswith(suffix))
     new_nodes={n for n in after if n not in before}
-    touched=[find(x) for x in ['display-subsystem@c900000','iommu@cd00000','dsi@c994000','dsi@c996000','phy@c994400','phy@c996400','audio-codec@152c0000','audio-codec@f000','/sound']]
+    touched=[find(x) for x in ['display-subsystem@c900000','iommu@cd00000','dsi@c994000','dsi@c996000','phy@c994400','phy@c996400','audio-codec@152c0000','audio-codec@f000','/sound','serial@c1af000']]
     touched+=[n for n in after if n.endswith('/endpoint') and ('dsi@c994000' in n or 'dsi@c996000' in n)]
     touched+=[n for n in after if n.rsplit('/',1)[-1] in ('dais','q6afedai','q6asmdai') or n.endswith('/apr/service@4/dais') or n.endswith('/apr/service@7/dais')]
     changes={}

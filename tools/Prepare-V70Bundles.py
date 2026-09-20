@@ -73,6 +73,14 @@ cat /proc/asound/cards 2>&1; cat /proc/asound/pcm 2>&1 | head
 klog | grep -i "q6\\|apr\\|snd\\|asoc\\|wcd\\|codec\\|sndcard" | tail -n 30
 grep -q "A6L\\|Hisense" /proc/asound/cards 2>/dev/null && echo A6L_SOUND_CARD_PASS || echo A6L_SOUND_CARD_MISSING
 ''')
+BT=ROOT/'firmware/extracted/controls-radio-prep-20260917/firmware/qca'
+area('bluetooth',['hci_uart'],'''# RF-capable: requires A6L_BT_APPROVED=1. Initialises the WCN3990 BT core and reads its version; no scan, no pairing.
+[ "${A6L_BT_APPROVED:-0}" = 1 ] || { echo A6L_HW_FAIL bluetooth run not approved; exit 6; }
+fw; load; sleep 10
+ls /sys/class/bluetooth/ 2>&1
+klog | grep -i "bluetooth\\|hci\\|qca\\|wcn3990\\|serial@c1af000" | tail -n 25
+[ -e /sys/class/bluetooth/hci0 ] && echo A6L_BT_HCI0_PASS || echo A6L_BT_HCI0_MISSING
+''',[(p,'qca/'+p.name) for p in sorted(BT.iterdir()) if p.is_file()])
 manifest={str(p.relative_to(OUT)):sha(p.read_bytes()) for p in sorted(OUT.rglob('*')) if p.is_file()}
 (OUT/'manifest.json').write_text(json.dumps({'requires_recovery':'recovery-v70-candidate-20260921','files':manifest,'phone_access':False},indent=2)+'\n')
 print('V70_BUNDLES_PASS',len(manifest))

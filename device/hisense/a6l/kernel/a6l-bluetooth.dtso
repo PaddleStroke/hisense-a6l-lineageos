@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "B1", never booted. WCN3990 Bluetooth on BLSP2 UART1, as on the mainline SDM660 reference board.
+// Rails are the same pm660 LDOs already described for Wi-Fi (M1: L9/L6/L19) and the front ALS (S1: L13). Apply after M1+S1.
+// hci_uart/btqca are modules: nothing initialises the controller until the attended script loads them (RF-capable).
+/dts-v1/;
+/plugin/;
+&blsp2_uart1 {
+    status = "okay";
+    bluetooth {
+        compatible = "qcom,wcn3990-bt";
+        vddxo-supply = <&a6l_vreg_l9a>;
+        vddrf-supply = <&a6l_vreg_l6a>;
+        vddch0-supply = <&a6l_vreg_l19a>;
+        vddio-supply = <&a6l_vreg_l13a>;
+        max-speed = <3200000>;
+    };
+};
+/ { fragment@95 { target-path = "/chosen"; __overlay__ { hisense,a6l-bluetooth = "b1"; }; }; };
