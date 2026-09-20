@@ -25,7 +25,7 @@ changes the phone; every hardware step needs an attended session.
 | Framework/UI | V70: full boot to the LineageOS welcome screen on the **phone kernel binary**, phone-style EROFS delivery, 6 GiB; on-phone launcher `framework-phone-v71.sh`; guards require V68 + approval file | After V68 baseline: push bundle, run launcher, watch the LCD | touch needs the front-touch module loaded first; GPU is software (slow); SELinux permissive |
 | E-ink panel data | V68 SPI read path + read-only tool (opcode allowlist) | `run-eink-read.sh` → full NOR image + JEDEC ID | flash power assumed = gpio42 only (stock VCOM-read path) |
 | E-ink TCON | stock library runs in the VM; ABI recovered | feed real waveform offline first | drive-frame encoding + DSI/bridge transport still to reverse |
-| E-ink power / rear touch | candidate E1 + `tps65185.ko` | later image: probe PMIC (I²C only), read temperature/VCOM; rear touch events | GPIO role mapping is a hypothesis; verify against stock driver disassembly |
+| E-ink power / rear touch | candidate E1 + `tps65185.ko` | later image: probe PMIC (I²C only), read temperature/VCOM; rear touch events | GPIO roles verified against the stock driver disassembly (WAKEUP=80, PWRUP=35, VCOM_CTRL=3, PWR_GOOD=0, VIN switch=2) |
 | ADSP | candidate A in V68, `adsp_diag_r2.sh`, bundle with trusted hashes | run the bounded start/stop | CX proxy vote / LPASS SMMU differences (candidate B ready in research/) |
 | Audio, motion sensors | depend on ADSP | after ADSP PASS: pd-mapper/APR modules, then codec routes | amplifier/codec identities recorded by Astra; no playback yet |
 | Front ALS/prox | `stk3310.ko` for V67 | needs a small overlay on `i2c@c1b6000` (not written: supply/IRQ lines still to resolve) | chip-ID acceptance |

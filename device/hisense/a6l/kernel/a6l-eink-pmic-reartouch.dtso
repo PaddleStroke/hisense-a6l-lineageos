@@ -4,9 +4,11 @@
 //     (needs CONFIG_REGULATOR_TPS65185=m; built as an external module for the V67 kernel).
 //     Stock: i2c@c176000 (blsp_i2c2) addr 0x68; TLMM gpios: pm-pwrup=35, pm-pwrcom=3, pm-power-en=2,
 //     pm-wake-up=80, pm-state=0; all pull-down, 2 mA.
-//     HYPOTHESIS to verify against the stock tps65185 driver disassembly before use:
-//       pwrup->enable-gpios, pwrcom->vcom-ctrl-gpios, wake-up->wakeup-gpios, state->pwr-good-gpios,
-//       power-en = external VIN load switch (modelled as a fixed regulator).
+//     GPIO roles VERIFIED against the stock driver disassembly (stock-symbolized.elf, 20 Sep 2026):
+//       tps65185_power_on(x): pdata+8 (pm-power-en, gpio2) = x            -> external VIN switch (fixed regulator)
+//       tps65185_active_mode: pdata+0xc (pm-wake-up, gpio80)=1, 2 ms, I2C setup, pdata+0 (pm-pwrup, gpio35)=1,
+//                             5 ms, wait/temperature read, 20 ms, pdata+4 (pm-pwrcom, gpio3)=1 -> WAKEUP, PWRUP, VCOM_CTRL
+//       tps65185_sleep_mode:  pwrcom=0, wake-up=0, 100 ms, pwrup=0;   pm-state (gpio0) is only read -> PWR_GOOD
 //     With no consumer the rails stay off: probing only talks I2C (revision, temperature, VCOM register).
 // (b) Rear (e-ink side) touch: FocalTech "5x06" at i2c@c1b7000 (blsp_i2c7) addr 0x38, irq gpio73 falling,
 //     reset gpio65, 720x1440, 5 touches, supplies pm660l L3 (vdd) and pm660 L11 (i2c pull-ups, already
