@@ -53,6 +53,11 @@ $T mount -t proc -o hidepid=2,gid=3009 proc $R/proc || exit 24          # fresh 
 $T sed 's# androidboot.init_rc=[^ ]*##' /proc/cmdline > /ri-cmdline && $T mount --bind /ri-cmdline $R/proc/cmdline || exit 24
 # r6 finding: the GSI system image reboots to the bootloader when ro.vndk.version is undefined (init.vndk-nodef.rc).
 # Bring-up only: mask that rc with an empty file. (A real lineage_a6l product is not a GSI and will not carry it.)
+# Bring-up visibility: an extra rc (bound over an unused debug rc) streams logcat errors to the kernel log and marks boot completion.
+# (no heredoc: mksh needs a writable TMPDIR for those, which the recovery does not have)
+$T printf '%s\n' 'service a6l_logcat /system/bin/logcat -b main,system,crash -v brief *:E' '    stdio_to_kmsg' '    user root' '    group root log' '    seclabel u:r:su:s0' '    disabled' 'on init' '    start a6l_logcat' 'on property:sys.boot_completed=1' '    write /dev/kmsg "A6L_RI_BOOT_COMPLETED"' > /ri-debug.rc
+f=$R/system/etc/init/bootstat-debug.rc; [ -f $f ] && $T mount --bind /ri-debug.rc $f
+echo "A6L_RI_DEBUGRC size=$($T wc -c < /ri-debug.rc) bound=$($T grep -c a6l_logcat $f)"
 : > /ri-empty.rc; f=$R/system/system_ext/etc/gsi/init.vndk-nodef.rc; [ -f $f ] && { $T mount --bind /ri-empty.rc $f || exit 24; }
 $T mount -t sysfs sysfs $R/sys || exit 25
 $T mount -t selinuxfs selinuxfs $R/sys/fs/selinux || exit 26
@@ -65,4 +70,7 @@ echo A6L_RI_EXEC_INIT > $R/dev/kmsg
 # the namespace root (the recovery initramfs). pivot_root cannot leave an initramfs, so do what switch_root does: move the
 # new root on top of "/" in this private namespace (setns follows the stacked mount), then chroot into it.
 cd $R && $T mount --move $R / || { echo A6L_RI_FAIL move root; exit 28; }
-exec $T chroot . /system/bin/init selinux_setup
+# r7-r10 finding: started from an adb/su shell, init stays in u:r:su:s0 and no service gets its domain ("no domain transition
+# from u:r:su:s0"), which breaks logd/property/servicemanager peers even in permissive mode. Real first-stage init runs as
+# u:r:kernel:s0 and transitions to u:r:init:s0 on the re-exec after the policy load, so start it there.
+exec $T runcon u:r:kernel:s0 $T chroot . /system/bin/init selinux_setup

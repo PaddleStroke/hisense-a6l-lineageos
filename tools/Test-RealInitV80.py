@@ -28,7 +28,7 @@ echo A6L_RI_TEST_BEGIN
 /system/bin/toybox mkdir -p /tmp
 P=/ri-in /system/bin/sh /ri-in/realinit-launch.sh &
 L=$!
-i=0; while [ $i -lt %d ]; do /system/bin/toybox sleep 30; i=$((i+1)); echo "A6L_RI_TICK $i procs=$(/system/bin/toybox ls /proc | /system/bin/toybox grep -c '^[0-9]')"; kill -0 $L 2>/dev/null || { echo A6L_RI_LAUNCHER_EXITED; break; }; done
+i=0; while [ $i -lt %d ]; do /system/bin/toybox sleep 30; i=$((i+1)); echo "A6L_RI_TICK $i procs=$(/system/bin/toybox ls /proc | /system/bin/toybox grep -c '^[0-9]')"; if [ $i = 3 ] || [ $i = 8 ]; then me=$(/system/bin/toybox readlink /proc/self/ns/pid); c=""; for q in $(/system/bin/toybox pidof init); do [ "$(/system/bin/toybox readlink /proc/$q/ns/pid)" != "$me" ] && { c=$q; break; }; done; echo "A6L_RI_LOGCAT_BEGIN pid=$c"; /system/bin/toybox chroot /proc/$c/root /system/bin/logcat -d -b main,system,crash > /tmp/lc.txt 2>&1; /system/bin/toybox wc -l /tmp/lc.txt; /system/bin/toybox grep -E " [EF] |FATAL|ygote|rror" /tmp/lc.txt | /system/bin/toybox tail -n 60; /system/bin/toybox tail -n 8 /tmp/lc.txt; /system/bin/toybox ls /proc/$c/root/data/tombstones /proc/$c/root/dev/socket 2>&1 | /system/bin/toybox tr "\n" " "; echo A6L_RI_LOGCAT_END; echo "A6L_RI_BOOTPROP=$(/system/bin/toybox chroot /proc/$c/root /system/bin/getprop sys.boot_completed)"; fi; kill -0 $L 2>/dev/null || { echo A6L_RI_LAUNCHER_EXITED; break; }; done
 echo A6L_RI_TEST_DONE
 ''' % (MIN*2))
 rc=OUT/'init.rc';rc.write_text((ROOT/'device/hisense/a6l/diagnostic/android-init.rc').read_text()+'''
