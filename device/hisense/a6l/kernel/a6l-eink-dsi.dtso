@@ -16,6 +16,7 @@
         reg = <0>;
         vddc-supply = <&a6l_dsi2dpi_vdcc>;
         reset-gpios = <&tlmm 12 1>;
+        xon-gpios = <&tlmm 61 0>;   /* V72: panel XON, high = gates follow the scan; low = all gates on */
         ports {
             #address-cells = <1>;
             #size-cells = <0>;

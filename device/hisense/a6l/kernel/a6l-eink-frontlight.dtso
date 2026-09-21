@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE (22 Sep 2026), not yet run on hardware. E-ink FRONTLIGHT.
+// Stock: the e-ink DSI panel node uses bl_ctrl_pwm on PM660L "pwm@b400" (LPG channel 4 = mainline index 3),
+// qcom,period = 54 us (~18.5 kHz), qcom,dtest-line = 2 / qcom,dtest-output = 2, routed out on PM660L GPIO6
+// (stock gpio@c500: digital output, vin-sel 1, src-sel 7 = DTEST2, out-strength 2 = medium).
+// Mainline: qcom,pm660l-lpg (leds-qcom-lpg.ko) + qcom,dtest, spmi-gpio function "dtest2", pwm-backlight.
+// default-brightness-level = 0: nothing lights up until user space writes /sys/class/backlight/a6l-eink-frontlight.
+/dts-v1/;
+/plugin/;
+&pm660l_gpios {
+    a6l_frontlight_pwm_pin: a6l-frontlight-pwm-state {
+        pins = "gpio6";
+        function = "dtest2";
+        output-low;
+        bias-disable;
+        power-source = <1>;
+        qcom,drive-strength = <2>;   /* PMIC_GPIO_STRENGTH_MED */
+    };
+};
+&pm660l_lpg {
+    status = "okay";
+    #pwm-cells = <2>;
+    qcom,dtest = <0 0>, <0 0>, <0 0>, <2 2>;
+};
+/ {
+    fragment@90 {
+        target-path = "/";
+        __overlay__ {
+            a6l_frontlight_vin: regulator-a6l-frontlight-vin { compatible = "regulator-fixed"; regulator-name = "a6l-frontlight-vin"; regulator-always-on; };
+            a6l_eink_frontlight: a6l-eink-frontlight {
+                compatible = "pwm-backlight";
+                pwms = <&pm660l_lpg 3 54000>;
+                pinctrl-names = "default";
+                pinctrl-0 = <&a6l_frontlight_pwm_pin>;
+                brightness-levels = <0 255>;
+                num-interpolated-steps = <255>;
+                default-brightness-level = <0>;
+                power-supply = <&a6l_frontlight_vin>;
+            };
+        };
+    };
+};

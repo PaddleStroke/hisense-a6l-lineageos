@@ -15,6 +15,7 @@
  */
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
+#include <linux/i2c.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -32,15 +33,85 @@ static unsigned int dsi_mode;	/* experiment: 0 = stock (non-burst sync pulse), 1
 module_param(dsi_mode, uint, 0444);
 static bool lpm;		/* experiment: allow LP during blanking / non-continuous clock */
 module_param(lpm, bool, 0444);
+static bool eot = true;	/* stock appends EoT (EOT_PACKET_CTRL, absolute 0xcc, reads 1); eot=0 is an experiment only */
+module_param(eot, bool, 0444);
+static unsigned int bridge = 1;	/* 0 = never touch the bridge, 1 = stock TC358767 I2C table, 2 = ID read only */
+module_param(bridge, uint, 0644);
+static char *bridge_bus = "/soc@0/i2c@c176000";
+module_param(bridge_bus, charp, 0444);
 MODULE_PARM_DESC(hv, "enable the e-paper high-voltage rails and VCOM while the output is enabled");
 
 struct a6l_epd_dsi {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
-	struct gpio_desc *reset;
+	struct gpio_desc *reset, *xon;
 	struct regulator *vddc, *v3p3, *vposneg, *vcom;
 	bool hv_on;
+	bool bridge_ok;
 };
+
+/*
+ * 22 Sep 2026, rooted stock: a TC358767 (IDREG 0x0500 = 0x6601) ACKs at I2C 0x0f on the e-paper bus ONLY while an update
+ * runs, and holds exactly the stock "tc358767_cmd" table below (DSI-RX -> parallel out, 19.2 MHz REFCLK, 2 lanes).
+ * Registers are 16-bit big-endian addresses with 32-bit little-endian values.
+ */
+#define A6L_BRIDGE_ADDR 0x0f
+static const struct { u16 reg; u32 val; } a6l_tc358767_table[] = {
+	{0x0448, 0x86}, {0x06a0, 0x3080}, {0x0914, 0x11c201}, {0x0904, 0}, {0x0904, 4}, {0x0908, 1}, {0x0908, 5},
+	{0x0918, 0x110}, {0x0800, 0x1100}, {0x0800, 0x1100}, {0x013c, 0x30005}, {0x0114, 3}, {0x0164, 4}, {0x0168, 4},
+	{0x016c, 4}, {0x0170, 4}, {0x0134, 7}, {0x0210, 7}, {0x0104, 1}, {0x0204, 1}, {0x0450, 0x03f00100},
+	{0x0454, 0x007d0005}, {0x045c, 0x00040002}, {0x0464, 1}, {0x0510, 1},
+};
+
+static int a6l_bridge_rd(struct i2c_adapter *a, u16 reg, u32 *val)
+{
+	u8 r[2] = { reg >> 8, reg }, v[4] = { 0 };
+	struct i2c_msg m[2] = { { A6L_BRIDGE_ADDR, 0, 2, r }, { A6L_BRIDGE_ADDR, I2C_M_RD, 4, v } };
+	int ret = i2c_transfer(a, m, 2);
+
+	if (ret != 2)
+		return ret < 0 ? ret : -EIO;
+	*val = v[0] | v[1] << 8 | v[2] << 16 | (u32)v[3] << 24;
+	return 0;
+}
+
+static int a6l_bridge_wr(struct i2c_adapter *a, u16 reg, u32 val)
+{
+	u8 b[6] = { reg >> 8, reg, val, val >> 8, val >> 16, val >> 24 };
+	struct i2c_msg m = { A6L_BRIDGE_ADDR, 0, 6, b };
+	int ret = i2c_transfer(a, &m, 1);
+
+	return ret == 1 ? 0 : (ret < 0 ? ret : -EIO);
+}
+
+/* Returns 0 when the bridge answered (and, for bridge=1, took the whole table). */
+static int a6l_bridge_init(struct device *dev, const char *when)
+{
+	struct device_node *np;
+	struct i2c_adapter *a;
+	u32 id = 0;
+	int ret, i;
+
+	if (!bridge)
+		return 0;
+	np = of_find_node_by_path(bridge_bus);
+	a = np ? of_get_i2c_adapter_by_node(np) : NULL;
+	of_node_put(np);
+	if (!a) {
+		dev_warn(dev, "bridge (%s): no I2C adapter at %s\n", when, bridge_bus);
+		return -ENODEV;
+	}
+	ret = a6l_bridge_rd(a, 0x0500, &id);
+	dev_info(dev, "bridge (%s): IDREG ret=%d id=%08x\n", when, ret, id);
+	if (!ret && bridge == 1) {
+		for (i = 0; i < ARRAY_SIZE(a6l_tc358767_table) && !ret; i++)
+			ret = a6l_bridge_wr(a, a6l_tc358767_table[i].reg, a6l_tc358767_table[i].val);
+		dev_info(dev, "bridge (%s): stock table %s (%d/%zu writes, ret=%d)\n", when, ret ? "FAILED" : "written",
+			 i, ARRAY_SIZE(a6l_tc358767_table), ret);
+	}
+	i2c_put_adapter(a);
+	return ret;
+}
 
 static inline struct a6l_epd_dsi *to_ctx(struct drm_panel *panel)
 {
@@ -63,6 +134,8 @@ static int a6l_epd_dsi_prepare(struct drm_panel *panel)
 	usleep_range(10000, 11000);
 	gpiod_set_value_cansleep(ctx->reset, 0);
 	usleep_range(10000, 11000);
+	gpiod_set_value_cansleep(ctx->xon, 1);	/* XON low = all gates on: must be high before the rails rise (22 Sep) */
+	ctx->bridge_ok = !a6l_bridge_init(panel->dev, "prepare");	/* link is in LP-11 here (prepare_prev_first) */
 	if (hv) {
 		ret = regulator_enable(ctx->vposneg);
 		if (ret)
@@ -94,9 +167,20 @@ static int a6l_epd_dsi_unprepare(struct drm_panel *panel)
 		ctx->hv_on = false;
 		dev_info(panel->dev, "e-paper rails OFF\n");
 	}
+	gpiod_set_value_cansleep(ctx->xon, 0);
 	gpiod_set_value_cansleep(ctx->reset, 1);
 	regulator_disable(ctx->v3p3);
 	regulator_disable(ctx->vddc);
+	return 0;
+}
+
+/* Second chance once the clock lane is in HS and video runs, in case the chip needs the DSI clock to answer. */
+static int a6l_epd_dsi_enable(struct drm_panel *panel)
+{
+	struct a6l_epd_dsi *ctx = to_ctx(panel);
+
+	if (!ctx->bridge_ok)
+		ctx->bridge_ok = !a6l_bridge_init(panel->dev, "enable");
 	return 0;
 }
 
@@ -116,6 +200,7 @@ static int a6l_epd_dsi_get_modes(struct drm_panel *panel, struct drm_connector *
 static const struct drm_panel_funcs a6l_epd_dsi_funcs = {
 	.prepare = a6l_epd_dsi_prepare,
 	.unprepare = a6l_epd_dsi_unprepare,
+	.enable = a6l_epd_dsi_enable,
 	.get_modes = a6l_epd_dsi_get_modes,
 };
 
@@ -133,6 +218,9 @@ static int a6l_epd_dsi_probe(struct mipi_dsi_device *dsi)
 	ctx->reset = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset))
 		return dev_err_probe(dev, PTR_ERR(ctx->reset), "reset gpio\n");
+	ctx->xon = devm_gpiod_get_optional(dev, "xon", GPIOD_OUT_LOW);
+	if (IS_ERR(ctx->xon))
+		return dev_err_probe(dev, PTR_ERR(ctx->xon), "xon gpio\n");
 	ctx->vddc = devm_regulator_get(dev, "vddc");
 	if (IS_ERR(ctx->vddc))
 		return dev_err_probe(dev, PTR_ERR(ctx->vddc), "vddc\n");
@@ -157,6 +245,8 @@ static int a6l_epd_dsi_probe(struct mipi_dsi_device *dsi)
 		dsi->mode_flags |= MIPI_DSI_MODE_VIDEO_BURST;
 	if (lpm)
 		dsi->mode_flags |= MIPI_DSI_CLOCK_NON_CONTINUOUS;
+	if (!eot)
+		dsi->mode_flags |= MIPI_DSI_MODE_NO_EOT_PACKET;
 	ctx->panel.prepare_prev_first = true;	/* stock lp11-init: DSI host up before the reset pulse */
 	drm_panel_add(&ctx->panel);
 	ret = mipi_dsi_attach(dsi);

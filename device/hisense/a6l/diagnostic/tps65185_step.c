@@ -28,6 +28,12 @@ static void dump(const char *tag) {
     printf("A6L_TPS %-10s pgood_gpio=%d", tag, pgood()); for (int r = 0; r <= 0x10; r++) { int v = rd(r); if (v < 0) printf(" %s=NAK", n[r]); else printf(" %s=%02x", n[r], v); } printf("\n");
 }
 int main(int argc, char **argv) {
+    if (argc == 3 && !strcmp(argv[1], "--stockseq")) {   /* stock tps65185_active_mode writes UPSEQ0 = 0xE1 (VEE before VNEG; chip default 0xE4) */
+        i2c = open(argv[2], O_RDWR); if (i2c < 0) { perror("i2c"); return 5; }
+        uint8_t w[2] = {0x09, 0xe1}; struct i2c_msg m = {0x68, 0, 2, w}; struct i2c_rdwr_ioctl_data d = {&m, 1};
+        if (ioctl(i2c, I2C_RDWR, &d) < 0) { perror("A6L_TPS_FAIL upseq write"); return 6; }
+        printf("A6L_TPS_UPSEQ0=%02x\n", rd(9)); return 0;
+    }
     if (argc == 4 && !strcmp(argv[1], "--vcom")) {   /* a6l_tps65185_step --vcom /dev/i2c-N <mV 0..5110>: driver may be bound (I2C_RDWR) */
         int mv = atoi(argv[3]); if (mv < 0 || mv > 5110) return 2; i2c = open(argv[2], O_RDWR); if (i2c < 0) { perror("i2c"); return 5; }
         uint8_t w1[2] = {0x03, (uint8_t)((mv / 10) & 0xff)}, w2[2] = {0x04, (uint8_t)(((mv / 10) >> 8) & 1)};

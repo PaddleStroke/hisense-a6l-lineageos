@@ -21,8 +21,8 @@ PY
 # 21 Sep hardware: ink moved only weakly with 1 lane (961 Mbit/s on one lane is at the bridge limit); stock uses 2 lanes
 sed -i 's/dsi->lanes = 1;/dsi->lanes = 2;/' $M/tc358762-a6l.c; grep -c 'dsi->lanes = 2;' $M/tc358762-a6l.c
 grep -c "SPICMR, 0x60\|SYSCTRL, 0x0205\|CLRSIPOCOUNT, 4" $M/tc358762-a6l.c
-printf 'obj-m += panel-ft8719-tianma-1080x2340.o panel-epd-eink.o tc358762-a6l.o panel-a6l-epd.o panel-a6l-epd-dsi.o\n' > $M/Makefile
+printf 'obj-m += panel-ft8719-tianma-1080x2340.o panel-epd-eink.o tc358762-a6l.o panel-a6l-epd.o panel-a6l-epd-dsi.o a6l-clk-hold.o\n' > $M/Makefile
 export PATH=/home/a6l/android/a6l-lineage24/prebuilts/clang/host/linux-x86/clang-r584948/bin:$PATH KBUILD_BUILD_USER=a6l KBUILD_BUILD_HOST=a6l-build KBUILD_BUILD_TIMESTAMP='2026-09-14 00:00:00 UTC'
 make -C $K O=$O ARCH=arm64 LLVM=1 -j8 M=$M modules > $M/build.log 2>&1 || { grep -a "error" $M/build.log | head; exit 1; }
-for m in panel-ft8719-tianma-1080x2340 panel-epd-eink tc358762-a6l panel-a6l-epd panel-a6l-epd-dsi; do llvm-strip --strip-debug -o $M/$m.s.ko $M/$m.ko; cat $M/$m.s.ko > $A/$m.ko; done
+for m in panel-ft8719-tianma-1080x2340 panel-epd-eink tc358762-a6l panel-a6l-epd panel-a6l-epd-dsi a6l-clk-hold; do llvm-strip --strip-debug -o $M/$m.s.ko $M/$m.ko; cat $M/$m.s.ko > $A/$m.ko; done
 ( cd $A && sha256sum *.ko > SHA256SUMS ); sed -n 128,140p $M/tc358762-a6l.c; echo A6L_DISPLAY_MODULES_V67_PASS

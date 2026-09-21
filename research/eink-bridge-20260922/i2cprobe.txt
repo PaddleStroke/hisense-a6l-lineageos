@@ -1,0 +1,361 @@
+t=0 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=1 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=2 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=3 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=4 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=5 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=6 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=7 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=8 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=9 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=10 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=11 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=12 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=13 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=14 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=15 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=16 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=17 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=18 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=19 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=20 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=21 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=22 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=23 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=24 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=25 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=26 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=27 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=28 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=29 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=30 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=31 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=32 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=33 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=34 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=35 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=36 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=37 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=38 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=39 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=40 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=41 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=42 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=43 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=44 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=45 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=46 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=47 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=48 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=49 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=50 intf2=00000001
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: IDREG=00000000
+t=51 intf2=00000001
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: IDREG=00000000
+t=52 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=53 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=54 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=55 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=56 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=57 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=58 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=59 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=60 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=61 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=62 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=63 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=64 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=65 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=66 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=67 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=68 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=69 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=70 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=71 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=72 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=73 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=74 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=75 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=76 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=77 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=78 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=79 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=80 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=81 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=82 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=83 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=84 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=85 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=86 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=87 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=88 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=89 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=90 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=91 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=92 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=93 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=94 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=95 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=96 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=97 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=98 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=99 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=100 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=101 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=102 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=103 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=104 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=105 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=106 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=107 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=108 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=109 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=110 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=111 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=112 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=113 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=114 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=115 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=116 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=117 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=118 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+t=119 intf2=00000000
+A6L_D2D addr 0b: NAK
+A6L_D2D addr 0f: NAK
+DONE
