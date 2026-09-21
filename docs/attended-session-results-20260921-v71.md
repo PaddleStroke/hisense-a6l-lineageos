@@ -37,3 +37,20 @@ add an I²C init path identical to stock, verify by register read-back, then rev
 - Front ALS: STK3338 never answers at 0x47 on c1b6000 even at 3.0 V; an **AMS TMD3702 answers at 0x49 on c176000** → try
   that sensor (stock DT has both nodes).
 - Not run: modem/Wi-Fi, Bluetooth (time).
+
+## Offline follow-up (same evening)
+
+**Stock bridge bring-up order, from the stock kernel disassembly (`mdss_dsi_on`):** panel power GPIOs
+(`mdss_epd_power_up`: three GPIOs at ctrl+0x914/918/91c = gpio42, 45, 56) → DSI clocks → DSI sw reset → bridge reset
+sequence (low 10 ms, high 10 ms) → **clock lane forced HS** → **`tps65185_active_mode` (rails ON)** → `dsi2dpi_init` over I²C:
+`tc358762_send_init_cmd` (12 writes @0x0b), `tc358762_read_id` (reg **0x04a0**, id = byte 1), and if the id says so the
+**TC358767 table (25 writes @0x0f)**, both tables extracted from the ELF into `diagnostic/dsi2dpi_init.c`.
+So stock talks to the bridge only with the e-paper rails already up and the DSI HS clock running. All my I²C probes were
+done with the rails off. Next hardware test (T1): pipeline up, rails ON, `a6l_dsi2dpi_init id` → if it answers, `dump`,
+then `init762`/`init767` and play. The `eink-draw` area now does this (`A6L_EPD_I2C=`), plus VCOM, XON and byte-order options.
+
+**Speaker:** stock uses an **NXP TFA9894 (N1A1) smart amplifier** at I²C 0x34 (reset gpio76, irq gpio77, container
+`tfa98xx.cnt`). Mainline only has `tfa989x` for TFA9895/9897; the speaker needs a TFA9894 driver port (out-of-tree NXP v6
+driver exists). Earpiece/headset/mics go through the internal pm660l codec, which now registers — first Android audio target.
+
+**Light sensor:** TMD3702 has no mainline driver (tsl2772 family is different); needs a small IIO driver or a userspace HAL.
