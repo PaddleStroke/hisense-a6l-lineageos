@@ -611,3 +611,7 @@ already built/tested V10 image. No rebuild was needed for that helper edit.
 
 
 
+
+## 2026-09-21 — after attended V69/V70 session
+
+Read `docs/attended-session-results-20260921.md` first. Phone: V70 recovery installed, stock intact. Next offline work, in order: (1) MMSS clock fix for native display (`rcg didn't update`), (2) gpio42/56 in DT, (3) guards accept v70 marker + GPU run.sh `separate_gpu_kms=1`, (4) sound card -19, (5) sensor registry, (6) e-ink frame daemon, (7) cpufreq.
