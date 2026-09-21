@@ -11,6 +11,8 @@
 #include <unistd.h>
 static const struct { uint64_t base, size; int writable; } win[] = {
     { 0x0c8c0000, 0x40000, 1 },  /* MMCC */
+    { 0x0c828014, 0x4, 1 },      /* MMSS_MISC DSI ULPS clamp / PHY reset control (stock: qcom,mmss-ulp-clamp-ctrl-offset = 0x14) */
+    { 0x0c828000, 0xac, 0 },     /* MMSS_MISC, read-only */
     { 0x0c901004, 0x4, 1 },      /* MDP DISP_INTF_SEL only (experiment: DPU never programs it; INTF2 -> DSI) */
     { 0x0c900000, 0xb0000, 0 },  /* MDSS: MDP, DSI0/1, PHYs */
     { 0x00100000, 0x94000, 0 },  /* GCC */

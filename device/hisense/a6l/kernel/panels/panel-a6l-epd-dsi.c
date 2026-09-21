@@ -26,6 +26,12 @@
 
 static bool hv;
 module_param(hv, bool, 0644);
+static unsigned int lanes = 2;
+module_param(lanes, uint, 0444);
+static unsigned int dsi_mode;	/* experiment: 0 = stock (non-burst sync pulse), 1 = non-burst sync event, 2 = burst */
+module_param(dsi_mode, uint, 0444);
+static bool lpm;		/* experiment: allow LP during blanking / non-continuous clock */
+module_param(lpm, bool, 0444);
 MODULE_PARM_DESC(hv, "enable the e-paper high-voltage rails and VCOM while the output is enabled");
 
 struct a6l_epd_dsi {
@@ -141,10 +147,16 @@ static int a6l_epd_dsi_probe(struct mipi_dsi_device *dsi)
 		return dev_err_probe(dev, -EPROBE_DEFER, "TPS65185 rails not ready\n");
 
 	mipi_dsi_set_drvdata(dsi, ctx);
-	dsi->lanes = 2;
+	dsi->lanes = (lanes >= 1 && lanes <= 4) ? lanes : 2;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	/* stock: non_burst_sync_pulse, h-sync-pulse=1, tx-eot-append, clock lane forced HS (= continuous clock) */
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE | MIPI_DSI_MODE_VIDEO_HSE;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_HSE;
+	if (dsi_mode == 0)
+		dsi->mode_flags |= MIPI_DSI_MODE_VIDEO_SYNC_PULSE;
+	else if (dsi_mode == 2)
+		dsi->mode_flags |= MIPI_DSI_MODE_VIDEO_BURST;
+	if (lpm)
+		dsi->mode_flags |= MIPI_DSI_CLOCK_NON_CONTINUOUS;
 	ctx->panel.prepare_prev_first = true;	/* stock lp11-init: DSI host up before the reset pulse */
 	drm_panel_add(&ctx->panel);
 	ret = mipi_dsi_attach(dsi);

@@ -48,7 +48,7 @@ D=${D:-$(dirname "$0")}
 ( cd "$D" && sha256sum -c SHA256SUMS > /dev/null ) || { echo A6L_HW_FAIL payload hash; exit 3; }
 MARK="A6L_HW_$$"; echo "$MARK" > /dev/kmsg
 klog() { dmesg | sed -n "/$MARK/,\\$p"; }
-load() { while read -r ko; do [ -n "$ko" ] || continue; n=$(echo "${ko%.ko}" | tr - _); grep -q "^$n " /proc/modules && continue; p=""; [ "$n" = msm ] && p="separate_gpu_kms=1 ${A6L_MSM_PARAMS:-}"; [ "$n" = panel_ft8719_tianma_1080x2340 ] && p="${A6L_PANEL_PARAMS:-}"; insmod "$D/modules/$ko" $p || { echo "A6L_HW_FAIL insmod $ko"; klog | tail -n 15; exit 4; }; done < "$D/modules/order.txt"; }
+load() { while read -r ko; do [ -n "$ko" ] || continue; n=$(echo "${ko%.ko}" | tr - _); grep -q "^$n " /proc/modules && continue; p=""; [ "$n" = msm ] && p="separate_gpu_kms=1 ${A6L_MSM_PARAMS:-}"; [ "$n" = panel_ft8719_tianma_1080x2340 ] && p="${A6L_PANEL_PARAMS:-}"; [ "$n" = panel_a6l_epd_dsi ] && p="${A6L_EPD_PARAMS:-}"; insmod "$D/modules/$ko" $p || { echo "A6L_HW_FAIL insmod $ko"; klog | tail -n 15; exit 4; }; done < "$D/modules/order.txt"; }
 fw() { [ -d "$D/firmware" ] && { mkdir -p /lib/firmware; cp -r "$D"/firmware/* /lib/firmware/; }; }
 '''
 V=ROOT/'firmware/extracted/vendor/firmware'
