@@ -17,7 +17,7 @@
 /plugin/;
 &tlmm {
     a6l_tps65185_default: a6l-tps65185-default-state {
-        pins = "gpio0", "gpio2", "gpio3", "gpio35", "gpio80";
+        pins = "gpio0", "gpio2", "gpio3", "gpio35", "gpio80";   /* gpio42/56 are driven by fixed regulators below */
         function = "gpio";
         drive-strength = <2>;
         bias-pull-down;
@@ -74,13 +74,37 @@
                 regulator-name = "epd-pmic-vin";
                 gpio = <&tlmm 2 0>;
                 enable-active-high;
+                vin-supply = <&a6l_epd_i2c_en>;
+            };
+            // HARDWARE FINDING 21 Sep 2026: the TPS65185 NAKs (ENXIO) until TLMM gpio42 (stock "epd_pwr_on") and
+            // gpio56 (stock "epd-i2c-en", level shifter) are high. Bring-up choice: always-on, so probing works
+            // without a userspace GPIO holder. The PMIC stays in SLEEP (WAKEUP low) so the cost is microamps.
+            a6l_epd_pwr: regulator-epd-pwr-on {
+                compatible = "regulator-fixed";
+                regulator-name = "epd-pwr-on";
+                gpio = <&tlmm 42 0>;
+                enable-active-high;
+                startup-delay-us = <20000>;
+                regulator-always-on;
+            };
+            a6l_epd_i2c_en: regulator-epd-i2c-en {
+                compatible = "regulator-fixed";
+                regulator-name = "epd-i2c-en";
+                gpio = <&tlmm 56 0>;
+                enable-active-high;
+                startup-delay-us = <20000>;
+                vin-supply = <&a6l_epd_pwr>;
+                regulator-always-on;
             };
         };
     };
     fragment@51 {
         target-path = "/remoteproc/glink-edge/rpm-requests/regulators-0";   // pm660l ("b")
         __overlay__ {
-            a6l_vreg_l3b: l3 { regulator-min-microvolt = <1710000>; regulator-max-microvolt = <3600000>; };
+            // 21 Sep 2026: with the stock 1.71-3.6 V window and no consumer voltage request the rail sat at 1.71 V:
+            // enough for the rear touch to answer, but the front STK3338 on the same rail NAKed. Pin it to 3.0 V
+            // (inside the stock window and inside both chips' VDD range).
+            a6l_vreg_l3b: l3 { regulator-min-microvolt = <3000000>; regulator-max-microvolt = <3000000>; };
         };
     };
     fragment@52 {

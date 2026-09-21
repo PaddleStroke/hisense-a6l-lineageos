@@ -107,7 +107,7 @@ static int a6l_environment(void) {
     if(f>=0){(void)!read(f,model,127);close(f);}
     if(strstr(model,"virt"))return 1;
     f=open("/proc/device-tree/chosen/hisense,a6l-controls",O_RDONLY);if(f>=0){(void)!read(f,mark,15);close(f);}
-    return (!strcmp(mark,"v68")||!strcmp(mark,"v69"))&&!access("/tmp/a6l-framework-phone-approved",F_OK)?2:0;
+    return (!strcmp(mark,"v68")||!strcmp(mark,"v69")||!strcmp(mark,"v70")||!strcmp(mark,"v71"))&&!access("/tmp/a6l-framework-phone-approved",F_OK)?2:0;
 }
 static void launch_zygote(void) {
     need(a6l_environment()!=0&&getuid()==0,"QEMU or approved-phone root zygote only");

@@ -23,6 +23,6 @@ shutil.copyfile(ROOT/'device/hisense/a6l/diagnostic/framework-phone-v71.sh',OUT/
 names=['payload.erofs','overlay.ko','framework-phone-v71.sh']
 (OUT/'SHA256SUMS').write_text(''.join(f'{sha(OUT/n)}  {n}\n' for n in names))
 (OUT/'manifest.json').write_text(json.dumps({'from_vm_run':arch.name,'vm_checks':report['checks'],'kernel_sha256':report['kernel_sha256'],
-    'requires_recovery':'recovery-v68 or v69 candidate','files':{n:{'sha256':sha(OUT/n),'bytes':(OUT/n).stat().st_size} for n in names},
+    'requires_recovery':'recovery-v68..v71 candidate','files':{n:{'sha256':sha(OUT/n),'bytes':(OUT/n).stat().st_size} for n in names},
     'phone_access':False,'note':'payload contains VM-tuned properties (ro.hardware.virtual_device=1, software rendering); first phone run is an observation run.'},indent=2)+'\n')
 print('V71_PHONE_BUNDLE_PASS',OUT.name,sum((OUT/n).stat().st_size for n in names))

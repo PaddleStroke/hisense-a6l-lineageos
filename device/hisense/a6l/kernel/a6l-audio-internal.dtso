@@ -34,20 +34,25 @@
     pinctrl-0 = <&cdc_pdm_default>, <&cdc_dmic_default>;
     audio-routing = "PDM_RX1", "Digital PDM_RX1", "PDM_RX2", "Digital PDM_RX2", "PDM_RX3", "Digital PDM_RX3",
                     "Digital LPASS_PDM_TX", "PDM_TX", "AMIC1", "MIC BIAS External1", "AMIC2", "MIC BIAS External2";
-    mm1-dai-link { link-name = "MultiMedia1"; cpu { sound-dai = <&q6asmdai 0>; }; };
-    mm2-dai-link { link-name = "MultiMedia2"; cpu { sound-dai = <&q6asmdai 1>; }; };
-    int0-mi2s-dai-link {
-        link-name = "Internal MI2S Playback";
-        cpu { sound-dai = <&q6afedai 137>; };
-        platform { sound-dai = <&q6routing>; };
-        codec { sound-dai = <&pm660l_codec 0>, <&lpass_codec 0>; };
-    };
+    // ORDER MATTERS, AND IT IS REVERSED ON PURPOSE (hardware finding 21 Sep 2026): fdtoverlay inserts new child nodes at
+    // the head of the target node, so the merged DTB lists them in the opposite order from this file. ASoC probes
+    // components in dai-link order; q6routing (platform of the MI2S links) must come AFTER q6asm-dai (MultiMedia
+    // links), else every q6routing route fails on the missing MM_DL*/MM_UL* widgets and the card dies with -19.
+    // Test-RecoveryV71 asserts that MultiMedia1 is the first link in the merged DTB.
     int3-mi2s-dai-link {
         link-name = "Internal MI2S Capture";
         cpu { sound-dai = <&q6afedai 144>; };
         platform { sound-dai = <&q6routing>; };
         codec { sound-dai = <&pm660l_codec 1>, <&lpass_codec 1>; };
     };
+    int0-mi2s-dai-link {
+        link-name = "Internal MI2S Playback";
+        cpu { sound-dai = <&q6afedai 137>; };
+        platform { sound-dai = <&q6routing>; };
+        codec { sound-dai = <&pm660l_codec 0>, <&lpass_codec 0>; };
+    };
+    mm2-dai-link { link-name = "MultiMedia2"; cpu { sound-dai = <&q6asmdai 1>; }; };
+    mm1-dai-link { link-name = "MultiMedia1"; cpu { sound-dai = <&q6asmdai 0>; }; };
 };
 / {
     fragment@90 {
