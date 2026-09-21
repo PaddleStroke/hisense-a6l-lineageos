@@ -143,10 +143,11 @@ for c in /sys/class/drm/card*-D*; do echo "$c status=$(cat $c/status) enabled=$(
 for f in /sys/kernel/debug/dri/*/state; do echo "== $f"; cat $f; done > $O/drm-state.txt 2>&1
 /tmp/a6l_mmio r 0c994000 80 > $O/dsi0-ctrl.txt 2>&1      # DSI0 host: 0x004 CTRL, 0x008 STATUS, 0x00c FIFO_STATUS, 0x0b4 lane status
 /tmp/a6l_mmio r 0c96b800 16 > $O/intf1.txt 2>&1          # INTF1 timing engine (0x000 TIMING_ENGINE_EN)
+mkdir -p /dev/dri; for c in /sys/class/drm/card[0-9] /sys/class/drm/renderD*; do n=${c##*/}; d=$(cat $c/dev); [ -e /dev/dri/$n ] || mknod /dev/dri/$n c ${d%%:*} ${d##*:}; done   # the recovery has no /dev/dri
 /tmp/modetest -c -e -p > $O/modetest.txt 2>&1
 if [ "${A6L_DISPLAY_PATTERN:-0}" = 1 ]; then
     id=$(grep "DSI-1" $O/modetest.txt | head -n 1 | cut -f1); echo "A6L_PATTERN connector=$id"
-    [ -n "$id" ] && { /tmp/modetest -s $id:1080x2340 > $O/pattern.txt 2>&1 < /dev/zero & pp=$!; sleep 15; kill $pp; tail -n 3 $O/pattern.txt; }
+    [ -n "$id" ] && { sleep 15 | /tmp/modetest -s $id:1080x2340 > $O/pattern.txt 2>&1; tail -n 3 $O/pattern.txt; }
     sh /tmp/mmcc-diag.sh pattern > $O/mmcc-pattern.txt 2>&1
 fi
 dmesg > $O/dmesg.txt; cat /sys/kernel/debug/clk/clk_summary > $O/clk_summary.txt
@@ -163,21 +164,28 @@ cat /sys/class/drm/card*/modes 2>/dev/null | grep -q 384x725 && echo A6L_EINK_DS
 ''')
 EPD=sorted((ROOT/'firmware/extracted').glob('eink-swtcon-*-r*/update*-t*.a6lepd'))[-2:]   # newest dump run: update1 (clear) + update2 (grey bars)
 assert len(EPD)==2 and EPD[0].parent==EPD[1].parent,EPD
-area('eink-draw',['tps65185','tc358762-a6l','panel-a6l-epd'],'''# FIRST REAL E-INK DRAW. Requires the display area loaded in THIS boot (msm owns DSI1, DPI-1 connected).
-# Step 1 (default): transport only, rails OFF (panel-a6l-epd hv=0): proves 85 Hz flips without repeated frames.
-# Step 2: A6L_EPD_HV=1 -> sets hv=1 (rails + VCOM on only while the player runs), plays clear + 16 grey bars.
-#         Attended only; Pierre watches the rear screen. The player validates every frame (no illegal 11 drive code),
-#         starts and ends with no-drive frames and switches the CRTC off (rails down) even on error.
-cp "$D"/bin/a6l_epd_play /tmp/; chmod 755 /tmp/a6l_epd_play
-/tmp/a6l_epd_play --dry "$D"/firmware/epd/*.a6lepd || exit 7
-for h in /sys/class/hwmon/hwmon*; do [ "$(cat $h/name 2>/dev/null)" = tps65185 ] && echo "A6L_EPD_PMIC_TEMP_mC=$(cat $h/temp1_input)"; done
-P=/sys/module/panel_a6l_epd/parameters/hv; [ -e $P ] || { echo A6L_HW_FAIL panel-a6l-epd not loaded; exit 5; }
-if [ "${A6L_EPD_HV:-0}" = 1 ]; then echo 1 > $P; else echo 0 > $P; fi; echo "A6L_EPD_HV=$(cat $P)"
-/tmp/a6l_epd_play "$D"/firmware/epd/*.a6lepd; rc=$?
-echo 0 > $P
-klog | grep -i "e-paper\\|tps65185\\|tc358762\\|vblank\\|underrun" | tail -n 12
+area('eink-draw',['tps65185','tc358762-a6l','panel-a6l-epd'],'''# E-INK DRAW EXPERIMENT (state after 21 Sep: rails OK, frames flip at 85 Hz, bridge does not answer on I2C, no image yet).
+# Requires the display area loaded in THIS boot. Env:
+#   A6L_EPD_HV=1        rails + VCOM on during playback (attended, Pierre watches the rear screen)
+#   A6L_EPD_XON=1|0     hold TLMM gpio61 (panel XON) high/low during playback (default: untouched)
+#   A6L_EPD_ARGS="--xbgr --invert"   player options (byte order / polarity experiments)
+#   A6L_EPD_I2C=id|dump|init762|init767   talk to the bridge over I2C like stock, with the rails ON, before playback
+mk() { [ -e "$2" ] || { d=$(cat "$1"); mknod "$2" c ${d%%:*} ${d##*:}; }; }
+mkdir -p /dev/dri; for c in /sys/class/drm/card[0-9]; do mk $c/dev /dev/dri/${c##*/}; done
+mk /sys/class/i2c-dev/i2c-0/dev /dev/i2c-0; mk /sys/bus/gpio/devices/gpiochip0/dev /dev/gpiochip0
+cp "$D"/bin/* /tmp/; chmod 755 /tmp/a6l_epd_play /tmp/a6l_tps65185_step /tmp/a6l_dsi2dpi_init /tmp/a6l_gpio_hold
+E="$D/firmware/epd"; P=/sys/module/panel_a6l_epd/parameters/hv
+/tmp/a6l_epd_play --dry $E/*.a6lepd || exit 7
+[ -e $P ] || { echo A6L_HW_FAIL panel-a6l-epd not loaded; exit 5; }
+/tmp/a6l_tps65185_step --vcom /dev/i2c-0 2400 || exit 8          # VCOM register resets to 1.25 V on every wake
+cycle() { /tmp/a6l_epd_play --lead 1 --tail 1 $E/update2-t25.a6lepd > /dev/null; sleep 1; }   # rails only switch in panel prepare
+[ "${A6L_EPD_HV:-0}" = 1 ] && { echo 1 > $P; cycle; klog | grep -E "rails O|power good" | tail -n 1; }
+[ -n "${A6L_EPD_XON:-}" ] && { /tmp/a6l_gpio_hold /dev/gpiochip0 20 61=$A6L_EPD_XON > /dev/null 2>&1 & sleep 1; }
+[ -n "${A6L_EPD_I2C:-}" ] && /tmp/a6l_dsi2dpi_init /dev/i2c-0 $A6L_EPD_I2C
+/tmp/a6l_epd_play ${A6L_EPD_ARGS:-} $E/update1-t25.a6lepd $E/update2-t25.a6lepd | tail -n 1; rc=$?
+echo 0 > $P; cycle; klog | grep -E "rails O" | tail -n 1
 exit $rc
-''',[(f,'epd/'+f.name) for f in EPD],[DIAG/'a6l_epd_play'])
+''',[(f,'epd/'+f.name) for f in EPD],[DIAG/'a6l_epd_play',DIAG/'a6l_tps65185_step',DIAG/'a6l_dsi2dpi_init',Path('/home/a6l/a6l_gpio_hold')])
 area('audio',['qcom_pd_mapper','apr','q6core','q6afe','q6afe-dai','q6afe-clocks','q6adm','q6asm','q6asm-dai','q6routing','pinctrl-lpass-lpi','pinctrl-sdm660-lpass-lpi','snd-soc-msm8916-analog','snd-soc-msm8916-digital','snd-soc-sm8250'],'''# Requires the ADSP RUNNING (adsp bundle, left running). Registers the sound card only: no playback, no capture.
 [ "$(cat /sys/class/remoteproc/remoteproc0/state 2>/dev/null)" = running ] || { echo A6L_HW_FAIL adsp not running; exit 5; }
 load; sleep 8
