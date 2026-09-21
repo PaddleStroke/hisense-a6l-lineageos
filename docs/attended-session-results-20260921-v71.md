@@ -1,0 +1,39 @@
+# Attended session results — V71, 21 Sep 2026 (afternoon)
+
+V71 (`417164b7…bcf9`) installed and left installed; stock intact; laptop services resumed. Logs on the laptop: `v71/logs/`.
+
+## Milestones
+- **Native display works.** MDSS/DPU + DSI0 + our FT8719 panel driver: modetest colour bars with `skip_init=1` AND with the
+  full reset/init sequence. The 21 Sep "backlit black" was simply nothing drawing (no fbcon on the msm fb). The
+  `mdp_clk_src: rcg didn't update` WARN still fires once and is harmless.
+- **LineageOS on native display + GPU + touch**: boot completed in ~2 min, welcome screen, Start works, UI usable
+  ("It works"). No GPU faults, no underruns, simpledrm copy worker gone.
+- Motion sensors: `qcom_sns_reg` + phone's `sns.reg` → SMGR up → IIO accel, gyro, mag devices.
+- Sound card registers ("Hisense A6L") with the dai-link order fix (0 route failures).
+- TPS65185: binds without the GPIO holder; all six rails reach power-good (PG reg 0xfa, no faults), chip rev 0x66.
+- E-ink video link: 196 frames at 85 Hz with 0 repeated frames.
+
+## Findings / bugs fixed on the spot
+| Finding | Fix |
+|---|---|
+| TPS65185 PWR_GOOD is NOT readable on TLMM gpio0 (stays low with all rails good, even with pull-up) | `tools/patch-tps65185-a6l.py`: poll PG register, mark it volatile (it was served from the regmap cache), 20 ms after WAKEUP (first probe used to NAK) |
+| VCOM register defaults to 1.25 V after wake | must be set to 2.40 V each wake: today via `a6l_tps65185_step --vcom`; TODO DT constraints + `regulator_set_voltage` in panel-a6l-epd |
+| TC358762 held in reset: upstream driver drives "reset" with inverted logic vs our `GPIO_ACTIVE_LOW` DT | module patched to real reset semantics |
+| Panel rails only switch in `prepare`; fbdev keeps the DPI output enabled, so `hv` needs an off/on cycle | `eink-run.sh` cycles the CRTC; TODO proper API (sysfs or DRM property) |
+| Recovery has no `/dev/dri`, `/dev/i2c-*`, `/dev/gpiochip*` | mknod from sysfs; TODO in bundle scripts. `mmcc-diag.sh` function `r` collides with a mksh alias → rename |
+| adsp bundle on laptop still had awk + strict insmod | fixed script pushed (`v71/adsp_diag_r2-noawk.sh`) |
+| **Recovery USB never enumerates on the recovery boot that follows a sysrq reboot** (3/3); after a long-press Power restart it works (4/4) | use long-press restarts; TODO find what survives the warm reboot |
+| Phone hung once while reading `/sys/kernel/debug/gpio` / regmap after a failed rail enable | not reproduced; avoid full TLMM dumps after rail faults |
+
+## E-ink: not drawing yet
+With the bridge in reset (first runs) the panel saw floating lines: ink drifted weakly/noisily. With the bridge out of
+reset: **XON (gpio61) high → no change at all; XON low (all gates on) → speckled darkening.** The TC358762 NAKs on I²C at
+0x0b and 0x0f even out of reset with vddc (gpio45), gpio42 and gpio56 high, while TPS65185 (0x68) and a TMD3702 (0x49)
+answer on the same bus. Conclusion: the bridge is not running (missing REFCLK / supply / reset timing / I²C enable?) or not
+configured by the DSI generic writes. Next (offline): disassemble stock `tc358762` driver power-up (clocks, GPIOs, delays),
+add an I²C init path identical to stock, verify by register read-back, then revisit byte order (XRGB vs XBGR) and XON.
+
+## Other
+- Front ALS: STK3338 never answers at 0x47 on c1b6000 even at 3.0 V; an **AMS TMD3702 answers at 0x49 on c176000** → try
+  that sensor (stock DT has both nodes).
+- Not run: modem/Wi-Fi, Bluetooth (time).

@@ -9,6 +9,7 @@ mod=/home/a6l/kernel/a6l-extra-modules-v67
 test "$(git -C "$kernel_dir" rev-parse HEAD)" = e47d622cb6d2440a9eacdc8bb2df32c037bec7b8
 rm -rf "$mod"; mkdir -p "$mod" "$archive"
 cp "$kernel_dir/drivers/regulator/tps65185.c" "$kernel_dir/drivers/iio/light/stk3310.c" "$mod/"
+python3 "$workspace/tools/patch-tps65185-a6l.py" "$mod/tps65185.c"
 printf 'obj-m += tps65185.o stk3310.o\n' > "$mod/Makefile"
 export PATH=/home/a6l/android/a6l-lineage24/prebuilts/clang/host/linux-x86/clang-r584948/bin:$PATH
 export KBUILD_BUILD_USER=a6l KBUILD_BUILD_HOST=a6l-build KBUILD_BUILD_TIMESTAMP='2026-09-14 00:00:00 UTC'

@@ -8,6 +8,18 @@ test "$(git -C $K rev-parse HEAD)" = e47d622cb6d2440a9eacdc8bb2df32c037bec7b8
 rm -rf $M; mkdir -p $M $A; cp $W/device/hisense/a6l/kernel/panels/*.c $M/; cp $K/drivers/gpu/drm/bridge/tc358762.c $M/tc358762-a6l.c
 # stock I2C init table (docs/eink-transport-tc358762-20260920.md): CLRSIPOCOUNT 4, SPICMR 0x60, SYSCTRL 0x205; LCDCTRL stock = 0x150 (no VSDELAY)
 sed -i 's/PPI_D0S_CLRSIPOCOUNT, 5)/PPI_D0S_CLRSIPOCOUNT, 4)/; s/PPI_D1S_CLRSIPOCOUNT, 5)/PPI_D1S_CLRSIPOCOUNT, 4)/; s/tc358762_write(ctx, SPICMR, 0x00)/tc358762_write(ctx, SPICMR, 0x60)/; s/tc358762_write(ctx, SYSCTRL, 0x040f)/tc358762_write(ctx, SYSCTRL, 0x0205)/; s/lcdctrl = LCDCTRL_VSDELAY(1) |/lcdctrl = LCDCTRL_VSDELAY(0) |/' $M/tc358762-a6l.c
+# 21 Sep hardware: gpio12 measured LOW with the pipeline enabled and the chip NAKed on I2C = bridge held in reset.
+# Upstream drives "reset" with inverted logic (1 = run); our DT says GPIO_ACTIVE_LOW, so use real reset semantics here.
+python3 - "$M/tc358762-a6l.c" <<'PY'
+import sys;p=sys.argv[1];s=open(p).read()
+a="gpiod_set_value_cansleep(ctx->reset_gpio, 0);";b="gpiod_set_value_cansleep(ctx->reset_gpio, 1);"
+assert s.count(a)==1 and s.count(b)==1
+s=s.replace(a,"@@A@@").replace(b,a).replace("@@A@@",b)
+assert s.count('"reset", GPIOD_OUT_LOW')==1;s=s.replace('"reset", GPIOD_OUT_LOW','"reset", GPIOD_OUT_HIGH')
+open(p,"w").write(s)
+PY
+# 21 Sep hardware: ink moved only weakly with 1 lane (961 Mbit/s on one lane is at the bridge limit); stock uses 2 lanes
+sed -i 's/dsi->lanes = 1;/dsi->lanes = 2;/' $M/tc358762-a6l.c; grep -c 'dsi->lanes = 2;' $M/tc358762-a6l.c
 grep -c "SPICMR, 0x60\|SYSCTRL, 0x0205\|CLRSIPOCOUNT, 4" $M/tc358762-a6l.c
 printf 'obj-m += panel-ft8719-tianma-1080x2340.o panel-epd-eink.o tc358762-a6l.o panel-a6l-epd.o\n' > $M/Makefile
 export PATH=/home/a6l/android/a6l-lineage24/prebuilts/clang/host/linux-x86/clang-r584948/bin:$PATH KBUILD_BUILD_USER=a6l KBUILD_BUILD_HOST=a6l-build KBUILD_BUILD_TIMESTAMP='2026-09-14 00:00:00 UTC'

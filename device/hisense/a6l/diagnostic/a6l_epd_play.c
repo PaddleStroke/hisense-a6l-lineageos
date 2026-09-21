@@ -22,12 +22,13 @@
 #define H 725
 struct fb { uint32_t handle, id; uint32_t *map; size_t size; };
 static int fd = -1;
+static uint32_t fourcc = DRM_FORMAT_XRGB8888;   /* --xbgr: memory byte0 = R, as in an Android RGBX_8888 buffer (what the stock TCON wrote into) */
 static int mkfb(struct fb *f) {
     struct drm_mode_create_dumb c = {.width = W, .height = H, .bpp = 32};
     if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &c)) return -1;
     uint32_t hs[4] = {c.handle}, ps[4] = {c.pitch}, os[4] = {0};
     if (c.pitch != W * 4) { fprintf(stderr, "A6L_EPD_FAIL pitch %u\n", c.pitch); return -1; }
-    if (drmModeAddFB2(fd, W, H, DRM_FORMAT_XRGB8888, hs, ps, os, &f->id, 0)) return -1;
+    if (drmModeAddFB2(fd, W, H, fourcc, hs, ps, os, &f->id, 0)) return -1;
     struct drm_mode_map_dumb m = {.handle = c.handle};
     if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &m)) return -1;
     f->map = mmap(0, c.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, m.offset);
@@ -45,12 +46,14 @@ static int flip(uint32_t crtc, uint32_t fbid) {
     return 0;
 }
 int main(int argc, char **argv) {
-    const char *card = NULL; int lead = 20, tail = 10, dry = 0, first = 0;
+    const char *card = NULL; int lead = 20, tail = 10, dry = 0, first = 0, invert = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--card") && i + 1 < argc) card = argv[++i];
         else if (!strcmp(argv[i], "--lead") && i + 1 < argc) lead = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--tail") && i + 1 < argc) tail = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--dry")) dry = 1;
+        else if (!strcmp(argv[i], "--xbgr")) fourcc = DRM_FORMAT_XBGR8888;
+        else if (!strcmp(argv[i], "--invert")) invert = 1;   /* experiment: swap drive codes 01<->10 (polarity) */
         else { first = i; break; }
     }
     if (!first) { fprintf(stderr, "usage: %s [--card dev] [--lead n] [--tail n] [--dry] file.a6lepd...\n", argv[0]); return 2; }
@@ -102,7 +105,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < lead; i++) if (flip(crtc, idle.id)) goto off;
     for (int s = 0; s < nseq; s++) { uint32_t n; memcpy(&n, blob[s] + 16, 4); size_t pos = 20;
         for (uint32_t f = 0; f < n; f++) { struct fb *t = (f & 1) ? &b : &a; uint32_t runs; memcpy(&runs, blob[s] + pos, 4); pos += 4; uint32_t *o = t->map;
-            for (uint32_t r = 0; r < runs; r++) { uint32_t cv[2]; memcpy(cv, blob[s] + pos, 8); pos += 8; for (uint32_t k = 0; k < cv[0]; k++) *o++ = cv[1]; }
+            for (uint32_t r = 0; r < runs; r++) { uint32_t cv[2]; memcpy(cv, blob[s] + pos, 8); pos += 8; if (invert) { uint32_t d = cv[1] & 0xff; cv[1] = (cv[1] & ~0xffu) | ((d & 0x55) << 1) | ((d & 0xaa) >> 1); } for (uint32_t k = 0; k < cv[0]; k++) *o++ = cv[1]; }
             if (flip(crtc, t->id)) goto off; }
         for (int i = 0; i < tail; i++) if (flip(crtc, idle.id)) goto off; }
     rc = 0;

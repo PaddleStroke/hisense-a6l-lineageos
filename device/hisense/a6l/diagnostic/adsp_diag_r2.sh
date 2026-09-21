@@ -105,6 +105,7 @@ snap before
 while read -r ko; do
     case "$ko" in ''|\#*) continue;; esac
     grep -q " [*]\{0,1\}$ko\$" "$DIR/modules/SHA256SUMS" || die MODULE "$ko is not in the trusted manifest"
+    n=$(echo "${ko%.ko}" | tr - _); grep -q "^$n " /proc/modules && { log "already loaded: $ko"; continue; }   # V71: sns_reg pre-phase loads qmi_helpers first
     insmod "$DIR/modules/$ko" 2>>"$EV/insmod.err" || die MODULE "insmod failed: $ko ($(tail -n 1 "$EV/insmod.err"))"
     log "insmod ok: $ko"
 done < "$DIR/modules/order.txt"
