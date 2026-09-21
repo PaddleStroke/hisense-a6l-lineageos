@@ -122,7 +122,7 @@ klog | grep -i "q6v5\\|mss\\|mba\\|rmtfs\\|ath10k\\|wlan\\|qmi\\|board" | tail -
 ls /sys/class/net; tail -n 5 /tmp/rmtfs.log /tmp/tqftpserv.log
 ''',modemfw,[VB/'bin/rmtfs',VB/'bin/tqftpserv',VB/'bin/qrtr-lookup',VB/'lib64/libqrtr.so'])
 DIAG=Path('/home/a6l/display-diag')
-area('display',['panel-ft8719-tianma-1080x2340','tps65185','tc358762-a6l','panel-a6l-epd','msm'],'''# Native display takeover EXPERIMENT (21 Sep: connectors came up, LCD stayed backlit black, RCG update WARNs).
+area('display',['panel-ft8719-tianma-1080x2340','tps65185','panel-a6l-epd-dsi','msm'],'''# Native display takeover EXPERIMENT (21 Sep: connectors came up, LCD stayed backlit black, RCG update WARNs).
 # Options (env): A6L_DISPLAY_QUIESCE=1  gate the bootloader-left MDSS branch clocks before msm loads (RCG roots go off)
 #                A6L_DISPLAY_PATTERN=1  show the modetest SMPTE pattern on the LCD for 15 s
 #                A6L_PANEL_PARAMS="skip_init=1"  keep the bootloader panel state (no reset, no DCS init)
@@ -155,16 +155,16 @@ grep -i "rcg didn\\|vblank\\|timeout\\|underrun\\|dsi.*err\\|fault\\|ft8719\\|Fa
 diff $O/mmcc-pre.txt $O/mmcc-post.txt | head -n 40
 ls /sys/class/drm/ | grep -q "DSI-1" && echo A6L_NATIVE_DISPLAY_CONNECTOR_PASS || echo A6L_NATIVE_DISPLAY_CONNECTOR_MISSING
 ''',gpufw,[DIAG/'modetest',DIAG/'a6l_mmio',ROOT/'device/hisense/a6l/diagnostic/mmcc-diag.sh'])
-area('eink-dsi',['tps65185','tc358762-a6l','panel-a6l-epd'],'''# Requires the display area loaded first (msm.ko owns DSI1). Rails are NOT enabled here; this only checks that the
+area('eink-dsi',['tps65185','panel-a6l-epd-dsi'],'''# Requires the display area loaded first (msm.ko owns DSI1). Rails are NOT enabled here; this only checks that the
 # bridge and DPI panel bind and a 384x725 connector appears. Driving the panel is a separate, later step.
 load; sleep 5
 for c in /sys/class/drm/card*-DSI-* /sys/class/drm/card*-DPI-*; do [ -e $c ] && echo "$c status=$(cat $c/status) modes=$(head -n 1 $c/modes)"; done
 klog | grep -i "tc358762\\|tps65185\\|panel-dpi\\|dsi@c996000\\|bridge" | tail -n 25
-cat /sys/class/drm/card*/modes 2>/dev/null | grep -q 384x725 && echo A6L_EINK_DSI_MODE_PASS || echo A6L_EINK_DSI_MODE_MISSING
+cat /sys/class/drm/card*-*/modes 2>/dev/null | grep -q 384x725 && echo A6L_EINK_DSI_MODE_PASS || echo A6L_EINK_DSI_MODE_MISSING
 ''')
 EPD=sorted((ROOT/'firmware/extracted').glob('eink-swtcon-*-r*/update*-t*.a6lepd'))[-2:]   # newest dump run: update1 (clear) + update2 (grey bars)
 assert len(EPD)==2 and EPD[0].parent==EPD[1].parent,EPD
-area('eink-draw',['tps65185','tc358762-a6l','panel-a6l-epd'],'''# E-INK DRAW EXPERIMENT (state after 21 Sep: rails OK, frames flip at 85 Hz, bridge does not answer on I2C, no image yet).
+area('eink-draw',['tps65185','panel-a6l-epd-dsi'],'''# E-INK DRAW EXPERIMENT (state after 21 Sep: rails OK, frames flip at 85 Hz, bridge does not answer on I2C, no image yet).
 # Requires the display area loaded in THIS boot. Env:
 #   A6L_EPD_HV=1        rails + VCOM on during playback (attended, Pierre watches the rear screen)
 #   A6L_EPD_XON=1|0     hold TLMM gpio61 (panel XON) high/low during playback (default: untouched)
@@ -174,9 +174,9 @@ mk() { [ -e "$2" ] || { d=$(cat "$1"); mknod "$2" c ${d%%:*} ${d##*:}; }; }
 mkdir -p /dev/dri; for c in /sys/class/drm/card[0-9]; do mk $c/dev /dev/dri/${c##*/}; done
 mk /sys/class/i2c-dev/i2c-0/dev /dev/i2c-0; mk /sys/bus/gpio/devices/gpiochip0/dev /dev/gpiochip0
 cp "$D"/bin/* /tmp/; chmod 755 /tmp/a6l_epd_play /tmp/a6l_tps65185_step /tmp/a6l_dsi2dpi_init /tmp/a6l_gpio_hold
-E="$D/firmware/epd"; P=/sys/module/panel_a6l_epd/parameters/hv
+E="$D/firmware/epd"; P=/sys/module/panel_a6l_epd_dsi/parameters/hv
 /tmp/a6l_epd_play --dry $E/*.a6lepd || exit 7
-[ -e $P ] || { echo A6L_HW_FAIL panel-a6l-epd not loaded; exit 5; }
+[ -e $P ] || { echo A6L_HW_FAIL panel-a6l-epd-dsi not loaded; exit 5; }
 /tmp/a6l_tps65185_step --vcom /dev/i2c-0 2400 || exit 8          # VCOM register resets to 1.25 V on every wake
 cycle() { /tmp/a6l_epd_play --lead 1 --tail 1 $E/update2-t25.a6lepd > /dev/null; sleep 1; }   # rails only switch in panel prepare
 [ "${A6L_EPD_HV:-0}" = 1 ] && { echo 1 > $P; cycle; klog | grep -E "rails O|power good" | tail -n 1; }

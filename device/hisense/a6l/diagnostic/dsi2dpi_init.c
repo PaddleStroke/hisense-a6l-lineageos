@@ -9,6 +9,7 @@
 #include <linux/i2c.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 static int fd;
@@ -29,13 +30,18 @@ static void table(unsigned addr, const struct rv *t, unsigned n) {
         printf("A6L_D2D w %02x %04x=%08x %s readback=%s%08x\n", addr, t[i].reg, t[i].val, r ? "NAK" : "ok", rr ? "NAK " : "", back); }
 }
 int main(int argc, char **argv) {
-    if (argc != 3) return 2; fd = open(argv[1], O_RDWR); if (fd < 0) { perror("i2c"); return 1; }
+    if (argc < 3) return 2; fd = open(argv[1], O_RDWR); if (fd < 0) { perror("i2c"); return 1; }
     if (!strcmp(argv[2], "id") || !strcmp(argv[2], "dump")) {
         for (unsigned a = 0x0b; a <= 0x0f; a += 4) { uint32_t v; if (rd(a, 0x04a0, &v)) printf("A6L_D2D addr %02x: NAK\n", a); else { printf("A6L_D2D addr %02x: IDREG=%08x\n", a, v);
             if (!strcmp(argv[2], "dump")) { static const uint16_t regs[] = {0x047c, 0x0210, 0x0164, 0x0168, 0x0114, 0x0450, 0x0420, 0x0424, 0x0428, 0x042c, 0x0464, 0x0104, 0x0204, 0x0214, 0x0218, 0x0300, 0x0044};
                 for (unsigned i = 0; i < sizeof regs / sizeof *regs; i++) { uint32_t x; if (rd(a, regs[i], &x)) printf("  %04x: NAK\n", regs[i]); else printf("  %04x: %08x\n", regs[i], x); } } } }
         return 0;
     }
+    if (!strcmp(argv[2], "r8") && argc == 5) {   /* read-only: 8-bit register dump, r8 <hexaddr> <count> */
+        unsigned x = strtoul(argv[3], 0, 16), n = strtoul(argv[4], 0, 0); printf("A6L_D2D r8 %02x:", x);
+        for (unsigned r = 0; r < n && r < 256; r++) { uint8_t reg = r, v = 0; struct i2c_msg m[2] = {{x, 0, 1, &reg}, {x, I2C_M_RD, 1, &v}}; struct i2c_rdwr_ioctl_data d = {m, 2}; if (ioctl(fd, I2C_RDWR, &d) < 0) printf(" --"); else printf(" %02x", v); } printf("\n"); return 0; }
+    if (!strcmp(argv[2], "scan")) {   /* read-only presence scan: one 1-byte read per address */
+        printf("A6L_D2D scan ack:"); for (unsigned x = 0x08; x <= 0x77; x++) { uint8_t v; struct i2c_msg m = {x, I2C_M_RD, 1, &v}; struct i2c_rdwr_ioctl_data d = {&m, 1}; if (ioctl(fd, I2C_RDWR, &d) >= 0) printf(" %02x", x); } printf("\n"); return 0; }
     if (!strcmp(argv[2], "init762")) { table(0x0b, t762, sizeof t762 / sizeof *t762); return 0; }
     if (!strcmp(argv[2], "init767")) { table(0x0f, t767, sizeof t767 / sizeof *t767); return 0; }
     return 2;

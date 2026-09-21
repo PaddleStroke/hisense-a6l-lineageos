@@ -54,3 +54,24 @@ then `init762`/`init767` and play. The `eink-draw` area now does this (`A6L_EPD_
 driver exists). Earpiece/headset/mics go through the internal pm660l codec, which now registers — first Android audio target.
 
 **Light sensor:** TMD3702 has no mainline driver (tsl2772 family is different); needs a small IIO driver or a userspace HAL.
+
+## Third phone session (same day, evening): bridge truth + plain-DSI driver
+
+- I²C scan with rails on: bus c176000 answers only at 0x1d (smb1351), 0x49 (TMD3702), 0x60 (unknown, regs `83 83 82 a8 01 81`),
+  0x68 (TPS65185); bus c1b6000: 0x0e (unknown), 0x34 (TFA9894). **No bridge at 0x0b/0x0f.**
+- **Stock kernel log (adb bugreport, saved on the laptop `stock-bugreport/`)**: on every e-ink update stock logs
+  `NACK slv_addr:0xb`, `tc358762_send_init_cmd, ret=-107`, `tc358762_read_id, id = 0x0`, `tc358767_send_init_cmd, ret=-107`,
+  then `mdss_dsi_panel_on: ndx=1 cmd_cnt=0` — and the e-ink works. The DSI→panel chip therefore needs NO configuration;
+  the mainline `tc358762` bridge driver (DSI generic writes) is the wrong model.
+- Stock power order recovered (`mdss_dsi_panel_power_ctrl`, ctrl+0x910 XON, +0x914 epd_pwr, +0x918 vdcc, +0x91c i2c_en):
+  ON = 42↑, **XON(61)↑**, tps power_on(gpio2), 45↑, 56↑, 5 ms, reset low/high 10 ms; OFF = reset, tps sleep, 56↓ 42↓ 45↓ XON↓.
+- New driver `panels/panel-a6l-epd-dsi.c`: plain 2-lane RGB888 non-burst-sync-pulse DSI sink, stock reset order, TPS rails
+  from `/a6l-epd-panel`, binds to the existing V71 node. DSI1 host registers verified against stock properties
+  (VID_CFG0 0x10009030, timings, HS clock forced).
+- Result: rails ON (ENABLE 0x3f, PG 0xfa, VCOM 0xf0), XON high, 85 Hz, zero repeated frames — **constant `aa` or `55` drive
+  for 11 s each changes nothing**; only a slight speckled darkening appears around rail/reset transitions. Byte order
+  (XRGB/XBGR) makes no difference. So the panel logic is not acting on our pixel data.
+- Open leads: (1) what exactly stock's hwcomposer writes to fb1 (format/stride/offsets, whether the TCON buffer is
+  post-processed) — disassemble the HWC e-ink path; (2) the 0x60 chip; (3) DSI PHY timing table from stock vs computed;
+  (4) a register-level diff of the stock DSI1 state is impossible (no root), so lean on (1).
+- Recovery USB no-show is NOT strictly tied to sysrq reboots (one warm chain enumerated fine).
