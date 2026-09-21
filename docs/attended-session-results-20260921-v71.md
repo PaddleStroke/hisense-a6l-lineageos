@@ -75,3 +75,20 @@ driver exists). Earpiece/headset/mics go through the internal pm660l codec, whic
   post-processed) — disassemble the HWC e-ink path; (2) the 0x60 chip; (3) DSI PHY timing table from stock vs computed;
   (4) a register-level diff of the stock DSI1 state is impossible (no root), so lean on (1).
 - Recovery USB no-show is NOT strictly tied to sysrq reboots (one warm chain enumerated fine).
+
+## Fourth phone session (late evening): narrowing the e-ink data path
+
+- Stock HWC `DrawEpd` swaps byte 0 and byte 2 of every TCON pixel before writing fb1; `EpdPanelOpen(..., 0)` leaves fb1 at its
+  default format (mdss default RGBA_8888). So on the wire: **B = drive data, G = strobes, R = 0** (= DRM XRGB8888 with the TCON
+  bytes copied unchanged). Stock `tps65185_active_mode` also writes UPSEQ0 = 0xE1 and ENABLE = 0xBF, VCOM from flash.
+- DPU routing verified: crtc-1 → LM1 → CTL3 (CTL_TOP intf = INTF_2), INTF2 timing engine on, and the **INTF2 MISR signature
+  changes with the data** (00 → 0x4ab86565, aa → 0xdfa789e5, 55 → 0x00379325): correct pixels leave the MDP towards DSI1.
+  `DISP_INTF_SEL` reads 0 and is writable (DPU never programs it); setting INTF1/INTF2 = DSI changed nothing visible.
+- DSI1 host registers and PHY timing values match the stock panel properties. XBL's DisplayDxe only knows the LCD, so the
+  bootloader does not set up the e-ink path either.
+- Decisive negative test: XON low or high, constant `aa`/`55` on either channel, rails ON for 6–11 s → no visible drive.
+  The break is between the DSI1 pads and the panel: DSI1 PHY electrical output, the unknown bridge (it NAKs I²C in stock too),
+  or a control line we do not know (unknown I²C chip at 0x60 on the same bus).
+- Next ideas: (1) dump the full DSI1 PHY/PLL register space and diff against downstream `mdss_dsi_phy_14nm` programming for
+  this panel's timing table; (2) check DSI1 ULPS/clamp state in `mmss_misc` (stock maps 0xc828000 for it); (3) find who talks
+  to I²C 0x60 in stock (kernel strings / vendor HALs); (4) try 4-lane vs 2-lane lane-enable and `MIPI_DSI_MODE_VIDEO_BURST`.
