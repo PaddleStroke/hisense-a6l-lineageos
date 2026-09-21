@@ -13,6 +13,12 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
 
+/* A6L bring-up experiment (22 Sep 2026): skip_init=1 never touches reset and sends no DCS commands, so the panel
+ * keeps the state the bootloader programmed. Black with init + picture with skip_init => init/reset sequence is wrong;
+ * black in both => the video stream (clocks/timing) is wrong. */
+static bool skip_init;
+module_param(skip_init, bool, 0444);
+
 struct ft8719_tianma_1080x2340 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
@@ -82,6 +88,9 @@ static int ft8719_tianma_1080x2340_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
+	if (skip_init)
+		return 0;
+
 	ft8719_tianma_1080x2340_reset(ctx);
 
 	ret = ft8719_tianma_1080x2340_on(ctx);
@@ -99,6 +108,9 @@ static int ft8719_tianma_1080x2340_unprepare(struct drm_panel *panel)
 	struct ft8719_tianma_1080x2340 *ctx = to_ft8719_tianma_1080x2340(panel);
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
+
+	if (skip_init)
+		return 0;
 
 	ret = ft8719_tianma_1080x2340_off(ctx);
 	if (ret < 0)
@@ -148,7 +160,7 @@ static int ft8719_tianma_1080x2340_probe(struct mipi_dsi_device *dsi)
 	if (IS_ERR(ctx))
 		return PTR_ERR(ctx);
 
-	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	ctx->reset_gpio = devm_gpiod_get(dev, "reset", skip_init ? GPIOD_OUT_LOW : GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio))
 		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio),
 				     "Failed to get reset-gpios\n");

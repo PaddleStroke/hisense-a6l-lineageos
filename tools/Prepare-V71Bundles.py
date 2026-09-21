@@ -48,7 +48,7 @@ D=${D:-$(dirname "$0")}
 ( cd "$D" && sha256sum -c SHA256SUMS > /dev/null ) || { echo A6L_HW_FAIL payload hash; exit 3; }
 MARK="A6L_HW_$$"; echo "$MARK" > /dev/kmsg
 klog() { dmesg | sed -n "/$MARK/,\\$p"; }
-load() { while read -r ko; do [ -n "$ko" ] || continue; n=$(echo "${ko%.ko}" | tr - _); grep -q "^$n " /proc/modules && continue; p=""; [ "$n" = msm ] && p="separate_gpu_kms=1 ${A6L_MSM_PARAMS:-}"; insmod "$D/modules/$ko" $p || { echo "A6L_HW_FAIL insmod $ko"; klog | tail -n 15; exit 4; }; done < "$D/modules/order.txt"; }
+load() { while read -r ko; do [ -n "$ko" ] || continue; n=$(echo "${ko%.ko}" | tr - _); grep -q "^$n " /proc/modules && continue; p=""; [ "$n" = msm ] && p="separate_gpu_kms=1 ${A6L_MSM_PARAMS:-}"; [ "$n" = panel_ft8719_tianma_1080x2340 ] && p="${A6L_PANEL_PARAMS:-}"; insmod "$D/modules/$ko" $p || { echo "A6L_HW_FAIL insmod $ko"; klog | tail -n 15; exit 4; }; done < "$D/modules/order.txt"; }
 fw() { [ -d "$D/firmware" ] && { mkdir -p /lib/firmware; cp -r "$D"/firmware/* /lib/firmware/; }; }
 '''
 V=ROOT/'firmware/extracted/vendor/firmware'
@@ -77,12 +77,22 @@ area('front-als',['stk3310'],'''load; sleep 2
 klog | grep -i "stk3310\\|0047\\|chip id" | tail -n 8
 for d in /sys/bus/iio/devices/iio:device*; do [ "$(cat $d/name 2>/dev/null)" = stk3310 ] || continue; echo "A6L_ALS_RAW=$(cat $d/in_illuminance_raw 2>&1) A6L_PROX_RAW=$(cat $d/in_proximity_raw 2>&1)"; echo A6L_FRONT_ALS_PASS; done
 ''')
-area('sensors-adsp',['qcom_pd_mapper','sns_smgr','qcom_smgr','qcom_smgr_accel','qcom_smgr_gyro','qcom_smgr_mag','qcom_smgr_prox'],'''# Requires the ADSP already RUNNING (run the adsp bundle with HOLD and no stop, or start it via remoteproc first).
+SNSREG=ROOT/'firmware/extracted/sensors-registry-20260922/sns.reg'   # from the 14 Sep persist backup (/sensors/sns.reg); device calibration, not in git
+area('sensors-adsp',['qcom_sns_reg','qcom_pd_mapper','sns_smgr','qcom_smgr','qcom_smgr_accel','qcom_smgr_gyro','qcom_smgr_mag','qcom_smgr_prox'],'''# 21 Sep finding: the ADSP never offered SMGR (QMI 256) because nobody served the Sensor Registry. The tree has a kernel
+# registry server (qcom_sns_reg.ko, reads /lib/firmware/qcom/sensors/sns.reg = this phone's own persist copy, RAM only).
+# Order: PHASE=pre BEFORE starting the ADSP (registry ready when the DSP asks), then the adsp bundle, then PHASE=post.
+fw
+if [ "${PHASE:-post}" = pre ]; then
+    [ "$(cat /sys/class/remoteproc/remoteproc0/state 2>/dev/null)" = running ] && echo "A6L_NOTE adsp already running: registry arrives late"
+    while read -r ko; do n=$(echo "${ko%.ko}" | tr - _); grep -q "^$n " /proc/modules || insmod "$D/modules/$ko" || { echo "A6L_HW_FAIL insmod $ko"; exit 4; }; [ "$n" = qcom_sns_reg ] && break; done < "$D/modules/order.txt"
+    echo A6L_SNS_REG_LOADED; exit 0
+fi
 [ "$(cat /sys/class/remoteproc/remoteproc0/state 2>/dev/null)" = running ] || { echo A6L_HW_FAIL adsp not running; exit 5; }
-load; sleep 6
-klog | grep -i "smgr\\|sns\\|qrtr\\|pd.mapper\\|pdr" | tail -n 20
-for d in /sys/bus/iio/devices/iio:device*; do echo "$d $(cat $d/name 2>/dev/null)"; done
-''')
+load; sleep 8
+klog | grep -i "smgr\\|sns\\|qrtr\\|pd.mapper\\|pdr\\|registry" | tail -n 25
+n=0; for d in /sys/bus/iio/devices/iio:device*; do nm=$(cat $d/name 2>/dev/null); echo "$d $nm"; case "$nm" in *smgr*|*accel*|*gyro*|*mag*|*prox*) n=$((n+1));; esac; done
+[ $n -gt 0 ] && echo "A6L_SMGR_SENSORS_PASS count=$n" || echo A6L_SMGR_SENSORS_MISSING
+''',[(SNSREG,'qcom/sensors/sns.reg')])
 PF=ROOT/'firmware/extracted/peripheral-prep-20260917/firmware/qcom/hisense/a6l'
 modemfw=[(p,'qcom/hisense/a6l/'+p.name) for p in sorted(PF.iterdir()) if p.is_file() and re.fullmatch(r'(modem\.(mdt|b\d\d)|mba\.mbn|wlanmdsp\.mbn|modem\w*\.jsn)',p.name)]
 modemfw+=[(Path('/home/a6l/fw-dl/firmware-5.bin'),'ath10k/WCN3990/hw1.0/firmware-5.bin'),(Path('/home/a6l/fw-dl/board-2.bin'),'ath10k/WCN3990/hw1.0/board-2.bin')]
@@ -115,6 +125,7 @@ DIAG=Path('/home/a6l/display-diag')
 area('display',['panel-ft8719-tianma-1080x2340','tps65185','tc358762-a6l','msm'],'''# Native display takeover EXPERIMENT (21 Sep: connectors came up, LCD stayed backlit black, RCG update WARNs).
 # Options (env): A6L_DISPLAY_QUIESCE=1  gate the bootloader-left MDSS branch clocks before msm loads (RCG roots go off)
 #                A6L_DISPLAY_PATTERN=1  show the modetest SMPTE pattern on the LCD for 15 s
+#                A6L_PANEL_PARAMS="skip_init=1"  keep the bootloader panel state (no reset, no DCS init)
 #                A6L_MSM_PARAMS="prefer_mdp5=0|1 ..." extra msm.ko parameters
 # Everything is captured under /tmp/display-diag/ for pulling. The LCD may stay dark for this boot; ADB stays up.
 O=/tmp/display-diag; mkdir -p $O; cp "$D"/bin/* /tmp/; chmod 755 /tmp/a6l_mmio /tmp/modetest /tmp/mmcc-diag.sh
