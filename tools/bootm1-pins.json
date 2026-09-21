@@ -1,0 +1,18 @@
+{
+  "DiagnosticRecoveryProtocolBootM1.py": "815d4fb898895cb068a0af84070c169a25ef0e10e25ecfaef670af89a0de3064",
+  "Write-LaptopDiagnosticRecovery-user-bootm1.py": "f4457cfe388257507c5950a2ea53eab95a2ba2f8b48d97cff99767a464f4c81d",
+  "Inspect-DiagnosticRecovery-user-bootm1.py": "ceac0a6081d721e3f25b298eab3d76fcc78f0816dcc273b43958517520ed3627",
+  "Run-LaptopDiagnosticInstall-user-bootm1.py": "850c34fd7f507e29fe782caa29edd46ee06e8e8aa7858373d6f6ca9b2d74e0b0",
+  "Run-LaptopDiagnosticRestore-user-bootm1.py": "f93e84b8948818a6d5b7dd3c11aa1b82e8a8bb9c0038b4e019a03f3ac60e579f",
+  "Verify-ControlsBootM1Readbacks.py": "f7451df052104bdc21c3d8bbe1a94cf0476b7b770f20a4545b502879c90ebf21",
+  "Run-LaptopControlsCapture-bootm1.py": "fb2d66419a30961cb9bf3d0be0d81a6cbfe89faa19cb5b5793b0311a296d5bd4",
+  "Launch-ControlsBootM1.py": "abf1865b1f20cbc2f865abcadc791ea8d96aa66cc9537044ae96ba9c88ae5c35",
+  "Launch-ControlsBootM1Install.py": "b4675a9cd00d5825326ace51b57dcde0f4db0c3fd2edee3e3c9e13b297504827",
+  "RecoveryTransitionBootM1.py": "35eb31f48145535fe3333cb8336098fdad3d9ff21ba53b7d5a5510d125621dda",
+  "Test-RecoveryTransitionBootM1.py": "3ba308befd93a3cbb7be9723445cf40a0dd1998defbe31b01e9a20ba5cac0634",
+  "Test-DiagnosticRecoveryProtocolBootM1.py": "882cb562cfe2198572b40ea7fb3564af8fe7723abb507ca0390ec1310e25570a",
+  "diagnostic-user-bootm1-tools.json": "98998e90f064341f0a975fb2363d141b00ff345530ff1eabeb902daaeae79132",
+  "Verify-ControlsBootM1Stage.py": "8a8abc8e68fec69f1bb746d7af6f2712edf83c36fb2c29cb2f1dd0e77fa6a46f",
+  "ram-staging/boot-magisk-staged-bootm1.img": "259c43e3f4c32ab95db02467d1bd34f5f0b525414f074583a715acc131f8237e",
+  "stock-boot/restore-stock-boot.img": "55ad4747ea8d83a32edb09eafb01772a3cb170378331cdea3d45cd5a8cb34dbc"
+}

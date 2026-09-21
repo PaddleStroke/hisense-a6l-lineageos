@@ -1,0 +1,23 @@
+{
+  "DiagnosticRecoveryProtocolV74.py": "b35aa7b91276a86f109b5b0dbbc23e4adffba27d0904319b317e97aec32e1d04",
+  "Write-LaptopDiagnosticRecovery-user-v74.py": "8138dd02ff64ccc63d6cb49c7d04cb737e91f731e02f9874f472033963c479cb",
+  "Inspect-DiagnosticRecovery-user-v74.py": "98d2cbb521384188717cab595b54e3e29e28058e5b2f5d283fe22bbe4cd046c9",
+  "Run-LaptopDiagnosticInstall-user-v74.py": "2b7e905fc01a073f9d36eb674a78c2542aec1ae43bc9604f1dbea71d10ef9971",
+  "Run-LaptopDiagnosticRestore-user-v74.py": "6341d050710c3cfc6789f07a85d3c88c5614a637730fe6622e5596f2f84a6504",
+  "Verify-ControlsV74Readbacks.py": "a4bdbac5ed2a3cee2ddcb8a93b2f10b4e9090dbe6b748e7c083deca9afd5434a",
+  "Run-LaptopControlsCapture-v74.py": "55993895b2c6480815b7324747ef7e9525b32bdb9b70d4a6b25a0be4c94df749",
+  "Launch-ControlsV74.py": "a21d52b4296e901a4a00adc450fff4c94cb6271575082afc637d5cb0004bb4e9",
+  "Launch-ControlsV74Install.py": "536be1b14c66c715945891dbc3532337764a8feff7fb7801a33aca660f04c9a2",
+  "RecoveryTransitionV74.py": "2b626194a9027b9d8e494c2f9024dbb4313819cc90c531ff686d8bafca1467f8",
+  "Test-RecoveryTransitionV74.py": "27287b0520e3254fd416c683dc7ea6598cf761d234da71e0e8e37341998a934c",
+  "Test-DiagnosticRecoveryProtocolV74.py": "1a91e4cbaf3d8224cf4eb98b162896413caa2b18cf53b9d0701cabc9283a2e66",
+  "diagnostic-user-v74-tools.json": "22b1f0031fecd8463d1d9075f836a2a8d8be4b07fb870889e5dbc3be1cb9609b",
+  "Verify-ControlsV74Stage.py": "1e6b495ebeed3a256824b30bccd89415f4bfc6a84b9f223b81ebdf324ea941a2",
+  "v74/captured-abl-validation.json": "c5e2b7bae05364bd79f4e2135cbf49ee62c1543e8b9a7557a7e2031fcf6342ae",
+  "v74/bundle/manifest.json": "db971d83252215a00fc1ddf5602c9b58a1e3d3674592a9b2ea1b144a2cb85f44",
+  "v74/bundle/bin/a6l_dsi2dpi_init": "5e6b720ab66f8c056d134f27d3c4af69546654a584efbd371e5abc13bb71b428",
+  "v74/bundle/bin/a6l_fb1_capture": "9eeb159f4ba6e185346f0a5f476c05a6b8f561a999a41a1710424e9d9f65f76a",
+  "v74/bundle/bin/a6l_i2c16_read": "b3d87c38c549f95d3071a55e2f4678a8e5d9cdbcd62ef18a7a8c8517d0b6d68d",
+  "v74/bundle/bin/a6l_mmio": "fdf43c94ff4ac00b6799fb21b61a7836b1d14fa22e485376891dc37ac27e508d",
+  "ram-staging/recovery-diagnostic-staged-usb-v74.img": "417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9"
+}

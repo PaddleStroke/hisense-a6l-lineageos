@@ -1,0 +1,12 @@
+Qualcomm Sahara / Firehose Client V3.62 (c) B.Kerler 2018-2025.
+{
+  "scope": "Offline restore imports/geometry/payload check; no USB opened",
+  "payload_bytes": 67108864,
+  "payload_sha256": {
+    "restore-stock": "55ad4747ea8d83a32edb09eafb01772a3cb170378331cdea3d45cd5a8cb34dbc",
+    "install-diagnostic": "259c43e3f4c32ab95db02467d1bd34f5f0b525414f074583a715acc131f8237e"
+  },
+  "worker_sha256": "f4457cfe388257507c5950a2ea53eab95a2ba2f8b48d97cff99767a464f4c81d",
+  "protocol_sha256": "815d4fb898895cb068a0af84070c169a25ef0e10e25ecfaef670af89a0de3064",
+  "passed": true
+}
