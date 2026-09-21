@@ -37,3 +37,15 @@ Phone left on stock Android, laptop host services resumed. Raw logs: `logs/atten
 ## Not run
 
 Modem/Wi-Fi and Bluetooth (RF; need explicit approval at run time).
+
+## Offline follow-up the same day (see `docs/attended-session-v71-plan-20260922.md`)
+
+- Sound card -19: root cause found. `fdtoverlay` inserts new child nodes at the head, reversing the dai-link order, so
+  q6routing probed before q6asm-dai and its (fatal) route table failed. Fixed in the overlay source + asserted at build.
+- Front ALS NAK: pm660l L3 idled at 1.71 V; pinned to 3.0 V.
+- SMGR: the sdm660-mainline tree ships a kernel Sensor Registry server (`qcom_sns_reg.ko`); bundle now provides the phone's
+  own `sns.reg` (persist backup) as firmware and loads the server before the ADSP starts.
+- Display: the `rcg didn't update` WARNs are probably a side effect of bootloader-left branch clocks (RCG root on while the
+  new parent is still off), not necessarily the cause of the black LCD. Instrumented experiments prepared.
+- E-ink: rail-sequencing panel driver, offline-computed drive frames from the real waveform, vblank-exact player.
+- cpufreq: deprioritised. `cpu-speed` showed the boot frequency is not slow; the lag was the simpledrm CPU copy.

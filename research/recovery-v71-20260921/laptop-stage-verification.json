@@ -1,10 +1,10 @@
 {
   "passed": true,
-  "pin_count": 214,
+  "pin_count": 228,
   "verified": {
     "v38_tools": 9,
     "v71_tools": 12,
-    "v71_bundle": 197
+    "v71_bundle": 211
   },
   "scope": "Offline staged-file verification; no USB access or phone actions"
 }

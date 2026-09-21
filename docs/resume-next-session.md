@@ -615,3 +615,11 @@ already built/tested V10 image. No rebuild was needed for that helper edit.
 ## 2026-09-21 — after attended V69/V70 session
 
 Read `docs/attended-session-results-20260921.md` first. Phone: V70 recovery installed, stock intact. Next offline work, in order: (1) MMSS clock fix for native display (`rcg didn't update`), (2) gpio42/56 in DT, (3) guards accept v70 marker + GPU run.sh `separate_gpu_kms=1`, (4) sound card -19, (5) sensor registry, (6) e-ink frame daemon, (7) cpufreq.
+
+## 2026-09-21 evening — V71 prepared offline
+
+V71 r2 candidate `417164b7…bcf9` (ABL emulation PASS, 85 modules load in QEMU) + unified bundle + framework payload v72r3 are
+staged on the laptop under `v71/` (superseded first attempt in `superseded-v71-r1/`). Phone untouched: still V70 recovery + stock.
+Start from `docs/attended-session-v71-plan-20260922.md`. Install tool: `Launch-ControlsV71Install.py` (accepts only V70).
+Open after that session: HWC/card selection with native msm KMS (two DRM cards), real init + fstab + persistent storage
+(needs Pierre's decision on where it may live), modem/Wi-Fi/BT runs (need approval), cpufreq port (later).

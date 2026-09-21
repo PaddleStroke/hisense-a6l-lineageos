@@ -215,4 +215,16 @@
   "v71/bundle/sensors-adsp/modules/qcom_smgr_accel.ko": "74cdf136ef27dadb487c1d39e50f567f4e666b5923080394b425f2860844b8e0",
   "v71/bundle/sensors-adsp/modules/qcom_smgr_gyro.ko": "eeb33fab5eaecc2a9678fbb8809a0489e862fbfbf230b9eea39dcf00d87b50f5",
   "v71/bundle/sensors-adsp/modules/qcom_smgr_mag.ko": "98c84de210adbd6aa1246f2f309dea21c86b2399446503cd3dc50eafb41fa2d8",
-  "v71/bundle/sensors-adsp/modules/qcom_smgr_prox.ko": "2355ceb4b75cada8bdf3c15fae3ee178705
+  "v71/bundle/sensors-adsp/modules/qcom_smgr_prox.ko": "2355ceb4b75cada8bdf3c15fae3ee178705b9802a4ef22a60e917ab7025ccbe7",
+  "v71/bundle/sensors-adsp/modules/qcom_sns_reg.ko": "657f5e8639b2d148dac1f7939291a5ea6a75fa05d4a81ed9bdfadf548d375d71",
+  "v71/bundle/sensors-adsp/modules/qmi_helpers.ko": "33f3b50c23220a511ee2a6aa28c0c826470df4f4d437732eeca017c0732ea95c",
+  "v71/bundle/sensors-adsp/modules/qrtr-smd.ko": "e5593d9d7b1172d4a0769a586c24cb3302c9ef27e21cc85a2115d086448d4493",
+  "v71/bundle/sensors-adsp/modules/qrtr.ko": "69083d1f1b47ad1aaf4bad193f9afbd9778f0231ee218cbea6476f7636da9c65",
+  "v71/bundle/sensors-adsp/modules/sns_smgr.ko": "386463ff472c7ada21774796c749f42d0bd91f60e87d666da1c66ac1a2477565",
+  "v71/bundle/sensors-adsp/run.sh": "193a100f34e33f584266cfdae40472b21f2844f60edbb070c6b6be2f7b38259b",
+  "v71/bundle/touch/SHA256SUMS": "6fe0453e4e1139eb12687b4ccb1ebb43f7cc20d2485fda78c963af1016e28d4b",
+  "v71/bundle/touch/modules/edt-ft5x06.ko": "f89155e45ebcf6e235f1b327669d1fd8ed8772c9d22049db7179d517998d5582",
+  "v71/bundle/touch/modules/order.txt": "98d0b670de2b5a30b9d909cf18f717ff5a7053a5d488c4cf25ba90a03ddc5a0f",
+  "v71/bundle/touch/run.sh": "77d73a2ae5dbd35364229001e2dba8a29dd93082b53ab5e844308499dd0f0bb8",
+  "ram-staging/recovery-diagnostic-staged-usb-v71.img": "417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9"
+}
