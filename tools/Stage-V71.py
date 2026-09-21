@@ -9,7 +9,7 @@ REMOTE = '/home/pierrelouis/A6L-usb-20260915'
 CONFIG = 'C:/Users/Pierre/Desktop/A6L/tools/a6l-laptop-ssh.conf'
 SSH = '/mnt/c/Windows/System32/OpenSSH/ssh.exe'
 SCP = '/mnt/c/Windows/System32/OpenSSH/scp.exe'
-V71 = 'bebfbb0b30e4f659efe5b69f9f24d2cf48382d53fa6e320edaf1461e8b8d8e8a'
+V71 = '417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9'
 
 def run(argv):
     result = subprocess.run(argv, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)

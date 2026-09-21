@@ -71,7 +71,7 @@ def main():
         install = json.loads((ROOT / 'capture-diagnostic-install-user-v71/edl/report.json').read_text())
         if not (install.get('mode') == 'install-diagnostic' and install.get('readback_verified')
                 and install.get('power_acknowledged') and install.get('power_action') == 'off'
-                and not install.get('error') and install.get('target_sha256') == 'bebfbb0b30e4f659efe5b69f9f24d2cf48382d53fa6e320edaf1461e8b8d8e8a'):
+                and not install.get('error') and install.get('target_sha256') == '417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9'):
             raise RuntimeError('Verified diagnostic installation/poweroff evidence is required')
         report['before'] = properties()
         if report['before'] != EXPECTED:

@@ -11,6 +11,7 @@ ninja -C $B tests/modetest/modetest > $DST/build.log 2>&1 || { tail -n 25 $DST/b
 cp $B/tests/modetest/modetest $DST/modetest
 CC=$(ls $HOME/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang)
 $CC -O2 -static -Wall -o $DST/a6l_mmio $A6L/device/hisense/a6l/diagnostic/a6l_mmio.c
-STRIP=$HOME/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip; $STRIP $DST/modetest $DST/a6l_mmio
-file $DST/modetest $DST/a6l_mmio | cut -c1-150; sha256sum $DST/modetest $DST/a6l_mmio
+$CC -O2 -static -Wall -Wextra -I$OUT/sysroot/include -I$OUT/sysroot/include/libdrm -o $DST/a6l_epd_play $A6L/device/hisense/a6l/diagnostic/a6l_epd_play.c $OUT/sysroot/lib/libdrm.a
+STRIP=$HOME/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip; $STRIP $DST/modetest $DST/a6l_mmio $DST/a6l_epd_play
+file $DST/modetest $DST/a6l_mmio | cut -c1-150; sha256sum $DST/modetest $DST/a6l_mmio $DST/a6l_epd_play
 echo A6L_DISPLAY_DIAG_BUILD_PASS

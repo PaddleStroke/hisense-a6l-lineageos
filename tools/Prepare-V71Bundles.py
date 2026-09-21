@@ -122,7 +122,7 @@ klog | grep -i "q6v5\\|mss\\|mba\\|rmtfs\\|ath10k\\|wlan\\|qmi\\|board" | tail -
 ls /sys/class/net; tail -n 5 /tmp/rmtfs.log /tmp/tqftpserv.log
 ''',modemfw,[VB/'bin/rmtfs',VB/'bin/tqftpserv',VB/'bin/qrtr-lookup',VB/'lib64/libqrtr.so'])
 DIAG=Path('/home/a6l/display-diag')
-area('display',['panel-ft8719-tianma-1080x2340','tps65185','tc358762-a6l','msm'],'''# Native display takeover EXPERIMENT (21 Sep: connectors came up, LCD stayed backlit black, RCG update WARNs).
+area('display',['panel-ft8719-tianma-1080x2340','tps65185','tc358762-a6l','panel-a6l-epd','msm'],'''# Native display takeover EXPERIMENT (21 Sep: connectors came up, LCD stayed backlit black, RCG update WARNs).
 # Options (env): A6L_DISPLAY_QUIESCE=1  gate the bootloader-left MDSS branch clocks before msm loads (RCG roots go off)
 #                A6L_DISPLAY_PATTERN=1  show the modetest SMPTE pattern on the LCD for 15 s
 #                A6L_PANEL_PARAMS="skip_init=1"  keep the bootloader panel state (no reset, no DCS init)
@@ -154,13 +154,30 @@ grep -i "rcg didn\\|vblank\\|timeout\\|underrun\\|dsi.*err\\|fault\\|ft8719\\|Fa
 diff $O/mmcc-pre.txt $O/mmcc-post.txt | head -n 40
 ls /sys/class/drm/ | grep -q "DSI-1" && echo A6L_NATIVE_DISPLAY_CONNECTOR_PASS || echo A6L_NATIVE_DISPLAY_CONNECTOR_MISSING
 ''',gpufw,[DIAG/'modetest',DIAG/'a6l_mmio',ROOT/'device/hisense/a6l/diagnostic/mmcc-diag.sh'])
-area('eink-dsi',['tps65185','tc358762-a6l'],'''# Requires the display area loaded first (msm.ko owns DSI1). Rails are NOT enabled here; this only checks that the
+area('eink-dsi',['tps65185','tc358762-a6l','panel-a6l-epd'],'''# Requires the display area loaded first (msm.ko owns DSI1). Rails are NOT enabled here; this only checks that the
 # bridge and DPI panel bind and a 384x725 connector appears. Driving the panel is a separate, later step.
 load; sleep 5
 for c in /sys/class/drm/card*-DSI-* /sys/class/drm/card*-DPI-*; do [ -e $c ] && echo "$c status=$(cat $c/status) modes=$(head -n 1 $c/modes)"; done
 klog | grep -i "tc358762\\|tps65185\\|panel-dpi\\|dsi@c996000\\|bridge" | tail -n 25
 cat /sys/class/drm/card*/modes 2>/dev/null | grep -q 384x725 && echo A6L_EINK_DSI_MODE_PASS || echo A6L_EINK_DSI_MODE_MISSING
 ''')
+EPD=sorted((ROOT/'firmware/extracted').glob('eink-swtcon-*-r*/update*-t*.a6lepd'))[-2:]   # newest dump run: update1 (clear) + update2 (grey bars)
+assert len(EPD)==2 and EPD[0].parent==EPD[1].parent,EPD
+area('eink-draw',['tps65185','tc358762-a6l','panel-a6l-epd'],'''# FIRST REAL E-INK DRAW. Requires the display area loaded in THIS boot (msm owns DSI1, DPI-1 connected).
+# Step 1 (default): transport only, rails OFF (panel-a6l-epd hv=0): proves 85 Hz flips without repeated frames.
+# Step 2: A6L_EPD_HV=1 -> sets hv=1 (rails + VCOM on only while the player runs), plays clear + 16 grey bars.
+#         Attended only; Pierre watches the rear screen. The player validates every frame (no illegal 11 drive code),
+#         starts and ends with no-drive frames and switches the CRTC off (rails down) even on error.
+cp "$D"/bin/a6l_epd_play /tmp/; chmod 755 /tmp/a6l_epd_play
+/tmp/a6l_epd_play --dry "$D"/firmware/epd/*.a6lepd || exit 7
+for h in /sys/class/hwmon/hwmon*; do [ "$(cat $h/name 2>/dev/null)" = tps65185 ] && echo "A6L_EPD_PMIC_TEMP_mC=$(cat $h/temp1_input)"; done
+P=/sys/module/panel_a6l_epd/parameters/hv; [ -e $P ] || { echo A6L_HW_FAIL panel-a6l-epd not loaded; exit 5; }
+if [ "${A6L_EPD_HV:-0}" = 1 ]; then echo 1 > $P; else echo 0 > $P; fi; echo "A6L_EPD_HV=$(cat $P)"
+/tmp/a6l_epd_play "$D"/firmware/epd/*.a6lepd; rc=$?
+echo 0 > $P
+klog | grep -i "e-paper\\|tps65185\\|tc358762\\|vblank\\|underrun" | tail -n 12
+exit $rc
+''',[(f,'epd/'+f.name) for f in EPD],[DIAG/'a6l_epd_play'])
 area('audio',['qcom_pd_mapper','apr','q6core','q6afe','q6afe-dai','q6afe-clocks','q6adm','q6asm','q6asm-dai','q6routing','pinctrl-lpass-lpi','pinctrl-sdm660-lpass-lpi','snd-soc-msm8916-analog','snd-soc-msm8916-digital','snd-soc-sm8250'],'''# Requires the ADSP RUNNING (adsp bundle, left running). Registers the sound card only: no playback, no capture.
 [ "$(cat /sys/class/remoteproc/remoteproc0/state 2>/dev/null)" = running ] || { echo A6L_HW_FAIL adsp not running; exit 5; }
 load; sleep 8

@@ -32,8 +32,12 @@
         __overlay__ {
             a6l_dsi2dpi_vdcc: regulator-dsi2dpi-vdcc { compatible = "regulator-fixed"; regulator-name = "dsi2dpi-vdcc"; gpio = <&tlmm 45 0>; enable-active-high; };
             a6l-epd-panel {
-                compatible = "panel-dpi";
+                // V71: own panel driver (panels/panel-a6l-epd.c) so the TPS65185 rails have a consumer (hv=0 default keeps
+                // +-15 V and VCOM off). No "panel-dpi" fallback: panel-simple would bind first and the rails would be orphaned.
+                compatible = "hisense,a6l-epd-panel";
                 power-supply = <&epd_v3p3>;
+                vposneg-supply = <&epd_vposneg>;
+                vcom-supply = <&epd_vcom>;
                 width-mm = <65>; height-mm = <130>;
                 panel-timing {
                     clock-frequency = <40046475>;

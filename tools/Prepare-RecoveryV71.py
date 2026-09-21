@@ -64,7 +64,7 @@ def main():
     find=lambda suffix:next(n for n in after if n.endswith(suffix))
     new_nodes={n for n in after if n not in before};assert sorted(new_nodes)==['/regulator-epd-i2c-en','/regulator-epd-pwr-on'],new_nodes
     assert not [n for n in before if n not in after]
-    touched=['/regulator-epd-vin',find('/regulators-0/l3')]
+    touched=['/regulator-epd-vin',find('/regulators-0/l3'),'/a6l-epd-panel']
     def phandle_shift(a,b):
         if a is None or b is None or len(a)!=len(b) or len(a)%4:return False
         deltas={struct.unpack('>I',b[i:i+4])[0]-struct.unpack('>I',a[i:i+4])[0] for i in range(0,len(a),4)}-{0}
@@ -78,6 +78,7 @@ def main():
             ok=node in new_nodes or node in touched or (node=='/chosen' and prop=='hisense,a6l-controls') or (node=='/__symbols__' and a is None)
             assert ok,(node,prop)
             changes[node+'/'+prop]={'before':None if a is None else a.hex(),'after':None if b is None else b.hex()}
+    assert after['/a6l-epd-panel']['compatible']==b'hisense,a6l-epd-panel\0' and {'power-supply','vposneg-supply','vcom-supply'}<=set(after['/a6l-epd-panel'])
     l3=after[find('/regulators-0/l3')];assert struct.unpack('>I',l3['regulator-min-microvolt'])[0]==struct.unpack('>I',l3['regulator-max-microvolt'])[0]==3000000
     for n,g in [('/regulator-epd-pwr-on',42),('/regulator-epd-i2c-en',56)]:
         assert struct.unpack('>III',after[n]['gpio'])[1:]==(g,0) and 'regulator-always-on' in after[n] and 'enable-active-high' in after[n]

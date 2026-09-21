@@ -1,7 +1,7 @@
 # Attended session plan — V71 (prepared 21 Sep 2026, offline)
 
 V71 = V70 image with the DT rebuilt for the 21 Sep findings. Same kernel Image and ramdisk. Candidate
-`bebfbb0b…8e8a`, captured-ABL emulation PASS, transition/protocol tests PASS, staged on the laptop (`v71/`).
+`417164b7…bcf9`, captured-ABL emulation PASS, transition/protocol tests PASS, staged on the laptop (`v71/`).
 One unified bundle: `firmware/extracted/v71-attended-bundle-20260922` (all areas, marker `v71`).
 
 ## What changed and why
@@ -36,5 +36,17 @@ Experiments, one per recovery boot, in this order (each is one env var):
 Boot A: `sensors-adsp PHASE=pre` → adsp (v68 bundle, leave running) → `sensors-adsp` → `audio` → `eink-pmic` → `touch` → `front-als` → `gpu` → display experiment 1.
 Boot B: gpu → display experiment 2 (+ `eink-dsi`). Boot C: experiment 3. Then framework run with `A6L_EGL=mesa` on the best display state.
 RF areas (`modem-wifi`, `bluetooth`) only with Pierre's explicit go at that moment.
+
+## E-ink: first real draw is prepared
+
+- New panel driver `panels/panel-a6l-epd.c` (DT compatible `hisense,a6l-epd-panel`): sequences TPS65185 v3p3 → ±15 V → VCOM
+  around the video stream; `hv=0` by default, so the high-voltage rails stay off unless the draw step asks for them.
+- Drive frames are computed OFFLINE: the stock software TCON ran in QEMU with this panel's own waveform
+  (`Test-EinkSwtconQemu.py 6 <waveform> --dump=25`) → `update1-t25.a6lepd` (117-frame clear) + `update2-t25.a6lepd`
+  (39 frames, grey bars). Checked: no illegal `11` drive code, both sequences end with no-drive frames.
+- `a6l_epd_play` (static, libdrm) validates the files, modesets DPI-1 with an idle frame, flips one frame per vblank at 85 Hz,
+  reports repeated frames, and always switches the CRTC off at the end (rails down).
+- Area `eink-draw`: step 1 transport only (rails off), step 2 `A6L_EPD_HV=1` with Pierre watching the rear screen.
+  Depends on the native display pipeline (msm KMS) being up, so it follows the display experiments.
 
 Known side effect: `a6l_epd_nor_read` now gets EBUSY on gpio42 (owned by the regulator). The NOR is already backed up.

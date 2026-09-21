@@ -3,7 +3,7 @@ usage: Test-EinkSwtconQemu.py <attempt> [waveform.bin]   No phone access; frames
 import gzip,hashlib,json,re,shutil,subprocess,time
 from pathlib import Path
 import sys,datetime
-N=sys.argv[1];WF=Path(sys.argv[2]) if len(sys.argv)>2 else None;STAMP=datetime.date.today().strftime('%Y%m%d')
+N=sys.argv[1];WF=Path(sys.argv[2]) if len(sys.argv)>2 else None;DUMP=[a for a in sys.argv[3:] if a.startswith('--dump')];TEMP=(DUMP[0].split('=')+['25'])[1] if DUMP else '25';STAMP=datetime.date.today().strftime('%Y%m%d')
 ROOT=Path(__file__).resolve().parents[1]
 OUT=Path(f'/home/a6l/kernel/eink-swtcon-qemu-{STAMP}-r{N}');OUT.mkdir(exist_ok=False)
 ARCH=ROOT/f'firmware/extracted/eink-swtcon-{STAMP}-r{N}';ARCH.mkdir(exist_ok=False)
@@ -37,7 +37,7 @@ export LD_LIBRARY_PATH=/eink/lib64
 /eink/a6l_eink_swtcon_probe WFARG
 echo A6L_EINK_ABI_EXIT=$?
 echo A6L_EINK_ABI_DONE
-'''.replace('WFARG','/eink/waveform.bin' if WF else ''))
+'''.replace('WFARG',('/eink/waveform.bin' if WF else '')+(f' --dump --temp={TEMP}' if DUMP else '')))
 rc=OUT/'init.rc';rc.write_text((ROOT/'device/hisense/a6l/diagnostic/android-init.rc').read_text()+'''
 on early-init
     start einkabitest
@@ -61,7 +61,7 @@ cmd=['qemu-system-aarch64','-machine','virt,gic-version=3','-cpu','cortex-a53','
 with (OUT/'console.log').open('wb') as f:
     p=subprocess.Popen(cmd,stdout=f,stderr=subprocess.STDOUT)
     try:
-        deadline=time.monotonic()+600
+        deadline=time.monotonic()+(3000 if DUMP else 600)
         while time.monotonic()<deadline:
             data=(OUT/'console.log').read_bytes()
             if b'A6L_EINK_ABI_DONE' in data or b'Kernel panic' in data or p.poll() is not None:break
@@ -70,6 +70,15 @@ with (OUT/'console.log').open('wb') as f:
         if p.poll() is None:p.kill();p.wait(timeout=5)
 data=(OUT/'console.log').read_text(errors='replace');(ARCH/'qemu.log').write_text(data)
 checks={'done':'A6L_EINK_ABI_DONE' in data,'no_panic':'Kernel panic' not in data,'probe_completed':'A6L_EINK_SWTCON_DONE' in data,'no_fault':'A6L_EINK_SWTCON_FAULT' not in data,'nothing_refused':'A6L_EINK_REFUSED' not in data}
-lines=[l for l in data.splitlines() if l.startswith('A6L_EINK_')]
+lines=[l for l in data.splitlines() if l.startswith('A6L_EINK_') and not l.startswith('A6L_EINK_RLE')]
+if DUMP:
+    import struct
+    for upd in ('1','2'):
+        frames=[]
+        for l in data.splitlines():
+            if not l.startswith(f'A6L_EINK_RLE {upd} '):continue
+            runs=[tuple(int(x,16) for x in r.split(':')) for r in l.split()[3:]];assert sum(c for c,_ in runs)==384*725,(upd,len(frames));frames.append(runs)
+        blob=b'A6LEPD1\n'+struct.pack('<III',384,725,len(frames))+b''.join(struct.pack('<I',len(r))+b''.join(struct.pack('<II',c,v) for c,v in r) for r in frames)
+        (ARCH/f'update{upd}-t{TEMP}.a6lepd').write_bytes(blob);lines.append(f'DUMPED update{upd} frames={len(frames)} bytes={len(blob)} values={sorted({hex(v) for r in frames for _,v in r})[:40]}')
 report={'passed':all(checks.values()),'checks':checks,'probe_output':lines,'scope':'Emulator-only control-flow exercise of the stock software TCON with guarded buffers. No panel, DRM or phone. Frames are not meaningful without the real SPI waveform.'}
 (ARCH/'qemu-report.json').write_text(json.dumps(report,indent=2)+'\n');print('EINK_SWTCON_QEMU',json.dumps(report,indent=1),flush=True)

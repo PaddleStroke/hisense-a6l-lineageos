@@ -7,7 +7,7 @@ import WindowsRecoveryReadOnly as baseline
 import RecoveryTransitionV71 as transition
 
 ROOT = Path(__file__).resolve().parents[1]
-CANDIDATE = 'bebfbb0b30e4f659efe5b69f9f24d2cf48382d53fa6e320edaf1461e8b8d8e8a'
+CANDIDATE = '417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

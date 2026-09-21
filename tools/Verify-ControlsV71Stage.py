@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-V71 = 'bebfbb0b30e4f659efe5b69f9f24d2cf48382d53fa6e320edaf1461e8b8d8e8a'
+V71 = '417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9'
 V70 = 'b93771e701d677c58e377feae794a25d3a9c4c1f5cd379bb904910e4661a4373'
 STOCK = '9688e3dfb349186fb60efc057a618aeaf696b030ad52974932ea83a077b31621'
 
