@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Hisense A6L rear e-ink FRONTLIGHT (agent dualux, 25 Sep 2026; docs/dualux-20260925.md). OFFLINE CANDIDATE, untested.
+// Supersedes a6l-eink-frontlight.dtso (22 Sep, pwm-backlight): the frontlight must NOT be a backlight-class device,
+// because drm_hwcomposer attaches the FIRST name in /sys/class/backlight (sorted) to display 0 and "a6l-eink-frontlight"
+// sorts before the LCD's "backlight" -> the brightness slider would drive the frontlight and never the LCD.
+// Stock (confirmed from the stock DT, kernel ELF and lights HAL):
+//   - panel "eink epd qhd" (qcom,mdss_dsi_epd_eink_qhd_video): bl_ctrl_pwm, pwms = <&pm660l pwm@b400 (LPG channel 4)>,
+//     qcom,mdss-dsi-bl-pmic-pwm-frequency = 54 (us period, ~18.5 kHz), qcom,mdss-dsi-pwm-gpio = PM660L GPIO 6;
+//     pwm@b400: qcom,dtest-line = 2, qcom,dtest-output = 2 (LPG output routed to DTEST2); PM660L gpio@c500 (GPIO6):
+//     digital output, vin-sel 1, src-sel 7 (= DTEST2 function), out-strength 2 (medium), master-en.
+//   - the stock kernel names the LED-class device "epd-backlight" (mdss_fb: "set epd backlight from %d to %d") and the
+//     stock lights HAL writes /sys/class/leds/epd-backlight/brightness when sys.sysctl.display_type is the e-ink.
+//   - one channel only: no warm/cold light mixing on this device.
+// Mainline: leds-qcom-lpg (qcom,pm660l-lpg, channel index 3 = pwm@b400), "qcom,dtest" pairs per channel, spmi-gpio
+// function "dtest2", generic leds-pwm (CONFIG_LEDS_PWM) -> /sys/class/leds/epd-backlight, 0..255, off at boot.
+/dts-v1/;
+/plugin/;
+&pm660l_gpios {
+    a6l_frontlight_pwm_pin: a6l-frontlight-pwm-state {
+        pins = "gpio6";
+        function = "dtest2";
+        output-low;
+        bias-disable;
+        power-source = <1>;
+        qcom,drive-strength = <2>;   /* PMIC_GPIO_STRENGTH_MED = stock out-strength 2 */
+    };
+};
+&pm660l_lpg {
+    status = "okay";
+    #pwm-cells = <2>;
+    qcom,dtest = <0 0>, <0 0>, <0 0>, <2 2>;   /* channel 4 (index 3): DTEST line 2, output 2 (stock) */
+};
+/ {
+    fragment@91 {
+        target-path = "/";
+        __overlay__ {
+            a6l_epd_frontlight: a6l-epd-frontlight {
+                compatible = "pwm-leds";
+                pinctrl-names = "default";
+                pinctrl-0 = <&a6l_frontlight_pwm_pin>;
+                led-epd {
+                    label = "epd-backlight";           /* stock name, /sys/class/leds/epd-backlight */
+                    pwms = <&pm660l_lpg 3 54000>;      /* 54 us = stock period */
+                    max-brightness = <255>;            /* stock mdss default bl_max (no bl-max-level in the stock panel node) */
+                    default-state = "off";
+                };
+            };
+        };
+    };
+};

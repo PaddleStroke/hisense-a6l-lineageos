@@ -1,0 +1,51 @@
+diff --git a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c
+index a156c7e7c..46604aa5c 100644
+--- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c
++++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c
+@@ -939,6 +939,36 @@ static void dsi_14nm_dphy_set_timing(struct msm_dsi_phy *phy,
+ 	       base + REG_DSI_14nm_PHY_LN_TIMING_CTRL_11(lane_idx));
+ }
+ 
++/*
++ * Hisense A6L: the rear e-paper bridge (TC358767, no REFCLK) only runs when the DSI1 lanes are clocked from
++ * DSI0's PLL, as the stock kernel always does. With msm.a6l_dsi1_slave=1 both PHYs keep their standalone
++ * programming (PLL1 still feeds the DSI1 controller byte/pixel clocks) but PHY1 takes its HS bit clock from
++ * PLL0: PHY1 GLBL_TEST_CTRL.BITCLK_HS_SEL=1, PLL1 CLKBUFLR_EN=0, PLL0 CLKBUFLR_EN=3.
++ * Verified by register replay on hardware, 22 Sep 2026 (bridge ACK, images on the panel).
++ */
++static bool a6l_dsi1_slave;
++module_param(a6l_dsi1_slave, bool, 0444);
++MODULE_PARM_DESC(a6l_dsi1_slave, "Hisense A6L: clock the DSI1 PHY lanes from the DSI0 PLL (e-paper bridge)");
++
++static void a6l_dsi1_slave_apply(struct msm_dsi_phy *phy)
++{
++	struct dsi_pll_14nm *p0 = pll_14nm_list[DSI_0];
++
++	if (phy->id == DSI_1) {
++		u32 g = readl(phy->base + REG_DSI_14nm_PHY_CMN_GLBL_TEST_CTRL);
++
++		writel(g | DSI_14nm_PHY_CMN_GLBL_TEST_CTRL_BITCLK_HS_SEL, phy->base + REG_DSI_14nm_PHY_CMN_GLBL_TEST_CTRL);
++		writel(0, phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++		if (p0 && p0->phy && p0->phy->pll_on)
++			writel(3, p0->phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++		pr_info("a6l_dsi1_slave: PHY1 bitclk from PLL0 (PLL0 %s)\n",
++			p0 && p0->phy && p0->phy->pll_on ? "on, clkbuf=3" : "NOT ON");
++	} else {
++		writel(3, phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++		pr_info("a6l_dsi1_slave: PLL0 clkbuf=3\n");
++	}
++}
++
+ static int dsi_14nm_phy_enable(struct msm_dsi_phy *phy,
+ 			       struct msm_dsi_phy_clk_request *clk_req)
+ {
+@@ -1005,6 +1035,9 @@ static int dsi_14nm_phy_enable(struct msm_dsi_phy *phy,
+ 		return ret;
+ 	}
+ 
++	if (a6l_dsi1_slave)
++		a6l_dsi1_slave_apply(phy);
++
+ 	/* Remove power down from PLL and all lanes */
+ 	writel(0xff, base + REG_DSI_14nm_PHY_CMN_CTRL_0);
+ 

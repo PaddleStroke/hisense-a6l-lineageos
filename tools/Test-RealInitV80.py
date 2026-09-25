@@ -22,15 +22,40 @@ import tarfile
 with tarfile.open(kernel_archive/'modules.tar.gz') as t:(OUT/'overlay.ko').write_bytes(t.extractfile(next(m for m in t.getmembers() if m.name.endswith('/overlay.ko'))).read())
 launcher=OUT/'realinit-launch.sh';launcher.write_bytes((ROOT/'device/hisense/a6l/diagnostic/realinit-launch.sh').read_bytes().replace(b'\r\n',b'\n'))
 script=OUT/'test.sh';script.write_text('''#!/system/bin/sh
-/system/bin/toybox mknod /dev/ri-console c 204 64
+T=/system/bin/toybox
+$T mknod /dev/ri-console c 204 64
 exec > /dev/ri-console 2>&1
 echo A6L_RI_TEST_BEGIN
-/system/bin/toybox mkdir -p /tmp
+$T mkdir -p /tmp
+# r26: the display module the recovery loads on the phone (simple-framebuffer -> /dev/dri/card0 for minigbm + hwc3)
+$T insmod /ri-in/a6l_simplefb.ko; echo "A6L_RI_SIMPLEFB rc=$? $($T ls /sys/class/drm 2>&1 | $T tr '\\n' ' ')"
 P=/ri-in /system/bin/sh /ri-in/realinit-launch.sh &
 L=$!
-i=0; while [ $i -lt %d ]; do /system/bin/toybox sleep 30; i=$((i+1)); echo "A6L_RI_TICK $i procs=$(/system/bin/toybox ls /proc | /system/bin/toybox grep -c '^[0-9]')"; if [ $i = 3 ] || [ $i = 8 ]; then me=$(/system/bin/toybox readlink /proc/self/ns/pid); c=""; for q in $(/system/bin/toybox pidof init); do [ "$(/system/bin/toybox readlink /proc/$q/ns/pid)" != "$me" ] && { c=$q; break; }; done; echo "A6L_RI_LOGCAT_BEGIN pid=$c"; /system/bin/toybox chroot /proc/$c/root /system/bin/logcat -d -b main,system,crash > /tmp/lc.txt 2>&1; /system/bin/toybox wc -l /tmp/lc.txt; /system/bin/toybox grep -E " [EF] |FATAL|ygote|rror" /tmp/lc.txt | /system/bin/toybox tail -n 60; /system/bin/toybox tail -n 8 /tmp/lc.txt; /system/bin/toybox ls /proc/$c/root/data/tombstones /proc/$c/root/dev/socket 2>&1 | /system/bin/toybox tr "\n" " "; echo A6L_RI_LOGCAT_END; echo "A6L_RI_BOOTPROP=$(/system/bin/toybox chroot /proc/$c/root /system/bin/getprop sys.boot_completed)"; fi; kill -0 $L 2>/dev/null || { echo A6L_RI_LAUNCHER_EXITED; break; }; done
+# r19: richer probe (properties, a client setprop round trip, sockets, binderfs, logd state, tombstones, logcat)
+probe() {
+    me=$($T readlink /proc/self/ns/pid); c=""; for q in $($T pidof init); do [ "$($T readlink /proc/$q/ns/pid)" != "$me" ] && { c=$q; break; }; done
+    [ -n "$c" ] || { echo "A6L_RI_PROBE no container init"; return; }
+    R=/proc/$c/root; X="$T chroot $R"
+    echo "A6L_RI_PROBE_BEGIN tick=$i pid=$c"
+    $X /system/bin/getprop | $T grep -E "logd|hwservicemanager|init.svc|boot_completed|vold|servicemanager|ro.vndk|apexd|sys.init|zygote|ro.crypto|bootanim"
+    $X /system/bin/setprop debug.a6l.probe $i; echo "A6L_RI_SETPROP rc=$? readback=$($X /system/bin/getprop debug.a6l.probe)"
+    echo "A6L_RI_SOCKETS $($T ls $R/dev/socket | $T tr '\\n' ' ')"; echo "A6L_RI_BINDERFS $($T ls -l $R/dev/binderfs $R/dev/binder $R/dev/hwbinder 2>&1 | $T tr '\\n' ' ')"
+    for q in $($T pidof logd hwservicemanager servicemanager lmkd vold); do echo "A6L_RI_PROC $q $($T cat /proc/$q/comm) wchan=$($T cat /proc/$q/wchan) $($T grep State /proc/$q/status)"; done
+    echo "A6L_RI_APEX $($T ls $R/apex 2>&1 | $T tr '\\n' ' ')"; echo "A6L_RI_LINKER $($T ls -l $R/system/bin/linker64 $R/apex/com.android.runtime/bin/linker64 2>&1 | $T tr '\\n' ' ')"
+    for f in $($T ls $R/data/tombstones 2>/dev/null); do case $f in *.pb) continue;; esac; echo "A6L_RI_TOMBSTONE $f"; $T grep -a -E "^Cmdline|^pid:|^signal|^Abort message|^    #0[0-5]" $R/data/tombstones/$f | $T sed -n 1,12p; done
+    $X /system/bin/setprop ctl.start a6l_propprobe_logd; $X /system/bin/setprop ctl.start a6l_propprobe_sys; $T sleep 3
+    echo "A6L_RI_NONROOT_SETPROP logd=$($X /system/bin/getprop debug.a6l.logd) system=$($X /system/bin/getprop debug.a6l.sys) ready=$($X /system/bin/getprop logd.ready)"
+    $X /system/bin/setprop logd.ready true
+    echo "A6L_RI_LOGCAT_BEGIN"; $X /system/bin/logcat -d -b main,system,crash -v brief > /tmp/lc.txt 2>&1; $T wc -l /tmp/lc.txt
+    $T grep -E "^[EFW]/|FATAL|ygote|rror|abort|Abort" /tmp/lc.txt | $T grep -v "libprocessgroup" | $T tail -n 120; echo A6L_RI_LOGCAT_END
+    echo "A6L_RI_BOOTPROP=$($X /system/bin/getprop sys.boot_completed)"
+}
+i=0; while [ $i -lt @TICKS@ ]; do $T sleep 30; i=$((i+1)); echo "A6L_RI_TICK $i procs=$($T ls /proc | $T grep -c '^[0-9]')"
+    case $i in 2|4|7|12|20|30|45|59) probe;; esac
+    kill -0 $L 2>/dev/null || { echo A6L_RI_LAUNCHER_EXITED; break; }; done
+i=final; probe
 echo A6L_RI_TEST_DONE
-''' % (MIN*2))
+'''.replace('@TICKS@',str(MIN*2)))
 rc=OUT/'init.rc';rc.write_text((ROOT/'device/hisense/a6l/diagnostic/android-init.rc').read_text()+'''
 on early-init
     start ritest
@@ -44,7 +69,7 @@ service ritest /system/bin/sh /ri-in/test.sh
 lines=(ROOT/'firmware/extracted/android-ram-v38-20260917-r2/ramdisk.list').read_text().splitlines()
 lines=[f'file /system/etc/init/hw/init.rc {rc} 0644 0 0' if x.startswith('file /system/etc/init/hw/init.rc ') else x for x in lines]
 lines+=['dir /ri-in 0755 0 0','dir /ri-in/logs 0755 0 0',f'file /ri-in/test.sh {script} 0755 0 0',f'file /ri-in/realinit-launch.sh {launcher} 0755 0 0',
-        f'file /ri-in/system.erofs {OUT/"system.erofs"} 0400 0 0',f'file /ri-in/vendor.erofs {OUT/"vendor.erofs"} 0400 0 0',f'file /ri-in/overlay.ko {OUT/"overlay.ko"} 0400 0 0']
+        f'file /ri-in/system.erofs {OUT/"system.erofs"} 0400 0 0',f'file /ri-in/vendor.erofs {OUT/"vendor.erofs"} 0400 0 0',f'file /ri-in/overlay.ko {OUT/"overlay.ko"} 0400 0 0',f'file /ri-in/a6l_simplefb.ko {kernel_archive/"a6l_simplefb.ko"} 0400 0 0']
 recipe=OUT/'ramdisk.list';recipe.write_text('\n'.join(lines)+'\n')
 data=subprocess.check_output(['/home/a6l/kernel/out-a6l-android-init/usr/gen_init_cpio','-t','1789344000',str(recipe)])
 with gzip.open(OUT/'ramdisk.gz','wb',compresslevel=1) as f:f.write(data)
@@ -60,12 +85,12 @@ with (OUT/'console.log').open('wb') as f:
         deadline=time.monotonic()+MIN*60+300
         while time.monotonic()<deadline:
             d=(OUT/'console.log').read_bytes()
-            if b'A6L_RI_TEST_DONE' in d or b'Kernel panic' in d or p.poll() is not None:break
+            if b'A6L_RI_TEST_DONE' in d or (b'A6L_RI_BOOT_COMPLETED' in d and b'A6L_RI_PROBE_BEGIN tick=' in d.split(b'A6L_RI_BOOT_COMPLETED')[-1]) or b'Kernel panic' in d or p.poll() is not None:break
             time.sleep(2)
     finally:
         if p.poll() is None:p.kill();p.wait(timeout=5)
 log=(OUT/'console.log').read_text(errors='replace');(ARCH/'console.log').write_text(log)
 checks={'launcher_inner':'A6L_RI_INNER' in log,'exec_init':'A6L_RI_EXEC_INIT' in log,'selinux_setup':'init: Loading SELinux policy' in log or 'SELinux: Loaded' in log,
-        'second_stage':'init second stage started' in log,'ueventd':"starting service 'ueventd'" in log,'zygote':"starting service 'zygote" in log,'boot_completed':'sys.boot_completed' in log,'no_panic':'Kernel panic' not in log}
+        'second_stage':'init second stage started' in log,'ueventd':"starting service 'ueventd'" in log,'zygote':"starting service 'zygote" in log,'boot_completed':'A6L_RI_BOOT_COMPLETED' in log or 'A6L_RI_BOOTPROP=1' in log,'setprop_client':'readback=' in log and any(l.split('readback=')[1][:1].isdigit() for l in log.splitlines() if 'A6L_RI_SETPROP' in l),'hwsm_alive':"Service 'hwservicemanager'" not in log,'no_tombstones':'A6L_RI_TOMBSTONE' not in log,'no_panic':'Kernel panic' not in log}
 (ARCH/'report.json').write_text(json.dumps({'checks':checks,'images':sizes,'scope':'real init in a PID/mount namespace on the phone kernel, QEMU only'},indent=2)+'\n')
 print('REALINIT_V80',json.dumps(checks),flush=True)

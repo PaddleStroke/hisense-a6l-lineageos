@@ -1,0 +1,6 @@
+# audio3 (24 Sep 2026): keep the Hisense A6L mixer routed (headphones/speaker, headset/main mic) from the jack kcontrols.
+service vendor.a6l-audio-route /vendor/bin/a6l-audio-route
+    class hal
+    user audioserver
+    group audio
+    task_profiles ProcessCapacityLow

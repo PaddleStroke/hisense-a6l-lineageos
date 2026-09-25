@@ -1,0 +1,5 @@
+# Stock "handset-mic" -> adc1
+MultiMedia2 Mixer LPI_MI2S_TX_3|1
+Digital DEC1 MUX|ADC1
+Digital CIC1 MUX|AMIC
+ADC1 Volume|4

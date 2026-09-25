@@ -1,0 +1,5 @@
+# Hisense A6L rear e-ink (eink3). DSI1 host (e-ink only: TC358762 bridge + panel driver attributes) and BLSP2 QUP1 I2C
+# (TPS65185 e-paper PMIC only; hwmon temperature). Verify the paths on the phone: ls -Z (attended test step R3).
+genfscon sysfs /devices/platform/soc@0/c996000.dsi u:object_r:sysfs_a6l_epd:s0
+genfscon sysfs /devices/platform/soc@0/c900000.display-subsystem/c996000.dsi u:object_r:sysfs_a6l_epd:s0
+genfscon sysfs /devices/platform/soc@0/c176000.i2c u:object_r:sysfs_a6l_epd:s0

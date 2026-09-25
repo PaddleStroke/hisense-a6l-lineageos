@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L PM660 LRA haptics, stock-equivalent parameters (stock DT qcom,haptic@c000):
+// LRA, direct play, square wave, 6667 us (150 Hz), brake 3/3/0/0, vmax 3200 mV, ilim 800 mA.
+// Driver: a6l_pm660_haptics.ko (device/hisense/a6l/kernel/a6l-pm660-haptics), NOT the upstream module
+// (upstream: magnitude>>8 treated as percent -> saturates at 3596 mV; PMI8998 auto-res/TEST2 writes).
+// ilim is kept at 400 mA here (upstream default); stock uses 800 mA - raise only if 400 mA is too weak.
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/input/qcom,spmi-haptics.h>
+
+&pm660_haptics {
+	status = "okay";
+	qcom,actuator-type = <HAP_TYPE_LRA>;
+	qcom,play-mode = <HAP_PLAY_DIRECT>;
+	qcom,wave-shape = <HAP_WAVE_SQUARE>;
+	qcom,wave-play-rate-us = <6667>;
+	qcom,brake-pattern = <3 3 0 0>;
+	qcom,vmax-mv = <3200>;
+	qcom,ilim-ma = <400>;
+};

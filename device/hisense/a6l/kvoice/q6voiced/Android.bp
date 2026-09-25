@@ -1,0 +1,8 @@
+// kvoice (24 Sep 2026): call-audio stream holder for the mainline q6voice driver (see docs/kvoice-20260924.md)
+cc_binary {
+    name: "a6l-q6voiced",
+    vendor: true,
+    srcs: ["a6l_q6voiced.c"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    init_rc: ["a6l-q6voiced.rc"],
+}

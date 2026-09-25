@@ -1,0 +1,36 @@
+// Hisense A6L HAL/service layer (agent hals, 24 Sep 2026)
+soong_namespace {
+    imports: [],
+}
+
+cc_binary {
+    name: "a6l_macs",
+    vendor: true,
+    srcs: ["macs/a6l_macs.c"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+sh_binary {
+    name: "a6l-modem.sh",
+    vendor: true,
+    src: "rootdir/bin/a6l-modem.sh",
+}
+
+sh_binary {
+    name: "a6l-sensors.sh",
+    vendor: true,
+    src: "rootdir/bin/a6l-sensors.sh",
+}
+
+// linux-msm diag-router @23c12c1 + a6l sysfs + QRTR patches, libqrtr @29e36ae, static NDK r27c build
+// (firmware/extracted/radio2-20260923/bin/diag-router, sha256 bf32c0966e6af0a71d0c1b2b81b40f84457b23c6efd95c7be7084f40bf20bec4).
+// TODO: build from source in-tree (external/linux-msm/diag + the two patches) instead of this prebuilt.
+cc_prebuilt_binary {
+    name: "a6l-diag-router",
+    stem: "diag-router",
+    vendor: true,
+    arch: { arm64: { srcs: ["prebuilt/diag-router"] } },
+    compile_multilib: "64",
+    check_elf_files: false,
+    strip: { none: true },
+}

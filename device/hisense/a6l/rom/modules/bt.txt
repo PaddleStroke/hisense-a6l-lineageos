@@ -1,0 +1,11 @@
+# v74/radio2 modules-bt order (hci0 proven 23 Sep; serial1 alias is in the V74 DT so no rebind is needed)
+rfkill.ko
+ecc.ko
+ecdh_generic.ko
+bluetooth.ko
+btintel.ko
+btbcm.ko
+btrtl.ko
+crc-ccitt.ko
+btqca.ko
+hci_uart.ko

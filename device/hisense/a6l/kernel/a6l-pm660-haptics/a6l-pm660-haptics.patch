@@ -1,0 +1,246 @@
+--- /tmp/claude-0/orig_haptics.c	2026-09-24 09:04:11.863558419 +0200
++++ a6l_pm660_haptics.c	2026-09-24 09:17:59.862336838 +0200
+@@ -2,6 +2,19 @@
+ /*
+  * Copyright (c) 2021, Caleb Connolly <caleb@connolly.tech>
+  * Qualcomm QPMI haptics driver for pmi8998 and related PMICs.
++ *
++ * A6L variant (Hisense A6L, PM660 LRA), derived from the pinned 7.2.3
++ * drivers/input/misc/qcom-spmi-haptics.c (sha256 e83ffefb...dcd6):
++ *  - FF magnitude is 0..0xffff and is scaled to a DT/param ceiling
++ *    (qcom,vmax-mv, default = stock 3200 mV) instead of the upstream
++ *    "(strong>>8) as percent" formula which saturates at 3596 mV;
++ *  - qcom,brake-pattern accepted as four u32 cells (stock/overlay form);
++ *  - qcom,ilim-ma (400/800) honoured;
++ *  - PM660 mode (default): the PMI8998-specific auto-resonance writes
++ *    (LRA_AUTO_RES 0x4F mode ZXD_EOP, TEST2 0xE3 bit7) are NOT issued;
++ *    the LRA is driven open-loop at qcom,wave-play-rate-us (6667 us = 150 Hz);
++ *  - mutex_init() for play_lock (missing upstream);
++ *  - read-only register dump in debugfs (a6l_haptics/regs) and at probe.
+  */
+ 
+ #include <dt-bindings/input/qcom,spmi-haptics.h>
+@@ -23,6 +36,17 @@
+ #include <linux/slab.h>
+ #include <linux/time.h>
+ #include <linux/types.h>
++#include <linux/debugfs.h>
++#include <linux/seq_file.h>
++#include <linux/moduleparam.h>
++
++static bool pm660_mode = true;
++module_param(pm660_mode, bool, 0444);
++MODULE_PARM_DESC(pm660_mode, "skip PMI8998 auto-resonance/TEST2 writes (default: true)");
++static uint max_mv;
++module_param(max_mv, uint, 0644);
++MODULE_PARM_DESC(max_mv, "optional lower vmax ceiling in mV (0 = use DT qcom,vmax-mv)");
++#define A6L_STOCK_VMAX_MV 3200
+ 
+ 
+ #define HAP_STATUS_1_REG		0x0A
+@@ -186,7 +210,9 @@
+ 	u8 play_mode;
+ 	int magnitude;
+ 	u32 vmax;
++	u32 vmax_cap;
+ 	u32 current_limit;
++	struct dentry *dbg;
+ 	u32 play_wave_rate;
+ 
+ 	u32 wave_samp[HAP_WAVE_SAMP_SET_LEN];
+@@ -370,6 +396,10 @@
+ 	if (haptics->actuator_type != HAP_TYPE_LRA)
+ 		return 0;
+ 
++	/* PM660 auto-res lives elsewhere (0x4B/0x4F layout differs): never poke TEST2 */
++	if (pm660_mode)
++		return 0;
++
+ 	val = enable ? AUTO_RES_EN_BIT : 0;
+ 
+ 	return spmi_haptics_write_masked(haptics, haptics->base + HAP_TEST2_REG,
+@@ -516,6 +546,43 @@
+ }
+ 
+ 
++static const u8 a6l_dump_regs[] = {
++	0x04, 0x05, 0x08, 0x0A, 0x0B, 0x0C, 0x46, 0x48, 0x4B, 0x4C, 0x4D, 0x4E,
++	0x4F, 0x51, 0x52, 0x53, 0x54, 0x55, 0x5C, 0x5E, 0x60, 0x61, 0x70,
++};
++
++static void a6l_haptics_dump(struct spmi_haptics *haptics, const char *tag)
++{
++	char buf[256];
++	int i, n = 0;
++	unsigned int v;
++
++	for (i = 0; i < ARRAY_SIZE(a6l_dump_regs); i++) {
++		if (regmap_read(haptics->regmap, haptics->base + a6l_dump_regs[i], &v))
++			v = 0xfff;
++		n += scnprintf(buf + n, sizeof(buf) - n, " %02x=%02x", a6l_dump_regs[i], v);
++	}
++	dev_info(haptics->dev, "A6L_HAP %s vmax_cap=%u ilim=%s pm660=%d:%s\n", tag,
++		 haptics->vmax_cap, haptics->current_limit ? "800" : "400", pm660_mode, buf);
++}
++
++static int a6l_regs_show(struct seq_file *s, void *unused)
++{
++	struct spmi_haptics *haptics = s->private;
++	unsigned int v;
++	int i;
++
++	for (i = 0; i < 0x80; i++) {
++		if (regmap_read(haptics->regmap, haptics->base + i, &v))
++			continue;
++		seq_printf(s, "%s%02x=%02x", (i % 16) ? " " : (i ? "\n" : ""), i, v);
++	}
++	seq_printf(s, "\nvmax=%u vmax_cap=%u magnitude=%d active=%d\n", haptics->vmax,
++		   haptics->vmax_cap, haptics->magnitude, atomic_read(&haptics->active));
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(a6l_regs);
++
+ /**
+  * spmi_haptics_init() - Initialise haptics hardware for use
+  * @haptics: haptics device
+@@ -543,8 +610,9 @@
+ 
+ 	mask = LRA_AUTO_RES_MODE_MASK | LRA_HIGH_Z_MASK | LRA_RES_CAL_MASK;
+ 
+-	ret = spmi_haptics_write_masked(haptics, haptics->base + HAP_LRA_AUTO_RES_REG,
+-			mask, val);
++	if (!pm660_mode)
++		ret = spmi_haptics_write_masked(haptics, haptics->base + HAP_LRA_AUTO_RES_REG,
++				mask, val);
+ 
+ 	/* Configure the PLAY MODE register */
+ 	ret = spmi_haptics_write_play_mode(haptics);
+@@ -750,9 +818,17 @@
+ 	dev_dbg(haptics->dev, "%s: Rumbling with strong: %d and weak: %d", __func__,
+ 		effect->u.rumble.strong_magnitude, effect->u.rumble.weak_magnitude);
+ 
+-	haptics->magnitude = effect->u.rumble.strong_magnitude >> 8;
+-	if (!haptics->magnitude)
+-		haptics->magnitude = effect->u.rumble.weak_magnitude >> 10;
++	if (effect->type == FF_CONSTANT) {
++		/* ff-memless combined constant: signed level (sign depends on direction) */
++		int lvl = abs((int)effect->u.constant.level);
++
++		haptics->magnitude = min(0xffff, lvl * 2);
++	} else {
++		/* FF_RUMBLE 0..0xffff, strong wins; weak counts at half strength */
++		haptics->magnitude = effect->u.rumble.strong_magnitude;
++		if (!haptics->magnitude)
++			haptics->magnitude = effect->u.rumble.weak_magnitude >> 1;
++	}
+ 
+ 	if (!haptics->magnitude) {
+ 		atomic_set(&haptics->active, 0);
+@@ -761,8 +837,17 @@
+ 
+ 	atomic_set(&haptics->active, 1);
+ 
+-	haptics->vmax = ((HAP_VMAX_MAX_MV - HAP_VMAX_MIN_MV) * haptics->magnitude) / 100 +
+-					HAP_VMAX_MIN_MV;
++	{
++		u32 cap = haptics->vmax_cap;
++
++		if (max_mv && max_mv < cap)
++			cap = max_mv;
++		haptics->vmax = (u32)(((u64)cap * haptics->magnitude) / 0xffff);
++		if (haptics->vmax < HAP_VMAX_MIN_MV)
++			haptics->vmax = HAP_VMAX_MIN_MV;
++		if (haptics->vmax > cap)
++			haptics->vmax = cap;
++	}
+ 
+ 	dev_dbg(haptics->dev, "%s: magnitude: %d, vmax: %d", __func__,
+ 		haptics->magnitude, haptics->vmax);
+@@ -867,13 +952,34 @@
+ 	haptics->brake_pat[2] = 0x2;
+ 	haptics->brake_pat[3] = 0x1;
+ 
+-	ret = of_property_read_u8_array(node, "qcom,brake-pattern", haptics->brake_pat, 4);
++	if (of_property_count_elems_of_size(node, "qcom,brake-pattern", sizeof(u32)) == 4) {
++		u32 bp[4];
++
++		ret = of_property_read_u32_array(node, "qcom,brake-pattern", bp, 4);
++		for (i = 0; !ret && i < 4; i++) {
++			if (bp[i] > 3) {
++				ret = -EINVAL;
++				break;
++			}
++			haptics->brake_pat[i] = bp[i];
++		}
++	} else {
++		ret = of_property_read_u8_array(node, "qcom,brake-pattern", haptics->brake_pat, 4);
++	}
+ 	if (ret < 0 && ret != -EINVAL) {
+ 		dev_err(&pdev->dev, "qcom,brake-pattern is invalid, ret = %d\n", ret);
+ 		goto register_fail;
+ 	}
+ 
+ 	haptics->current_limit = HAP_ILIM_400_MA;
++	if (!of_property_read_u32(node, "qcom,ilim-ma", &val) && val >= 800)
++		haptics->current_limit = HAP_ILIM_800_MA;
++
++	haptics->vmax_cap = A6L_STOCK_VMAX_MV;
++	if (!of_property_read_u32(node, "qcom,vmax-mv", &val))
++		haptics->vmax_cap = clamp_t(u32, val, HAP_VMAX_MIN_MV, A6L_STOCK_VMAX_MV);
++	haptics->vmax = haptics->vmax_cap;
++	mutex_init(&haptics->play_lock);
+ 
+ 	for (i = 0; i < HAP_WAVE_SAMP_LEN; i++)
+ 		haptics->wave_samp[i] = HAP_WF_SAMP_MAX;
+@@ -886,6 +992,9 @@
+ 	}
+ 
+ 	platform_set_drvdata(pdev, haptics);
++	a6l_haptics_dump(haptics, "probe");
++	haptics->dbg = debugfs_create_dir("a6l_haptics", NULL);
++	debugfs_create_file("regs", 0400, haptics->dbg, haptics, &a6l_regs_fops);
+ 
+ 	input_dev = devm_input_allocate_device(&pdev->dev);
+ 	if (!input_dev)
+@@ -900,6 +1009,8 @@
+ 	input_set_drvdata(input_dev, haptics);
+ 	// Figure out how to make this FF_PERIODIC
+ 	input_set_capability(haptics->haptics_input_dev, EV_FF, FF_RUMBLE);
++	/* FF_CONSTANT for the QTI VibratorOL AIDL HAL (needs FF_CONSTANT or FF_PERIODIC) */
++	input_set_capability(haptics->haptics_input_dev, EV_FF, FF_CONSTANT);
+ 
+ 	ret = input_ff_create_memless(input_dev, NULL,
+ 					spmi_haptics_play_effect);
+@@ -940,6 +1051,8 @@
+ {
+ 	struct spmi_haptics *haptics = dev_get_drvdata(&pdev->dev);
+ 
++	debugfs_remove_recursive(haptics->dbg);
++
+ 	cancel_work_sync(&haptics->work);
+ 	mutex_destroy(&haptics->play_lock);
+ 	input_unregister_device(haptics->haptics_input_dev);
+@@ -956,6 +1069,7 @@
+ 
+ static const struct of_device_id spmi_haptics_match_table[] = {
+ 	{ .compatible = "qcom,spmi-haptics" },
++	{ .compatible = "hisense,a6l-pm660-haptics" },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(of, spmi_haptics_match_table);
+@@ -965,13 +1079,13 @@
+ 	.remove		= spmi_haptics_remove,
+ 	.shutdown	= spmi_haptics_shutdown,
+ 	.driver		= {
+-		.name	= "spmi-haptics",
++		.name	= "a6l-pm660-haptics",
+ 		.pm	= &spmi_haptics_pm_ops,
+ 		.of_match_table = spmi_haptics_match_table,
+ 	},
+ };
+ module_platform_driver(spmi_haptics_driver);
+ 
+-MODULE_DESCRIPTION("spmi haptics driver using ff-memless framework");
++MODULE_DESCRIPTION("A6L PM660 LRA haptics (qcom-spmi-haptics derivative)");
+ MODULE_LICENSE("GPL v2");
+ MODULE_AUTHOR("Caleb Connolly <caleb@connolly.tech>");

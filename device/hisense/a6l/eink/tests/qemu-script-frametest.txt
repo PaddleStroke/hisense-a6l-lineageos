@@ -1,0 +1,10 @@
+frametest /eink/mirror-a.pgm quality
+frametest /eink/mirror-b.pgm quality
+frametest /eink/mirror-s.pgm fastest
+frametest /eink/mirror-a.pgm fastest
+frametest /eink/mirror-b.pgm fastest
+refresh
+clear
+frametest /eink/mirror-s.pgm quality
+frametest /eink/mirror-a.pgm fast
+frametest /eink/mirror-a.pgm quality

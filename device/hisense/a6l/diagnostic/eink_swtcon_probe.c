@@ -47,6 +47,34 @@ static void dump_rle(int upd, int n, const void *data) {
     while (i < total) { unsigned j = i + 1; while (j < total && q[j] == q[i]) j++; printf(" %x:%x", j - i, q[i]); i = j; }
     printf("\n");
 }
+
+/* test picture for --pattern: white page, black border, "HELLO" and "A6L" in a 5x7 font, 16 grey bars, a checkerboard */
+static const char *glyph(char c) {
+    switch (c) {
+    case 'H': return "10001100011000111111100011000110001";
+    case 'E': return "11111100001000011110100001000011111";
+    case 'L': return "10000100001000010000100001000011111";
+    case ' ': return "00000000000000000000000000000000000";
+    case 'O': return "01110100011000110001100011000101110";
+    case 'A': return "01110100011000111111100011000110001";
+    case '6': return "00110010001000011110100011000101110";
+    default:  return "00000000000000000000000000000000000"; }
+}
+/* The library's image is 1440 wide x 720 rows (cfg {1440,720}), NOT 720x1440 (r135: a 720-wide picture showed twice side by side,
+ * squashed 2x). On the panel, library X runs right-to-left (r135 text was mirrored), so draw in viewing orientation and flip X. */
+static void setpx(uint8_t *px, unsigned x, unsigned y, uint8_t v) { if (x < 1440 && y < 720) { uint8_t *q = px + 4 * (y * 1440u + (1439u - x)); q[0] = q[1] = q[2] = v; q[3] = 0xff; } }
+static void text(uint8_t *px, const char *s, unsigned x0, unsigned y0, unsigned sc) {
+    for (; *s; s++, x0 += 6 * sc) { const char *g = glyph(*s);
+        for (unsigned r = 0; r < 7; r++) for (unsigned c = 0; c < 5; c++) if (g[r * 5 + c] == '1')
+            for (unsigned dy = 0; dy < sc; dy++) for (unsigned dx = 0; dx < sc; dx++) setpx(px, x0 + c * sc + dx, y0 + r * sc + dy, 0x00); }
+}
+static void test_picture(uint8_t *px) {   /* landscape 1440x720 as seen in the r135 photo (camera on the right) */
+    for (unsigned y = 0; y < 720; y++) for (unsigned x = 0; x < 1440; x++) setpx(px, x, y, (x < 16 || x >= 1424 || y < 16 || y >= 704) ? 0x00 : 0xff);
+    text(px, "HELLO A6L", 60, 50, 16);       /* 9 chars x 96 px = 864 px wide, 112 px tall */
+    for (unsigned y = 50; y < 162; y++) for (unsigned x = 1000; x < 1380; x++) if (x - 1000 < (y - 50) * 380 / 112) setpx(px, x, y, 0x00);  /* triangle, top-right corner marker */
+    for (unsigned y = 220; y < 440; y++) for (unsigned x = 60; x < 1380; x++) setpx(px, x, y, (uint8_t)(((x - 60) * 16 / 1320) * 17));   /* 16 grey bars, black left -> white right */
+    for (unsigned y = 480; y < 680; y++) for (unsigned x = 60; x < 1380; x++) setpx(px, x, y, (((x - 60) / 40 + (y - 480) / 40) & 1) ? 0x00 : 0xff);
+}
 static uint32_t fnv(const uint8_t *p, size_t n) { uint32_t h = 2166136261u; while (n--) { h ^= *p++; h *= 16777619u; } return h; }
 int main(int argc, char **argv) {
     struct sigaction sa; memset(&sa, 0, sizeof sa); sa.sa_sigaction = fault; sa.sa_flags = SA_SIGINFO;
@@ -65,8 +93,9 @@ int main(int argc, char **argv) {
     struct buf ring[RING];
     for (int i = 0; i < RING; i++) { ring[i].data = guarded(FRAME); ring[i].size = FRAME; ring[i].pad = 0; if (!ring[i].data) return 3; memset(ring[i].data, 0, FRAME); }
     uint8_t *flash = guarded(FLASH); if (!flash) return 3; memset(flash, 0, FLASH);
-    int real = 0; int temp = 25;
-    for (int i = 2; i < argc; i++) { if (!strcmp(argv[i], "--dump")) dump_frames = 1; else if (!strncmp(argv[i], "--temp=", 7)) temp = atoi(argv[i] + 7); }
+    int real = 0; int temp = 25; int pmode = -1;   /* --pattern=MODE: update 2 = test picture, update 3 = back to white, both with refresh mode MODE */
+    for (int i = 2; i < argc; i++) { if (!strcmp(argv[i], "--dump")) dump_frames = 1; else if (!strncmp(argv[i], "--temp=", 7)) temp = atoi(argv[i] + 7);
+        else if (!strncmp(argv[i], "--pattern=", 10)) pmode = atoi(argv[i] + 10); }
     if (argc > 1) { FILE *f = fopen(argv[1], "rb"); if (f) { real = fread(flash, 1, FLASH, f) == FLASH; fclose(f); } }
     printf("A6L_EINK_WAVEFORM source=%s fnv=%08x\n", real ? "file" : "zeros", fnv(flash, FLASH));
     uint8_t info[0x400]; memset(info, 0xa6, sizeof info);
@@ -98,14 +127,24 @@ int main(int argc, char **argv) {
         }
         frames++;
     }
+    if (pmode >= 0) test_picture(px); else
     for (unsigned y = 0; y < 1440; y++) for (unsigned x = 0; x < 720; x++) { uint8_t v = (uint8_t)((x / 45) * 17); uint8_t *q2 = px + 4 * (y * 720u + x); q2[0] = q2[1] = q2[2] = v; }
-    stage = "mode-decision-2"; int n2 = decide(&img, handle, temp, temp, 0, 0); printf("A6L_EINK_MODE_DECISION_2 returned=%d\n", n2);
+    stage = "mode-decision-2"; int n2 = decide(&img, handle, temp, temp, 0, pmode >= 0 ? pmode : 0); printf("A6L_EINK_MODE_DECISION_2 returned=%d mode=%d\n", n2, pmode >= 0 ? pmode : 0);
     stage = "update-2"; more = 1; int f2 = 0; uint32_t lasth = 0; int d2 = 0;
     while (more && f2 < 300) { struct buf *b = &ring[f2 % RING]; more = update(b, handle); dump_rle(2, f2, b->data); uint32_t hsh = fnv(b->data, FRAME); if (hsh != lasth) { d2++; lasth = hsh; }
         if (f2 == 10) { unsigned hist[256] = {0}; const uint8_t *q = b->data; for (unsigned i = 0; i < FRAME; i++) hist[q[i]]++; printf("A6L_EINK_HIST2 n=%d", f2); for (int v = 0; v < 256; v++) if (hist[v]) printf(" %02x:%u", v, hist[v]); printf("\n");
             printf("A6L_EINK_ROW2 y=700"); for (int x = 0; x < 768; x += 8) printf(" %02x", q[700u * 768u + x]); printf("\n"); }
         f2++; }
     printf("A6L_EINK_UPDATE_2 frames=%d distinct=%d\n", f2, d2);
+    if (pmode >= 0) {   /* the library's 2nd ModeDecision always resets to white (handle+0x270 flag); the picture only goes through from the 3rd call */
+        for (int u = 3; u <= 4; u++) {
+            if (u == 3) test_picture(px); else for (unsigned i = 0; i < 1440u * 720u; i++) { px[4 * i] = px[4 * i + 1] = px[4 * i + 2] = 0xff; px[4 * i + 3] = 0xff; }
+            stage = u == 3 ? "mode-decision-3" : "mode-decision-4"; int nn = decide(&img, handle, temp, temp, 0, pmode); printf("A6L_EINK_MODE_DECISION_%d returned=%d mode=%d\n", u, nn, pmode);
+            stage = u == 3 ? "update-3" : "update-4"; more = 1; int ff = 0;
+            while (more && ff < 300) { struct buf *b = &ring[ff % RING]; more = update(b, handle); dump_rle(u, ff, b->data); ff++; }
+            printf("A6L_EINK_UPDATE_%d frames=%d\n", u, ff);
+        }
+    }
     printf("A6L_EINK_SWTCON_DONE init_rejected=0 frames=%d terminated=%d waveform=%s\n", frames, !more, real ? "file" : "zeros");
     return 0;
 }

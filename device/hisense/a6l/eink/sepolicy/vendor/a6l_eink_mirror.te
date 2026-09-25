@@ -1,0 +1,21 @@
+# vendor.a6l_eink — mode/key handler, mirror capture + policy, rear touch bridge (eink3, docs/eink3-20260924.md)
+type a6l_eink_mirror, domain;
+type a6l_eink_mirror_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_eink_mirror)
+
+# talk to vendor.a6l_epdd
+unix_socket_connect(a6l_eink_mirror, a6l_epd, a6l_epdd)
+
+# capture: LCD CRTC planes (GETPLANE/GETFB2 on a plain, never-master card fd; handles need CAP_SYS_ADMIN), PRIME mmap
+allow a6l_eink_mirror gpu_device:chr_file rw_file_perms;
+allow a6l_eink_mirror self:global_capability_class_set sys_admin;
+allow a6l_eink_mirror sysfs:dir r_dir_perms;
+allow a6l_eink_mirror sysfs:file r_file_perms;
+
+# e-ink key (gpio-keys, not grabbed) + rear touch (grabbed) + uinput touchscreen for the forwarded rear touches
+allow a6l_eink_mirror input_device:dir r_dir_perms;
+allow a6l_eink_mirror input_device:chr_file rw_file_perms;
+allow a6l_eink_mirror uhid_device:chr_file rw_file_perms;
+
+# mode / reading / transform settings (the key toggle persists the mode) and the published state
+set_prop(a6l_eink_mirror, vendor_eink_prop)

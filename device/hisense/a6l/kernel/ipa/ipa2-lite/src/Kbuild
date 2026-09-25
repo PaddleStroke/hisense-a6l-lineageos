@@ -1,0 +1,2 @@
+obj-m += ipa2_lite.o
+ipa2_lite-y := ipa.o ipa-qmi.o

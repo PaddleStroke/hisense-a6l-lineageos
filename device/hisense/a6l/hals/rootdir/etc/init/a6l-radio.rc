@@ -1,0 +1,75 @@
+# Hisense A6L modem companion services on a mainline kernel (agent hals, 24 Sep 2026).
+# Proven by hand on 23 Sep (v74/radio2): rmtfs on RAM copies + tqftpserv + diag-router over QRTR (service 4097)
+# -> modem stable 300 s, all QMI services, WLAN fw service, Wi-Fi scan.
+# RF GATE: nothing starts the modem unless persist.vendor.a6l.radio.enable=1 (default unset = modem off).
+# EFS: rmtfs serves RAM COPIES of modemst1/modemst2/fsg/fsc (tmpfs). Modem EFS writes are lost at reboot, by design:
+# writing back to the eMMC partitions is a separate decision for Pierre.
+# Kernel modules needed before this (flash agent loads them): qrtr qrtr-smd qcom_pd_mapper qcom_q6v5_mss (+ its deps),
+# rmtfs_mem (qcom_rmtfs_mem), ath10k_core ath10k_snoc (Wi-Fi), as in v74/radio2 modules/order.txt.
+
+on early-init
+    # tqftpserv (Android build) resolves /readonly/... requests to <firmware_class.path>/<dirname(mpss fw)>/<file>.
+    # Prefer firmware_class.path=/vendor/firmware on the kernel cmdline; this is the fallback.
+    write /sys/module/firmware_class/parameters/path /vendor/firmware
+
+on post-fs-data
+    # rmtfs working copies (tmpfs, never the eMMC)
+    mkdir /mnt/vendor/rmtfs 0700 root root
+    mount tmpfs a6l-rmtfs /mnt/vendor/rmtfs mode=0700,uid=0,gid=0,size=16m
+    # tqftpserv /readwrite -> /data/vendor/tmp/tqftpserv (mcfg.tmp, server_check.txt); keep it on tmpfs as tested
+    mkdir /data/vendor/tmp 0770 root system
+    mkdir /data/vendor/tmp/tqftpserv 0700 root root
+    mount tmpfs a6l-tqftp /data/vendor/tmp/tqftpserv mode=0700,uid=0,gid=0,size=16m
+
+on post-fs-data && property:persist.vendor.a6l.radio.enable=1
+    start vendor.a6l-modem-prep
+
+on property:persist.vendor.a6l.radio.enable=1 && property:sys.boot_completed=1
+    start vendor.a6l-modem-prep
+
+on property:vendor.a6l.modem.prep=done
+    start vendor.rmtfs
+    start vendor.tqftpserv
+    start vendor.diag-router
+    start vendor.a6l-modem-start
+
+on property:persist.vendor.a6l.radio.enable=0
+    start vendor.a6l-modem-stop
+
+service vendor.a6l-modem-prep /vendor/bin/a6l-modem.sh prep
+    class late_start
+    user root
+    group root system
+    disabled
+    oneshot
+
+service vendor.a6l-modem-start /vendor/bin/a6l-modem.sh start
+    user root
+    group root system
+    disabled
+    oneshot
+
+service vendor.a6l-modem-stop /vendor/bin/a6l-modem.sh stop
+    user root
+    group root system
+    disabled
+    oneshot
+
+service vendor.rmtfs /vendor/bin/rmtfs -o /mnt/vendor/rmtfs -v
+    user root
+    group root system
+    disabled
+
+service vendor.tqftpserv /vendor/bin/tqftpserv
+    user root
+    group root system
+    disabled
+
+# linux-msm diag @23c12c1 + a6l sysfs + QRTR patch (firmware/extracted/radio2-20260923). Publishes QRTR 4097/0,2,4.
+# Must be up before the modem starts (else "dog_hb Task starvation: diag" at ~100 s).
+service vendor.diag-router /vendor/bin/diag-router
+    setenv A6L_DIAG_EDGES modem
+    setenv A6L_DIAG_QRTR modem
+    user root
+    group root system
+    disabled

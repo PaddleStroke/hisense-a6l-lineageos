@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">E-ink display</string>
+    <string name="settings_title">E-ink display</string>
+    <string name="settings_summary">Rear screen, refresh mode, anti-ghosting, frontlight</string>
+    <string name="tile_display">E-ink / LCD</string>
+    <string name="tile_refresh">E-ink refresh</string>
+    <string name="tile_clear">Clear e-ink</string>
+    <string name="tile_frontlight">Frontlight</string>
+    <string name="screen_eink">E-ink</string>
+    <string name="screen_lcd">LCD</string>
+    <string name="sec_screen">Active screen</string>
+    <string name="switch_to_eink">Switch to the e-ink screen</string>
+    <string name="switch_to_lcd">Switch to the LCD</string>
+    <string name="daemon_missing">Switcher service not running (vendor.a6l_dualux)</string>
+    <string name="sec_refresh">Refresh mode</string>
+    <string name="mode_auto">Auto — sharp when still, fast while scrolling</string>
+    <string name="mode_quality">Quality — full refresh only (slow, no ghosting)</string>
+    <string name="mode_partial">Reading — partial refresh, no flashing</string>
+    <string name="mode_fast">Fast</string>
+    <string name="mode_fastest">Fastest — black and white while moving</string>
+    <string name="sec_clear">Anti-ghosting</string>
+    <string name="clear_now">Clear the e-ink now</string>
+    <string name="clear_every">Full clear every %1$d page updates</string>
+    <string name="clear_never">Never clear automatically</string>
+    <string name="contrast">Text contrast boost: %1$d%%</string>
+    <string name="contrast_off">Text contrast boost: off</string>
+    <string name="sec_frontlight">Frontlight</string>
+    <string name="fl_enable">Frontlight on (follows the brightness slider)</string>
+    <string name="fl_max">Maximum frontlight: %1$d%%</string>
+    <string name="fl_curve">Softer low end (gamma 2)</string>
+    <string name="sec_keys">Keys</string>
+    <string name="ekey_sleep">E-ink key on the e-ink: sleep (like stock)</string>
+    <string name="ekey_clear">E-ink key on the e-ink: clear the screen</string>
+    <string name="keys_help">E-ink key: LCD → e-ink. Power on the e-ink: back to the LCD (hold for the power menu). Hold the e-ink key: clear.</string>
+    <string name="sec_other">Other</string>
+    <string name="mirror_in_lcd">Also show the LCD content on the e-ink while using the LCD</string>
+    <string name="per_screen">Remember brightness and screen timeout per screen</string>
+</resources>

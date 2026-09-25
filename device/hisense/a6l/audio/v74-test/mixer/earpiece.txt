@@ -1,0 +1,7 @@
+# Stock mixer_paths.xml "handset": RX1 MIX1 INP1=RX1, RDAC2 MUX=RX1, RX1 Digital Volume=84 (raw, = 0 dB), EAR PA Gain=POS_6_DB, EAR_S=Switch
+# Mainline has no "EAR PA Gain" control (fixed gain); the stock 0 dB digital is replaced by the LOW level chosen in run.sh.
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|1
+RX1 MIX1 INP1|RX1
+RDAC2 MUX|RX1
+RX1 Digital Volume|@VOL@
+EAR_S|Switch

@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0
+// Hisense A6L LCD <-> e-ink switcher (agent dualux, docs/dualux-20260925.md). Inherit dualux.mk.
+
+cc_binary {
+    name: "a6l_dualux",
+    vendor: true,
+    compile_multilib: "64",
+    srcs: [
+        "native/a6l_dualux.c",
+        "native/dualux_logic.c",
+    ],
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-misleading-indentation",
+        "-DA6L_ANDROID_LOG",
+    ],
+    shared_libs: ["liblog"],
+    init_rc: ["a6l_dualux.rc"],
+}
+
+// host unit tests of the switch state machine + brightness mapping: `m a6l_dualux_logic_test` then run it
+cc_test_host {
+    name: "a6l_dualux_logic_test",
+    srcs: [
+        "native/tests/test_dualux_logic.c",
+        "native/dualux_logic.c",
+    ],
+    cflags: ["-Wall", "-Wextra"],
+    gtest: false,
+}
+
+prebuilt_etc {
+    name: "privapp_whitelist_org.lineageos.a6l.dualux",
+    src: "app/privapp-permissions-a6l-dualux.xml",
+    sub_dir: "permissions",
+    system_ext_specific: true,
+}
+
+// Quick Settings tiles (E-ink/LCD, refresh mode, clear, frontlight) + the e-ink settings screen + per-screen memory
+android_app {
+    name: "A6LDisplaySwitcher",
+    srcs: ["app/src/**/*.java"],
+    resource_dirs: ["app/res"],
+    manifest: "app/AndroidManifest.xml",
+    platform_apis: true,
+    certificate: "platform",
+    privileged: true,
+    system_ext_specific: true,
+    required: ["privapp_whitelist_org.lineageos.a6l.dualux"],
+}

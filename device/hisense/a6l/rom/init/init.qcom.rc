@@ -1,0 +1,132 @@
+# A6L LineageOS 24 rom-v1 vendor init (agent flash, 24 Sep 2026). Imported by /system/etc/init/hw/init.rc via
+# /vendor/etc/init/hw/init.${ro.hardware}.rc (androidboot.hardware=qcom). SELinux is PERMISSIVE in rom-v1
+# (androidboot.selinux=permissive): our vendor binaries are not labelled yet, services carry explicit seclabels.
+#
+# Hardware bring-up follows the order proven from RAM on the phone (bundle-v74 run.sh, radio2 run.sh, audio2/als2):
+#   early-init : display + GPU + panels + touch + e-ink PMIC modules (a6l-modules.sh display), e-ink connector forced off
+#   fs         : mount_all (userdata formatted on first boot, persist read-only)
+#   boot       : USB gadget controller; sensor registry + ADSP + audio card + TMD3702 (a6l-modules.sh adsp)
+#   radio      : ONLY when persist.vendor.a6l.radio=1 (RF: needs Pierre's explicit go) -> a6l-radio.sh
+import /vendor/etc/init/hw/init.a6l.usb.rc
+
+on early-init
+    write /proc/sys/kernel/printk_devkmsg on
+    # Watchdog = 60 s x multiplier. Phone default 2 (first boot: dex2oat + CPUs at the bootloader clock, no cpufreq);
+    # the QEMU test passes androidboot.hw_timeout_multiplier=5.
+    setprop ro.hw_timeout_multiplier ${ro.boot.hw_timeout_multiplier:-2}
+    # firmware for request_firmware(): GPU zap/pm4/pfp, ADSP, modem, WLAN, BT (also tqftpserv's search root)
+    write /sys/module/firmware_class/parameters/path /vendor/firmware
+    exec_start a6l_modules_display
+
+on init
+    # compatibility links used by stock-style paths
+    symlink /dev/block/platform/soc@0/c0c4000.mmc /dev/block/bootdevice
+    # no ashmem on 7.2: memfd (same as the RAM bring-ups)
+    setprop sys.use_memfd true
+
+on fs
+    mount_all /vendor/etc/fstab.qcom
+
+on post-fs-data
+    mkdir /data/vendor 0771 root root
+    mkdir /data/vendor/a6l 0770 system system
+    mkdir /data/vendor/tmp 0770 root root
+    mkdir /data/vendor/tmp/tqftpserv 0700 root root
+    mkdir /data/vendor/wifi 0771 wifi wifi
+    mkdir /data/vendor/wifi/wpa 0770 wifi wifi
+    mkdir /data/vendor/wifi/wpa/sockets 0770 wifi wifi
+    # attended debugging: the laptop's adb key is trusted from the first boot (no on-screen prompt needed)
+    mkdir /data/misc/adb 02750 system shell
+    copy /vendor/etc/a6l/adb_keys /data/misc/adb/adb_keys
+    chown system shell /data/misc/adb/adb_keys
+    chmod 0640 /data/misc/adb/adb_keys
+
+on boot
+    # LCD backlight (pm660l WLED) writable by system (lights HAL / settings)
+    chown system system /sys/class/backlight/backlight/brightness
+    chmod 0664 /sys/class/backlight/backlight/brightness
+    start a6l_modules_adsp
+
+on property:sys.boot_completed=1
+    write /dev/kmsg "A6L_ROM_BOOT_COMPLETED"
+    start a6l_bootinfo
+
+# Test harness only (QEMU: androidboot.a6l_stayawake=1): keep the screen on so the stability check after boot_completed is
+# not cut short by autosuspend (r7 suspended ~7 min after boot_completed, which is normal on the phone).
+on property:sys.boot_completed=1 && property:ro.boot.a6l_stayawake=1
+    exec_background - system system -- /system/bin/settings put system screen_off_timeout 2147483647
+    exec_background - system system -- /system/bin/svc power stayon true
+
+# Debug (QEMU test / attended first boot): androidboot.a6l_logcat=1 on the kernel cmdline streams logcat warnings+errors
+# (main, system, crash) into the kernel log, so a boot problem is visible in dmesg / the console.
+on property:logd.ready=true && property:ro.boot.a6l_logcat=1
+    start a6l_logcat
+
+service a6l_logcat /vendor/bin/a6l-logcat.sh
+    user root
+    group root log
+    disabled
+    stdio_to_kmsg
+    seclabel u:r:su:s0
+
+# ---- modules --------------------------------------------------------------------------------------------------
+service a6l_modules_display /vendor/bin/a6l-modules.sh display
+    user root
+    group root
+    disabled
+    oneshot
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+service a6l_modules_adsp /vendor/bin/a6l-modules.sh adsp
+    user root
+    group root
+    disabled
+    oneshot
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+service a6l_bootinfo /vendor/bin/a6l-modules.sh bootinfo
+    user root
+    group root
+    disabled
+    oneshot
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+# ---- radio (modem, Wi-Fi, Bluetooth): OFF unless Pierre enables it --------------------------------------------
+# adb shell setprop persist.vendor.a6l.radio 1   (then reboot, or: adb shell setprop ctl.start a6l_radio)
+# rmtfs serves the REAL modemst1/modemst2/fsg/fsc partitions (normal installed-ROM behaviour). rom-v1 default is
+# READ-ONLY (-r: the modem's EFS writes stay in RAM and are lost at reboot); persist.vendor.a6l.rmtfs_rw=1 makes it
+# write through to modemst1/modemst2 like stock. See docs/flash-20260924.md.
+on property:sys.boot_completed=1 && property:persist.vendor.a6l.radio=1
+    start a6l_radio
+
+service a6l_radio /vendor/bin/a6l-radio.sh start
+    user root
+    group root
+    disabled
+    oneshot
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+service vendor.rmtfs /vendor/bin/a6l-radio.sh rmtfs
+    user root
+    group root system
+    disabled
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+service vendor.tqftpserv /vendor/bin/a6l-radio.sh tqftpserv
+    user root
+    group root system
+    disabled
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+service vendor.diag_router /vendor/bin/a6l-radio.sh diag
+    user root
+    group root system
+    disabled
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0

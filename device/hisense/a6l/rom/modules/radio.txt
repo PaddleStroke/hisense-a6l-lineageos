@@ -1,0 +1,18 @@
+# v74/radio2 modules/order.txt (modem + Wi-Fi). qrtr/qrtr-smd are already loaded by adsp.txt.
+qmi_helpers.ko
+qcom_pdr_msg.ko
+qcom_pd_mapper.ko
+qcom_aoss.ko
+qcom_sysmon.ko
+qcom_q6v5.ko
+qcom_common.ko
+mdt_loader.ko
+qcom_pil_info.ko
+qcom_q6v5_mss.ko
+rfkill.ko
+cfg80211.ko
+libarc4.ko
+mac80211.ko
+ath.ko
+ath10k_core.ko
+ath10k_snoc.ko

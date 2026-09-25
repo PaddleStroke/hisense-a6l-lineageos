@@ -1,0 +1,13 @@
+# Return everything to silent/idle (applied before and after every test). Mainline names (msm8916-wcd-analog/digital + q6routing).
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|0
+MultiMedia2 Mixer LPI_MI2S_TX_3|0
+EAR_S|ZERO
+HPHL|ZERO
+HPHR|ZERO
+RX1 MIX1 INP1|ZERO
+RX2 MIX1 INP1|ZERO
+RDAC2 MUX|RX1
+RX1 Digital Volume|-84
+RX2 Digital Volume|-84
+DEC1 MUX|ZERO
+ADC2 MUX|ZERO

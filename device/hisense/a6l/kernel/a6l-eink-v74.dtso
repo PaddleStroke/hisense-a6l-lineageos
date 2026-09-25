@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// V74 CANDIDATE "E3" (23 Sep 2026, agent v74img), never booted. Apply after E1 (a6l-eink-pmic-reartouch) and E2 (a6l-eink-dsi).
+// VCOM: the panel NOR says VCOM = -2.40 V; the TPS65185 VCOM1/2 register resets to 1.25 V on every wake. With
+// min == max the regulator core writes 2.40 V once when the vcom regulator registers (apply_uV). The V73 panel driver still
+// writes 2.40 V itself before every rails-on (a6l_vcom_write), so behaviour during an update is unchanged; this only removes
+// the 1.25 V window between probe and the first update and documents the value in the DT.
+// XON (gpio61) is already in a6l-eink-dsi.dtso since 21 Sep evening (bridge@0 xon-gpios = <&tlmm 61 GPIO_ACTIVE_HIGH>);
+// the V73 panel driver (panel-a6l-epd-dsi.c) takes it as devm_gpiod_get_optional(dev, "xon", GPIOD_OUT_LOW).
+// TPS65185 GPIO roles are unchanged from E1 (verified against the stock driver disassembly): enable/PWRUP = gpio35,
+// vcom-ctrl = gpio3, wakeup = gpio80, pwr-good = gpio0 (pin unreadable on this board; the patched driver polls PG reg 0x0f).
+/dts-v1/;
+/plugin/;
+&epd_vcom {
+    regulator-min-microvolt = <2400000>;
+    regulator-max-microvolt = <2400000>;
+};
+/ {
+    fragment@82 { target-path = "/chosen"; __overlay__ { hisense,a6l-eink-v74 = "e3"; }; };
+};

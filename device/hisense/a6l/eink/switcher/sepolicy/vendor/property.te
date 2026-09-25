@@ -1,0 +1,3 @@
+# a6l_dualux (agent dualux): vendor.dualux.state, vendor.dualux.lcd_blank — written by a6l_dualux only, read by the app
+# (system_app) and the patched composer. The app's settings/requests are the system-owned a6l_dualux_ctl_prop.
+vendor_restricted_prop(vendor_dualux_prop)

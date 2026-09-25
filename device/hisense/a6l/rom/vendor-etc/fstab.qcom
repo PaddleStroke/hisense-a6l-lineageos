@@ -1,0 +1,22 @@
+# A6L LineageOS 24 rom-v1 (agent flash, 24 Sep 2026). Non-A/B, fixed GPT, no super, no AVB (vbmeta flags=2, unlocked).
+# First stage (boot ramdisk /fstab.qcom = this file) mounts system (switch_root) and vendor. mount_all mounts the rest.
+# eMMC: sdhci-msm (module, loaded by first stage from /lib/modules/modules.load), device soc@0/c0c4000.mmc
+# (androidboot.boot_devices=soc@0/c0c4000.mmc -> /dev/block/by-name/<GPT name>).
+#<src>                  <mnt_point>            <type>  <mnt_flags and options>                                   <fs_mgr_flags>
+/dev/block/by-name/system /system                erofs   ro                                                        wait,first_stage_mount
+/dev/block/by-name/vendor /vendor                erofs   ro                                                        wait,first_stage_mount
+# /metadata (stock GPT "metadata", 10 MiB): REQUIRED by Android 16+ userspace: aconfigd builds the aconfig flag storage in
+# /metadata/aconfig (without it every flag lookup returns null and system_server dies in AdvancedProtectionService:
+# "Invalid feature flag", found in QEMU r5 by agent gnss), vold/apexd/gsid/bootstat also use it. The installer backs the
+# stock bytes up and zeroes its first MiB, so mount_all formats it (ext4) on the first boot like /data.
+/dev/block/by-name/metadata /metadata          ext4    noatime,nosuid,nodev,discard                              wait,check,formattable
+# /data: plain ext4, NOT encrypted in rom-v1 (FBE = later). The installer zeroes the first MiB of userdata, so fs_mgr
+# sees a wiped partition and formats it on the first boot ('formattable'). (Stock FDE footer: see docs/flash-20260924.md, restore.)
+/dev/block/by-name/userdata /data              ext4    noatime,nosuid,nodev,noauto_da_alloc,discard  wait,check,formattable,reservedsize=128M
+# Stock calibration/persist data: READ-ONLY (WLAN MAC wlan_mac.bin, sensors sns.reg, BT/cal). 'noload' = never replay a journal.
+/dev/block/by-name/persist  /mnt/vendor/persist ext4   ro,nosuid,nodev,noexec,noload                             wait,nofail
+# Stock modem/DSP/BT firmware partitions (vfat/ext4, read-only, informational; the ROM ships its firmware in /vendor/firmware)
+/dev/block/by-name/modem    /mnt/vendor/firmware_mnt vfat ro,shortname=lower,uid=0,gid=1000,dmask=227,fmask=337    wait,nofail
+/dev/block/by-name/dsp      /mnt/vendor/dsp     ext4   ro,nosuid,nodev,noload                                    wait,nofail
+/dev/block/by-name/bluetooth /mnt/vendor/bt_firmware vfat ro,shortname=lower,uid=1002,gid=3002,dmask=227,fmask=337 wait,nofail
+/dev/block/by-name/misc     /misc               emmc   defaults                                                  defaults

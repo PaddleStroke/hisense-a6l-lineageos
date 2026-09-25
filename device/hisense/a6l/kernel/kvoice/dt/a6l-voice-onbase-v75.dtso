@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// V75 CANDIDATE (kvoice agent, 24 Sep 2026), never booted. CALL AUDIO: q6voice (CVD: MVM/CVS/CVP APR services) + a
+// "VoiceMMode1" front end (stock: VoiceMMode1 FE, INT0_MI2S_RX_Voice Mixer VoiceMMode1 = mainline LPI_MI2S_RX_0 Voice Mixer
+// VoiceMMode1, VoiceMMode1_Tx Mixer INT3_MI2S_TX_MMode1 = mainline VoiceMMode1 Capture Mixer LPI_MI2S_TX_3).
+// Kernel: sound/soc/qcom/qdsp6 q6voice series (sc7280-mainline PR #32, Stephan Gerhold / Richard Acayan) + a6l-q6voice-sdm660-v75.patch
+// (LPI port routes, CVD version auto-detect). Modules: q6voice-common q6mvm q6cvs q6cvp q6voice q6voice-dai.
+// fdtoverlay (and the kernel overlay code) PREPEND new child nodes: see docs/audio3-20260924.md; link order is asserted by
+// tools/check-voice-dt-links.py <merged.dtb> (FEs MultiMedia1, MultiMedia2, VoiceMMode1 first, then the q6routing BEs).
+// VARIANT: V74 base (sound links already present). REQUIRES the patched q6asm-dai (a6l-q6asm-dai-xlate-v75.patch).
+// Merged link order: MultiMedia1 (new head), MultiMedia2 (old mm1 node), VoiceMMode1 (old mm2 node), Int Playback, Int Capture
+// -> pcmC0D0 = MultiMedia1 (HAL), pcmC0D1 = MultiMedia2, pcmC0D2 = VoiceMMode1 (a6l-q6voiced).
+/dts-v1/;
+/plugin/;
+
+&sound {
+    a6l-mm1-head-dai-link { link-name = "MultiMedia1"; cpu { sound-dai = <&q6asmdai 0>; }; };  /* prepended -> link 0 */
+    mm1-dai-link { link-name = "MultiMedia2"; cpu { sound-dai = <&q6asmdai 1>; }; };           /* existing node, link 1 */
+    mm2-dai-link { link-name = "VoiceMMode1"; cpu { sound-dai = <&q6voicedai 1>; }; };         /* existing node, link 2 */
+};
+/ {
+    /* CVD services on the ADSP APR bus (same PD as q6afe/q6asm/q6adm in sdm630.dtsi). APR_SVC_ADSP_MVM/CVS/CVP = 9/0xa/0xb */
+    fragment@80 {
+        target-path = "/soc@0/remoteproc@15700000/glink-edge/apr";
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            q6mvm: service@9 {
+                compatible = "qcom,q6mvm";
+                reg = <0x09>;
+                qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
+                q6voicedai: dais {
+                    compatible = "qcom,q6voice-dais";
+                    #sound-dai-cells = <1>;     /* <&q6voicedai 1> = VOICEMMODE1 (index == id: CS_VOICE 0, VOICEMMODE1 1) */
+                    /* no qcom,cvd-v2.3 / qcom,cvd-v2.2: q6voice asks MVM (VSS_IVERSION_CMD_GET); q6voice.cvd_mode= overrides */
+                };
+            };
+            q6cvs: service@a {
+                compatible = "qcom,q6cvs";
+                reg = <0x0a>;
+                qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
+            };
+            q6cvp: service@b {
+                compatible = "qcom,q6cvp";
+                reg = <0x0b>;
+                qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
+            };
+        };
+    };
+    fragment@91 { target-path = "/chosen"; __overlay__ { hisense,a6l-voice = "kvoice-onbase-v75"; }; };
+};

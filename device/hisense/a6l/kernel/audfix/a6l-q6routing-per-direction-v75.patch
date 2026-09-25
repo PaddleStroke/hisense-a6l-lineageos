@@ -1,0 +1,539 @@
+A6L audfix (24 Sep 2026): q6routing keeps one routing session per MultiMedia FE *and direction*.
+Fixes "qcom-q6adm: cmd = 0x10325 return error = 0x2" (ADM_CMD_MATRIX_MAP_ROUTINGS_V5 EBADPARAM) when a FE is routed
+to an RX BE and a TX BE at the same time (MultiMedia1 full duplex). Apply with: cd <kernel> && patch -p1 < this file
+
+--- a/sound/soc/qcom/qdsp6/q6routing.c
++++ b/sound/soc/qcom/qdsp6/q6routing.c
+@@ -138,218 +138,218 @@
+ 
+ #define Q6ROUTING_TX_MIXERS(id)						\
+ 	SOC_SINGLE_EXT("PRI_MI2S_TX", PRIMARY_MI2S_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_MI2S_TX", SECONDARY_MI2S_TX,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_MI2S_TX", TERTIARY_MI2S_TX,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_MI2S_TX", QUATERNARY_MI2S_TX,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_MI2S_TX", QUINARY_MI2S_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SLIMBUS_0_TX", SLIMBUS_0_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SLIMBUS_1_TX", SLIMBUS_1_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SLIMBUS_2_TX", SLIMBUS_2_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SLIMBUS_3_TX", SLIMBUS_3_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SLIMBUS_4_TX", SLIMBUS_4_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SLIMBUS_5_TX", SLIMBUS_5_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SLIMBUS_6_TX", SLIMBUS_6_TX,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_0", PRIMARY_TDM_TX_0,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_1", PRIMARY_TDM_TX_1,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_2", PRIMARY_TDM_TX_2,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_3", PRIMARY_TDM_TX_3,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_4", PRIMARY_TDM_TX_4,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_5", PRIMARY_TDM_TX_5,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_6", PRIMARY_TDM_TX_6,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("PRIMARY_TDM_TX_7", PRIMARY_TDM_TX_7,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_0", SECONDARY_TDM_TX_0,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_1", SECONDARY_TDM_TX_1,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_2", SECONDARY_TDM_TX_2,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_3", SECONDARY_TDM_TX_3,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_4", SECONDARY_TDM_TX_4,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_5", SECONDARY_TDM_TX_5,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_6", SECONDARY_TDM_TX_6,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("SEC_TDM_TX_7", SECONDARY_TDM_TX_7,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_0", TERTIARY_TDM_TX_0,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_1", TERTIARY_TDM_TX_1,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_2", TERTIARY_TDM_TX_2,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_3", TERTIARY_TDM_TX_3,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_4", TERTIARY_TDM_TX_4,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_5", TERTIARY_TDM_TX_5,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_6", TERTIARY_TDM_TX_6,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TERT_TDM_TX_7", TERTIARY_TDM_TX_7,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_0", QUATERNARY_TDM_TX_0,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_1", QUATERNARY_TDM_TX_1,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_2", QUATERNARY_TDM_TX_2,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_3", QUATERNARY_TDM_TX_3,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_4", QUATERNARY_TDM_TX_4,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_5", QUATERNARY_TDM_TX_5,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_6", QUATERNARY_TDM_TX_6,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUAT_TDM_TX_7", QUATERNARY_TDM_TX_7,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_0", QUINARY_TDM_TX_0,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_1", QUINARY_TDM_TX_1,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_2", QUINARY_TDM_TX_2,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_3", QUINARY_TDM_TX_3,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_4", QUINARY_TDM_TX_4,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_5", QUINARY_TDM_TX_5,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_6", QUINARY_TDM_TX_6,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("QUIN_TDM_TX_7", QUINARY_TDM_TX_7,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("WSA_CODEC_DMA_TX_0", WSA_CODEC_DMA_TX_0,	\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("WSA_CODEC_DMA_TX_1", WSA_CODEC_DMA_TX_1,	\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("WSA_CODEC_DMA_TX_2", WSA_CODEC_DMA_TX_2,	\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("VA_CODEC_DMA_TX_0", VA_CODEC_DMA_TX_0,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("VA_CODEC_DMA_TX_1", VA_CODEC_DMA_TX_1,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("VA_CODEC_DMA_TX_2", VA_CODEC_DMA_TX_2,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_0", TX_CODEC_DMA_TX_0,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_1", TX_CODEC_DMA_TX_1,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_2", TX_CODEC_DMA_TX_2,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_3", TX_CODEC_DMA_TX_3,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_4", TX_CODEC_DMA_TX_4,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_5", TX_CODEC_DMA_TX_5,		\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("LPI_MI2S_TX_0", LPI_MI2S_TX_0,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("LPI_MI2S_TX_1", LPI_MI2S_TX_1,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("LPI_MI2S_TX_2", LPI_MI2S_TX_2,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("LPI_MI2S_TX_3", LPI_MI2S_TX_3,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("LPI_MI2S_TX_4", LPI_MI2S_TX_4,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("LPI_MI2S_TX_5", LPI_MI2S_TX_5,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),				\
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),				\
+ 	SOC_SINGLE_EXT("LPI_MI2S_TX_6", LPI_MI2S_TX_6,			\
+-		id, 1, 0, msm_routing_get_audio_mixer,			\
+-		msm_routing_put_audio_mixer),
++		id, 1, 0, msm_routing_get_audio_mixer_tx,			\
++		msm_routing_put_audio_mixer_tx),
+ 
+ struct session_data {
+ 	int state;
+@@ -368,7 +368,17 @@
+ };
+ 
+ struct msm_routing_data {
++	/*
++	 * A6L: one routing session per MultiMedia front end AND per direction.
++	 * Upstream keeps a single port_id per front end, so enabling
++	 * "MultiMedia1 Mixer <TX BE>" after "<RX BE> Audio Mixer MultiMedia1"
++	 * made the playback stream open its COPP on the TX port and map an ASM
++	 * write session onto the ADM TX matrix -> ADSP_EBADPARAM on
++	 * ADM_CMD_MATRIX_MAP_ROUTINGS_V5 (0x10325). sessions[] = playback (RX
++	 * mixers), tx_sessions[] = capture (TX mixers).
++	 */
+ 	struct session_data sessions[MAX_SESSIONS];
++	struct session_data tx_sessions[MAX_SESSIONS];
+ 	struct session_data port_data[AFE_MAX_PORTS];
+ 	struct device *dev;
+ 	struct mutex lock;
+@@ -376,6 +386,13 @@
+ 
+ static struct msm_routing_data *routing_data;
+ 
++static struct session_data *q6routing_dir_sessions(struct msm_routing_data *data,
++						   int stream_type)
++{
++	return stream_type == SNDRV_PCM_STREAM_CAPTURE ?
++		data->tx_sessions : data->sessions;
++}
++
+ /**
+  * q6routing_stream_open() - Register a new stream for route setup
+  *
+@@ -400,7 +417,10 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	session = &routing_data->sessions[stream_id - 1];
++	if (stream_id < 1 || stream_id > MAX_SESSIONS)
++		return -EINVAL;
++
++	session = &q6routing_dir_sessions(routing_data, stream_type)[stream_id - 1];
+ 	if (session->port_id < 0) {
+ 		dev_err(routing_data->dev, "Routing not setup for MultiMedia%d Session\n",
+ 			session->fedai_id);
+@@ -412,7 +432,13 @@
+ 	mutex_lock(&routing_data->lock);
+ 	session->fedai_id = fedai_id;
+ 
+-	session->path_type = pdata->path_type;
++	/* the direction of the FE stream decides the ADM path and matrix */
++	session->path_type = stream_type == SNDRV_PCM_STREAM_CAPTURE ?
++			     ADM_PATH_LIVE_REC : ADM_PATH_PLAYBACK;
++	if (pdata->path_type && pdata->path_type != session->path_type)
++		dev_warn(routing_data->dev,
++			 "A6L_Q6ROUTING BE %d hw_params path %d != stream path %d\n",
++			 session->port_id, pdata->path_type, session->path_type);
+ 	session->sample_rate = pdata->sample_rate;
+ 	session->channels = pdata->channels;
+ 	session->bits_per_sample = pdata->bits_per_sample;
+@@ -452,13 +478,14 @@
+ EXPORT_SYMBOL_GPL(q6routing_stream_open);
+ 
+ static struct session_data *get_session_from_id(struct msm_routing_data *data,
+-						int fedai_id)
++						int fedai_id, int stream_type)
+ {
++	struct session_data *sessions = q6routing_dir_sessions(data, stream_type);
+ 	int i;
+ 
+ 	for (i = 0; i < MAX_SESSIONS; i++) {
+-		if (fedai_id == data->sessions[i].fedai_id)
+-			return &data->sessions[i];
++		if (fedai_id == sessions[i].fedai_id)
++			return &sessions[i];
+ 	}
+ 
+ 	return NULL;
+@@ -477,7 +504,7 @@
+ 	struct session_data *session;
+ 	int idx;
+ 
+-	session = get_session_from_id(routing_data, fedai_id);
++	session = get_session_from_id(routing_data, fedai_id, stream_type);
+ 	if (!session)
+ 		return;
+ 
+@@ -493,8 +520,9 @@
+ }
+ EXPORT_SYMBOL_GPL(q6routing_stream_close);
+ 
+-static int msm_routing_get_audio_mixer(struct snd_kcontrol *kcontrol,
+-				       struct snd_ctl_elem_value *ucontrol)
++static int msm_routing_get_audio_mixer_dir(struct snd_kcontrol *kcontrol,
++					   struct snd_ctl_elem_value *ucontrol,
++					   int stream_type)
+ {
+ 	struct snd_soc_dapm_context *dapm = snd_soc_dapm_kcontrol_to_dapm(kcontrol);
+ 	struct soc_mixer_control *mc =
+@@ -502,7 +530,7 @@
+ 	int session_id = mc->shift;
+ 	struct snd_soc_component *c = snd_soc_dapm_to_component(dapm);
+ 	struct msm_routing_data *priv = dev_get_drvdata(c->dev);
+-	struct session_data *session = &priv->sessions[session_id];
++	struct session_data *session = &q6routing_dir_sessions(priv, stream_type)[session_id];
+ 
+ 	if (session->port_id == mc->reg)
+ 		ucontrol->value.integer.value[0] = 1;
+@@ -512,8 +540,9 @@
+ 	return 0;
+ }
+ 
+-static int msm_routing_put_audio_mixer(struct snd_kcontrol *kcontrol,
+-				       struct snd_ctl_elem_value *ucontrol)
++static int msm_routing_put_audio_mixer_dir(struct snd_kcontrol *kcontrol,
++					   struct snd_ctl_elem_value *ucontrol,
++					   int stream_type)
+ {
+ 	struct snd_soc_dapm_context *dapm = snd_soc_dapm_kcontrol_to_dapm(kcontrol);
+ 	struct snd_soc_component *c = snd_soc_dapm_to_component(dapm);
+@@ -523,7 +552,7 @@
+ 	struct snd_soc_dapm_update *update = NULL;
+ 	int be_id = mc->reg;
+ 	int session_id = mc->shift;
+-	struct session_data *session = &data->sessions[session_id];
++	struct session_data *session = &q6routing_dir_sessions(data, stream_type)[session_id];
+ 
+ 	if (ucontrol->value.integer.value[0]) {
+ 		if (session->port_id == be_id)
+@@ -542,6 +571,34 @@
+ 	return 1;
+ }
+ 
++static int msm_routing_get_audio_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	return msm_routing_get_audio_mixer_dir(kcontrol, ucontrol,
++					       SNDRV_PCM_STREAM_PLAYBACK);
++}
++
++static int msm_routing_put_audio_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	return msm_routing_put_audio_mixer_dir(kcontrol, ucontrol,
++					       SNDRV_PCM_STREAM_PLAYBACK);
++}
++
++static int msm_routing_get_audio_mixer_tx(struct snd_kcontrol *kcontrol,
++					  struct snd_ctl_elem_value *ucontrol)
++{
++	return msm_routing_get_audio_mixer_dir(kcontrol, ucontrol,
++					       SNDRV_PCM_STREAM_CAPTURE);
++}
++
++static int msm_routing_put_audio_mixer_tx(struct snd_kcontrol *kcontrol,
++					  struct snd_ctl_elem_value *ucontrol)
++{
++	return msm_routing_put_audio_mixer_dir(kcontrol, ucontrol,
++					       SNDRV_PCM_STREAM_CAPTURE);
++}
++
+ static const struct snd_kcontrol_new usb_rx_mixer_controls[] = {
+ 	Q6ROUTING_RX_MIXERS(USB_RX) };
+ 
+@@ -1174,6 +1231,8 @@
+ 	for (i = 0; i < MAX_SESSIONS; i++) {
+ 		routing_data->sessions[i].port_id = -1;
+ 		routing_data->sessions[i].fedai_id = -1;
++		routing_data->tx_sessions[i].port_id = -1;
++		routing_data->tx_sessions[i].fedai_id = -1;
+ 	}
+ 
+ 	return 0;

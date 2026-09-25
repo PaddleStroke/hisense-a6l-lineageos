@@ -1,0 +1,6 @@
+# Stock "handset": RX1 MIX1 INP1=RX1, RDAC2 MUX=RX1, RX1 Digital Volume=84 raw (0 dB), EAR_S=Switch. (Earpiece is broken on this unit.)
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|1
+Digital RX1 MIX1 INP1|RX1
+RDAC2 MUX|RX1
+Digital RX1 Digital Volume|@RAW@
+EAR_S|Switch

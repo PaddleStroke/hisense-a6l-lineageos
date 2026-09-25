@@ -1,0 +1,10 @@
+# Hisense A6L rear e-ink (eink3)
+/vendor/bin/hw/a6l_epdd                 u:object_r:a6l_epdd_exec:s0
+/vendor/bin/a6l_eink_mirror             u:object_r:a6l_eink_mirror_exec:s0
+/dev/socket/a6l_epd                     u:object_r:a6l_epd_socket:s0
+/data/vendor/epd(/.*)?                  u:object_r:a6l_epd_data_file:s0
+/dev/spidev[0-9]+\.[0-9]+               u:object_r:a6l_epd_spi_device:s0
+# Base labels this stack relies on. The generic arm64 board labels neither; identical duplicates elsewhere are harmless
+# ("Multiple same specifications" is only a warning), different contexts would be an error: then drop these two.
+/dev/dri(/.*)?                          u:object_r:gpu_device:s0
+/vendor/bin/hw/android\.hardware\.composer\.hwc3-service\.drm  u:object_r:hal_graphics_composer_default_exec:s0

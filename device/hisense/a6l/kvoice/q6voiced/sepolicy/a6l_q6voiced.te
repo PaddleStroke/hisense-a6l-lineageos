@@ -1,0 +1,9 @@
+# kvoice: a6l-q6voiced (PCM + mixer ioctls on /dev/snd, reads /proc/asound/pcm, reads vendor.a6l.voice.* property)
+type a6l_q6voiced, domain;
+type a6l_q6voiced_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_q6voiced)
+allow a6l_q6voiced audio_device:dir r_dir_perms;
+allow a6l_q6voiced audio_device:chr_file rw_file_perms;
+allow a6l_q6voiced proc_asound:file r_file_perms;
+# vendor.a6l.voice.active: readable vendor property (the flash agent may give it a dedicated vendor_*_prop type)
+get_prop(a6l_q6voiced, vendor_default_prop)

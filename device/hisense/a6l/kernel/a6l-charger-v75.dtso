@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L battery + PM660 primary charger (mainline qcom_smbx "qcom,pm660-charger" + pmi8998_fg).
+// Supersedes a6l-battery-telemetry.dtso (do not apply both: same battery node).
+// Stock (qcom,qpnp-smb2 + fg-gen3 + battery profile): 3800 mAh, float 4.40 V, FCC max 2.4 A,
+// USB ICL 2.0 A, JEITA 0/10/44/55 C with warm FCC 0.9 A / FV -0.3 V, cool FCC 0.85 A.
+// Mainline driver: hard-coded 1.95 A FCC (< stock 2.4 A), float from monitored-battery,
+// NO software JEITA (PMIC hardware hot/cold cut-offs stay at their OTP defaults).
+// The SMB1351 parallel charger (i2c@c176000 0x1d) has no mainline driver and is left untouched:
+// it stays disabled (its enable pin is driven by the PM660 parallel logic, off by default), so
+// charging is PM660-only (slower, never faster than stock).
+// VOLTAGE/CURRENT-AFFECTING: attended only, battery temperature must be watched (test C2).
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	a6l_battery: battery {
+		compatible = "simple-battery";
+		charge-full-design-microamp-hours = <3800000>;
+		voltage-max-design-microvolt = <4400000>;
+		voltage-min-design-microvolt = <3400000>;
+		constant-charge-current-max-microamp = <1950000>;
+		constant-charge-voltage-max-microvolt = <4400000>;
+	};
+};
+
+&pm660_fg {
+	status = "okay";
+	monitored-battery = <&a6l_battery>;
+};
+
+&pm660_charger {
+	status = "okay";
+	monitored-battery = <&a6l_battery>;
+};

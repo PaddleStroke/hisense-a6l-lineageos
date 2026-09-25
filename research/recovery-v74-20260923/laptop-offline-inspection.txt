@@ -1,0 +1,24 @@
+Qualcomm Sahara / Firehose Client V3.62 (c) B.Kerler 2018-2025.
+{
+  "scope": "Offline restore imports/geometry/payload check; no USB opened",
+  "payload_bytes": 67108864,
+  "payload_sha256": {
+    "restore-stock": "9688e3dfb349186fb60efc057a618aeaf696b030ad52974932ea83a077b31621",
+    "install-diagnostic": "24ede49b0f34b10f216617cb007c757e495fa2df1b6cd1ddd0afd63f9819da62"
+  },
+  "worker_sha256": "e2ff6b95161188abfa036fdd7facb4d370457486beccd9a8b4cace1610c97fc1",
+  "protocol_sha256": "bec94809d871203e50be28e01ebbbd8536c0e442f66b076fe51ba5c73085ff2b",
+  "passed": true
+}
+Qualcomm Sahara / Firehose Client V3.62 (c) B.Kerler 2018-2025.
+{
+  "scope": "Offline restore imports/geometry/payload check; no USB opened",
+  "payload_bytes": 67108864,
+  "payload_sha256": {
+    "restore-stock": "9688e3dfb349186fb60efc057a618aeaf696b030ad52974932ea83a077b31621",
+    "install-diagnostic": "417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9"
+  },
+  "worker_sha256": "f49cc900cfc085fb7ae6fc0d1f0e0dc1d48adead0cd3a057f19830163a0b229d",
+  "protocol_sha256": "b35aa7b91276a86f109b5b0dbbc23e4adffba27d0904319b317e97aec32e1d04",
+  "passed": true
+}

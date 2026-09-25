@@ -1,0 +1,4 @@
+# AOSP bluetooth-service.default in HCI_CHANNEL_USER mode (mgmt socket + /dev/rfkill), as on db845c.
+allow hal_bluetooth_default self:bluetooth_socket create_socket_perms_no_ioctl;
+allow hal_bluetooth_default self:capability net_admin;
+allow hal_bluetooth_default rfkill_device:chr_file rw_file_perms;

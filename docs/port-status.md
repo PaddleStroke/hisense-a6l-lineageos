@@ -1,167 +1,52 @@
 # A6L port checklist
 
-Updated 20 September 2026, after physical V47 and offline V70. This is the current status index. Dated
-reports are historical evidence; the newest entry in `resume-next-session.md`
-records the exact installed image and any running operation.
+**Updated 23 September 2026** (after the V71 sessions of 21 Sep, the e-ink bridge work of 22–23 Sep and a review of
+every attended-session report). This file is the current status index; dated reports are the evidence.
 
-**Current phone:** stock Android running; verified V46 diagnostic recovery installed.
-V47 RAM test passed; stock return and host cleanup verified, physical logs archived.
-Offline follow-up: V49/V50 pass ART, framework JNI, shared-memory and Binder checks
-in QEMU. Genuine Zygote forks SystemServer and enters its initialization. Full
-system-service and launcher startup remain incomplete. V50's separate kernel
-enables ART's UFFD collector and removes the earlier read-barrier mismatch.
-V51 r6 passes all ten runtime/APEX checks: 38 real packages mount read-only,
-apexservice becomes ready and SystemServer passes PlatformCompat and reaches
-ActivityManager/PowerManager. V52 r2 passes 12 checks, including real flag storage
-and SystemSuspend registration; SystemServer completes display discovery and
-reaches PackageManager, where missing installer application content stops it.
-V53 r1 passes 13 foundation checks with the built system apps and real installd;
-PackageManager initializes and SystemServer completes bootstrap services. It
-stops in BatteryService because the Health HAL is absent. Full UI is not up.
-**19 September update:** see [V57–V64 report](android-full-boot-v57-v64-20260919.md). In the VM, genuine
-SystemServer now starts every service, completes boot phase 1000, unlocks user 0 and launches SystemUI,
-FallbackHome and the LineageOS setup wizard (V64 r1, 22/23 checks; teardown check fails). Added on the way:
-Health HAL, BPF loader, HintManager no-Power-HAL fix, vold, idmap2d, netd on a new Android-networking
-runtime kernel (V59), audioserver + example AIDL audio HAL, gatekeeperd, keystore2 + software KeyMint,
-init.rc data layout. Nothing of this has run on the phone yet.
-**19 September, unattended preparation:** V66 stable after boot (full 900 s window). New offline
-deliverables: [e-ink software-TCON ABI](eink-swtcon-abi-20260919.md) with a passing emulator run;
-bounded fail-closed ADSP start/stop diagnostic `device/hisense/a6l/diagnostic/adsp_diag_r2.sh` with an
-11-case mock test (not yet run on the phone); phone kernel **V67 candidate** (V38 config + Android
-networking + RMTFS_MEM, all modules rebuilt; build-only, never flashed); Android builds of `rmtfs`,
-`tqftpserv`, `qrtr-lookup`, `libqrtr` for the modem/Wi-Fi/sensor service path.
-**20 September, offline + read-only stock ADB:** see [attended-session plan](attended-session-v68-plan-20260920.md)
-and [hardware readiness](hardware-readiness-20260920.md). V68 recovery candidate packaged and ABL-emulation-checked
-(V67 kernel, e-ink SPI NOR read path, ADSP candidate A) — **not flashed**. V70: complete framework boot in the VM on
-the phone kernel binary with phone-style EROFS delivery in 6 GiB. New DT candidates M1/E1/G1/S1. Stock inventory shows
-front/rear ALS-proximity and both touch controllers are AP-side I²C parts with upstream driver families; TPS65185 e-ink
-PMIC has an upstream driver in the pinned tree.
-**Target:** a usable modern LineageOS phone with both displays.
-The full LineageOS interface has not booted on the phone. Linux 7.2.3 is the
-working diagnostic kernel; this checklist does not claim it is the latest release.
+**Phone state:** rooted stock Android (Magisk, boot partition) with the **V71 diagnostic recovery** in the recovery slot.
+Everything below runs **from RAM** under V71 (bundles pushed over ADB); nothing of LineageOS is installed on the eMMC.
+**Target:** a usable, installable LineageOS 24 image with both displays.
 
-Legend: **Tested** means the stated bounded operation passed on the spare;
-**Partial** means some operations passed; **Prepared** means offline work exists;
-**Open** means implementation or evidence is missing. No category is considered
-production-complete merely because one test passed.
+Legend: **Works** = shown on the phone by the user or by read-back; **Partial** = some parts shown, a known blocker left;
+**Prepared** = offline work only; **Open** = nothing started.
 
-## Current status chart
+## Status chart
 
-| Area | Status | Demonstrated | Next missing checkpoint |
-|---|---|---|---|
-| Backup and recovery | Partial | Firmware/calibration backup; verified recovery writes and stock return | Separate e-ink SPI data; final recovery/update package |
-| Kernel and boot | Tested baseline | Linux 7.2.3, RAM Android init, stable diagnostic boot | Production configuration, watchdog/restart and suspend |
-| USB and ADB | Partial | Authenticated ADB and stable transfer | MTP, OTG/host, roles, reconnect and charging negotiation |
-| Internal storage | Partial | eMMC enumeration, repeated firmware hashes, read-only ext4 | Writable Android data, encryption, sustained I/O, microSD |
-| LCD output | Partial | Correct colours, scanout, real SurfaceFlinger rendering, brightness | Native panel initialization, screen-off/on, rotation, sleep/wake |
-| GPU/video | Prepared | Software graphics rendering works | Adreno acceleration, GPU power, hardware video codecs |
-| Front touch | Partial | V47 real Android input dispatch: 227 events, two fingers, four quadrant taps and visible finger-following marker | Screen edges, rotation, suspend and framework integration |
-| Power/volume keys | Tested events | Correct press/release codes | Android actions and wakeup |
-| E-ink side key | Tested events | V46: 52 presses/releases, code 616, IRQs advance with explicit stock pinctrl | Android action, wakeup and display switching |
-| Vibration | Partial | Corrected brake parsing and bounded commands succeed; V46 pulse still not felt; stock PWM/current/amplitude discrepancies identified offline | Guarded register observations, reviewed PM660 configuration and perceptible output |
-| Battery readings | Partial | Voltage, capacity, current, temperature, design capacity | Accuracy checks and Android Health service |
-| Charging/thermal/sleep | Prepared | Stock policies/configuration identified; modules prepared | Charger/parallel-charger policy, limits, thermal handling, deep sleep |
-| Rear e-ink display | Prepared | Stock reverse engineering; **full software-TCON call ABI recovered and executed in the VM** (Init/ModeDecision/Update, 116-frame sequence, guarded buffers); fixed waveform/VCOM read interface mapped | Privileged SPI window backup (not whole chip), power/transport, first static refresh |
-| Rear touch/screen switching | Prepared | Stock controller and dimensions identified | New-kernel input, active-face routing and display switching |
-| Wi-Fi | Prepared | Firmware and module/dependency bundle checked offline | Modem services, correct board data, link/data and Android Wi-Fi |
-| Cellular/SIM | Prepared | Own modem firmware and memory map collected | MSS/RMTFS/QMI, registration, calls/SMS/IMS; IPA data path unresolved |
-| Bluetooth | Prepared | UART and firmware identified; modules checked | Resolve IO supply, controller init, pairing/audio/suspend |
-| GNSS | Prepared | Firmware/config and QMI LOC dependency identified | Modem LOC service, position fix and Android GNSS |
-| Speaker/earpiece/headset/mics | Prepared | Firmware, routes and codec/amp identities; modules checked | ADSP/APR, codec routes, amplifier protection, playback/record/call audio |
-| Motion/light/proximity sensors | Prepared | Stock inventory and module bundle | ADSP/SMGR, real readings, calibration, Android Sensors |
-| Cameras/flash | Open | Stock artifacts available | Exact active sensors, power/ISP/calibration, preview and Android Camera |
-| Fingerprint/security | Open | Stock wiring/HAL evidence | Sensor/TEE, enrollment, keystore, lockscreen and encryption |
-| Android interface | Partial foundation | Phone native input/rendering; VM ART/APEX/native services, display discovery, PackageManager and SystemServer bootstrap | VM: WebView zygote, launcher idle, teardown; then assemble the same service set for a phone RAM boot |
-| Installable release | Open | Reproducible diagnostic images with manifests | Full device build, enforcing SELinux, signing, recovery/OTA, regression |
+| Area | Status | Shown on the phone | Next missing checkpoint | Evidence |
+|---|---|---|---|---|
+| Kernel / boot | Works (diagnostic) | Linux 7.2.3 phone kernel, V71 recovery, stable | production config, watchdog, reboot/suspend | attended-session-results-20260921-v71.md |
+| USB / ADB | Partial | authenticated ADB, fast transfers | recovery USB sometimes not enumerating; MTP, OTG, charging negotiation | recovery notes |
+| Internal storage | Partial | eMMC read, firmware hashes, read-only mounts | persistent install location (**Pierre's decision**), writable data, encryption | roadmap-to-working-image-20260920.md |
+| **LineageOS UI** | **Works from RAM** | welcome screen → setup wizard played through, usable, boot ~2 min | real Android `init` + vendor image instead of the test supervisor; persistent install | phone-framework-first-boot-20260920.md, …-v71.md |
+| LCD | Works | native DPU + DSI0 + FT8719 driver, colours, brightness | blank/unblank + resume | …-v71.md |
+| **GPU** | **Works** | Adreno 512, Mesa freedreno GLES 3.1 drives SurfaceFlinger, no faults/underruns | Vulkan (turnip), GPU power management, HW video codecs | attended-session-results-20260921.md |
+| CPU frequency | Open (known gap) | cores stay at the bootloader frequency (measured: not slow) | CPR3/OSM port for SDM660 (multi-day, voltage — attended only) | cpufreq-assessment-20260920.md |
+| Front touch | Works | multi-touch in LineageOS | edges/rotation, suspend | android-input-v47 |
+| Buttons | Works (events) | power, volume, e-ink key (code 616) | Android actions/wakeup | controls-v46 |
+| Vibration | Partial | commands succeed, nothing felt | stock PM660 haptics config review | controls-followup |
+| **Rear e-ink** | **Works** | kernel bring-up (V73 panel driver) + on-phone service `a6l_epdd` (stock TCON + panel waveform): 16 dithered greys, quality/partial/fast/fastest/clear modes, no ghosting after clear, stock-order power | Android integration (what goes on the rear screen), on-demand full clear, repeat on fresh boots | claude/fresh-eye-eink-bridge doc; attended-session-results-20260922-eink-bridge.md |
+| Rear touch | Works (events) | ft5x06 3-0038, taps counted | face switching, inactive-face rejection | …20260921.md |
+| Battery readings | Works | voltage, capacity, current, temperature | Health HAL accuracy | — |
+| Charging / thermal / sleep | Open | — | charger policy, thermal, deep sleep | — |
+| ADSP | Works | boots, QMI services on node 5 | — | …20260921.md |
+| Motion sensors | Partial | SMGR up → IIO accel/gyro/mag | Android sensors HAL (IIO) | …-v71.md |
+| Light/proximity | Partial | TMD3702 answers at 0x49 (front STK3338 never answers) | TMD3702 driver (none upstream) | …-v71.md |
+| Audio | Partial | APR/q6 stack, pm660l codec, sound card "Hisense A6L" registers (0 route failures) | first playback (earpiece/headset); speaker needs a TFA9894 amplifier driver | …-v71.md |
+| Modem | Partial | boots, all QMI services register (NAS, UIM, voice, WMS, WDS…) | crash after ~16 s: `dog_hb` diag task starvation → needs a diag router | radio-first-boot-20260921.md |
+| Wi-Fi | Partial | ath10k_snoc probes | blocked by the modem crash + tqftpserv paths / `wlanmdsp.mbn` | radio-first-boot-20260921.md |
+| Bluetooth | Partial | hci_uart + QCA load | `msm_serial c1af000` probe −22 (DT fix) | radio-first-boot-20260921.md |
+| Cellular calls/data, GNSS | Open | — | after the modem is stable | — |
+| Cameras | Open | — | — | — |
+| Fingerprint | Open | — | needs TEE path | — |
+| Installable release | Open | — | real init + vendor image, install location, enforcing SELinux, signing, recovery/OTA | real-init-container-design-20260921.md |
 
-## Next checkpoints, in order
+## Next steps, in order
+1. Modem: diag router so the modem stays up → Wi-Fi (tqftpserv paths, `wlanmdsp.mbn`) → GNSS.
+2. Bluetooth UART DT fix → `hci0`.
+3. Audio: first playback on earpiece/headset through the pm660l codec; TFA9894 speaker driver.
+4. E-ink into Android (service + display policy), rear touch routing, e-ink key.
+5. Real Android `init` from RAM (container design) → then persistent install once Pierre picks the location.
+6. Sensors HAL, TMD3702 driver, vibration, charging/thermal/suspend, cpufreq.
+7. Cameras, fingerprint, release engineering.
 
-- [ ] Repair missing diagnostic input nodes and printf alias in the reusable RAM setup.
-- [ ] Fix touch capture initialization: lift/reapply after recording starts, or snapshot all slots; preserve raw events.
-- [x] Observe stock e-ink key events: 13 complete press/release pairs, code 616.
-- [x] Independent review and V46 explicit pinctrl image: scoped DT diff and captured bootloader checks passed.
-- [x] Compare/correct PMIC pin configuration and retest the e-ink key: V46 52 complete pairs, IRQ count 103→211.
-- [x] Identify and build a fix for the haptic brake-pattern cell/byte mismatch; 5/5 emulator ABI checks passed.
-- [x] Physically test corrected haptic candidate: commands pass, user still feels no vibration.
-- [ ] Review stock PM660 startup/resonance; physical vibration remains unresolved.
-- [x] Connect front touch to an interactive Android rendering/input test: V47 software and user visual checks passed.
-- [x] VM: full framework boot to SystemUI/setup wizard (V64, offline only).
-- [ ] Phone: boot the same framework/service set from RAM on Linux 7.2.3 with the V59 networking configuration.
-- [ ] Preserve the separate e-ink SPI data and pursue a controlled first refresh early.
-- [ ] Bring up shared ADSP/modem services to unblock audio, sensors, Wi-Fi and GNSS.
-
-## Detailed completion criteria
-
-### Boot, storage and USB
-
-- [x] Spare identified separately from everyday phone; bootloader unlocked.
-- [x] Firmware/calibration partitions backed up; stock restore route exercised.
-- [x] Modern kernel boots; eMMC permissions and USB failures resolved for diagnostic use.
-- [x] Android first/second-stage init, SELinux loading, authenticated ADB and Binder tested.
-- [x] Read-only firmware hashes and sampled system/vendor files match backups.
-- [ ] Writable data and filesystem recovery; encryption and storage stress.
-- [ ] SD card, MTP, USB host/OTG, cable reconnect and role switching.
-- [ ] Reliable software restart/shutdown and production watchdog behavior.
-
-### LCD, graphics and input
-
-- [x] Visible colour bars/gradient and correct channel ordering.
-- [x] Android buffer allocation/import, DRM presentation and real SurfaceFlinger composition.
-- [x] User-confirmed graphics pattern and brightness changes/restoration.
-- [x] Front touch binds; coordinate stream and two-slot updates observed.
-- [x] Power and Volume Up/Down press/release events.
-- [ ] Fully initialized multitouch tracking and all screen edges/rotation.
-- [ ] Native panel reset/initialization, display blank/unblank and resume.
-- [ ] Adreno GPU acceleration and memory/power management; hardware video.
-- [x] Android input dispatch and touch-driven rendering: V47 real EventHub/InputReader/InputDispatcher/InputChannel.
-- [ ] Density/orientation, SystemUI and launcher.
-- [ ] E-ink key and reliable vibration; Android keylayout/haptic service.
-
-### E-ink and second face
-
-- [x] Stock library/kernel/framework evidence archived; basic TCON ABI emulated.
-- [ ] Read and verify panel-specific SPI/VCOM/waveform data with known coverage.
-- [x] TCON initialization/conversion ABI and buffer contracts: [recovered + emulator-run](eink-swtcon-abi-20260919.md); drive-frame pixel encoding still open.
-- [ ] Power sequencing, bridge/DSI transport, first static panel refresh.
-- [ ] Rear touchscreen, screen selection and inactive-face input rejection.
-- [ ] Full/partial updates, ghosting control, temperature compensation, sleep/wake.
-- [ ] Android display integration, app compatibility and refresh-mode UX.
-
-### Power, radios and audio
-
-- [x] Battery readings obtained under the new kernel.
-- [x] Own firmware/configuration collected and module ABI bundles checked offline.
-- [ ] Health/Thermal services, safe charging/parallel charger and powered-off charging.
-- [ ] CPU/GPU idle/frequency, deep sleep, alarm wake and standby drain.
-- [ ] ADSP/APR and modem/RMTFS/QRTR shared services.
-- [ ] Wi-Fi scan/connect/data, Bluetooth init/pair/audio, GNSS fix.
-- [ ] SIM/registration, voice/SMS/IMS, data path and airplane-mode recovery.
-- [ ] Earpiece/headphones/microphones, speaker protection, routing and call audio.
-
-### Remaining hardware and release
-
-- [ ] Motion/light/proximity/Hall/capacitive sensors and Android sensor fusion.
-- [ ] Cameras, autofocus/calibration, video, flash/torch.
-- [ ] Fingerprint enrollment/authentication, TEE and trusted keystore.
-- [ ] Full Lineage device build, HAL/VINTF integration and enforcing SELinux.
-- [ ] Signing, installable recovery/package, OTA and rollback procedures.
-- [ ] Reboot/suspend/thermal/network regression and daily-use acceptance.
-- [ ] Publish reviewed sources and assess upstream LineageOS submission requirements.
-
-## Evidence map and maintenance
-
-- Latest physical results: [V45 report](combined-controls-v45-results-20260918.md).
-- Current control fixes: [follow-up investigation](controls-followup-20260918.md).
-- Every detailed dated report: this `docs` directory. Older statements such as
-  “awaiting test” describe their date, not today's status.
-- Raw phone/host evidence: `captures/`; V45 includes `analysis.json` and a SHA256 index.
-- Original firmware, verified images, packages and emulator reports: `firmware/`.
-- Stock investigation and online references: `research/` and the relevant dated report.
-- Device sources: `device/hisense/a6l/`; repeatable build/test/install helpers: `tools/`.
-- Operational state: [resume notes](resume-next-session.md). These are detailed working
-  notes, not the user-facing completion checklist.
-
-After each meaningful test, update this checklist, link the new report, record
-the image/kernel and raw evidence, and distinguish command success from physical
-confirmation. Do not erase failed tests or mark an entire component done from a
-single successful operation. The separate e-ink SPI backup gap remains explicit.
+After each meaningful test: update this chart, link the report, and separate "command succeeded" from "user saw it".

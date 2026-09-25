@@ -1,0 +1,13 @@
+=== idle i=0
+A6L_D2D r8 60: 83 83 82 a8 01 81 ff ff
+=== idle i=20
+A6L_D2D r8 60: 83 83 82 a8 01 81 ff ff
+=== idle i=40
+A6L_D2D r8 60: 83 83 82 a8 01 81 ff ff
+=== active 1 i=53
+A6L_D2D r8 60: 83 83 82 a8 01 81 ff ff
+=== active 2 i=54
+A6L_D2D r8 60: 83 83 82 a8 01 81 ff ff
+=== active 3 i=55
+A6L_D2D r8 60: 83 83 82 a8 01 81 ff ff
+DONE

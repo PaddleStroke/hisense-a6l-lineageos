@@ -1,0 +1,2 @@
+ccflags-y += -I$(srctree)/drivers/pinctrl/qcom
+obj-m += pinctrl-sdm660-lpass-lpi.o

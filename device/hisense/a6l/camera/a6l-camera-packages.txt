@@ -1,0 +1,15 @@
+# Hand-off list for the flash agent (NOT built; requires upstream libcamera >= 0.7 with SoftISP, see docs/cam-20260924.md sec. 6)
+# Kernel modules (vendor_dlkm or /vendor/lib/modules, load order = firmware/extracted/camera-20260924/load-order.txt):
+#   mc videodev v4l2-async v4l2-fwnode videobuf2-{common,memops,dma-sg,v4l2} qcom-camss i2c-qcom-cci v4l2-cci
+#   imx576_a6l s5k3t1 hi846 gt9769 (+ led-class-flash leds-qcom-flash for the flash/torch)
+# DT: merge device/hisense/a6l/kernel/a6l-camera-v75.dtso ONLY after the attended probe test passes.
+# Userspace (once external/libcamera is replaced by upstream v0.7.x):
+PRODUCT_PACKAGES += \
+    camera.libcamera \
+    android.hardware.camera.provider@2.5-external-service-or-aidl-equivalent \
+    libcamera \
+    libcamera-base
+PRODUCT_COPY_FILES += \
+    device/hisense/a6l/camera/camera_hal.yaml:$(TARGET_COPY_OUT_VENDOR)/etc/libcamera/camera_hal.yaml
+# sepolicy: hal_camera_default needs r/w on /dev/media*, /dev/video*, /dev/v4l-subdev* (video_device) and
+#   /sys/bus/media, plus gpu (dri render node) access for the GPU SoftISP.

@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: Apache-2.0
+// Hisense A6L rear e-ink stack for the installed ROM (agent eink3, 24 Sep 2026; docs/eink3-20260924.md).
+// Delivered to the `flash` agent: add the PRODUCT_PACKAGES from eink.mk (inherit it) — nothing here is built by eink3.
+
+cc_defaults {
+    name: "a6l_eink_defaults",
+    vendor: true,
+    compile_multilib: "64",
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Wno-misleading-indentation", // compact one-line style inherited from the attended-tested v2/v3 sources
+        "-Wno-unused-parameter",
+        "-DA6L_ANDROID_LOG",
+    ],
+    shared_libs: ["libdrm", "liblog"],
+}
+
+cc_binary {
+    name: "a6l_epdd",
+    defaults: ["a6l_eink_defaults"],
+    relative_install_path: "hw",
+    srcs: ["src/a6l_epdd.c"],
+    shared_libs: ["libdl"],
+    // libtcon_eink.so (stock, dlopen'ed from /vendor/lib64) calls back into our refusing system()/popen()
+    ldflags: ["-Wl,--export-dynamic"],
+    init_rc: ["a6l_eink.rc"],
+    required: ["libtcon_eink", "a6l_epd_waveform_fallback"],
+}
+
+cc_binary {
+    name: "a6l_eink_mirror",
+    defaults: ["a6l_eink_defaults"],
+    srcs: [
+        "src/a6l_eink_mirror.c",
+        "src/eink_logic.c",
+    ],
+}
+
+// Stock vendor library (pure computation: the software TCON). Copied from firmware/extracted/vendor/lib64 by
+// extract-eink-blobs.sh into proprietary/ (git-ignored, never pushed).
+cc_prebuilt_library_shared {
+    name: "libtcon_eink",
+    vendor: true,
+    compile_multilib: "64",
+    srcs: ["proprietary/lib64/libtcon_eink.so"],
+    check_elf_files: false,
+    strip: {
+        none: true,
+    },
+}
+
+// This unit's panel waveform (first 0x70080 bytes of the panel NOR, read on 20 Sep 2026). Last-resort fallback only:
+// a6l_epdd prefers /mnt/vendor/persist/epd, its /data/vendor cache, then the live NOR (read-only).
+prebuilt_etc {
+    name: "a6l_epd_waveform_fallback",
+    src: "proprietary/etc/epd-nor.bin",
+    filename: "epd-nor.bin",
+    sub_dir: "epd",
+    vendor: true,
+}
+
+// Host unit tests of the mode policy / key state machine / touch mapping (atest-free: `m a6l_eink_logic_test` and run it).
+cc_test_host {
+    name: "a6l_eink_logic_test",
+    srcs: [
+        "tests/test_eink_logic.c",
+        "src/eink_logic.c",
+    ],
+    cflags: ["-Wall", "-Wextra"],
+    gtest: false,
+}

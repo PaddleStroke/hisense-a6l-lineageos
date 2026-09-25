@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hisense A6L mixer paths for libaudioroute (audio3, 24 Sep 2026). Used by /vendor/bin/a6l-audio-route, NOT by the audio HAL.
+     Control names = the real names read on the phone on 23 Sep (v74/logs/tinymix-controls.txt): the LPASS digital codec has
+     the "Digital " prefix; digital volumes are RAW (dB = raw - 84; 84 = 0 dB, stock value). Controls that do not exist
+     (e.g. TERT_MI2S / TFA without the speaker DT) are skipped by libaudioroute with a warning.
+     Stock origin: firmware/extracted/vendor/etc/mixer_paths.xml (headphones, speaker, handset-mic/adc1, headset-mic/adc2).
+     Top level = reset state. The DSP routes MultiMedia1 -> LPI_MI2S_RX_0 and LPI_MI2S_TX_3 -> MultiMedia1 stay ON in every
+     state: a DPCM front end with no back end fails open() with EINVAL, so the HAL's pcmC0D0p/c must always have one. With
+     HPHL/HPHR/EAR_S at ZERO nothing is audible from the codec even though its back end runs. -->
+<mixer>
+    <!-- DSP (q6routing): always connected -->
+    <ctl name="LPI_MI2S_RX_0 Audio Mixer MultiMedia1" value="1" />
+    <ctl name="MultiMedia1 Mixer LPI_MI2S_TX_3" value="1" />
+    <ctl name="LPI_MI2S_RX_0 Audio Mixer MultiMedia2" value="0" />
+    <ctl name="MultiMedia2 Mixer LPI_MI2S_TX_3" value="0" />
+    <ctl name="TERT_MI2S_RX Audio Mixer MultiMedia1" value="0" />
+    <!-- codec playback: everything off / muted -->
+    <ctl name="Digital RX1 MIX1 INP1" value="ZERO" />
+    <ctl name="Digital RX2 MIX1 INP1" value="ZERO" />
+    <ctl name="RDAC2 MUX" value="RX1" />
+    <ctl name="Digital RX1 Digital Volume" value="0" />
+    <ctl name="Digital RX2 Digital Volume" value="0" />
+    <ctl name="HPHL" value="ZERO" />
+    <ctl name="HPHR" value="ZERO" />
+    <ctl name="EAR_S" value="ZERO" />
+    <!-- codec capture: off -->
+    <ctl name="Digital DEC1 MUX" value="ZERO" />
+    <ctl name="Digital CIC1 MUX" value="AMIC" />
+    <ctl name="ADC2 MUX" value="ZERO" />
+
+    <!-- Wired headset / headphones (stock "headphones"). -6 dB digital (stock 0 dB); Android volume is applied in software on top. -->
+    <path name="headphones">
+        <ctl name="Digital RX1 MIX1 INP1" value="RX1" />
+        <ctl name="Digital RX2 MIX1 INP1" value="RX2" />
+        <ctl name="RDAC2 MUX" value="RX2" />
+        <ctl name="Digital RX1 Digital Volume" value="78" />
+        <ctl name="Digital RX2 Digital Volume" value="78" />
+        <ctl name="HPHL" value="Switch" />
+        <ctl name="HPHR" value="Switch" />
+    </path>
+
+    <!-- Loudspeaker: NXP TFA9894 on TERTIARY_MI2S_RX (stock "speaker"). Only with the V75 speaker DT + snd-soc-tfa98xx. -->
+    <path name="speaker">
+        <ctl name="TERT_MI2S_RX Audio Mixer MultiMedia1" value="1" />
+        <ctl name="TFA Profile" value="music" />
+    </path>
+
+    <!-- Earpiece (stock "handset"): physically broken on Pierre's unit, not used by a6l-audio-route. -->
+    <path name="handset">
+        <ctl name="Digital RX1 MIX1 INP1" value="RX1" />
+        <ctl name="RDAC2 MUX" value="RX1" />
+        <ctl name="Digital RX1 Digital Volume" value="78" />
+        <ctl name="EAR_S" value="Switch" />
+    </path>
+
+    <!-- Main microphone (stock "handset-mic" -> adc1, AMIC1 + MIC BIAS External1 via DT audio-routing) -->
+    <path name="main-mic">
+        <ctl name="Digital DEC1 MUX" value="ADC1" />
+        <ctl name="Digital CIC1 MUX" value="AMIC" />
+        <ctl name="ADC1 Volume" value="8" />
+    </path>
+
+    <!-- Headset microphone (stock "headset-mic" -> adc2, AMIC2 + MIC BIAS External2) -->
+    <path name="headset-mic">
+        <ctl name="ADC2 MUX" value="INP2" />
+        <ctl name="Digital DEC1 MUX" value="ADC2" />
+        <ctl name="Digital CIC1 MUX" value="AMIC" />
+        <ctl name="ADC2 Volume" value="6" />
+    </path>
+</mixer>

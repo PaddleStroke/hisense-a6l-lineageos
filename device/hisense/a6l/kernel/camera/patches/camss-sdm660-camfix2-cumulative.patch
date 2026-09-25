@@ -1,0 +1,477 @@
+diff -ru orig/camss/camss-csid-4-7.c camss/camss-csid-4-7.c
+--- orig/camss/camss-csid-4-7.c	2026-09-24 19:32:27.912660207 +0200
++++ camss/camss-csid-4-7.c	2026-09-24 19:32:28.052215702 +0200
+@@ -16,6 +16,35 @@
+ #include "camss-csid-gen1.h"
+ #include "camss.h"
+ 
++#include <linux/moduleparam.h>
++extern int a6l_dbg;
++static uint a6l_csid_irqmask;
++module_param(a6l_csid_irqmask, uint, 0644);
++MODULE_PARM_DESC(a6l_csid_irqmask, "A6L: value written to CSID IRQ_MASK at stream-on (0 = leave)");
++static u32 a6l_csid_nirq[4];
++
++static void a6l_csid_dump(struct csid_device *csid, const char *tag)
++{
++	u32 o, w[8], nz;
++	unsigned int i;
++
++	if (!a6l_dbg)
++		return;
++	dev_info(csid->camss->dev, "A6L_CSID%u_%s irqs %u\n", csid->id, tag, a6l_csid_nirq[csid->id & 3]);
++	for (o = 0; o < 0x100; o += 32) {
++		nz = 0;
++		for (i = 0; i < 8; i++) {
++			w[i] = readl_relaxed(csid->base + o + 4 * i);
++			nz |= w[i];
++		}
++		if (nz)
++			dev_info(csid->camss->dev, "A6L_CSID%u_REG %03x: %08x %08x %08x %08x %08x %08x %08x %08x\n",
++				 csid->id, o, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
++	}
++	a6l_csid_nirq[csid->id & 3] = 0;
++}
++
++
+ #define CAMSS_CSID_CORE_CTRL_0		0x004
+ #define CAMSS_CSID_CORE_CTRL_1		0x008
+ #define CAMSS_CSID_RST_CMD		0x010
+@@ -129,12 +158,17 @@
+ 		}
+ 
+ 		writel_relaxed(val, csid->base + CAMSS_CSID_CID_n_CFG(cid));
++		if (a6l_csid_irqmask)
++			writel_relaxed(a6l_csid_irqmask, csid->base + CAMSS_CSID_IRQ_MASK);
++		if (a6l_dbg)
++			a6l_csid_dump(csid, "START");
+ 
+ 		if (tg->enabled) {
+ 			val = CAMSS_CSID_TG_CTRL_ENABLE;
+ 			writel_relaxed(val, csid->base + CAMSS_CSID_TG_CTRL);
+ 		}
+ 	} else {
++		a6l_csid_dump(csid, "STOP");
+ 		if (tg->enabled) {
+ 			val = CAMSS_CSID_TG_CTRL_DISABLE;
+ 			writel_relaxed(val, csid->base + CAMSS_CSID_TG_CTRL);
+@@ -164,6 +198,8 @@
+ 
+ 	value = readl_relaxed(csid->base + CAMSS_CSID_IRQ_STATUS);
+ 	writel_relaxed(value, csid->base + CAMSS_CSID_IRQ_CLEAR_CMD);
++	if (a6l_dbg && ++a6l_csid_nirq[csid->id & 3] <= 16)
++		dev_info(csid->camss->dev, "A6L_CSID%u irq#%u status 0x%08x\n", csid->id, a6l_csid_nirq[csid->id & 3], value);
+ 
+ 	if ((value >> 11) & 0x1)
+ 		complete(&csid->reset_complete);
+diff -ru orig/camss/camss-csid.c camss/camss-csid.c
+--- orig/camss/camss-csid.c	2026-09-24 19:32:27.912909495 +0200
++++ camss/camss-csid.c	2026-09-24 19:32:27.981791555 +0200
+@@ -26,6 +26,11 @@
+ #include "camss-csid-gen1.h"
+ #include "camss.h"
+ 
++static bool a6l_csid_fast = true;
++module_param(a6l_csid_fast, bool, 0644);
++MODULE_PARM_DESC(a6l_csid_fast, "A6L: CSID core clock >= 310 MHz (stock csi_src rate)");
++
++
+ /* offset of CSID registers in VFE region for VFE 480 */
+ #define VFE_480_CSID_OFFSET 0x1200
+ #define VFE_480_LITE_CSID_OFFSET 0x200
+@@ -562,6 +567,8 @@
+ 			long rate;
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (a6l_csid_fast && min_rate && min_rate < 200000001ULL)
++				min_rate = 200000001ULL;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+@@ -590,6 +597,7 @@
+ 				dev_err(dev, "clk set rate failed: %d\n", ret);
+ 				return ret;
+ 			}
++			dev_info(dev, "A6L_CSID%u %s rate %ld (link_freq %lld lanes %u)\n", csid->id, clock->name, rate, (long long)link_freq, csid->phy.lane_cnt);
+ 		} else if (clock->nfreqs) {
+ 			clk_set_rate(clock->clk, clock->freq[0]);
+ 		}
+diff -ru orig/camss/camss-csiphy-3ph-1-0.c camss/camss-csiphy-3ph-1-0.c
+--- orig/camss/camss-csiphy-3ph-1-0.c	2026-09-24 19:32:27.913082949 +0200
++++ camss/camss-csiphy-3ph-1-0.c	2026-09-24 19:32:28.054474396 +0200
+@@ -961,12 +961,34 @@
+ 		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 0));
+ }
+ 
++
++extern int a6l_dbg;
++static u32 a6l_phy_nirq[3];
++
++static void a6l_phy_status(struct csiphy_device *csiphy, const char *tag)
++{
++	struct csiphy_device_regs *regs = csiphy->regs;
++	u32 s[12];
++	int i;
++
++	for (i = 0; i < 12; i++)
++		s[i] = readl_relaxed(csiphy->base +
++				     CSIPHY_3PH_CMN_CSI_COMMON_STATUSn(regs->offset, regs->common_status_offset, i));
++	dev_info(csiphy->camss->dev,
++		 "A6L_CSIPHY%u_%s irqs %u status %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
++		 csiphy->id, tag, a6l_phy_nirq[csiphy->id % 3], s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
++		 s[8], s[9], s[10], s[11]);
++}
++
+ static irqreturn_t csiphy_isr(int irq, void *dev)
+ {
+ 	struct csiphy_device *csiphy = dev;
+ 	struct csiphy_device_regs *regs = csiphy->regs;
+ 	int i;
+ 
++	if (a6l_dbg && ++a6l_phy_nirq[csiphy->id % 3] <= 8)
++		a6l_phy_status(csiphy, "IRQ");
++
+ 	for (i = 0; i < 11; i++) {
+ 		int c = i + 22;
+ 		u8 val = readl_relaxed(csiphy->base +
+@@ -1159,6 +1181,8 @@
+ 	int i;
+ 
+ 	settle_cnt = csiphy_settle_cnt_calc(link_freq, csiphy->timer_clk_rate);
++	dev_info(csiphy->camss->dev, "A6L_CSIPHY%d link_freq %lld timer %u settle_cnt %u lanes %u mask 0x%x csid %u\n",
++		 csiphy->id, (long long)link_freq, csiphy->timer_clk_rate, settle_cnt, c->num_data, lane_mask, cfg->csid_id);
+ 
+ 	val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
+ 	for (i = 0; i < c->num_data; i++)
+@@ -1196,6 +1220,11 @@
+ {
+ 	struct csiphy_device_regs *regs = csiphy->regs;
+ 
++	if (a6l_dbg) {
++		a6l_phy_status(csiphy, "STOP");
++		a6l_phy_nirq[csiphy->id % 3] = 0;
++	}
++
+ 	writel_relaxed(0, csiphy->base +
+ 			  CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 5));
+ 
+diff -ru orig/camss/camss-csiphy.c camss/camss-csiphy.c
+--- orig/camss/camss-csiphy.c	2026-09-24 19:32:27.913228251 +0200
++++ camss/camss-csiphy.c	2026-09-24 19:32:27.981048969 +0200
+@@ -22,6 +22,11 @@
+ #include "camss-csiphy.h"
+ #include "camss.h"
+ 
++static bool a6l_phy_fast = true;
++module_param(a6l_phy_fast, bool, 0644);
++MODULE_PARM_DESC(a6l_phy_fast, "A6L: CSIPHY timer at the highest level (stock-like, 269.33 MHz)");
++
++
+ #define MSM_CSIPHY_NAME "msm_csiphy"
+ 
+ static const struct csiphy_format_info formats_8x16[] = {
+@@ -157,6 +162,8 @@
+ 			long round_rate;
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (a6l_phy_fast && min_rate && min_rate < 200000001ULL)
++				min_rate = 200000001ULL;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+@@ -606,7 +613,8 @@
+ 	if (camss->res->version == CAMSS_8x16 ||
+ 	    camss->res->version == CAMSS_8x39 ||
+ 	    camss->res->version == CAMSS_8x53 ||
+-	    camss->res->version == CAMSS_8x96) {
++	    camss->res->version == CAMSS_8x96 ||
++	    camss->res->version == CAMSS_660) {
+ 		csiphy->base_clk_mux =
+ 			devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
+ 		if (IS_ERR(csiphy->base_clk_mux))
+diff -ru orig/camss/camss-ispif.c camss/camss-ispif.c
+--- orig/camss/camss-ispif.c	2026-09-24 19:32:27.913471431 +0200
++++ camss/camss-ispif.c	2026-09-24 19:32:28.053294546 +0200
+@@ -23,6 +23,31 @@
+ #include "camss-ispif.h"
+ #include "camss.h"
+ 
++extern int a6l_dbg;
++static u32 a6l_ispif_nirq;
++
++static void a6l_ispif_dump(struct ispif_device *ispif, const char *tag)
++{
++	u32 o, w[8], nz;
++	unsigned int i;
++
++	if (!a6l_dbg)
++		return;
++	dev_info(ispif->camss->dev, "A6L_ISPIF_%s irqs %u\n", tag, a6l_ispif_nirq);
++	for (o = 0; o < 0x500; o += 32) {
++		nz = 0;
++		for (i = 0; i < 8; i++) {
++			w[i] = readl_relaxed(ispif->base + o + 4 * i);
++			nz |= w[i];
++		}
++		if (nz)
++			dev_info(ispif->camss->dev, "A6L_ISPIF_REG %03x: %08x %08x %08x %08x %08x %08x %08x %08x\n",
++				 o, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
++	}
++	a6l_ispif_nirq = 0;
++}
++
++
+ #define MSM_ISPIF_NAME "msm_ispif"
+ 
+ #define ISPIF_RST_CMD_0			0x008
+@@ -180,6 +205,10 @@
+ 
+ 	writel(0x1, ispif->base + ISPIF_IRQ_GLOBAL_CLEAR_CMD);
+ 
++	if (a6l_dbg && ++a6l_ispif_nirq <= 16)
++		dev_info(camss->dev, "A6L_ISPIF irq#%u vfe0 %08x %08x %08x vfe1 %08x %08x %08x\n",
++			 a6l_ispif_nirq, value0, value1, value2, value3, value4, value5);
++
+ 	if ((value0 >> 27) & 0x1)
+ 		complete(&ispif->reset_complete[0]);
+ 
+@@ -811,6 +840,9 @@
+ 	u8 cid = vc * 4; /* id of Virtual Channel and Data Type set */
+ 	int ret;
+ 
++	if (!enable)
++		a6l_ispif_dump(ispif, "STOP");
++
+ 	if (enable) {
+ 		if (!media_pad_remote_pad_first(&line->pads[MSM_ISPIF_PAD_SINK]))
+ 			return -ENOLINK;
+diff -ru orig/camss/camss-vfe-4-8.c camss/camss-vfe-4-8.c
+--- orig/camss/camss-vfe-4-8.c	2026-09-24 19:32:27.913817328 +0200
++++ camss/camss-vfe-4-8.c	2026-09-24 19:32:28.050816074 +0200
+@@ -17,6 +17,71 @@
+ #include "camss-vfe.h"
+ #include "camss-vfe-gen1.h"
+ 
++#include <linux/moduleparam.h>
++int a6l_dbg = 1;
++module_param(a6l_dbg, int, 0644);
++MODULE_PARM_DESC(a6l_dbg, "A6L: 0 off, 1 first IRQs + stop dumps, 2 also periodic VFE IRQ lines");
++
++static u32 a6l_vfe_bits[2][64];
++static u32 a6l_vfe_nirq[2];
++
++static void a6l_vfe_count(struct vfe_device *vfe, u32 s0, u32 s1)
++{
++	unsigned int v = vfe->id & 1, b;
++	u32 n;
++
++	if (!a6l_dbg)
++		return;
++	n = ++a6l_vfe_nirq[v];
++	for (b = 0; b < 32; b++) {
++		if (s0 & BIT(b))
++			a6l_vfe_bits[v][b]++;
++		if (s1 & BIT(b))
++			a6l_vfe_bits[v][32 + b]++;
++	}
++	if (n <= 12 || (a6l_dbg > 1 && !(n % 64)))
++		dev_info(vfe->camss->dev, "A6L_VFE%u irq#%u s0 0x%08x s1 0x%08x pp 0x%08x\n",
++			 vfe->id, n, s0, s1, readl_relaxed(vfe->base + 0x338));
++	/* s1: bit0 camif error, bit7 violation, bits 9..15 image master bus overflow */
++	if (s1 & (GENMASK(15, 9) | BIT(7) | BIT(0)))
++		dev_err_ratelimited(vfe->camss->dev, "A6L_VFE%u ERR s1 0x%08x (ovf wm 0x%02x) violation 0x%08x\n",
++				    vfe->id, s1, (s1 >> 9) & 0x7f, readl_relaxed(vfe->base + 0x07c));
++}
++
++void a6l_vfe_dump(struct vfe_device *vfe, const char *tag)
++{
++	static const u16 rng[][2] = { { 0x000, 0x160 }, { 0x300, 0x360 }, { 0x400, 0x4c0 } };
++	unsigned int v = vfe->id & 1, i, r;
++	char buf[400];
++	int len = 0;
++	u32 o;
++
++	if (!a6l_dbg)
++		return;
++	buf[0] = 0;
++	for (i = 0; i < 64; i++)
++		if (a6l_vfe_bits[v][i])
++			len += scnprintf(buf + len, sizeof(buf) - len, " %s%u:%u",
++					 i < 32 ? "s0b" : "s1b", i % 32, a6l_vfe_bits[v][i]);
++	dev_info(vfe->camss->dev, "A6L_VFE%u_%s irqs %u bits%s\n", vfe->id, tag, a6l_vfe_nirq[v],
++		 len ? buf : " none");
++	for (r = 0; r < ARRAY_SIZE(rng); r++)
++		for (o = rng[r][0]; o < rng[r][1]; o += 32) {
++			u32 w[8], nz = 0;
++
++			for (i = 0; i < 8; i++) {
++				w[i] = readl_relaxed(vfe->base + o + 4 * i);
++				nz |= w[i];
++			}
++			if (nz)
++				dev_info(vfe->camss->dev, "A6L_VFE%u_REG %03x: %08x %08x %08x %08x %08x %08x %08x %08x\n",
++					 vfe->id, o, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
++		}
++	memset(a6l_vfe_bits[v], 0, sizeof(a6l_vfe_bits[v]));
++	a6l_vfe_nirq[v] = 0;
++}
++
++
+ #define VFE_0_GLOBAL_RESET_CMD		0x018
+ #define VFE_0_GLOBAL_RESET_CMD_CORE	BIT(0)
+ #define VFE_0_GLOBAL_RESET_CMD_CAMIF	BIT(1)
+@@ -973,6 +1038,7 @@
+ 
+ 	dev_dbg(vfe->camss->dev, "VFE: status0 = 0x%08x, status1 = 0x%08x\n",
+ 		value0, value1);
++	a6l_vfe_count(vfe, value0, value1);
+ 
+ 	if (value0 & VFE_0_IRQ_STATUS_0_RESET_ACK)
+ 		vfe->isr_ops.reset_ack(vfe);
+diff -ru orig/camss/camss-vfe-gen1.c camss/camss-vfe-gen1.c
+--- orig/camss/camss-vfe-gen1.c	2026-09-24 19:32:27.913931021 +0200
++++ camss/camss-vfe-gen1.c	2026-09-24 19:32:28.051332507 +0200
+@@ -11,6 +11,9 @@
+ #include "camss-vfe.h"
+ #include "camss-vfe-gen1.h"
+ 
++void a6l_vfe_dump(struct vfe_device *vfe, const char *tag); /* camss-vfe-4-8.c */
++
++
+ /* Max number of frame drop updates per frame */
+ #define VFE_FRAME_DROP_UPDATES 2
+ #define VFE_NEXT_SOF_MS 500
+@@ -101,6 +104,7 @@
+ {
+ 	struct vfe_device *vfe = to_vfe(line);
+ 
++	a6l_vfe_dump(vfe, "STOP");
+ 	vfe_disable_output(line);
+ 
+ 	vfe_put_output(line);
+diff -ru orig/camss/camss-vfe.c camss/camss-vfe.c
+--- orig/camss/camss-vfe.c	2026-09-24 19:32:27.914174201 +0200
++++ camss/camss-vfe.c	2026-09-24 19:32:28.049269273 +0200
+@@ -25,6 +25,12 @@
+ #include "camss-vfe.h"
+ #include "camss.h"
+ 
++#include <linux/moduleparam.h>
++static uint a6l_vfe_min;
++module_param(a6l_vfe_min, uint, 0644);
++MODULE_PARM_DESC(a6l_vfe_min, "A6L: minimum VFE core clock in Hz (0 = upstream pixel-rate based)");
++
++
+ #define MSM_VFE_NAME "msm_vfe"
+ 
+ /* VFE reset timeout */
+@@ -881,8 +887,17 @@
+ 	if (!vfe->genpd)
+ 		return;
+ 
++	if (!vfe->genpd_link) {
++		dev_warn(vfe->camss->dev, "A6L_VFE%u pm_domain_off without link\n", vfe->id);
++		return;
++	}
++	if (vfe->a6l_pd_users > 1) {
++		vfe->a6l_pd_users--;
++		return;
++	}
+ 	device_link_del(vfe->genpd_link);
+ 	vfe->genpd_link = NULL;
++	vfe->a6l_pd_users = 0;
+ }
+ 
+ /*
+@@ -896,6 +911,11 @@
+ 	if (!vfe->genpd)
+ 		return 0;
+ 
++	if (vfe->genpd_link) {
++		vfe->a6l_pd_users++;
++		return 0;
++	}
++
+ 	vfe->genpd_link = device_link_add(camss->dev, vfe->genpd,
+ 					  DL_FLAG_STATELESS |
+ 					  DL_FLAG_PM_RUNTIME |
+@@ -903,6 +923,8 @@
+ 	if (!vfe->genpd_link)
+ 		return -EINVAL;
+ 
++	vfe->a6l_pd_users = 1;
++
+ 	return 0;
+ }
+ 
+@@ -985,6 +1007,8 @@
+ 			}
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (a6l_vfe_min && min_rate < a6l_vfe_min)
++				min_rate = a6l_vfe_min;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+@@ -1013,6 +1037,7 @@
+ 				dev_err(dev, "clk set rate failed: %d\n", ret);
+ 				return ret;
+ 			}
++			dev_info(dev, "A6L_VFE%u %s rate %ld (min %llu)\n", vfe->id, clock->name, rate, (unsigned long long)min_rate);
+ 		}
+ 	}
+ 
+diff -ru orig/camss/camss-vfe.h camss/camss-vfe.h
+--- orig/camss/camss-vfe.h	2026-09-24 19:32:27.914221315 +0200
++++ camss/camss-vfe.h	2026-09-24 19:32:28.046042179 +0200
+@@ -169,6 +169,7 @@
+ 	struct camss_video_ops video_ops;
+ 	struct device *genpd;
+ 	struct device_link *genpd_link;
++	unsigned int a6l_pd_users; /* A6L: nested pm_domain_on/off (ispif_reset) */
+ };
+ 
+ struct camss_subdev_resources;
+diff -ru orig/camss/camss.c camss/camss.c
+--- orig/camss/camss.c	2026-09-24 19:32:27.914331369 +0200
++++ camss/camss.c	2026-09-24 19:32:28.049695621 +0200
+@@ -4692,7 +4692,8 @@
+ 
+ static int vfe_parent_dev_ops_get(struct camss *camss, int id)
+ {
+-	int ret = -EINVAL;
++	/* A6L: CSID2/3 on ISPIF SoCs have no same-index VFE (they reach VFEs through ISPIF) */
++	int ret = camss->ispif ? 0 : -EINVAL;
+ 
+ 	if (id < camss->res->vfe_num) {
+ 		struct vfe_device *vfe = &camss->vfe[id];
+@@ -5388,7 +5389,8 @@
+ 	if (camss->res->version == CAMSS_8x16 ||
+ 	    camss->res->version == CAMSS_8x39 ||
+ 	    camss->res->version == CAMSS_8x53 ||
+-	    camss->res->version == CAMSS_8x96) {
++	    camss->res->version == CAMSS_8x96 ||
++	    camss->res->version == CAMSS_660) {
+ 		camss->ispif = devm_kcalloc(dev, 1, sizeof(*camss->ispif), GFP_KERNEL);
+ 		if (!camss->ispif)
+ 			return -ENOMEM;
+@@ -5597,8 +5599,19 @@
+ 	.icc_path_num = ARRAY_SIZE(icc_res_sa8775p),
+ };
+ 
++/* A6L: DT has interconnects = <&mnoc 5 &bimc 5>, names "vfe-mem"; stock votes VFE AXI bandwidth dynamically */
++static const struct resources_icc icc_res_660[] = {
++	{
++		.name = "vfe-mem",
++		.icc_bw_tbl.avg = 1000000,
++		.icc_bw_tbl.peak = 2000000,
++	},
++};
++
+ static const struct camss_resources sdm660_resources = {
+ 	.version = CAMSS_660,
++	.icc_res = icc_res_660,
++	.icc_path_num = ARRAY_SIZE(icc_res_660),
+ 	.csiphy_res = csiphy_res_660,
+ 	.csid_res = csid_res_660,
+ 	.ispif_res = &ispif_res_660,

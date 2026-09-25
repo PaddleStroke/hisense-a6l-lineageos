@@ -1,0 +1,22 @@
+# 1. sensor registry server BEFORE the ADSP starts (v71/bundle/sensors-adsp order; sns.reg in /vendor/firmware/qcom/sensors)
+qcom_common.ko
+qmi_helpers.ko
+qcom_sns_reg.ko
+qcom_pdr_msg.ko
+qcom_pd_mapper.ko
+sns_smgr.ko
+qrtr.ko
+qrtr-smd.ko
+qcom_smgr.ko
+kfifo_buf.ko
+qcom_smgr_accel.ko
+qcom_smgr_gyro.ko
+qcom_smgr_mag.ko
+qcom_smgr_prox.ko
+# 2. ADSP remoteproc (v68/bundle/adsp order), firmware qcom/hisense/a6l/adsp.mdt
+qcom_sysmon.ko
+qcom_aoss.ko
+qcom_q6v5.ko
+mdt_loader.ko
+qcom_pil_info.ko
+qcom_q6v5_pas.ko

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>
+    <privapp-permissions package="org.lineageos.a6l.dualux">
+        <permission name="android.permission.WRITE_SECURE_SETTINGS" />
+        <permission name="android.permission.CONTROL_DISPLAY_BRIGHTNESS" />
+    </privapp-permissions>
+</permissions>

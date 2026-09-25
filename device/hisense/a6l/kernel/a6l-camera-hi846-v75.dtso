@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L camera phase 1: rear AUX sensor SK Hynix Hi-846 (8 MP) with the upstream hi846 driver.
+// Stock wiring (stock DT qcom,camera@1 + camera_config.xml CameraId 1 "hi846_hmct"):
+//   CCI master 1 (gpio38/39), MCLK2 = gpio34 @ 24 MHz, reset = gpio48, CSIPHY 1,
+//   AVDD 2.8 V = fixed regulator on gpio51 (shared with the main camera + AF),
+//   DVDD/DOVDD are not described in stock DT (board-always-on) -> dummy fixed regulators here.
+//   Slave: xml 0x40 (8-bit) = 0x20 7-bit; the vendor lib struct says 0x42 (0x21). Try 0x20 first.
+//   Lanes: NOT known (stock lib struct not decoded). 2 lanes first (hi846 upstream 2-lane table), then 4.
+// UNTESTED. Needs i2c-qcom-cci.ko + hi846.ko (external build) + qcom-camss.ko (=m in v67).
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/qcom,mmcc-sdm660.h>
+
+&{/} {
+	cam_avdd_2p8: cam-avdd-2p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_avdd_2p8";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&tlmm 51 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <1000>;
+	};
+
+	cam_dummy_1p8: cam-dummy-1p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_dovdd_board";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+	};
+
+	cam_dummy_1p2: cam-dummy-1p2 {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_dvdd_board";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-always-on;
+	};
+};
+
+&tlmm {
+	cam_mclk2_default: cam-mclk2-default-state {
+		pins = "gpio34";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+};
+
+&cci {
+	status = "okay";
+};
+
+&cci_i2c1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	camera@20 {
+		compatible = "hynix,hi846";
+		reg = <0x20>;
+		clocks = <&mmcc CAMSS_MCLK2_CLK>;
+		assigned-clocks = <&mmcc CAMSS_MCLK2_CLK>;
+		assigned-clock-rates = <24000000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_mclk2_default>;
+		reset-gpios = <&tlmm 48 GPIO_ACTIVE_LOW>;
+		vdda-supply = <&cam_avdd_2p8>;
+		vddio-supply = <&cam_dummy_1p8>;
+		vddd-supply = <&cam_dummy_1p2>;
+		rotation = <90>;
+		orientation = <1>;	/* back */
+
+		port {
+			hi846_ep: endpoint {
+				data-lanes = <1 2>;
+				link-frequencies = /bits/ 64 <80000000 200000000>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+};
+
+&camss {
+	status = "okay";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@1 {
+			reg = <1>;
+			csiphy1_ep: endpoint {
+				data-lanes = <0 1>;
+				clock-lanes = <7>;
+				remote-endpoint = <&hi846_ep>;
+			};
+		};
+	};
+};

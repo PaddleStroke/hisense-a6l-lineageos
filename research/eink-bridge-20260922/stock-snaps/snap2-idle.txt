@@ -1,0 +1,550 @@
+##GPIO
+GPIOs 0-113, platform/3000000.pinctrl, 3000000.pinctrl:
+ gpio4   : in  3 2mA no pull
+ gpio5   : in  3 2mA no pull
+ gpio6   : out 2 2mA pull up
+ gpio7   : out 2 2mA pull up
+ gpio12  : out 0 2mA pull down
+ gpio13  : in  0 2mA pull down
+ gpio14  : in  2 2mA pull up
+ gpio15  : in  2 2mA pull up
+ gpio16  : in  0 2mA pull up
+ gpio17  : in  0 2mA no pull
+ gpio18  : in  0 2mA no pull
+ gpio19  : in  0 2mA no pull
+ gpio20  : out 0 2mA pull down
+ gpio21  : in  0 2mA no pull
+ gpio22  : in  3 2mA pull up
+ gpio23  : in  3 2mA pull up
+ gpio24  : in  0 2mA pull down
+ gpio25  : in  0 2mA pull down
+ gpio26  : in  3 2mA pull up
+ gpio27  : in  3 2mA pull up
+ gpio28  : in  1 6mA no pull
+ gpio29  : in  1 6mA no pull
+ gpio30  : in  1 6mA no pull
+ gpio31  : in  1 6mA no pull
+ gpio32  : in  1 2mA pull down
+ gpio33  : in  1 2mA pull down
+ gpio34  : in  1 2mA pull down
+ gpio35  : out 0 8mA no pull
+ gpio36  : in  1 2mA pull down
+ gpio37  : in  1 2mA pull down
+ gpio38  : in  1 2mA pull down
+ gpio39  : in  1 2mA pull down
+ gpio40  : in  0 2mA pull down
+ gpio41  : in  0 2mA pull down
+ gpio42  : out 0 2mA pull down
+ gpio43  : in  0 2mA pull down
+ gpio44  : in  0 2mA pull down
+ gpio45  : out 0 2mA pull down
+ gpio46  : out 0 2mA no pull
+ gpio47  : out 0 2mA no pull
+ gpio48  : out 0 2mA no pull
+ gpio49  : in  0 2mA pull down
+ gpio50  : in  0 2mA pull down
+ gpio51  : out 0 2mA pull down
+ gpio52  : in  0 2mA pull down
+ gpio53  : out 0 2mA no pull
+ gpio54  : in  0 2mA pull up
+ gpio55  : in  0 6mA pull up
+ gpio56  : out 0 2mA pull down
+ gpio57  : in  0 2mA pull down
+ gpio58  : in  0 2mA pull down
+ gpio59  : in  1 2mA pull down
+ gpio60  : in  0 2mA pull down
+ gpio61  : out 0 2mA pull down
+ gpio62  : in  0 2mA pull down
+ gpio63  : in  0 2mA pull down
+ gpio64  : out 0 2mA pull down
+ gpio65  : out 0 8mA pull up
+ gpio66  : out 0 8mA pull up
+ gpio67  : in  0 8mA pull up
+ gpio68  : in  0 2mA pull down
+ gpio69  : in  0 2mA pull down
+ gpio70  : in  0 2mA pull down
+ gpio71  : in  0 6mA pull up
+ gpio72  : in  0 2mA pull down
+ gpio73  : in  0 8mA pull up
+ gpio74  : out 0 2mA no pull
+ gpio75  : in  0 6mA pull up
+ gpio76  : out 0 2mA pull down
+ gpio77  : in  0 2mA pull down
+ gpio78  : out 0 2mA pull down
+ gpio79  : out 0 2mA pull down
+ gpio80  : out 0 8mA no pull
+ gpio81  : out 1 2mA pull up
+ gpio82  : in  1 2mA no pull
+ gpio83  : out 0 2mA no pull
+ gpio84  : out 0 2mA pull up
+ gpio85  : out 0 2mA no pull
+ gpio86  : in  1 2mA pull up
+ gpio87  : out 0 2mA no pull
+ gpio88  : out 0 2mA no pull
+ gpio89  : out 0 2mA no pull
+ gpio90  : in  1 2mA pull up
+ gpio91  : out 1 2mA pull down
+ gpio92  : out 1 2mA no pull
+ gpio93  : in  0 2mA pull down
+ gpio94  : in  0 2mA pull down
+ gpio95  : in  0 2mA pull down
+ gpio96  : out 1 2mA no pull
+ gpio97  : out 1 2mA no pull
+ gpio98  : out 1 2mA no pull
+ gpio99  : in  1 2mA pull down
+ gpio100 : in  1 2mA pull down
+ gpio101 : in  1 4mA pull down
+ gpio102 : in  1 4mA pull down
+ gpio103 : in  1 4mA pull down
+ gpio104 : in  1 4mA pull down
+ gpio105 : in  1 6mA pull down
+ gpio106 : in  1 6mA pull down
+ gpio107 : in  1 6mA pull down
+ gpio108 : in  1 6mA pull down
+ gpio109 : in  1 4mA pull down
+ gpio110 : in  1 4mA pull down
+ gpio111 : in  1 4mA pull down
+ gpio112 : in  1 4mA pull down
+ gpio113 : in  0 6mA pull up
+
+GPIOs 315-346, platform/soc:qcom,smp2pgpio-rdbg-5-out, rdbg:
+
+GPIOs 347-378, platform/soc:qcom,smp2pgpio-rdbg-5-in, rdbg:
+
+GPIOs 379-410, platform/soc:qcom,smp2pgpio-rdbg-1-out, rdbg:
+
+GPIOs 411-442, platform/soc:qcom,smp2pgpio-rdbg-1-in, rdbg:
+
+GPIOs 443-474, platform/soc:qcom,smp2pgpio-rdbg-2-out, rdbg:
+
+GPIOs 475-506, platform/soc:qcom,smp2pgpio-rdbg-2-in, rdbg:
+
+GPIOs 507-538, platform/soc:qcom,smp2pgpio-ssr-smp2p-5-out, master-kernel:
+
+GPIOs 539-570, platform/soc:qcom,smp2pgpio-ssr-smp2p-5-in, slave-kernel:
+
+GPIOs 571-602, platform/soc:qcom,smp2pgpio-ssr-smp2p-2-out, master-kernel:
+
+GPIOs 603-634, platform/soc:qcom,smp2pgpio-ssr-smp2p-2-in, slave-kernel:
+
+GPIOs 635-666, platform/soc:qcom,smp2pgpio-ssr-smp2p-1-out, master-kernel:
+
+GPIOs 667-698, platform/soc:qcom,smp2pgpio-ssr-smp2p-1-in, slave-kernel:
+GPIOs 699-730, platform/soc:qcom,smp2pgpio-sleepstate-gpio-2-out, sleepstate:
+
+GPIOs 731-762, platform/soc:qcom,smp2pgpio-smp2p-5-out, smp2p:
+
+GPIOs 763-794, platform/soc:qcom,smp2pgpio-smp2p-5-in, smp2p:
+
+GPIOs 795-826, platform/soc:qcom,smp2pgpio-smp2p-2-out, smp2p:
+
+GPIOs 827-858, platform/soc:qcom,smp2pgpio-smp2p-2-in, smp2p:
+
+GPIOs 859-890, platform/soc:qcom,smp2pgpio-smp2p-1-out, smp2p:
+
+GPIOs 891-922, platform/soc:qcom,smp2pgpio-smp2p-1-in, smp2p:
+
+GPIOs 923-954, platform/soc:qcom,smp2pgpio-smp2p-15-out, smp2p:
+
+GPIOs 955-986, platform/soc:qcom,smp2pgpio-smp2p-15-in, smp2p:
+
+GPIOs 987-1018, platform/15070000.lpi_pinctrl, 15070000.lpi_pinctrl:
+ gpio0   : in  12 8mA no pull
+ gpio1   : in  12 8mA no pull
+ gpio2   : in  12 8mA no pull
+ gpio3   : in  12 8mA no pull
+ gpio4   : in  12 8mA no pull
+ gpio5   : in  12 8mA no pull
+ gpio6   : in  12 8mA no pull
+ gpio7   : in  12 8mA no pull
+ gpio8   : in  12 8mA no pull
+ gpio9   : in  12 8mA no pull
+ gpio10  : in  12 8mA no pull
+ gpio11  : in  12 8mA no pull
+ gpio12  : in  12 8mA no pull
+ gpio13  : in  12 8mA no pull
+ gpio14  : in  12 8mA no pull
+ gpio15  : in  12 8mA no pull
+ gpio16  : in  12 8mA no pull
+ gpio17  : in  12 8mA no pull
+ gpio18  : in  12 8mA no pull
+ gpio19  : in  12 8mA no pull
+ gpio20  : in  12 8mA no pull
+ gpio21  : in  12 8mA no pull
+ gpio22  : in  12 8mA no pull
+ gpio23  : in  12 8mA no pull
+ gpio24  : in  12 8mA no pull
+ gpio25  : in  12 8mA no pull
+ gpio26  : in  12 8mA no pull
+ gpio27  : in  12 8mA no pull
+ gpio28  : in  12 8mA no pull
+ gpio29  : in  12 8mA no pull
+ gpio30  : in  12 8mA no pull
+ gpio31  : in  12 8mA no pull
+
+GPIOs 1019-1020, platform/800f000.qcom,spmi:qcom,pm660l@2:gpios, 800f000.qcom,spmi:qcom,pm660l@2:gpios:
+ gpio-1020 (                    |volume_up           ) in  hi    
+
+GPIOs 1021-1023, platform/800f000.qcom,spmi:qcom,pm660@0:gpios, 800f000.qcom,spmi:qcom,pm660@0:gpios:
+ gpio-1023 (                    |epd_pwr             ) in  hi    
+##CLK
+mmss_mdss_ahb_clk en=0 rate=19200000
+mmss_mdss_axi_clk en=0 rate=0
+mmss_mdss_byte0_clk en=0 rate=128355825
+mmss_mdss_byte0_intf_clk en=0 rate=64177913
+mmss_mdss_byte0_intf_div_clk en=0 rate=64177913
+mmss_mdss_byte1_clk en=0 rate=60069712
+mmss_mdss_byte1_intf_clk en=0 rate=30034856
+mmss_mdss_byte1_intf_div_clk en=0 rate=30034856
+mmss_mdss_dp_aux_clk en=0 rate=19200000
+mmss_mdss_dp_crypto_clk en=0 rate=19200000
+mmss_mdss_dp_gtc_clk en=0 rate=19200000
+mmss_mdss_dp_link_clk en=0 rate=19200000
+mmss_mdss_dp_link_intf_clk en=0 rate=19200000
+mmss_mdss_dp_pixel_clk en=0 rate=19200000
+mmss_mdss_esc0_clk en=0 rate=19200000
+mmss_mdss_esc1_clk en=0 rate=19200000
+mmss_mdss_hdmi_dp_ahb_clk en=0 rate=19200000
+mmss_mdss_mdp_clk en=0 rate=100000000
+mmss_mdss_pclk0_clk en=0 rate=171141101
+mmss_mdss_pclk1_clk en=0 rate=40046475
+mmss_mdss_rot_clk en=0 rate=171428571
+mmss_mdss_vsync_clk en=0 rate=19200000
+mmss_throttle_mdss_axi_clk en=0 rate=0
+dsi0pll_byte_clk_mux en=0 rate=128355825
+dsi0pll_byte_clk_src en=0 rate=128355825
+dsi0pll_n2_div_clk en=0 rate=342282202
+dsi0pll_pixel_clk_mux en=0 rate=171141101
+dsi0pll_pixel_clk_src en=0 rate=171141101
+dsi0pll_post_n1_div_clk en=0 rate=1026846606
+dsi0pll_shadow_byte_clk_src en=0 rate=128355825
+dsi0pll_shadow_n2_div_clk en=0 rate=342282202
+dsi0pll_shadow_pixel_clk_src en=0 rate=171141101
+dsi0pll_shadow_post_n1_div_clk en=0 rate=1026846606
+dsi0pll_shadow_vco_clk_14nm en=0 rate=2053693212
+dsi0pll_vco_clk_14nm en=0 rate=2053693212
+dsi1pll_byte_clk_mux en=0 rate=60069712
+dsi1pll_byte_clk_src en=0 rate=60069712
+dsi1pll_n2_div_clk en=0 rate=80092950
+dsi1pll_pixel_clk_mux en=0 rate=40046475
+dsi1pll_pixel_clk_src en=0 rate=40046475
+dsi1pll_post_n1_div_clk en=0 rate=480557696
+dsi1pll_shadow_byte_clk_src en=0 rate=0
+dsi1pll_shadow_n2_div_clk en=0 rate=0
+dsi1pll_shadow_pixel_clk_src en=0 rate=0
+dsi1pll_shadow_post_n1_div_clk en=0 rate=0
+dsi1pll_shadow_vco_clk_14nm en=0 rate=0
+dsi1pll_vco_clk_14nm en=0 rate=1441673088
+byte0_clk_src en=0 rate=128355825
+byte1_clk_src en=0 rate=60069712
+dsi0pll_byte_clk_mux en=0 rate=128355825
+dsi0pll_byte_clk_src en=0 rate=128355825
+dsi0pll_shadow_byte_clk_src en=0 rate=128355825
+dsi1pll_byte_clk_mux en=0 rate=60069712
+dsi1pll_byte_clk_src en=0 rate=60069712
+dsi1pll_shadow_byte_clk_src en=0 rate=0
+mmss_mdss_byte0_clk en=0 rate=128355825
+mmss_mdss_byte0_intf_clk en=0 rate=64177913
+mmss_mdss_byte0_intf_div_clk en=0 rate=64177913
+mmss_mdss_byte1_clk en=0 rate=60069712
+mmss_mdss_byte1_intf_clk en=0 rate=30034856
+mmss_mdss_byte1_intf_div_clk en=0 rate=30034856
+mmss_mdss_pclk0_clk en=0 rate=171141101
+mmss_mdss_pclk1_clk en=0 rate=40046475
+pclk0_clk_src en=0 rate=171141101
+pclk1_clk_src en=0 rate=40046475
+esc0_clk_src en=0 rate=19200000
+esc1_clk_src en=0 rate=19200000
+mmss_mdss_esc0_clk en=0 rate=19200000
+mmss_mdss_esc1_clk en=0 rate=19200000
+camss_gp0_clk_src en=0 rate=19200000
+camss_gp1_clk_src en=0 rate=19200000
+gcc_gp1_clk en=0 rate=19200000
+gcc_gp2_clk en=0 rate=19200000
+gcc_gp3_clk en=0 rate=19200000
+gp1_clk_src en=0 rate=19200000
+gp2_clk_src en=0 rate=19200000
+gp3_clk_src en=0 rate=19200000
+mmss_camss_gp0_clk en=0 rate=19200000
+mmss_camss_gp1_clk en=0 rate=19200000
+div_clk1 en=0 rate=1000
+div_clk1_ao en=0 rate=1000
+audio_ext_pmi_lnbb_clk en=0 rate=0
+ln_bb_clk1_ao en=1 rate=1000
+ln_bb_clk1_pin en=0 rate=1000
+ln_bb_clk1_pin_ao en=0 rate=1000
+ln_bb_clk2 en=0 rate=1000
+ln_bb_clk2_ao en=0 rate=1000
+ln_bb_clk2_pin en=0 rate=1000
+ln_bb_clk2_pin_ao en=0 rate=1000
+ln_bb_clk3 en=0 rate=1000
+ln_bb_clk3_ao en=0 rate=1000
+ln_bb_clk3_pin en=0 rate=1000
+ln_bb_clk3_pin_ao en=0 rate=1000
+rf_clk1 en=0 rate=1000
+rf_clk1_ao en=0 rate=1000
+rf_clk1_ao_pin en=0 rate=1000
+rf_clk1_pin en=1 rate=1000
+mmss_bimc_smmu_ahb_clk en=0 rate=19200000
+mmss_bimc_smmu_axi_clk en=0 rate=0
+mmss_camss_ahb_clk en=0 rate=19200000
+mmss_camss_cci_ahb_clk en=0 rate=19200000
+mmss_camss_cci_clk en=0 rate=37500000
+mmss_camss_cphy_csid0_clk en=0 rate=200000000
+mmss_camss_cphy_csid1_clk en=0 rate=200000000
+mmss_camss_cphy_csid2_clk en=0 rate=200000000
+mmss_camss_cphy_csid3_clk en=0 rate=200000000
+mmss_camss_cpp_ahb_clk en=0 rate=19200000
+mmss_camss_cpp_axi_clk en=0 rate=0
+mmss_camss_cpp_clk en=0 rate=256000000
+mmss_camss_cpp_vbif_ahb_clk en=0 rate=19200000
+mmss_camss_csi0_ahb_clk en=0 rate=19200000
+mmss_camss_csi0_clk en=0 rate=310000000
+mmss_camss_csi0phytimer_clk en=0 rate=269333300
+mmss_camss_csi0pix_clk en=0 rate=310000000
+mmss_camss_csi0rdi_clk en=0 rate=310000000
+mmss_camss_csi1_ahb_clk en=0 rate=19200000
+mmss_camss_csi1_clk en=0 rate=310000000
+mmss_camss_csi1phytimer_clk en=0 rate=269333300
+mmss_camss_csi1pix_clk en=0 rate=310000000
+mmss_camss_csi1rdi_clk en=0 rate=310000000
+mmss_camss_csi2_ahb_clk en=0 rate=19200000
+mmss_camss_csi2_clk en=0 rate=310000000
+mmss_camss_csi2phytimer_clk en=0 rate=269333300
+mmss_camss_csi2pix_clk en=0 rate=310000000
+mmss_camss_csi2rdi_clk en=0 rate=310000000
+mmss_camss_csi3_ahb_clk en=0 rate=19200000
+mmss_camss_csi3_clk en=0 rate=19200000
+mmss_camss_csi3pix_clk en=0 rate=19200000
+mmss_camss_csi3rdi_clk en=0 rate=19200000
+mmss_camss_csi_vfe0_clk en=0 rate=120000000
+mmss_camss_csi_vfe1_clk en=0 rate=120000000
+mmss_camss_csiphy0_clk en=0 rate=200000000
+mmss_camss_csiphy1_clk en=0 rate=200000000
+mmss_camss_csiphy2_clk en=0 rate=200000000
+mmss_camss_gp0_clk en=0 rate=19200000
+mmss_camss_gp1_clk en=0 rate=19200000
+mmss_camss_ispif_ahb_clk en=0 rate=19200000
+mmss_camss_jpeg0_clk en=0 rate=66666666
+mmss_camss_jpeg0_dma_vote_clk en=0 rate=480000000
+mmss_camss_jpeg0_vote_clk en=0 rate=0
+mmss_camss_jpeg_ahb_clk en=0 rate=19200000
+mmss_camss_jpeg_axi_clk en=0 rate=0
+mmss_camss_mclk0_clk en=0 rate=24000000
+mmss_camss_mclk1_clk en=0 rate=24000000
+mmss_camss_mclk2_clk en=0 rate=24000000
+mmss_camss_mclk3_clk en=0 rate=19200000
+mmss_camss_micro_ahb_clk en=0 rate=19200000
+mmss_camss_top_ahb_clk en=0 rate=19200000
+mmss_camss_vfe0_ahb_clk en=0 rate=19200000
+mmss_camss_vfe0_clk en=0 rate=120000000
+mmss_camss_vfe0_stream_clk en=0 rate=120000000
+mmss_camss_vfe1_ahb_clk en=0 rate=19200000
+mmss_camss_vfe1_clk en=0 rate=120000000
+mmss_camss_vfe1_stream_clk en=0 rate=120000000
+mmss_camss_vfe_vbif_ahb_clk en=0 rate=19200000
+mmss_camss_vfe_vbif_axi_clk en=0 rate=0
+mmss_csiphy_ahb2crif_clk en=0 rate=19200000
+mmss_mdss_ahb_clk en=0 rate=19200000
+mmss_mdss_axi_clk en=0 rate=0
+mmss_mdss_byte0_clk en=0 rate=128355825
+mmss_mdss_byte0_intf_clk en=0 rate=64177913
+mmss_mdss_byte0_intf_div_clk en=0 rate=64177913
+mmss_mdss_byte1_clk en=0 rate=60069712
+mmss_mdss_byte1_intf_clk en=0 rate=30034856
+mmss_mdss_byte1_intf_div_clk en=0 rate=30034856
+mmss_mdss_dp_aux_clk en=0 rate=19200000
+mmss_mdss_dp_crypto_clk en=0 rate=19200000
+mmss_mdss_dp_gtc_clk en=0 rate=19200000
+mmss_mdss_dp_link_clk en=0 rate=19200000
+mmss_mdss_dp_link_intf_clk en=0 rate=19200000
+mmss_mdss_dp_pixel_clk en=0 rate=19200000
+mmss_mdss_esc0_clk en=0 rate=19200000
+mmss_mdss_esc1_clk en=0 rate=19200000
+mmss_mdss_hdmi_dp_ahb_clk en=0 rate=19200000
+mmss_mdss_mdp_clk en=0 rate=100000000
+mmss_mdss_pclk0_clk en=0 rate=171141101
+mmss_mdss_pclk1_clk en=0 rate=40046475
+mmss_mdss_rot_clk en=0 rate=171428571
+mmss_mdss_vsync_clk en=0 rate=19200000
+mmss_misc_ahb_clk en=0 rate=19200000
+mmss_misc_cxo_clk en=0 rate=0
+mmss_mnoc_ahb_clk en=0 rate=19200000
+mmss_snoc_dvm_axi_clk en=0 rate=0
+mmss_throttle_camss_axi_clk en=0 rate=0
+mmss_throttle_mdss_axi_clk en=0 rate=0
+mmss_throttle_video_axi_clk en=0 rate=0
+mmss_video_ahb_clk en=0 rate=19200000
+mmss_video_axi_clk en=0 rate=0
+mmss_video_core_clk en=0 rate=133333333
+mmss_video_subcore0_clk en=0 rate=133333333
+mmssnoc_axi_a_clk en=0 rate=802160
+mmssnoc_axi_clk en=0 rate=802160
+mmpll0_pll_out_main en=0 rate=807999902
+mmpll10_pll_out_main en=0 rate=576000000
+mmpll3_pll_out_main en=0 rate=883200000
+mmpll4_pll_out_main en=0 rate=768000000
+mmpll5_pll_out_main en=0 rate=825000000
+mmpll6_pll_out_main en=0 rate=1080000000
+mmpll7_pll_out_main en=0 rate=960000000
+mmpll8_pll_out_main en=0 rate=930000000
+cxo en=2 rate=19200000
+cxo_a en=6 rate=19200000
+cxo_dwc3_clk en=1 rate=1000
+cxo_lpm_clk en=0 rate=1000
+cxo_otg_clk en=0 rate=1000
+cxo_pil_cdsp_clk en=0 rate=1000
+cxo_pil_lpass_clk en=0 rate=1000
+##REG
+regulator-dummy state= uV= users=0
+pm660_s4 state=enabled uV=2040000 users=2
+pm660_l7 state=disabled uV=1200000 users=0
+pm660_l8 state=enabled uV=1800000 users=12
+pm660_l9 state=disabled uV=1 users=0
+pm660_l9_pin_ctrl state=enabled uV=1750000 users=1
+pm660_l10 state=enabled uV=1800000 users=2
+pm660_l11 state=enabled uV=1800000 users=2
+pm660_l12 state=disabled uV=1 users=0
+pm660_l13 state=enabled uV=1780000 users=3
+pm660_l14 state=disabled uV=1 users=0
+pm660_l15 state=disabled uV=1 users=0
+pm660_s5 state=disabled uV=1 users=0
+pm660_l17 state=disabled uV=1 users=0
+pm660_l19 state=disabled uV=1 users=0
+pm660_l19_pin_ctrl state=enabled uV=3200000 users=1
+pm660l_s1 state=disabled uV=1125000 users=0
+pm660l_s2 state=disabled uV=1050000 users=0
+pm660l_s3_level state=enabled uV=128 users=1
+pm660l_s3_floor_level state=disabled uV=1 users=0
+pm660l_s3_level_ao state=enabled uV=64 users=1
+pm660l_s5_level state=disabled uV=16 users=0
+pm660l_s5_floor_level state=disabled uV=1 users=0
+pm660_s6 state=disabled uV=1 users=0
+pm660l_s5_level_ao state=disabled uV=1 users=0
+pm660l_l1 state=enabled uV=925000 users=2
+pm660l_l2 state=disabled uV=350000 users=0
+pm660l_l3 state=enabled uV=2800000 users=2
+pm660l_l4 state=enabled uV=2950000 users=1
+pm660l_l5 state=disabled uV=1721000 users=0
+pm660l_l6 state=disabled uV=1 users=0
+pm660l_l7 state=enabled uV=3075000 users=1
+pm660l_l8 state=disabled uV=1 users=0
+pm660l_l9_level state=disabled uV=16 users=0
+pm660_l1 state=disabled uV=1200000 users=0
+pm660l_l9_floor_level state=disabled uV=1 users=0
+pm660l_l10_level state=disabled uV=1 users=0
+pm660l_l10_floor_level state=disabled uV=1 users=0
+pm660l_bob state=disabled uV=1 users=0
+pm660l_bob_pin1 state=disabled uV=1 users=0
+pm660l_bob_pin2 state=disabled uV=1 users=0
+pm660l_bob_pin3 state=disabled uV=1 users=0
+gfx_mem_acc_corner state= uV=1 users=0
+msm_gfx_ldo state=disabled uV=0 users=0
+gfx_stub_corner state=disabled uV=584999 users=0
+pm660_l2 state=disabled uV=1 users=0
+gfx_corner state=disabled uV=1 users=0
+apc0_pwrcl_corner state= uV=8 users=0
+apc1_perfcl_corner state= uV=2 users=0
+cam_vadd_gpio_regulator state= uV=2800000 users=0
+sunwave_ldo state= uV= users=0
+gdsc_usb30 state=enabled uV= users=1
+gdsc_ufs state=disabled uV= users=0
+gdsc_hlos1_vote_lpass_adsp state=disabled uV= users=0
+gdsc_hlos1_vote_turing_adsp state=disabled uV= users=0
+gdsc_hlos2_vote_turing_adsp state=disabled uV= users=0
+pm660_l3 state=disabled uV=1 users=0
+gdsc_bimc_smmu state=disabled uV= users=0
+gdsc_venus state=disabled uV= users=0
+gdsc_venus_core0 state=disabled uV= users=0
+gdsc_camss_top state=disabled uV= users=0
+gdsc_vfe0 state=disabled uV= users=0
+gdsc_vfe1 state=disabled uV= users=0
+gdsc_cpp state=disabled uV= users=0
+gdsc_mdss state=disabled uV= users=0
+gdsc_gpu_cx state=disabled uV= users=0
+gdsc_gpu_gx state=disabled uV= users=0
+pm660_l5 state=enabled uV=848000 users=1
+lcdb_ldo state=disabled uV=5500000 users=0
+lcdb_ncp state=disabled uV=11900000 users=0
+qusb@c012000 state=enabled uV= users=1
+qusb@c014000 state=disabled uV= users=0
+smb2-vbus state=disabled uV= users=0
+smb2-vconn state=disabled uV= users=0
+pm660_l6 state=disabled uV=1 users=0
+pm660_l6_pin_ctrl state=enabled uV=1200000 users=1
+10f004.qcom,gdsc-gdsc_usb30 enable=1
+175004.qcom,gdsc-gdsc_ufs enable=0
+179c4000.cprh-ctrl-apc1_perfcl_corner enable=1
+179c8000.cprh-ctrl-apc0_pwrcl_corner enable=1
+17d034.qcom,gdsc-gdsc_hlos1_vote_lpass_adsp enable=0
+17d04c.qcom,gdsc-gdsc_hlos1_vote_turing_adsp enable=0
+17e04c.qcom,gdsc-gdsc_hlos2_vote_turing_adsp enable=0
+1fcf004.regulator-gfx_mem_acc_corner enable=1
+5061000.cpr4-ctrl-gfx_corner enable=0
+5066004.qcom,gdsc-gdsc_gpu_cx enable=0
+5066094.qcom,gdsc-gdsc_gpu_gx enable=0
+506e000.ldo-msm_gfx_ldo enable=0
+800f000.qcom,spmi:qcom,pm660l@3:qpnp-lcdb@ec00-lcdb_ldo enable=0
+800f000.qcom,spmi:qcom,pm660l@3:qpnp-lcdb@ec00-lcdb_ncp enable=0
+c012000.qusb-qusb@c012000 enable=1
+c014000.qusb-qusb@c014000 enable=0
+c8c1024.qcom,gdsc-gdsc_venus enable=0
+c8c1040.qcom,gdsc-gdsc_venus_core0 enable=0
+c8c2304.qcom,gdsc-gdsc_mdss enable=1
+c8c34a0.qcom,gdsc-gdsc_camss_top enable=0
+c8c3664.qcom,gdsc-gdsc_vfe0 enable=0
+c8c3674.qcom,gdsc-gdsc_vfe1 enable=0
+c8c36d4.qcom,gdsc-gdsc_cpp enable=0
+c8ce020.qcom,gdsc-gdsc_bimc_smmu enable=1
+cam_vadd_gpio_regulator enable=0
+gfx_stub_corner enable=0
+reg-dummy-regulator-dummy enable=1
+smb2-vbus enable=0
+smb2-vconn enable=0
+soc:qcom,rpm-smd:rpm-regulator-bobb:regulator-bob-pin1-pm660l_bob_pin1 enable=0
+soc:qcom,rpm-smd:rpm-regulator-bobb:regulator-bob-pin2-pm660l_bob_pin2 enable=0
+soc:qcom,rpm-smd:rpm-regulator-bobb:regulator-bob-pin3-pm660l_bob_pin3 enable=0
+soc:qcom,rpm-smd:rpm-regulator-bobb:regulator-bob-pm660l_bob enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa10:regulator-l10-pm660_l10 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa11:regulator-l11-pm660_l11 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa12:regulator-l12-pm660_l12 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa13:regulator-l13-pm660_l13 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa14:regulator-l14-pm660_l14 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa15:regulator-l15-pm660_l15 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa17:regulator-l17-pm660_l17 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa19:regulator-l19-pin-ctrl-pm660_l19_pin_ctrl enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa19:regulator-l19-pm660_l19 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa1:regulator-l1-pm660_l1 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa2:regulator-l2-pm660_l2 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa3:regulator-l3-pm660_l3 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa5:regulator-l5-pm660_l5 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa6:regulator-l6-pin-ctrl-pm660_l6_pin_ctrl enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa6:regulator-l6-pm660_l6 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa7:regulator-l7-pm660_l7 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldoa8:regulator-l8-pm660_l8 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa9:regulator-l9-pin-ctrl-pm660_l9_pin_ctrl enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldoa9:regulator-l9-pm660_l9 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob10:regulator-l10-floor-level-pm660l_l10_floor_level enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob10:regulator-l10-level-pm660l_l10_level enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob1:regulator-l1-pm660l_l1 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldob2:regulator-l2-pm660l_l2 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob3:regulator-l3-pm660l_l3 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldob4:regulator-l4-pm660l_l4 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldob5:regulator-l5-pm660l_l5 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob6:regulator-l6-pm660l_l6 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob7:regulator-l7-pm660l_l7 enable=1
+soc:qcom,rpm-smd:rpm-regulator-ldob8:regulator-l8-pm660l_l8 enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob9:regulator-l9-floor-level-pm660l_l9_floor_level enable=0
+soc:qcom,rpm-smd:rpm-regulator-ldob9:regulator-l9-level-pm660l_l9_level enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpa4:regulator-s4-pm660_s4 enable=1
+soc:qcom,rpm-smd:rpm-regulator-smpa5:regulator-s5-pm660_s5 enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpa6:regulator-s6-pm660_s6 enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpb1:regulator-s1-pm660l_s1 enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpb2:regulator-s2-pm660l_s2 enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpb3:regulator-s3-floor-level-pm660l_s3_floor_level enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpb3:regulator-s3-level-ao-pm660l_s3_level_ao enable=1
+soc:qcom,rpm-smd:rpm-regulator-smpb3:regulator-s3-level-pm660l_s3_level enable=1
+soc:qcom,rpm-smd:rpm-regulator-smpb5:regulator-s5-floor-level-pm660l_s5_floor_level enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpb5:regulator-s5-level-ao-pm660l_s5_level_ao enable=0
+soc:qcom,rpm-smd:rpm-regulator-smpb5:regulator-s5-level-pm660l_s5_level enable=0
+sunwave_ldo enable=1

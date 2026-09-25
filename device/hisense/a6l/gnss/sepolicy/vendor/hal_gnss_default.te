@@ -1,0 +1,3 @@
+# A6L GNSS HAL: QMI LOC over QRTR (agent gnss). Not compiled in rom-v1 (permissive); for the enforcing ROM.
+allow hal_gnss_default self:qipcrtr_socket { create_socket_perms_no_ioctl };
+get_prop(hal_gnss_default, vendor_default_prop)

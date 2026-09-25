@@ -1,0 +1,3 @@
+# audio3: DSP routes of the ONE front end MultiMedia1 (pcmC0D0), both directions (as the ROM's mixer_paths_a6l.xml top level)
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|1
+MultiMedia1 Mixer LPI_MI2S_TX_3|1

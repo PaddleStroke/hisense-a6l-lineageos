@@ -1,0 +1,51 @@
+--- a/drivers/pinctrl/qcom/pinctrl-sdm660-lpass-lpi.c
++++ b/drivers/pinctrl/qcom/pinctrl-sdm660-lpass-lpi.c
+@@ -27,6 +27,9 @@
+ 	LPI_MUX_pdm_clk,
+ 	LPI_MUX_pdm_rx,
+ 	LPI_MUX_pdm_sync,
++	LPI_MUX_ter_mi2s_clk,
++	LPI_MUX_ter_mi2s_ws,
++	LPI_MUX_ter_mi2s_data,
+ 
+ 	LPI_MUX_gpio,
+ 	LPI_MUX__,
+@@ -77,16 +80,24 @@
+ static const char * const pdm_clk_groups[] = { "gpio18" };
+ static const char * const pdm_rx_groups[] = { "gpio21", "gpio23", "gpio25" };
+ static const char * const pdm_sync_groups[] = { "gpio19" };
++/*
++ * Hisense A6L (23 Sep 2026): tertiary MI2S to the TFA9894 speaker amplifier. From the stock A6L device tree
++ * (lpi_pinctrl@15070000, ter_mi2s_{clk,ws,sd0,sd1}_active): gpio4 SCK, gpio5 WS, gpio6 SD0, gpio7 SD1, all
++ * "func4" (= mux value 4 = the 4th alternate function slot below), drive-strength 8 mA active / 2 mA sleep.
++ */
++static const char * const ter_mi2s_clk_groups[] = { "gpio4" };
++static const char * const ter_mi2s_ws_groups[] = { "gpio5" };
++static const char * const ter_mi2s_data_groups[] = { "gpio6", "gpio7" };
+ 
+ static const struct lpi_pingroup sdm660_lpi_pinctrl_groups[] = {
+ 	LPI_PINGROUP_OFFSET(0, LPI_NO_SLEW, _, _, _, _, 0x0000),
+ 	LPI_PINGROUP_OFFSET(1, LPI_NO_SLEW, _, _, _, _, 0x1000),
+ 	LPI_PINGROUP_OFFSET(2, LPI_NO_SLEW, _, _, _, _, 0x2000),
+ 	LPI_PINGROUP_OFFSET(3, LPI_NO_SLEW, _, _, _, _, 0x2010),
+-	LPI_PINGROUP_OFFSET(4, LPI_NO_SLEW, _, _, _, _, 0x3000),
+-	LPI_PINGROUP_OFFSET(5, LPI_NO_SLEW, _, _, _, _, 0x3010),
+-	LPI_PINGROUP_OFFSET(6, LPI_NO_SLEW, _, _, _, _, 0x4000),
+-	LPI_PINGROUP_OFFSET(7, LPI_NO_SLEW, _, _, _, _, 0x4010),
++	LPI_PINGROUP_OFFSET(4, LPI_NO_SLEW, _, _, _, ter_mi2s_clk, 0x3000),
++	LPI_PINGROUP_OFFSET(5, LPI_NO_SLEW, _, _, _, ter_mi2s_ws, 0x3010),
++	LPI_PINGROUP_OFFSET(6, LPI_NO_SLEW, _, _, _, ter_mi2s_data, 0x4000),
++	LPI_PINGROUP_OFFSET(7, LPI_NO_SLEW, _, _, _, ter_mi2s_data, 0x4010),
+ 	LPI_PINGROUP_OFFSET(8, LPI_NO_SLEW, _, _, _, _, 0x5000),
+ 	LPI_PINGROUP_OFFSET(9, LPI_NO_SLEW, _, _, _, _, 0x5010),
+ 	LPI_PINGROUP_OFFSET(10, LPI_NO_SLEW, _, _, _, _, 0x5020),
+@@ -126,6 +137,9 @@
+ 	LPI_FUNCTION(pdm_clk),
+ 	LPI_FUNCTION(pdm_rx),
+ 	LPI_FUNCTION(pdm_sync),
++	LPI_FUNCTION(ter_mi2s_clk),
++	LPI_FUNCTION(ter_mi2s_ws),
++	LPI_FUNCTION(ter_mi2s_data),
+ };
+ 
+ static const struct lpi_pinctrl_variant_data sdm660_lpi_pinctrl_data = {

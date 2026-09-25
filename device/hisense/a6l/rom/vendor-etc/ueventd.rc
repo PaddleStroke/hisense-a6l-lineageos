@@ -1,0 +1,13 @@
+# A6L rom-v1 vendor ueventd rules (agent flash). Device nodes the bring-up scripts used to mknod by hand.
+/dev/dri/*                0666   system     graphics
+/dev/i2c-*                0660   system     system
+/dev/gpiochip*            0660   system     system
+/dev/qcom_rmtfs_mem*      0660   root       system
+/dev/rpmsg*               0660   root       system
+/dev/rpmsg_ctrl*          0660   root       system
+/dev/ttyMSM1              0660   bluetooth  bluetooth
+/dev/iio:device*          0660   system     system
+/dev/uhid                 0660   uhid       uhid
+/dev/fastrpc-*            0664   system     system
+/sys/devices/platform/soc@0/*/iio:device*  sampling_frequency  0664 system system
+/sys/devices/platform/soc@0/*/iio:device*  buffer/enable       0664 system system

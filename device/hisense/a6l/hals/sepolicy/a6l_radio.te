@@ -1,0 +1,49 @@
+# Modem companions: rmtfs, tqftpserv, diag-router, helper script. Bring-up policy; the image runs with
+# androidboot.selinux=permissive until an enforcing pass (audit2allow from real logs) is done.
+type a6l_rmtfs_data_file, file_type, vendor_data_file_type;
+type a6l_tqftpserv_data_file, file_type, data_file_type;
+type a6l_rmtfs_mem_device, dev_type;
+type a6l_modem_block_device, dev_type;
+
+type a6l_rmtfs, domain;
+type a6l_rmtfs_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_rmtfs)
+allow a6l_rmtfs self:qipcrtr_socket create_socket_perms_no_ioctl;
+allow a6l_rmtfs a6l_rmtfs_mem_device:chr_file rw_file_perms;
+allow a6l_rmtfs a6l_rmtfs_data_file:dir rw_dir_perms;
+allow a6l_rmtfs a6l_rmtfs_data_file:file rw_file_perms;
+allow a6l_rmtfs sysfs:file r_file_perms;
+
+type a6l_tqftpserv, domain;
+type a6l_tqftpserv_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_tqftpserv)
+allow a6l_tqftpserv self:qipcrtr_socket create_socket_perms_no_ioctl;
+allow a6l_tqftpserv vendor_file:dir r_dir_perms;
+allow a6l_tqftpserv vendor_file:file r_file_perms;
+allow a6l_tqftpserv a6l_tqftpserv_data_file:dir create_dir_perms;
+allow a6l_tqftpserv a6l_tqftpserv_data_file:file create_file_perms;
+allow a6l_tqftpserv sysfs:file r_file_perms;
+
+type a6l_diag, domain;
+type a6l_diag_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_diag)
+allow a6l_diag self:qipcrtr_socket create_socket_perms_no_ioctl;
+allow a6l_diag self:unix_seqpacket_socket create_socket_perms_no_ioctl;
+allow a6l_diag self:unix_stream_socket create_stream_socket_perms;
+allow a6l_diag sysfs:dir r_dir_perms;
+allow a6l_diag sysfs:file r_file_perms;
+
+type a6l_modem, domain;
+type a6l_modem_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_modem)
+allow a6l_modem vendor_shell_exec:file rx_file_perms;
+allow a6l_modem vendor_toolbox_exec:file rx_file_perms;
+allow a6l_modem a6l_modem_block_device:blk_file r_file_perms;
+allow a6l_modem a6l_rmtfs_data_file:dir rw_dir_perms;
+allow a6l_modem a6l_rmtfs_data_file:file create_file_perms;
+allow a6l_modem sysfs:dir r_dir_perms;
+allow a6l_modem sysfs:file rw_file_perms;
+allow a6l_modem kmsg_device:chr_file w_file_perms;
+set_prop(a6l_modem, vendor_a6l_prop)
+set_prop(a6l_modem, ctl_start_prop)
+set_prop(a6l_modem, ctl_stop_prop)

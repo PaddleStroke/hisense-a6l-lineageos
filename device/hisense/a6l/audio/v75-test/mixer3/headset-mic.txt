@@ -1,0 +1,5 @@
+# Stock "headset-mic" -> adc2 (on MultiMedia1 capture now)
+ADC2 MUX|INP2
+Digital DEC1 MUX|ADC2
+Digital CIC1 MUX|AMIC
+ADC2 Volume|6

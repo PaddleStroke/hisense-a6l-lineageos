@@ -1,0 +1,199 @@
+diff -ruN -x '*.o' -x '*.ko' -x '*.cmd' -x '*.mod*' -x Module.symvers -x modules.order -x '.*' -x a6l_ipa_bam.h orig/drivers/net/ipa-legacy/Makefile src/drivers/net/ipa-legacy/Makefile
+--- orig/drivers/net/ipa-legacy/Makefile	2026-09-24 09:32:13.597315649 +0200
++++ src/drivers/net/ipa-legacy/Makefile	2026-09-24 09:32:11.606780017 +0200
+@@ -4,13 +4,13 @@
+ 
+ IPA_VERSIONS		:=	2.0 2.5 2.6l
+ 
+-obj-$(CONFIG_QCOM_IPA_LEGACY)	+=	ipa.o
++obj-$(CONFIG_QCOM_IPA_LEGACY)	+=	ipa_legacy.o
+ 
+-ipa-y			:=	ipa_main.o ipa_power.o ipa_reg.o ipa_mem.o \
++ipa_legacy-y		:=	ipa_main.o ipa_power.o ipa_reg.o ipa_mem.o \
+ 				ipa_table.o ipa_interrupt.o bam.o ipa_reg.o \
+ 				ipa_dma_trans.o ipa_uc.o \
+ 				ipa_endpoint.o ipa_cmd.o ipa_modem.o \
+ 				ipa_qmi.o ipa_qmi_msg.o ipa_sysfs.o
+ 
+-ipa-y			+=	$(IPA_VERSIONS:%=reg/ipa_reg-v%.o)
+-ipa-y			+=	$(IPA_VERSIONS:%=data/ipa_data-v%.o)
++ipa_legacy-y		+=	$(IPA_VERSIONS:%=reg/ipa_reg-v%.o)
++ipa_legacy-y		+=	$(IPA_VERSIONS:%=data/ipa_data-v%.o)
+diff -ruN -x '*.o' -x '*.ko' -x '*.cmd' -x '*.mod*' -x Module.symvers -x modules.order -x '.*' -x a6l_ipa_bam.h orig/drivers/net/ipa-legacy/bam.c src/drivers/net/ipa-legacy/bam.c
+--- orig/drivers/net/ipa-legacy/bam.c	2026-09-24 09:32:13.597345268 +0200
++++ src/drivers/net/ipa-legacy/bam.c	2026-09-24 09:32:11.606448664 +0200
+@@ -6,6 +6,7 @@
+ #include <linux/completion.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/dmaengine.h>
++#include "a6l_ipa_bam.h"	/* A6L: DMA_PREP_IMM_CMD, shared with a6l_ipa_bam.ko */
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+ #include <linux/kernel.h>
+@@ -140,6 +141,10 @@
+ {
+ 	mutex_destroy(&ipa_dma->mutex);
+ 	bam_channel_exit(ipa_dma);
++	if (ipa_dma->dummy_dev) {	/* A6L: free dummy netdev */
++		free_netdev(ipa_dma->dummy_dev);
++		ipa_dma->dummy_dev = NULL;
++	}
+ }
+ 
+ /* Return the channel id associated with a given channel */
+@@ -292,10 +297,10 @@
+ 		return;	/* Ignore uninitialized channels */
+ 
+ 	if (channel->toward_ipa) {
+-		netif_napi_add_tx(&ipa_dma->dummy_dev, &channel->napi,
++		netif_napi_add_tx(ipa_dma->dummy_dev, &channel->napi,
+ 				  bam_channel_poll);
+ 	} else {
+-		netif_napi_add(&ipa_dma->dummy_dev, &channel->napi,
++		netif_napi_add(ipa_dma->dummy_dev, &channel->napi,
+ 			       bam_channel_poll);
+ 	}
+ 	napi_enable(&channel->napi);
+@@ -508,11 +513,16 @@
+ 	ipa_dma->dev = dev;
+ 	ipa_dma->version = version;
+ 
+-	init_dummy_netdev(&ipa_dma->dummy_dev);
++	ipa_dma->dummy_dev = alloc_netdev_dummy(0);
++	if (!ipa_dma->dummy_dev)
++		return -ENOMEM;
+ 
+ 	ret = bam_channel_init(ipa_dma, count, data);
+-	if (ret)
++	if (ret) {
++		free_netdev(ipa_dma->dummy_dev);
++		ipa_dma->dummy_dev = NULL;
+ 		return ret;
++	}
+ 
+ 	mutex_init(&ipa_dma->mutex);
+ 
+diff -ruN -x '*.o' -x '*.ko' -x '*.cmd' -x '*.mod*' -x Module.symvers -x modules.order -x '.*' -x a6l_ipa_bam.h orig/drivers/net/ipa-legacy/ipa_dma.h src/drivers/net/ipa-legacy/ipa_dma.h
+--- orig/drivers/net/ipa-legacy/ipa_dma.h	2026-09-24 09:32:13.598120554 +0200
++++ src/drivers/net/ipa-legacy/ipa_dma.h	2026-09-24 09:32:11.605558621 +0200
+@@ -186,7 +186,7 @@
+ 	struct mutex mutex;		/* protects commands, programming */
+ 	struct ipa_dma_channel channel[GSI_CHANNEL_COUNT_MAX];
+ 	struct ipa_dma_evt_ring evt_ring[IPA_DMA_EVT_RING_COUNT_MAX];
+-	struct net_device dummy_dev;	/* needed for NAPI */
++	struct net_device *dummy_dev;	/* needed for NAPI (A6L: alloc_netdev_dummy, 7.x) */
+ 	struct ipa_dma_ops *ops;
+ };
+ 
+diff -ruN -x '*.o' -x '*.ko' -x '*.cmd' -x '*.mod*' -x Module.symvers -x modules.order -x '.*' -x a6l_ipa_bam.h orig/drivers/net/ipa-legacy/ipa_main.c src/drivers/net/ipa-legacy/ipa_main.c
+--- orig/drivers/net/ipa-legacy/ipa_main.c	2026-09-24 09:32:13.598387655 +0200
++++ src/drivers/net/ipa-legacy/ipa_main.c	2026-09-24 09:32:11.606901769 +0200
+@@ -447,6 +447,11 @@
+ 		.compatible	= "qcom,msm8953-ipa",
+ 		.data		= &ipa_data_v2_6l,
+ 	},
++	{
++		/* A6L: SDM630/SDM660, IPA v2.6L + BAM (stock: qcom,ipa-hw-ver = <6>, reg-names ipa-base/bam-base) */
++		.compatible	= "qcom,sdm660-ipa",
++		.data		= &ipa_data_v2_6l,
++	},
+ 	{ },
+ };
+ MODULE_DEVICE_TABLE(of, ipa_match);
+@@ -674,7 +679,7 @@
+ 	return ret;
+ }
+ 
+-static int ipa_remove(struct platform_device *pdev)
++static int __ipa_remove(struct platform_device *pdev)
+ {
+ 	struct ipa *ipa = dev_get_drvdata(&pdev->dev);
+ 	struct ipa_dma *ipa_dma = &ipa->ipa_dma;
+@@ -715,11 +720,19 @@
+ 	return 0;
+ }
+ 
++static void ipa_remove(struct platform_device *pdev)
++{
++	int ret = __ipa_remove(pdev);
++
++	if (ret)
++		dev_err(&pdev->dev, "remove returned %d\n", ret);
++}
++
+ static void ipa_shutdown(struct platform_device *pdev)
+ {
+ 	int ret;
+ 
+-	ret = ipa_remove(pdev);
++	ret = __ipa_remove(pdev);
+ 	if (ret)
+ 		dev_err(&pdev->dev, "shutdown: remove returned %d\n", ret);
+ }
+@@ -737,7 +750,7 @@
+ 	.remove		= ipa_remove,
+ 	.shutdown	= ipa_shutdown,
+ 	.driver	= {
+-		.name		= "ipa",
++		.name		= "ipa-legacy",
+ 		.pm		= &ipa_pm_ops,
+ 		.of_match_table	= ipa_match,
+ 		.dev_groups	= ipa_attribute_groups,
+diff -ruN -x '*.o' -x '*.ko' -x '*.cmd' -x '*.mod*' -x Module.symvers -x modules.order -x '.*' -x a6l_ipa_bam.h orig/drivers/net/ipa-legacy/ipa_mem.c src/drivers/net/ipa-legacy/ipa_mem.c
+--- orig/drivers/net/ipa-legacy/ipa_mem.c	2026-09-24 09:32:13.598423608 +0200
++++ src/drivers/net/ipa-legacy/ipa_mem.c	2026-09-24 09:32:11.607043287 +0200
+@@ -503,6 +503,32 @@
+  *
+  * Note: @size and the item address are is not guaranteed to be page-aligned.
+  */
++/* A6L: 1:1 IOMMU window over the SMEM item (mainline ipa_mem.c behaviour); module-local, one IPA instance */
++static unsigned long a6l_smem_iova;
++static size_t a6l_smem_size;
++
++static void a6l_smem_map(struct device *dev, void *virt, size_t size)
++{
++	struct iommu_domain *domain = iommu_get_domain_for_dev(dev);
++	phys_addr_t phys, addr;
++	size_t len;
++	int ret;
++
++	if (!domain || domain->type == IOMMU_DOMAIN_IDENTITY)
++		return;
++	phys = qcom_smem_virt_to_phys(virt);
++	addr = round_down(phys, PAGE_SIZE);
++	len = PAGE_ALIGN(size + (phys - addr));
++	ret = iommu_map(domain, addr, addr, len, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
++	if (ret) {
++		dev_warn(dev, "A6L_IPA SMEM 1:1 iommu map %pa+%zx failed: %d\n", &addr, len, ret);
++		return;
++	}
++	a6l_smem_iova = addr;
++	a6l_smem_size = len;
++	dev_info(dev, "A6L_IPA SMEM mapped 1:1 at %pa size %zx\n", &addr, len);
++}
++
+ static int ipa_smem_init(struct ipa *ipa, u32 item, size_t size)
+ {
+ 	struct device *dev = &ipa->pdev->dev;
+@@ -543,15 +569,18 @@
+ 		return -EINVAL;
+ 	}
+ 
++	a6l_smem_map(dev, virt, size);
++
+ 	return 0;
+ }
+ 
+ static void ipa_smem_exit(struct ipa *ipa)
+ {
+-	// struct device *dev = &ipa->pdev->dev;
+-	// struct iommu_domain *domain;
++	struct iommu_domain *domain = iommu_get_domain_for_dev(&ipa->pdev->dev);
+ 
+-	/* NOOP */
++	if (domain && a6l_smem_size)
++		iommu_unmap(domain, a6l_smem_iova, a6l_smem_size);
++	a6l_smem_size = 0;
+ }
+ 
+ /* Perform memory region-related initialization */

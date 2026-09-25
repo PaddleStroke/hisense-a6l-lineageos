@@ -1,0 +1,2 @@
+# LCD backlight + e-ink frontlight sysfs nodes (paths in genfs_contexts are unverified: check `ls -lZ` in test D10)
+type sysfs_a6l_dualux, sysfs_type, fs_type;

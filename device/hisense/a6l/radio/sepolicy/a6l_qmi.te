@@ -1,0 +1,2 @@
+# a6l-qmi test tool: run from an adb root shell only (no init service). Bring-up images run permissive.
+type a6l_qmi_exec, exec_type, vendor_file_type, file_type;

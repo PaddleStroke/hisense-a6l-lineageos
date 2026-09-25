@@ -1,0 +1,9 @@
+# Hisense A6L radio HAL (agent ril): QMI over QRTR sockets + rmnet links over rtnetlink.
+# hal_radio_default / hal_radio_default_exec and init_daemon_domain come from system/sepolicy/vendor.
+allow hal_radio_default self:qipcrtr_socket create_socket_perms_no_ioctl;
+# rmnet link add/del (RTM_NEWLINK/RTM_DELLINK) and interface up/mtu ioctls
+allow hal_radio_default self:netlink_route_socket { create_socket_perms_no_ioctl nlmsg_read nlmsg_write };
+allow hal_radio_default self:udp_socket create_socket_perms;
+allowxperm hal_radio_default self:udp_socket ioctl { SIOCGIFFLAGS SIOCSIFFLAGS SIOCSIFMTU SIOCGIFINDEX };
+allow hal_radio_default self:capability { net_admin net_raw };
+get_prop(hal_radio_default, vendor_a6l_ril_prop)

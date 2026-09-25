@@ -1,0 +1,5 @@
+# Hisense A6L rear e-ink (eink3)
+type sysfs_a6l_epd, sysfs_type, fs_type;		# DSI1 e-ink panel device (epd_power, bringup_status) + TPS65185 hwmon
+type a6l_epd_socket, file_type;				# /dev/socket/a6l_epd (vendor.a6l_epdd control socket)
+type a6l_epd_data_file, file_type, data_file_type;	# /data/vendor/epd (waveform cache)
+type a6l_epd_spi_device, dev_type;			# /dev/spidev*: the panel NOR, read-only use

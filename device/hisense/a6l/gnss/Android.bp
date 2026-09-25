@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0
+// A6L GNSS (agent gnss, 24 Sep 2026): AIDL GNSS HAL over the modem's QMI LOC service + standalone test CLI.
+// See docs/gnss-20260924.md. Pulled in by device/hisense/a6l/gnss/gnss.mk (PRODUCT_PACKAGES).
+
+cc_defaults {
+    name: "a6l_gnss_defaults",
+    vendor: true,
+    compile_multilib: "64",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    cpp_std: "c++17",
+}
+
+cc_library_static {
+    name: "liba6l_qmiloc",
+    defaults: ["a6l_gnss_defaults"],
+    srcs: [
+        "lib/qmi.cpp",
+        "lib/loc_v02.cpp",
+        "lib/nmea.cpp",
+        "lib/qrtr_transport.cpp",
+        "lib/loc_client.cpp",
+        "lib/android_map.cpp",
+    ],
+    export_include_dirs: ["lib"],
+}
+
+cc_binary {
+    name: "android.hardware.gnss-service.a6l",
+    defaults: ["a6l_gnss_defaults"],
+    relative_install_path: "hw",
+    init_rc: ["android.hardware.gnss-service.a6l.rc"],
+    vintf_fragments: ["android.hardware.gnss-service.a6l.xml"],
+    srcs: [
+        "hal/Gnss.cpp",
+        "hal/service.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder_ndk",
+        "liblog",
+        "android.hardware.gnss-V7-ndk",
+    ],
+    static_libs: ["liba6l_qmiloc"],
+}
+
+// Same tool as the static NDK build used from the recovery RAM session (tools/build-gnss-a6l.sh).
+cc_binary {
+    name: "a6l_gnss_test",
+    defaults: ["a6l_gnss_defaults"],
+    srcs: ["tools/a6l_gnss_test.cpp"],
+    static_libs: ["liba6l_qmiloc"],
+}

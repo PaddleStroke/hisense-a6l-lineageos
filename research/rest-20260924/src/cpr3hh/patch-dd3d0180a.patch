@@ -1,0 +1,143 @@
+From dd3d0180a1885280bf40f9b1efa8dcb99f7cde3a Mon Sep 17 00:00:00 2001
+From: Konrad Dybcio <konrad.dybcio@linaro.org>
+Date: Mon, 28 Aug 2023 13:42:18 +0200
+Subject: [PATCH] soc: qcom: cpr: Use u64 for frequency
+
+32 bits is not enough for over-2.changeGHz frequencies. Move all variables
+that operate on Hz to u64 to avoid overflows.
+
+Reviewed-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@collabora.com>
+Signed-off-by: Konrad Dybcio <konrad.dybcio@linaro.org>
+---
+ drivers/pmdomain/qcom/cpr-common.c | 13 +++++++------
+ drivers/pmdomain/qcom/cpr-common.h |  9 ++++-----
+ drivers/pmdomain/qcom/cpr.c        |  8 ++++----
+ 3 files changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/pmdomain/qcom/cpr-common.c b/drivers/pmdomain/qcom/cpr-common.c
+index 44c681bbb..3e3a4a61c 100644
+--- a/drivers/pmdomain/qcom/cpr-common.c
++++ b/drivers/pmdomain/qcom/cpr-common.c
+@@ -218,7 +218,7 @@ unsigned int cpr_get_fuse_corner(struct dev_pm_opp *opp)
+ }
+ EXPORT_SYMBOL_GPL(cpr_get_fuse_corner);
+ 
+-unsigned long cpr_get_opp_hz_for_req(struct dev_pm_opp *ref,
++u64 cpr_get_opp_hz_for_req(struct dev_pm_opp *ref,
+ 				     struct device *cpu_dev)
+ {
+ 	u64 rate = 0;
+@@ -250,7 +250,7 @@ unsigned long cpr_get_opp_hz_for_req(struct dev_pm_opp *ref,
+ out_ref:
+ 	of_node_put(desc_np);
+ 
+-	return (unsigned long) rate;
++	return rate;
+ }
+ EXPORT_SYMBOL_GPL(cpr_get_opp_hz_for_req);
+ 
+@@ -260,7 +260,7 @@ int cpr_calculate_scaling(struct device *dev,
+ 			  const struct corner *corner)
+ {
+ 	u32 quot_diff = 0;
+-	unsigned long freq_diff;
++	u64 freq_diff;
+ 	int scaling;
+ 	const struct fuse_corner *fuse, *prev_fuse;
+ 	int ret;
+@@ -280,8 +280,9 @@ int cpr_calculate_scaling(struct device *dev,
+ 	}
+ 
+ 	freq_diff = fuse->max_freq - prev_fuse->max_freq;
+-	freq_diff /= 1000000; /* Convert to MHz */
+-	scaling = 1000 * quot_diff / freq_diff;
++	freq_diff = div_u64(freq_diff, 1000000); /* Convert to MHz */
++	scaling = 1000 * quot_diff;
++	do_div(scaling, freq_diff);
+ 	return min(scaling, fdata->max_quot_scale);
+ }
+ EXPORT_SYMBOL_GPL(cpr_calculate_scaling);
+@@ -289,7 +290,7 @@ EXPORT_SYMBOL_GPL(cpr_calculate_scaling);
+ int cpr_interpolate(const struct corner *corner, int step_volt,
+ 		    const struct fuse_corner_data *fdata)
+ {
+-	unsigned long f_high, f_low, f_diff;
++	u64 f_high, f_low, f_diff;
+ 	int uV_high, uV_low, uV;
+ 	u64 temp, temp_limit;
+ 	const struct fuse_corner *fuse, *prev_fuse;
+diff --git a/drivers/pmdomain/qcom/cpr-common.h b/drivers/pmdomain/qcom/cpr-common.h
+index 0aa227617..1b2fa344e 100644
+--- a/drivers/pmdomain/qcom/cpr-common.h
++++ b/drivers/pmdomain/qcom/cpr-common.h
+@@ -42,7 +42,7 @@ struct fuse_corner {
+ 	int step_quot;
+ 	const struct reg_sequence *accs;
+ 	int num_accs;
+-	unsigned long max_freq;
++	u64 max_freq;
+ 	u8 ring_osc_idx;
+ };
+ 
+@@ -54,13 +54,13 @@ struct corner {
+ 	int quot_adjust;
+ 	u32 save_ctl;
+ 	u32 save_irq;
+-	unsigned long freq;
++	u64 freq;
+ 	struct fuse_corner *fuse_corner;
+ };
+ 
+ struct corner_data {
+ 	unsigned int fuse_corner;
+-	unsigned long freq;
++	u64 freq;
+ };
+ 
+ struct acc_desc {
+@@ -92,8 +92,7 @@ int cpr_populate_fuse_common(struct device *dev,
+ int cpr_find_initial_corner(struct device *dev, struct clk *cpu_clk,
+ 			    struct corner *corners, int num_corners);
+ u32 cpr_get_fuse_corner(struct dev_pm_opp *opp);
+-unsigned long cpr_get_opp_hz_for_req(struct dev_pm_opp *ref,
+-				     struct device *cpu_dev);
++u64 cpr_get_opp_hz_for_req(struct dev_pm_opp *ref, struct device *cpu_dev);
+ int cpr_calculate_scaling(struct device *dev,
+ 			  const char *quot_offset,
+ 			  const struct fuse_corner_data *fdata,
+diff --git a/drivers/pmdomain/qcom/cpr.c b/drivers/pmdomain/qcom/cpr.c
+index 5c83f0c26..b2e6e6eaa 100644
+--- a/drivers/pmdomain/qcom/cpr.c
++++ b/drivers/pmdomain/qcom/cpr.c
+@@ -826,8 +826,8 @@ static int cpr_corner_init(struct cpr_drv *drv)
+ 	struct corner_data *cdata;
+ 	const struct fuse_corner_data *fdata;
+ 	bool apply_scaling;
+-	unsigned long freq_diff, freq_diff_mhz;
+-	unsigned long freq;
++	unsigned long freq_diff_mhz;
++	u64 freq, freq_diff;
+ 	int step_volt = regulator_get_linear_step(drv->vdd_apc);
+ 	struct dev_pm_opp *opp;
+ 
+@@ -866,7 +866,7 @@ static int cpr_corner_init(struct cpr_drv *drv)
+ 		cdata[level - 1].freq = freq;
+ 
+ 		fuse = &drv->fuse_corners[fnum];
+-		dev_dbg(drv->dev, "freq: %lu level: %u fuse level: %u\n",
++		dev_dbg(drv->dev, "freq: %llu level: %u fuse level: %u\n",
+ 			freq, dev_pm_opp_get_level(opp) - 1, fnum);
+ 		if (freq > fuse->max_freq)
+ 			fuse->max_freq = freq;
+@@ -940,7 +940,7 @@ static int cpr_corner_init(struct cpr_drv *drv)
+ 
+ 		if (apply_scaling) {
+ 			freq_diff = fuse->max_freq - corner->freq;
+-			freq_diff_mhz = freq_diff / 1000000;
++			freq_diff_mhz = (u32)div_u64(freq_diff, 1000000);
+ 			corner->quot_adjust = scaling * freq_diff_mhz / 1000;
+ 
+ 			corner->uV = cpr_interpolate(corner, step_volt, fdata);
+-- 
+2.43.0
+

@@ -1,0 +1,32 @@
+# a6l_dualux — LCD <-> e-ink switcher (agent dualux, docs/dualux-20260925.md). Written from reading, not from denials:
+# the ROM runs permissive first; collect `dmesg | grep avc | grep a6l_dualux` (attended test D10) and fix.
+type a6l_dualux, domain;
+type a6l_dualux_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_dualux)
+
+# evdev: e-ink key (read), power key + front touch (read + EVIOCGRAB), uinput keyboard
+allow a6l_dualux input_device:dir r_dir_perms;
+allow a6l_dualux input_device:chr_file rw_file_perms;
+allow a6l_dualux uhid_device:chr_file rw_file_perms;
+
+# sysfs: /sys/class/{backlight,leds,drm} lookups; LCD bl_power + brightness, frontlight brightness, connector dpms
+allow a6l_dualux sysfs:dir r_dir_perms;
+allow a6l_dualux sysfs:lnk_file read;
+allow a6l_dualux sysfs:file r_file_perms;
+allow a6l_dualux sysfs_a6l_dualux:file rw_file_perms;
+allow a6l_dualux sysfs_leds:dir r_dir_perms;
+allow a6l_dualux sysfs_leds:file rw_file_perms;
+
+# properties: own state + requests/settings, mirror mode + clear requests
+set_prop(a6l_dualux, vendor_dualux_prop)
+get_prop(a6l_dualux, a6l_dualux_ctl_prop)
+set_prop(a6l_dualux, vendor_eink_prop)
+
+# the mirror reads the refresh mode / clear interval the app writes; the patched composer reads lcd_blank
+get_prop(a6l_eink_mirror, a6l_dualux_ctl_prop)
+get_prop(hal_graphics_composer_default, vendor_dualux_prop)
+allow hal_graphics_composer_default sysfs_a6l_dualux:file rw_file_perms;
+
+# the A6LDisplaySwitcher app (android:sharedUserId=android.uid.system -> system_app) reads the state; it WRITES only
+# the system-owned a6l_dualux_ctl_prop (sepolicy/system_ext)
+get_prop(system_app, vendor_dualux_prop)

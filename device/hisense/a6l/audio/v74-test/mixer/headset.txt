@@ -1,0 +1,10 @@
+# Stock "headphones": INT0_MI2S_RX Channels=Two, RX1/RX2 MIX1 INP1=RX1/RX2, RDAC2 MUX=RX2, RX HPH Mode=HD2, COMP0 RX1/RX2=1, HPHL/HPHR=Switch
+# Mainline: no channel/HPH-mode/compander controls. HPH analog gain is fixed (stock HPHL/HPHR Volume 9 has no equivalent).
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|1
+RX1 MIX1 INP1|RX1
+RX2 MIX1 INP1|RX2
+RDAC2 MUX|RX2
+RX1 Digital Volume|@VOL@
+RX2 Digital Volume|@VOL@
+HPHL|Switch
+HPHR|Switch

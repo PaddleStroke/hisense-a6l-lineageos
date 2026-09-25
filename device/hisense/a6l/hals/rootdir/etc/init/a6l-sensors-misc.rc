@@ -1,0 +1,17 @@
+# Hisense A6L sensors / lights / misc (agent hals).
+service vendor.a6l-sensors-prep /vendor/bin/a6l-sensors.sh 20
+    user root
+    group root system
+    disabled
+    oneshot
+
+on post-fs-data
+    # blocking, max ~20 s: ADSP + SMGR IIO must exist before class hal starts the sensors multihal
+    exec_start vendor.a6l-sensors-prep
+
+on boot
+    # lights HAL (lineage) writes the LCD backlight; the name depends on the panel driver (FT8719 DSI backlight)
+    chown system system /sys/class/backlight/panel0-backlight/brightness
+    chown system system /sys/class/backlight/wled/brightness
+    chmod 0664 /sys/class/backlight/panel0-backlight/brightness
+    chmod 0664 /sys/class/backlight/wled/brightness

@@ -1,0 +1,214 @@
+diff --git a/drivers/gpu/drm/msm/dsi/dsi.h b/drivers/gpu/drm/msm/dsi/dsi.h
+index 93c028a12..8a3a94702 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi.h
++++ b/drivers/gpu/drm/msm/dsi/dsi.h
+@@ -82,6 +82,9 @@ enum drm_mode_status msm_dsi_host_check_dsc(struct mipi_dsi_host *host,
+ 					    const struct drm_display_mode *mode);
+ unsigned long msm_dsi_host_get_mode_flags(struct mipi_dsi_host *host);
+ int msm_dsi_host_register(struct mipi_dsi_host *host);
++int msm_dsi_host_a6l_src_pll(struct mipi_dsi_host *host, struct mipi_dsi_host *src);
++u32 msm_dsi_host_a6l_postdiv_val(struct mipi_dsi_host *host, struct mipi_dsi_host *src);
++u32 msm_dsi_phy_a6l_clkcfg0(struct msm_dsi_phy *phy, int write, u32 val);
+ void msm_dsi_host_unregister(struct mipi_dsi_host *host);
+ void msm_dsi_host_set_phy_mode(struct mipi_dsi_host *host,
+ 			struct msm_dsi_phy *src_phy);
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+index 117240694..366f5af1a 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <linux/clk.h>
++#include <linux/clk-provider.h>
+ #include <linux/delay.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/err.h>
+@@ -2124,6 +2125,61 @@ int msm_dsi_host_modeset_init(struct mipi_dsi_host *host,
+ 	return 0;
+ }
+ 
++
++/* Hisense A6L (SDM660, 14nm PHY): DSI1 lanes are clocked from DSI0's PLL, so the DSI1 controller
++ * byte/pixel RCGs must be parented to DSI0's PLL outputs as well. */
++int msm_dsi_host_a6l_src_pll(struct mipi_dsi_host *host, struct mipi_dsi_host *src)
++{
++	struct msm_dsi_host *mh = to_msm_dsi_host(host), *sh = to_msm_dsi_host(src);
++	struct clk *bsrc = clk_get_parent(sh->byte_clk), *psrc = clk_get_parent(sh->pixel_clk);
++	struct clk *bpll = bsrc ? clk_get_parent(bsrc) : NULL, *ppll = psrc ? clk_get_parent(psrc) : NULL;
++	struct clk *mb = clk_get_parent(mh->byte_clk), *mp = clk_get_parent(mh->pixel_clk);
++	int r1, r2;
++
++	if (!bpll || !ppll || !mb || !mp) {
++		pr_err("a6l_src_pll: clocks missing (%p %p %p %p)\n", bpll, ppll, mb, mp);
++		return -ENODEV;
++	}
++	r1 = clk_set_parent(mb, bpll);
++	r2 = clk_set_parent(mp, ppll);
++	pr_info("a6l_src_pll: %s -> %s (%d), %s -> %s (%d)\n", __clk_get_name(mb), __clk_get_name(bpll), r1,
++		__clk_get_name(mp), __clk_get_name(ppll), r2);
++	/* retune PLL0 to this host's link rates. The 14nm PLL reports rate 0 while unlocked, which makes the
++	 * post-divider maths wrong, so lock it first, set byte (owns the VCO) then pixel (n2 only), release. */
++	r1 = clk_prepare_enable(bpll);
++	if (r1)
++		pr_err("a6l_src_pll: prepare %s failed %d\n", __clk_get_name(bpll), r1);
++	/* nudge away and back: the cached-state restore programs the VCO with a 0 reference rate and the
++	 * framework would otherwise skip our request as "already at that rate" */
++	r1 = clk_set_rate(bpll, mh->byte_clk_rate - 100000);
++	pr_info("a6l_src_pll: nudge byte -> %lu (%d)\n", clk_get_rate(bpll), r1);
++	r1 = clk_set_rate(bpll, mh->byte_clk_rate);
++	r2 = clk_set_rate(ppll, mh->pixel_clk_rate);
++	pr_info("a6l_src_pll: byte %lu -> %lu (%d), pixel %lu -> %lu (%d)\n", mh->byte_clk_rate, clk_get_rate(bpll), r1,
++		mh->pixel_clk_rate, clk_get_rate(ppll), r2);
++	clk_disable_unprepare(bpll);
++	return r1 ? r1 : r2;
++}
++
++
++u32 msm_dsi_host_a6l_postdiv_val(struct mipi_dsi_host *host, struct mipi_dsi_host *src)
++{
++	struct msm_dsi_host *mh = to_msm_dsi_host(host), *sh = to_msm_dsi_host(src);
++	struct clk *bsrc = clk_get_parent(sh->byte_clk), *bpll = bsrc ? clk_get_parent(bsrc) : NULL;
++	struct clk *n1 = bpll ? clk_get_parent(bpll) : NULL, *vco = n1 ? clk_get_parent(n1) : NULL;
++	unsigned long vrate = vco ? clk_get_rate(vco) : 0;
++	u32 d1, d2;
++
++	if (!vrate || !mh->byte_clk_rate || !mh->pixel_clk_rate)
++		return 0;
++	d1 = DIV_ROUND_CLOSEST(vrate, mh->byte_clk_rate * 8);
++	d2 = DIV_ROUND_CLOSEST(vrate / d1 / 2, mh->pixel_clk_rate);
++	pr_info("a6l_postdiv: vco %lu byte %lu pixel %lu -> n1=%u n2=%u\n", vrate, mh->byte_clk_rate, mh->pixel_clk_rate, d1, d2);
++	if (d1 < 1 || d1 > 15 || d2 < 1 || d2 > 15)
++		return 0;
++	return d1 | (d2 << 4);
++}
++
+ int msm_dsi_host_register(struct mipi_dsi_host *host)
+ {
+ 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_manager.c b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+index 46faeaae9..b7dd5b05d 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi_manager.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+@@ -65,6 +65,31 @@ static int dsi_mgr_parse_of(struct device_node *np, int id)
+ 	return 0;
+ }
+ 
++
++/* Hisense A6L: on the SDM660 14nm PHY pair the DSI1 lanes can only be clocked from DSI0's PLL
++ * (stock always configures ctrl1 as PLL slave). Enabled with msm.a6l_eink_slave=1. */
++static bool a6l_eink_slave;
++module_param(a6l_eink_slave, bool, 0444);
++MODULE_PARM_DESC(a6l_eink_slave, "Hisense A6L: clock the DSI1 PHY lanes from the DSI0 PLL");
++
++static void a6l_apply_usecase(void)
++{
++	struct msm_dsi *d0 = dsi_mgr_get_dsi(DSI_0), *d1 = dsi_mgr_get_dsi(DSI_1);
++
++	if (!a6l_eink_slave || !d0 || !d1)
++		return;
++	msm_dsi_phy_set_usecase(d0->phy, MSM_DSI_PHY_MASTER);
++	msm_dsi_phy_set_usecase(d1->phy, MSM_DSI_PHY_SLAVE);
++	pr_info("a6l_eink_slave: DSI0 PHY = PLL master, DSI1 PHY = PLL slave\n");
++}
++
++static bool a6l_phys_on;	/* both PHYs currently enabled through the pair path */
++
++static bool a6l_pair(void)
++{
++	return a6l_eink_slave && dsi_mgr_get_dsi(DSI_CLOCK_MASTER) && dsi_mgr_get_dsi(DSI_CLOCK_SLAVE);
++}
++
+ static int dsi_mgr_setup_components(int id)
+ {
+ 	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
+@@ -84,6 +109,7 @@ static int dsi_mgr_setup_components(int id)
+ 		ret = msm_dsi_host_register(msm_dsi->host);
+ 		if (ret)
+ 			return ret;
++		a6l_apply_usecase();
+ 	} else if (other_dsi) {
+ 		struct msm_dsi *master_link_dsi = IS_MASTER_DSI_LINK(id) ?
+ 							msm_dsi : other_dsi;
+@@ -146,7 +172,22 @@ dsi_mgr_phy_enable(int id,
+ 	 * will silently reset those PHY1 registers. Therefore we need to reset
+ 	 * and enable both PHYs before any PLL clock operation.
+ 	 */
+-	if (IS_BONDED_DSI() && mdsi && sdsi) {
++	if (a6l_pair() && mdsi && sdsi) {
++		if (!a6l_phys_on) {
++			msm_dsi_host_reset_phy(mdsi->host);
++			msm_dsi_host_reset_phy(sdsi->host);
++			ret = enable_phy(mdsi, &shared_timings[DSI_CLOCK_MASTER]);
++			if (ret)
++				return ret;
++			ret = enable_phy(sdsi, &shared_timings[DSI_CLOCK_SLAVE]);
++			if (ret) {
++				msm_dsi_phy_disable(mdsi->phy);
++				return ret;
++			}
++			a6l_phys_on = true;
++			pr_info("a6l_eink_slave: PHY pair enabled (by DSI%d)\n", id);
++		}
++	} else if (IS_BONDED_DSI() && mdsi && sdsi) {
+ 		if (!mdsi->phy_enabled && !sdsi->phy_enabled) {
+ 			msm_dsi_host_reset_phy(mdsi->host);
+ 			msm_dsi_host_reset_phy(sdsi->host);
+@@ -185,7 +226,14 @@ static void dsi_mgr_phy_disable(int id)
+ 	 * first controller only when the second controller is disabled.
+ 	 */
+ 	msm_dsi->phy_enabled = false;
+-	if (IS_BONDED_DSI() && mdsi && sdsi) {
++	if (a6l_pair() && mdsi && sdsi) {
++		if (a6l_phys_on && !mdsi->phy_enabled && !sdsi->phy_enabled) {
++			msm_dsi_phy_disable(sdsi->phy);
++			msm_dsi_phy_disable(mdsi->phy);
++			a6l_phys_on = false;
++			pr_info("a6l_eink_slave: PHY pair disabled (by DSI%d)\n", id);
++		}
++	} else if (IS_BONDED_DSI() && mdsi && sdsi) {
+ 		if (!mdsi->phy_enabled && !sdsi->phy_enabled) {
+ 			msm_dsi_phy_disable(sdsi->phy);
+ 			msm_dsi_phy_disable(mdsi->phy);
+@@ -224,12 +272,23 @@ static int dsi_mgr_bridge_power_on(struct drm_bridge *bridge)
+ 	if (ret)
+ 		goto phy_en_fail;
+ 
++	if (a6l_eink_slave && id == DSI_1 && dsi_mgr_get_dsi(DSI_0))
++		msm_dsi_host_a6l_src_pll(host, dsi_mgr_get_dsi(DSI_0)->host);
++
+ 	ret = msm_dsi_host_power_on(host, &phy_shared_timings[id], is_bonded_dsi, msm_dsi->phy);
+ 	if (ret) {
+ 		pr_err("%s: power on host %d failed, %d\n", __func__, id, ret);
+ 		goto host_on_fail;
+ 	}
+ 
++	if (a6l_eink_slave && id == DSI_1 && dsi_mgr_get_dsi(DSI_0)) {
++		struct msm_dsi *d0 = dsi_mgr_get_dsi(DSI_0);
++		u32 v = msm_dsi_host_a6l_postdiv_val(host, d0->host);
++		u32 o0 = msm_dsi_phy_a6l_clkcfg0(d0->phy, !!v, v), o1 = msm_dsi_phy_a6l_clkcfg0(msm_dsi->phy, !!v, v);
++
++		pr_info("a6l_postdiv: CLK_CFG0 phy0 %02x phy1 %02x -> %02x\n", o0, o1, v);
++	}
++
+ 	if (is_bonded_dsi && msm_dsi1) {
+ 		ret = msm_dsi_host_power_on(msm_dsi1->host,
+ 				&phy_shared_timings[DSI_1], is_bonded_dsi, msm_dsi1->phy);
+diff --git a/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c b/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
+index 1fb3899b8..b6298fa3b 100644
+--- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
++++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
+@@ -869,3 +869,13 @@ void msm_dsi_phy_snapshot(struct msm_disp_state *disp_state, struct msm_dsi_phy
+ 			phy->reg_size, phy->reg_base,
+ 			"dsi%d_reg", phy->id);
+ }
++
++/* Hisense A6L experiment: read/write the 14nm CMN CLK_CFG0 post-divider register directly. */
++u32 msm_dsi_phy_a6l_clkcfg0(struct msm_dsi_phy *phy, int write, u32 val)
++{
++	u32 old = readl(phy->base + 0x10);
++
++	if (write)
++		writel(val, phy->base + 0x10);
++	return old;
++}

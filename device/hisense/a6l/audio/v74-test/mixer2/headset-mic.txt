@@ -1,0 +1,6 @@
+# Stock "headset-mic" -> adc2 (capture FE = MultiMedia2, BE = LPI_MI2S_TX_3 = stock INT3_MI2S_TX)
+MultiMedia2 Mixer LPI_MI2S_TX_3|1
+ADC2 MUX|INP2
+Digital DEC1 MUX|ADC2
+Digital CIC1 MUX|AMIC
+ADC2 Volume|4

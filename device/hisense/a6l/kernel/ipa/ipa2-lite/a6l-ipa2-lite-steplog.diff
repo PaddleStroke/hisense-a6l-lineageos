@@ -1,0 +1,346 @@
+--- ipa.c.orig	2026-09-24 13:41:20.382727828 +0000
++++ ipa.c	2026-09-24 13:42:25.899725631 +0000
+@@ -3,6 +3,8 @@
+ #include <linux/atomic.h>
+ #include <linux/bitfield.h>
+ #include <linux/clk.h>
++#include <linux/clk-provider.h>
++#include <linux/delay.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/etherdevice.h>
+ #include <linux/if_arp.h>
+@@ -54,6 +56,44 @@
+ static uint icc_cfg_kbps = 80000;
+ module_param(icc_cfg_kbps, uint, 0444);
+ 
++/*
++ * A6L ipa2fix (24 Sep 2026): the first MODE=load reset the phone with no log. Every hardware phase of the
++ * probe is now preceded by a "A6L_IPA_STEP <n> <what>" pr_emerg line and a pause (stream it with dmesg -w).
++ *   stop_at=N       return -ECANCELED just BEFORE step N (0 = run everything); after a clean stop the
++ *                   driver can be removed and re-inserted with a larger N in the same boot.
++ *   step_ms         pause after each marker (default 50 ms; msleep so the dmesg -w reader can run)
++ *   no_ipa_reset    skip the IPA_COMP_SW_RESET pulse (step 6)
++ *   no_bam_reset    skip the BAM global BAM_SW_RST pulse (step 8)
++ *   no_sram_direct  skip the direct SRAM canary writes / uc_loaded read (step 10; layout still computed)
++ *   comp_cfg        value written to IPA_COMP_CFG (stock SDM660 ipa_init_hw writes 0x11; msm8953 ipa2-lite 0x1)
++ */
++static uint stop_at;
++module_param(stop_at, uint, 0644);
++MODULE_PARM_DESC(stop_at, "stop the probe just before step N (0 = no stop)");
++static uint step_ms = 50;
++module_param(step_ms, uint, 0644);
++static bool no_ipa_reset;
++module_param(no_ipa_reset, bool, 0444);
++static bool no_bam_reset;
++module_param(no_bam_reset, bool, 0444);
++static bool no_sram_direct;
++module_param(no_sram_direct, bool, 0444);
++static uint comp_cfg = 0x11;
++module_param(comp_cfg, uint, 0444);
++static u32 a6l_uc_loaded_dummy;
++
++static int a6l_step(unsigned int n, const char *what)
++{
++	if (stop_at && n >= stop_at) {
++		pr_emerg("A6L_IPA_STEP %u STOP (stop_at=%u) before: %s\n", n, stop_at, what);
++		return -ECANCELED;
++	}
++	pr_emerg("A6L_IPA_STEP %u %s\n", n, what);
++	if (step_ms)
++		msleep(step_ms);
++	return 0;
++}
++
+ union ipa_cmd {
+ 	struct ipa_hw_imm_cmd_dma_shared_mem dma_smem;
+ 	struct ipa_ip_packet_init ip_pkt_init;
+@@ -180,23 +220,68 @@
+ 	return ret;
+ }
+ 
+-static void ipa_reset_hw(struct ipa *ipa)
++/* A6L ipa2fix: the former ipa_reset_hw(), split so that every hardware phase has its own step */
++static int ipa_reset_hw(struct ipa *ipa)
+ {
+-	iowrite32(1, ipa->mmio + REG_IPA_COMP_SW_RESET_OFST);
+-	iowrite32(0, ipa->mmio + REG_IPA_COMP_SW_RESET_OFST);
+-	iowrite32(1, ipa->mmio + REG_IPA_COMP_CFG_OFST);
++	int ret;
++
++	ret = a6l_step(6, no_ipa_reset ? "IPA_COMP_SW_RESET skipped (no_ipa_reset=1)" :
++					 "IPA_COMP_SW_RESET 1 then 0 (ipa+0x4003c)");
++	if (ret)
++		return ret;
++	if (!no_ipa_reset) {
++		iowrite32(1, ipa->mmio + REG_IPA_COMP_SW_RESET_OFST);
++		iowrite32(0, ipa->mmio + REG_IPA_COMP_SW_RESET_OFST);
++		(void)ioread32(ipa->mmio + REG_IPA_VERSION_OFST);	/* flush the posted writes inside this step */
++	}
++
++	ret = a6l_step(7, "IPA_COMP_CFG + IPA_BCR writes");
++	if (ret)
++		return ret;
++	iowrite32(comp_cfg, ipa->mmio + REG_IPA_COMP_CFG_OFST);
+ 	if (ipa->version >= 25)
+ 		iowrite32(0x1fff7f, ipa->mmio + REG_IPA_BCR_OFST);
++	pr_emerg("A6L_IPA_STEP 7 done: comp_cfg 0x%08x bcr 0x%08x version 0x%08x\n",
++		 ioread32(ipa->mmio + REG_IPA_COMP_CFG_OFST), ioread32(ipa->mmio + REG_IPA_BCR_OFST),
++		 ioread32(ipa->mmio + REG_IPA_VERSION_OFST));
+ 
+-	iowrite32(BAM_SW_RST, ipa->mmio + REG_BAM_CTRL);
+-	iowrite32(0, ipa->mmio + REG_BAM_CTRL);
++	ret = a6l_step(8, no_bam_reset ? "BAM global reset skipped (no_bam_reset=1)" :
++					 "BAM global BAM_SW_RST 1 then 0 (ipa+0x4000)");
++	if (ret)
++		return ret;
++	if (!no_bam_reset) {
++		iowrite32(BAM_SW_RST, ipa->mmio + REG_BAM_CTRL);
++		iowrite32(0, ipa->mmio + REG_BAM_CTRL);
++		(void)ioread32(ipa->mmio + REG_BAM_REVISION);
++	}
+ 
++	ret = a6l_step(9, "BAM global config: DESC_CNT_TRSHLD, CNFG_BITS, BAM_EN, IRQ_EN, EE0 mask");
++	if (ret)
++		return ret;
+ 	iowrite32(0x10, ipa->mmio + REG_BAM_DESC_CNT_TRSHLD);
+ 	iowrite32((u32)~BIT(11), ipa->mmio + REG_BAM_CNFG_BITS);
+ 	rmw32(ipa->mmio + REG_BAM_CTRL, BAM_EN, BAM_EN);
+ 
+ 	iowrite32(BAM_ERROR_EN | BAM_HRESP_ERR_EN, ipa->mmio + REG_BAM_IRQ_EN);
+ 	iowrite32(BAM_IRQ, ipa->mmio + REG_BAM_IRQ_SRCS_MSK_EE0);
++	pr_emerg("A6L_IPA_STEP 9 done: bam_ctrl 0x%08x\n", ioread32(ipa->mmio + REG_BAM_CTRL));
++	return 0;
++}
++
++/* A6L ipa2fix: on a stop_at/error exit after the BAM was enabled, leave the pipes and the BAM disabled
++ * before devm frees the descriptor FIFOs (nothing may DMA into freed memory). */
++static void a6l_quiesce(struct ipa *ipa, int last_step)
++{
++	int id;
++
++	if (last_step < 9)
++		return;
++	if (last_step >= 11)
++		for (id = 0; id < EP_NUM; id++)
++			iowrite32(0, ipa->mmio + REG_BAM_P_CTRL(id));
++	rmw32(ipa->mmio + REG_BAM_CTRL, BAM_EN, 0);
++	pr_emerg("A6L_IPA quiesced after step %d: bam_ctrl 0x%08x\n", last_step,
++		 ioread32(ipa->mmio + REG_BAM_CTRL));
+ }
+ 
+ static inline u32 ipa_fifo_offset(void __iomem *reg)
+@@ -443,14 +528,20 @@
+ 
+ 	if (id == MEM_DRV) {
+ 		/* Keep uc_loaded status in SRAM and don't override it */
+-		ipa->smem_uc_loaded = ptr;
+-		if (*ptr == 0x10ADEDFF)
+-			canary = 0x10ADEDFF;
++		if (no_sram_direct) {
++			ipa->smem_uc_loaded = &a6l_uc_loaded_dummy;	/* A6L ipa2fix: no SRAM access */
++		} else {
++			ipa->smem_uc_loaded = (u32 __force *)ptr;
++			if (ioread32(ptr) == 0x10ADEDFF)
++				canary = 0x10ADEDFF;
++		}
+ 	}
+ 
+ 	while ((first_canary || ALIGN(*offset, 4 * align_words) != *offset) &&
+ 	       *offset < ipa->smem_size) {
+-		*(ptr++) = canary;
++		if (!no_sram_direct)
++			iowrite32(canary, ptr);
++		ptr++;
+ 		*offset += 4;
+ 		first_canary = false;
+ 	}
+@@ -1141,6 +1232,7 @@
+ 	const char *name = "rmnet_ipa0";
+ 	struct ipa *ipa;
+ 	int ep, ret;
++	u32 val;
+ 
+ 	ipa = devm_kzalloc(dev, sizeof(*ipa), GFP_KERNEL);
+ 	if (IS_ERR_OR_NULL(ipa))
+@@ -1159,13 +1251,29 @@
+ 	if (IS_ERR_OR_NULL(ipa->mmio))
+ 		return PTR_ERR(ipa->mmio) ?: -ENOMEM;
+ 
++	pr_emerg("A6L_IPA_STEP 0 probe entered (SMMU attach done) stop_at=%u no_ipa_reset=%d no_bam_reset=%d no_sram_direct=%d comp_cfg=0x%x clk_hz=%u iommu=%s\n",
++		 stop_at, no_ipa_reset, no_bam_reset, no_sram_direct, comp_cfg, clk_hz,
++		 device_iommu_mapped(dev) ? "yes" : "no");
++
++	ret = a6l_step(1, "RPM IPA clock: get+enable, set rate");
++	if (ret)
++		return ret;
+ 	ipa->clk = devm_clk_get_enabled(dev, NULL);
+ 	if (IS_ERR(ipa->clk))
+ 		return dev_err_probe(dev, PTR_ERR(ipa->clk),
+ 				     "failed to get clock\n");
+ 
+-	clk_set_rate(ipa->clk, clk_hz);
++	ret = clk_set_rate(ipa->clk, clk_hz);
++	pr_emerg("A6L_IPA_STEP 1 done: clk_set_rate %u -> %d, rate now %lu, enabled %d\n",
++		 clk_hz, ret, clk_get_rate(ipa->clk), __clk_is_enabled(ipa->clk));
++	if (ret || !clk_get_rate(ipa->clk)) {
++		dev_err(dev, "A6L_IPA IPA core clock not running (ret %d): refusing any register access\n", ret);
++		return ret ?: -EIO;
++	}
+ 
++	ret = a6l_step(2, "interconnect votes (memory/config)");
++	if (ret)
++		return ret;
+ 	/* A6L: optional bandwidth votes; the msm8953 original has none */
+ 	if (of_property_present(dev->of_node, "interconnects")) {
+ 		ipa->icc_mem = devm_of_icc_get(dev, "memory");
+@@ -1173,16 +1281,19 @@
+ 			dev_warn(dev, "A6L_IPA no memory icc path: %ld\n", PTR_ERR(ipa->icc_mem));
+ 			ipa->icc_mem = NULL;
+ 		} else if (ipa->icc_mem) {
+-			icc_set_bw(ipa->icc_mem, kBps_to_icc(icc_mem_avg_kbps),
+-				   kBps_to_icc(icc_mem_peak_kbps));
++			ret = icc_set_bw(ipa->icc_mem, kBps_to_icc(icc_mem_avg_kbps),
++					 kBps_to_icc(icc_mem_peak_kbps));
++			pr_emerg("A6L_IPA_STEP 2 memory icc vote %u/%u kBps -> %d\n",
++				 icc_mem_avg_kbps, icc_mem_peak_kbps, ret);
+ 		}
+ 		ipa->icc_cfg = devm_of_icc_get(dev, "config");
+ 		if (IS_ERR(ipa->icc_cfg)) {
+ 			dev_warn(dev, "A6L_IPA no config icc path: %ld\n", PTR_ERR(ipa->icc_cfg));
+ 			ipa->icc_cfg = NULL;
+ 		} else if (ipa->icc_cfg) {
+-			icc_set_bw(ipa->icc_cfg, kBps_to_icc(icc_cfg_kbps),
+-				   kBps_to_icc(icc_cfg_kbps));
++			ret = icc_set_bw(ipa->icc_cfg, kBps_to_icc(icc_cfg_kbps),
++					 kBps_to_icc(icc_cfg_kbps));
++			pr_emerg("A6L_IPA_STEP 2 config icc vote %u kBps -> %d\n", icc_cfg_kbps, ret);
+ 		}
+ 	}
+ 
+@@ -1190,6 +1301,23 @@
+ 	if (ret)
+ 		dev_warn(dev, "A6L_IPA dma mask: %d\n", ret);
+ 
++	ret = a6l_step(3, "first MMIO read: IPA_VERSION (0x147c0034)");
++	if (ret)
++		return ret;
++	val = ioread32(ipa->mmio + REG_IPA_VERSION_OFST);
++	pr_emerg("A6L_IPA_STEP 3 done: IPA_VERSION 0x%08x\n", val);
++
++	ret = a6l_step(4, "IPA reads: COMP_HW_VERSION, SHARED_MEM, COMP_CFG");
++	if (ret)
++		return ret;
++	pr_emerg("A6L_IPA_STEP 4 done: comp_hw 0x%08x shared_mem 0x%08x comp_cfg 0x%08x\n",
++		 ioread32(ipa->mmio + REG_IPA_COMP_HW_VERSION_OFST),
++		 ioread32(ipa->mmio + REG_IPA_SHARED_MEM),
++		 ioread32(ipa->mmio + REG_IPA_COMP_CFG_OFST));
++
++	ret = a6l_step(5, "first BAM read: BAM_REVISION, BAM_NUM_PIPES (0x14785000)");
++	if (ret)
++		return ret;
+ 	dev_info(dev, "A6L_IPA hw ver 0x%08x comp_hw 0x%08x bam rev 0x%08x bam pipes 0x%08x clk %lu iommu %s\n",
+ 		 ioread32(ipa->mmio + REG_IPA_VERSION_OFST),
+ 		 ioread32(ipa->mmio + REG_IPA_COMP_HW_VERSION_OFST),
+@@ -1197,11 +1325,19 @@
+ 		 ioread32(ipa->mmio + REG_BAM_NUM_PIPES),
+ 		 clk_get_rate(ipa->clk), device_iommu_mapped(dev) ? "yes" : "no");
+ 
+-	ipa_reset_hw(ipa);
++	ret = ipa_reset_hw(ipa);		/* steps 6..9 */
++	if (ret) {
++		a6l_quiesce(ipa, stop_at ? (int)stop_at - 1 : 9);
++		return ret;
++	}
+ 
++	ret = a6l_step(10, no_sram_direct ? "SRAM partition layout (no direct SRAM access)" :
++					  "SRAM partition + canary writes via direct access (0x147c5280..)");
++	if (ret)
++		goto quiesce_9;
+ 	ret = ipa_partition_mem(ipa);
+ 	if (ret)
+-		return ret;
++		goto quiesce_9;
+ 
+ 	dev_info(dev, "A6L_IPA sram restr 0x%x size 0x%x: ft4 %#x ft6 %#x rt4 %#x rt6 %#x mdm_hdr %#x drv %#x comp %#x+%#x mdm %#x+%#x\n",
+ 		 ipa->smem_restr_bytes, ipa->smem_size + ipa->smem_restr_bytes,
+@@ -1211,39 +1347,55 @@
+ 		 ipa->layout[MEM_MDM_COMP].offset, ipa->layout[MEM_MDM_COMP].size,
+ 		 ipa->layout[MEM_MDM].offset, ipa->layout[MEM_MDM].size);
+ 
++	ret = a6l_step(11, "endpoints: BAM pipe reset + FIFO programming + IPA EP config (pipes 0-5)");
++	if (ret)
++		goto quiesce_9;
+ 	for (ep = 0; ep < EP_NUM; ep++) {
+ 		ret = ipa_setup_ep(ipa, ep);
+ 		if (ret)
+-			return ret;
++			goto quiesce_11;
+ 	}
+ 
++	ret = a6l_step(12, "IPA_ROUTE register");
++	if (ret)
++		goto quiesce_11;
+ 	iowrite32(0x00040044, ipa->mmio + REG_IPA_ROUTE_OFST);
+ 
++	ret = a6l_step(13, "SRAM tables via immediate commands on pipe 3 (FIRST DMA through the SMMU)");
++	if (ret)
++		goto quiesce_11;
+ 	ret = ipa_init_sram(ipa);
+ 	if (ret) {
+ 		dev_err(dev, "A6L_IPA sram init (immediate commands on pipe 3) failed: %d\n", ret);
+-		return ret;
++		goto quiesce_11;
+ 	}
+ 	dev_info(dev, "A6L_IPA sram tables initialised via immediate commands\n");
+ 
++	ret = a6l_step(14, "IPA IRQ enable + request ipa/dma IRQs");
++	if (ret)
++		goto quiesce_11;
+ 	rmw32(ipa->mmio + REG_IPA_IRQ_EN_EE0, BIT(IPA_IRQ_UC_IRQ_1), BIT(IPA_IRQ_UC_IRQ_1));
+ 
+ 	ret = of_irq_get_byname(dev->of_node, "ipa");
+ 	if (ret < 0)
+-		return ret;
++		goto quiesce_11;
+ 
+ 	ret = devm_request_threaded_irq(dev, ret, NULL, ipa_isr_thread,
+ 					IRQF_ONESHOT, "ipa", ipa);
+ 	if (ret)
+-		return ret;
++		goto quiesce_11;
+ 
+ 	ret = of_irq_get_byname(dev->of_node, "dma");
+ 	if (ret < 0)
+-		return ret;
++		goto quiesce_11;
+ 
+ 	ret = devm_request_irq(dev, ret, ipa_dma_isr, 0, "ipa-dma", ipa);
+ 	if (ret)
+-		return ret;
++		goto quiesce_11;
++
++	ret = a6l_step(15, "runtime PM, netdevs, SSR notifier, QMI");
++	if (ret)
++		goto quiesce_11;
+ 
+ 	pm_runtime_set_active(dev);
+ 	ret = devm_pm_runtime_enable(dev);
+@@ -1289,7 +1441,17 @@
+ 	if (ipa->smem_uc_loaded[0] == 0x10ADEDFF)
+ 		ipa_qmi_uc_loaded(ipa->qmi);
+ 
+-	return devm_add_action_or_reset(dev, action_ipa_qmi_teardown, ipa);
++	ret = devm_add_action_or_reset(dev, action_ipa_qmi_teardown, ipa);
++	if (!ret)
++		pr_emerg("A6L_IPA_STEP 16 probe complete\n");
++	return ret;
++
++quiesce_11:
++	a6l_quiesce(ipa, 11);
++	return ret;
++quiesce_9:
++	a6l_quiesce(ipa, 9);
++	return ret;
+ }
+ 
+ static void ipa_remove(struct platform_device *pdev)

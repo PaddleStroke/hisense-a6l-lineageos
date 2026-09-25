@@ -1,0 +1,3 @@
+# audfix: MultiMedia1 (pcmC0D0) in BOTH directions at the same time (needs the per-direction q6routing.ko)
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|1
+MultiMedia1 Mixer LPI_MI2S_TX_3|1

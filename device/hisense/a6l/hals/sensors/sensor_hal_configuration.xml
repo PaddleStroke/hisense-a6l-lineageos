@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hisense A6L: IIO sub-HAL (device/google/trout/hal/sensors/2.1) configuration. DRAFT (agent hals, 24 Sep 2026):
+     sensor names must equal the IIO "name" attribute of the SMGR devices as seen on the phone
+     (cat /sys/bus/iio/devices/iio:device*/name) and the file must validate against
+     device/google/trout/hal/sensors/2.1/config/sensor_hal_configuration.xsd (relay hals-06 runs xmllint).
+     Axis mapping identity until measured on the phone (flat on table: accel z = +9.8). -->
+<sensorsHalConfiguration version="1.0">
+    <modules>
+        <module halName="android.hardware.sensors@2.1-Google-IIO-Subhal" halVersion="2.1">
+            <sensors>
+                <sensor name="qcom-smgr-accel" type="1">
+                    <configuration>
+                        <orientation rotate="true">
+                            <firstX map="0" negate="false"/>
+                            <secondY map="1" negate="false"/>
+                            <thirdZ map="2" negate="false"/>
+                        </orientation>
+                        <location>
+                            <x>0</x>
+                            <y>0</y>
+                            <z>0</z>
+                        </location>
+                    </configuration>
+                </sensor>
+                <sensor name="qcom-smgr-gyro" type="4">
+                    <configuration>
+                        <orientation rotate="true">
+                            <firstX map="0" negate="false"/>
+                            <secondY map="1" negate="false"/>
+                            <thirdZ map="2" negate="false"/>
+                        </orientation>
+                        <location>
+                            <x>0</x>
+                            <y>0</y>
+                            <z>0</z>
+                        </location>
+                    </configuration>
+                </sensor>
+            </sensors>
+        </module>
+    </modules>
+</sensorsHalConfiguration>

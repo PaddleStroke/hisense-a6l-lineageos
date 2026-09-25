@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L rear flash/torch on PM660L flash module (stock: qcom,leds@d300, camera-flash@0 uses
+// flash_0/torch_0/switch_0 -> one LED on channel 1). Mainline leds-qcom-flash (CONFIG_LEDS_QCOM_FLASH=m).
+// Stock limits: flash_0 max 1500 mA (default 1000 mA, 1280 ms), torch_0 max 500 mA (default 200 mA).
+// First test values are deliberately lower: torch 100 mA, flash 500 mA / 400 ms.
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/leds/common.h>
+
+&pm660l_flash {
+	status = "okay";
+
+	led-0 {
+		function = LED_FUNCTION_FLASH;
+		color = <LED_COLOR_ID_WHITE>;
+		led-sources = <1>;
+		led-max-microamp = <100000>;
+		flash-max-microamp = <500000>;
+		flash-max-timeout-us = <400000>;
+	};
+};

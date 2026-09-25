@@ -1,0 +1,10 @@
+# kvoice: holds the VoiceMMode1 PCM pair open while vendor.a6l.voice.active=1 (set by the RIL / call manager when a call
+# is ACTIVE, cleared when it ends). -r also toggles the q6voice DSP routes; analog routing stays with a6l-audio-route.
+service vendor.a6l-q6voiced /vendor/bin/a6l-q6voiced -r daemon vendor.a6l.voice.active
+    class hal
+    user audioserver
+    group audio
+    disabled
+
+on property:sys.boot_completed=1
+    start vendor.a6l-q6voiced

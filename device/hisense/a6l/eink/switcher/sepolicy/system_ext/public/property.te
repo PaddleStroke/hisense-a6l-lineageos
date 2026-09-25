@@ -1,0 +1,4 @@
+# a6l_dualux (agent dualux): settings + requests written by the A6LDisplaySwitcher app (system_app), read by the vendor
+# daemons (a6l_dualux, a6l_eink_mirror). Must be a SYSTEM-owned type: coredomain may never set vendor properties
+# (system/sepolicy/private/property.te neverallow, checked 25 Sep), while vendor may read system_public properties.
+system_public_prop(a6l_dualux_ctl_prop)

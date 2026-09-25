@@ -1,0 +1,1097 @@
+[   83.242661] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.243034] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.306667] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.307044] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.370666] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.371043] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.434636] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.435012] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.498644] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.499021] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.562725] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.563098] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.630901] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.631281] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.694650] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.695025] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.758657] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.759032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.822680] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.823052] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.886785] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.887164] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   83.954905] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   83.955279] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.018642] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.019017] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.082775] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.083147] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.146639] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.147012] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.210638] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.211015] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.278901] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.279278] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.342647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.343026] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.406657] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.407032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.470653] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.471032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.534675] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.535049] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.598649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.599027] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.662799] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.663178] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.730901] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.731280] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.794649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.795024] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.858653] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.859029] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.922645] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.923022] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   84.990909] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   84.991284] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.054650] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.063273] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.126640] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.127016] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.194900] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.195273] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.263378] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.263755] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.271337] dpu_encoder_frame_done_timeout: 28 callbacks suppressed
+[   85.271345] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   85.342660] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.343038] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.406648] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.407026] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.414887] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   85.482918] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.483298] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.546643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.547017] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.554537] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   85.618764] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.619136] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.682646] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.683020] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.690555] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   85.758898] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.759274] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.822663] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.823038] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.830546] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   85.894643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.895019] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.958633] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   85.959007] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   85.966846] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   86.030795] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.031169] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.094661] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.095032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.102542] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   86.166642] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.167021] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.230647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.231024] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.238538] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   86.302641] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.303017] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.371259] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.371666] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.379161] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   86.442747] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.443125] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.506742] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.507119] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.514634] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   86.578697] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.579074] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.642699] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.643073] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.706758] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.707132] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.770660] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.771034] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.834685] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.835058] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.898673] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.899044] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   86.967495] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   86.967878] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.030673] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.031049] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.094674] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.095047] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.158670] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.159043] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.222672] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.223049] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.286664] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.287041] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.350647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.351019] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.414672] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.415048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.478647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.479020] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.546896] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.547270] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.610649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.611026] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.674896] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.675268] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.742892] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.743266] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.806665] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.807042] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.870763] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.871136] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   87.934659] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   87.935032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.002903] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.003278] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.070902] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.071283] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.134650] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.135025] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.198657] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.199036] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.266904] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.267282] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.330642] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.331016] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.394640] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.395017] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.458666] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.459039] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.522637] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.523012] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.590866] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.591241] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.654659] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.655032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.718658] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.719033] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.782676] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.783050] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.846677] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.847048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.910773] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.911150] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   88.974631] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   88.975004] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.038779] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.039153] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.102618] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.112268] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.174648] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.175024] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.238634] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.239012] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.302643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.303018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.366672] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.367050] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.430667] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.431041] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.498910] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.499286] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.562646] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.563020] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.626655] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.627034] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.690666] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.691047] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.754883] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.755275] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.818672] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.819050] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.882646] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.883021] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   89.950897] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   89.951272] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.018866] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.019243] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.082620] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.083001] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.146662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.147034] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.210873] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.211255] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.278905] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.279278] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.286787] dpu_encoder_frame_done_timeout: 28 callbacks suppressed
+[   90.286796] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   90.358809] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.359183] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.422652] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.423027] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.430539] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   90.494677] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.495049] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.558633] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.559013] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.566851] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   90.634894] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.635271] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.698670] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.699049] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.706554] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   90.770658] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.771036] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.834641] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.835017] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.842859] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   90.906643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.907017] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.974906] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   90.975282] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   90.982791] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   91.046743] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.047120] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.114899] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.115272] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.122783] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   91.186787] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.187163] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.250893] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.251287] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.258786] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   91.322666] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.323035] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.386672] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.387048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.394552] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   91.458635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.459010] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.522661] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.523035] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.530545] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   91.594643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.595018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.658661] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.659041] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.722678] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.723051] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.786634] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.787010] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.850647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.851024] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.914669] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.915042] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   91.978804] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   91.979184] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.047191] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.047598] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.110737] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.111112] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.178865] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.179244] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.242662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.243037] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.310894] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.311268] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.374665] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.375041] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.438643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.439018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.502638] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.503010] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.566654] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.567031] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.630642] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.631018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.694662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.695037] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.758662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.759039] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.822730] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.823104] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.890891] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.891270] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   92.958897] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   92.959276] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.022678] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.023057] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.086635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.087008] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.150660] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.151034] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.214656] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.215035] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.278646] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.279023] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.342661] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.343039] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.406671] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.407045] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.470644] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.471023] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.534655] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.535028] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.598667] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.599046] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.662663] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.663039] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.726636] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.727009] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.790636] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.791013] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.858898] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.859274] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.922673] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.923050] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   93.986647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   93.987020] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.054902] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.055281] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.122899] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.123272] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.186777] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.187152] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.250777] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.251154] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.314649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.315025] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.378637] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.379011] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.442679] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.443053] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.510881] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.511261] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.578906] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.579280] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.646901] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.647275] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.710807] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.711186] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.778902] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.779276] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.846904] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.847281] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.910660] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.911036] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   94.974663] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   94.975036] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.038659] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.039032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.102673] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.103047] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.166678] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.167055] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.230806] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.231181] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.294629] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.295000] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.302843] dpu_encoder_frame_done_timeout: 28 callbacks suppressed
+[   95.302852] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   95.374671] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.375044] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.438652] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.439030] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.446537] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   95.510635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.511013] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.574666] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.575042] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.582547] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   95.646649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.647023] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.710646] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.711020] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.718556] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   95.782679] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.783057] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.846656] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.847038] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.854543] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   95.918655] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.919028] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.982648] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   95.983022] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   95.990541] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   96.058895] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.059278] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.126890] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.127269] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.134774] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   96.198653] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.199033] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.266904] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.267279] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.274788] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   96.338805] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.339180] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.406897] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.407276] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.414781] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   96.478641] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.479018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.542651] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.543029] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.550540] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[   96.614662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.615035] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.678648] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.679022] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.742661] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.743039] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.806647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.807023] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.870677] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.871057] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   96.934626] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   96.935002] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.002906] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.003279] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.066670] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.067045] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.130663] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.131040] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.198894] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.199271] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.262794] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.263170] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.326649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.327023] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.394900] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.395277] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.462910] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.463287] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.526640] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.527019] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.590662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.591043] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.654661] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.655036] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.718638] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.719013] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.782644] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.783023] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.850898] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.851271] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.919362] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.919742] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   97.982917] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   97.983313] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.050894] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.051270] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.114648] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.115023] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.178814] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.179186] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.242647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.243025] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.306644] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.307021] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.370647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.371018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.434815] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.435191] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.498637] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.499012] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.562763] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.563139] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.626655] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.627033] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.694904] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.695278] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.758653] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.759029] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.822665] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.823042] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.886638] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.887012] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   98.950747] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   98.951119] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.014670] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.015045] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.078726] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.078948] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.142616] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.142820] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.206635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.206839] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.274831] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.275037] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.338644] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.338851] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.406831] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.407037] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.470674] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.470881] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.534649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.534852] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.602829] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.603033] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.666644] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.666849] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.730652] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.730855] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.794629] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.794834] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.858618] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.858834] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.922662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.922866] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[   99.990827] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[   99.991032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.054771] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.054976] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.118632] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.118836] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.182636] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.182841] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.246751] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.246956] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.310660] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.310863] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.318532] dpu_encoder_frame_done_timeout: 28 callbacks suppressed
+[  100.318539] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  100.386636] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.386841] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.454800] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.455026] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.462671] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  100.526625] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.526831] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.594838] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.595043] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.602705] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  100.666638] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.666850] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.730635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.730838] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.738673] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  100.802627] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.802832] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.870843] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.871048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  100.878711] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  100.942653] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  100.942858] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.006678] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.006891] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.014557] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  101.078629] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.082479] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.150827] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.151031] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.158693] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  101.226829] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.227033] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.290641] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.290845] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.298686] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  101.362631] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.362836] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.426615] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.426832] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.434700] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  101.502787] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.502994] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.570787] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.570991] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.578654] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  101.646834] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.647039] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.714831] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.715035] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.778643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.778848] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.846829] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.847033] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.910749] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.910952] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  101.974639] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  101.974842] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.038635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.038840] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.106835] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.107040] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.170633] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.170837] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.234631] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.234836] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.298621] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.298826] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.362635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.362838] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.430842] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.431048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.494653] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.494858] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.558647] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.558852] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.622646] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.622851] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.686641] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.686854] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.750629] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.750832] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.818836] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.819040] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.882630] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.882836] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  102.946635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  102.946839] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.010990] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.011196] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.074614] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.074817] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.134654] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.134877] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.198842] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.199047] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.262627] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.262831] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.326616] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.326820] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.390639] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.390843] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.454636] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.454840] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.518646] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.518865] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.582719] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.582924] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.650833] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.651037] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.718892] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.719100] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.782639] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.782843] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.846651] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.846856] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.910636] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.910841] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  103.974639] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  103.974846] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.039038] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.039242] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.106824] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.107028] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.170635] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.170839] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.234628] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.234844] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.298612] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.298816] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.362643] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.362847] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.430833] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.431039] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.494631] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.494835] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.562838] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.563044] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.626632] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.626837] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.690638] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  104.690842] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  104.786795] [drm:dpu_encoder_helper_report_irq_timeout [msm]] *ERROR* irq timeout id=37, intf_mode=INTF_MODE_VIDEO intf=2 wb=-1, pp=0, intr=0
+[  104.874763] [drm:dpu_encoder_helper_report_irq_timeout [msm]] *ERROR* irq timeout id=37, intf_mode=INTF_MODE_VIDEO intf=2 wb=-1, pp=0, intr=0
+[  104.875367] [drm:dpu_encoder_phys_vid_disable [msm]] *ERROR* wait disable failed: id:37 intf:2 ret:-110
+[  104.887021] panel-a6l-epd-dsi c996000.dsi.0: e-paper rails OFF
+[  104.896586] ------------[ cut here ]------------
+[  104.901948] unbalanced disables for pm660l_l1
+[  104.906764] WARNING: drivers/regulator/core.c:3262 at _regulator_disable+0x7c/0x348, CPU#5: a6l_epd_play/802
+[  104.911062] Modules linked in: panel_a6l_epd_dsi(OE) panel_ft8719_tianma_1080x2340(OE) msm(E) drm_dp_aux_bus(E) drm_display_helper(E) cec(E) qcom_aoss(E) llcc_qcom(E) ubwc_config(E) ocmem(E) mdt_loader(E) gpu_sched(E) drm_gpuvm(E) drm_exec(E) tps65185(OE)
+[  104.921237] CPU: 5 UID: 0 PID: 802 Comm: a6l_epd_play Tainted: G        W  OE       7.2.3-a6l-probe+ #1 PREEMPT 
+[  104.943275] Tainted: [W]=WARN, [O]=OOT_MODULE, [E]=UNSIGNED_MODULE
+[  104.953629] Hardware name: Hisense A6L (HLTE730T) bring-up prototype (DT)
+[  104.959628] pstate: 60000005 (nZCv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  104.966486] pc : _regulator_disable+0x7c/0x348
+[  104.973192] lr : _regulator_disable+0x7c/0x348
+[  104.977706] sp : ffff8000832f37a0
+[  104.982116] x29: ffff8000832f37d0 x28: 0000000000000000 x27: 0000000000000018
+[  104.985587] x26: ffff000084579800 x25: 0000000000000018 x24: 0000000000000000
+[  104.992709] x23: 00000000ffffffff x22: ffff000081d29000 x21: 0000000000000001
+[  104.999824] x20: ffff000084579800 x19: ffff000081d29000 x18: ffff8000829450a8
+[  105.006943] x17: 00000000ad8fc065 x16: 00000000ad8fc065 x15: 0000000000000003
+[  105.014059] x14: ffffa73f332b09f0 x13: 0000000000000304 x12: 0000000000000003
+[  105.021032] x11: 0000000000000003 x10: 0000000000000002 x9 : 902d8531fe67d100
+[  105.021044] x8 : 902d8531fe67d100 x7 : 205d383439313039 x6 : 392e34303120205b
+[  105.021054] x5 : ffffa73f335259e8 x4 : ffff8000832f3367 x3 : 0000000000000000
+[  105.032144] x2 : 0000000000000000 x1 : ffff8000832f3570 x0 : 0000000000000021
+[  105.032158] Call trace:
+[  105.046467] _regulator_disable+0x7c/0x348 (P)
+[  105.046479] regulator_bulk_disable+0x84/0x17c
+[  105.061397] msm_dsi_phy_disable+0x60/0x88 [msm]
+[  105.070939] dsi_mgr_bridge_post_disable+0x120/0x1cc [msm]
+[  105.100448] drm_atomic_bridge_chain_post_disable+0x120/0x1c0
+[  105.104809] drm_atomic_helper_commit_encoder_bridge_post_disable+0x94/0x1a4
+[  105.110674] drm_atomic_helper_commit_modeset_disables+0x3c/0xd8
+[  105.117747] msm_atomic_commit_tail+0x224/0x6ac [msm]
+[  105.123722] commit_tail+0xcc/0x194
+[  105.128648] drm_atomic_helper_commit+0x2b4/0x2d4
+[  105.131963] drm_atomic_commit+0xd4/0x108
+[  105.136814] drm_atomic_helper_set_config+0x6c/0xf0
+[  105.140820] drm_mode_setcrtc+0x308/0x724
+[  105.145496] drm_ioctl_kernel+0xf0/0x140
+[  105.149661] drm_ioctl+0x27c/0x3ec
+[  105.153647] __arm64_sys_ioctl+0xb0/0x108
+[  105.156867] invoke_syscall+0x6c/0x11c
+[  105.160944] el0_svc_common+0x98/0xe8
+[  105.164588] do_el0_svc+0x2c/0x3c
+[  105.168315] el0_svc+0x40/0x9c
+[  105.171610] el0t_64_sync_handler+0x88/0x134
+[  105.174580] el0t_64_sync+0x1a0/0x1a4
+[  105.178998] ---[ end trace 0000000000000000 ]---
+[  105.182604] Failed to disable vcca: -EIO
+[  105.187373] msm_dsi_phy c996400.phy: Runtime PM usage count underflow!
+[  105.191412] ------------[ cut here ]------------
+[  105.197597] unbalanced disables for pm660l_l1
+[  105.202418] WARNING: drivers/regulator/core.c:3262 at _regulator_disable+0x7c/0x348, CPU#1: a6l_epd_play/802
+[  105.206802] Modules linked in: panel_a6l_epd_dsi(OE) panel_ft8719_tianma_1080x2340(OE) msm(E) drm_dp_aux_bus(E) drm_display_helper(E) cec(E) qcom_aoss(E) llcc_qcom(E) ubwc_config(E) ocmem(E) mdt_loader(E) gpu_sched(E) drm_gpuvm(E) drm_exec(E) tps65185(OE)
+[  105.217168] CPU: 1 UID: 0 PID: 802 Comm: a6l_epd_play Tainted: G        W  OE       7.2.3-a6l-probe+ #1 PREEMPT 
+[  105.239021] Tainted: [W]=WARN, [O]=OOT_MODULE, [E]=UNSIGNED_MODULE
+[  105.249346] Hardware name: Hisense A6L (HLTE730T) bring-up prototype (DT)
+[  105.255351] pstate: 60000005 (nZCv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  105.262204] pc : _regulator_disable+0x7c/0x348
+[  105.268843] lr : _regulator_disable+0x7c/0x348
+[  105.273357] sp : ffff8000832f37a0
+[  105.277758] x29: ffff8000832f37d0 x28: 0000000000000000 x27: 0000000000000018
+[  105.281310] x26: ffff000086ffdbc0 x25: 0000000000000018 x24: 0000000000000000
+[  105.288426] x23: 00000000ffffffff x22: ffff000081d29000 x21: 0000000000000001
+[  105.295541] x20: ffff000086ffdbc0 x19: ffff000081d29000 x18: ffff8000829450a8
+[  105.302658] x17: 00000000ad8fc065 x16: 00000000ad8fc065 x15: 0000000000000003
+[  105.309780] x14: ffffa73f332b09f0 x13: 0000000000000338 x12: 0000000000000003
+[  105.316896] x11: 0000000000000003 x10: 0000000000000002 x9 : 902d8531fe67d100
+[  105.324013] x8 : 902d8531fe67d100 x7 : 205d373935373931 x6 : 312e35303120205b
+[  105.331132] x5 : ffffa73f335259e8 x4 : ffff8000832f3367 x3 : 0000000000000000
+[  105.338248] x2 : 0000000000000000 x1 : ffff8000832f3570 x0 : 0000000000000021
+[  105.345371] Call trace:
+[  105.352306] _regulator_disable+0x7c/0x348 (P)
+[  105.354609] regulator_bulk_disable+0x84/0x17c
+[  105.359122] msm_dsi_phy_disable+0x60/0x88 [msm]
+[  105.363553] dsi_mgr_bridge_post_disable+0x12c/0x1cc [msm]
+[  105.368347] drm_atomic_bridge_chain_post_disable+0x120/0x1c0
+[  105.373648] drm_atomic_helper_commit_encoder_bridge_post_disable+0x94/0x1a4
+[  105.379571] drm_atomic_helper_commit_modeset_disables+0x3c/0xd8
+[  105.386590] msm_atomic_commit_tail+0x224/0x6ac [msm]
+[  105.392557] commit_tail+0xcc/0x194
+[  105.397467] drm_atomic_helper_commit+0x2b4/0x2d4
+[  105.400795] drm_atomic_commit+0xd4/0x108
+[  105.405641] drm_atomic_helper_set_config+0x6c/0xf0
+[  105.409651] drm_mode_setcrtc+0x308/0x724
+[  105.414320] drm_ioctl_kernel+0xf0/0x140
+[  105.418487] drm_ioctl+0x27c/0x3ec
+[  105.422470] __arm64_sys_ioctl+0xb0/0x108
+[  105.425692] invoke_syscall+0x6c/0x11c
+[  105.429764] el0_svc_common+0x98/0xe8
+[  105.433410] do_el0_svc+0x2c/0x3c
+[  105.437134] el0_svc+0x40/0x9c
+[  105.440428] el0t_64_sync_handler+0x88/0x134
+[  105.443406] el0t_64_sync+0x1a0/0x1a4
+[  105.447822] ---[ end trace 0000000000000000 ]---
+[  105.451443] Failed to disable vcca: -EIO
+[  105.456090] msm_dsi_phy c994400.phy: Runtime PM usage count underflow!
+[  105.477019] a6l_src_pll: byte1_clk_src -> dsi0pllbyte (0), pclk1_clk_src -> dsi0pll (0)
+[  105.477918] dsi_link_clk_set_rate_6g: Failed to set rate pixel clk, -22
+[  105.484218] msm_dsi_host_power_on: failed to enable link clocks. ret=-22
+[  105.491034] dsi_mgr_bridge_power_on: power on host 1 failed, -22
+[  105.497680] msm_dsi c996000.dsi: Power on failed: -22
+[  105.533787] panel-a6l-epd-dsi c996000.dsi.0: bridge (prepare): IDREG ret=-6 id=00000000
+[  105.590699] panel-a6l-epd-dsi c996000.dsi.0: e-paper rails ON
+[  105.591219] panel-a6l-epd-dsi c996000.dsi.0: bridge (enable): IDREG ret=-6 id=00000000
+[  105.654884] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  105.655263] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  105.662768] dpu_encoder_frame_done_timeout: 24 callbacks suppressed
+[  105.662777] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  105.754864] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  105.755256] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  105.818823] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  105.819200] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  105.826702] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  105.890652] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  105.891026] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  105.958917] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  105.959292] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  105.966801] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.034762] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.035149] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.102920] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.103297] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.110804] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.178673] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.179058] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.242862] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.243236] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.250815] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.314760] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.315142] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.378694] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.379069] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.386616] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.450708] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.451084] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.518905] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.519281] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.526787] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.590662] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.591043] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.654782] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.655156] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.662658] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.726752] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.727129] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.790641] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.791018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.798537] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.862658] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.863032] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.926632] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.927006] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  106.934558] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  106.998664] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  106.999038] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.062658] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.063038] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.126811] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.127182] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.190642] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.191018] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.254649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.255025] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.318673] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.319045] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.382664] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.383042] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.446640] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.447016] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.510634] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.511015] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.574634] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.575006] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.638759] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.639136] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.702654] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.703027] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.766813] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.767192] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.830655] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.831030] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.894667] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.895038] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  107.962859] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  107.963234] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.026669] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.027062] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.090813] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.091189] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.154776] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.154996] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.218679] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.218884] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.282627] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.282831] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.346626] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.346830] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.414843] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.415048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.478633] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.478837] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.546830] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.547034] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.614814] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.615022] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.678629] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.678834] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.742622] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.742828] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.810843] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.811048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.874673] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.874877] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  108.938773] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  108.938977] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.002609] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.002812] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.066756] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.066961] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.130623] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.130826] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.198788] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.198993] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.262623] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.262827] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.326657] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.326861] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.390620] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.390824] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.454621] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.454824] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.522818] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.523022] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.586616] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.586821] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.650806] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.651027] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.714730] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.714936] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.778649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.778853] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.842700] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.842904] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.906639] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.906843] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  109.970783] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  109.970988] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.034655] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.034857] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.098785] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.099000] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.162649] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.162855] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.226772] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.226976] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.290726] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.290930] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.354685] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.354897] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.422786] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.422990] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.486614] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.486819] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.550630] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.550848] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.614631] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.614835] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.678650] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.678854] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.686700] dpu_encoder_frame_done_timeout: 28 callbacks suppressed
+[  110.686707] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  110.754640] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.754860] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.818627] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.818830] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.826666] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  110.890762] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.890966] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.954614] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  110.954833] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  110.962660] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  111.026616] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  111.026820] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  111.090620] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  111.090825] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  111.098666] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  111.162623] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  111.162826] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  111.226836] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  111.227048] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  111.234706] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout
+[  111.330625] [drm:dpu_encoder_helper_report_irq_timeout [msm]] *ERROR* irq timeout id=37, intf_mode=INTF_MODE_VIDEO intf=2 wb=-1, pp=0, intr=0
+[  111.418653] [drm:dpu_encoder_helper_report_irq_timeout [msm]] *ERROR* irq timeout id=37, intf_mode=INTF_MODE_VIDEO intf=2 wb=-1, pp=0, intr=0
+[  111.419256] [drm:dpu_encoder_phys_vid_disable [msm]] *ERROR* wait disable failed: id:37 intf:2 ret:-110
+[  111.430934] panel-a6l-epd-dsi c996000.dsi.0: e-paper rails OFF
+[  111.440628] ------------[ cut here ]------------
+[  111.445875] unbalanced disables for pm660l_l1
+[  111.450682] WARNING: drivers/regulator/core.c:3262 at _regulator_disable+0x7c/0x348, CPU#5: a6l_epd_play/804
+[  111.454951] Modules linked in: panel_a6l_epd_dsi(OE) panel_ft8719_tianma_1080x2340(OE) msm(E) drm_dp_aux_bus(E) drm_display_helper(E) cec(E) qcom_aoss(E) llcc_qcom(E) ubwc_config(E) ocmem(E) mdt_loader(E) gpu_sched(E) drm_gpuvm(E) drm_exec(E) tps65185(OE)
+[  111.465128] CPU: 5 UID: 0 PID: 804 Comm: a6l_epd_play Tainted: G        W  OE       7.2.3-a6l-probe+ #1 PREEMPT 
+[  111.487166] Tainted: [W]=WARN, [O]=OOT_MODULE, [E]=UNSIGNED_MODULE
+[  111.497519] Hardware name: Hisense A6L (HLTE730T) bring-up prototype (DT)
+[  111.503525] pstate: 60000005 (nZCv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  111.510380] pc : _regulator_disable+0x7c/0x348
+[  111.517084] lr : _regulator_disable+0x7c/0x348
+[  111.521597] sp : ffff8000833037a0
+[  111.526008] x29: ffff8000833037d0 x28: 0000000000000000 x27: 0000000000000018
+[  111.529479] x26: ffff000084579800 x25: 0000000000000018 x24: 0000000000000000
+[  111.536597] x23: 00000000ffffffff x22: ffff000081d29000 x21: 0000000000000001
+[  111.543716] x20: ffff000084579800 x19: ffff000081d29000 x18: ffff80008295d0a8
+[  111.550832] x17: 00000000ad8fc065 x16: 00000000ad8fc065 x15: 0000000000000003
+[  111.557952] x14: ffffa73f332b09f0 x13: 000000000000043d x12: 0000000000000003
+[  111.565071] x11: 0000000000000003 x10: 0000000000000002 x9 : e13045bbc217f400
+[  111.572189] x8 : e13045bbc217f400 x7 : 205d353738353434 x6 : 342e31313120205b
+[  111.579305] x5 : ffffa73f335259e8 x4 : ffff800083303367 x3 : 0000000000000000
+[  111.586423] x2 : 0000000000000000 x1 : ffff800083303570 x0 : 0000000000000021
+[  111.593542] Call trace:
+[  111.600562] _regulator_disable+0x7c/0x348 (P)
+[  111.602849] regulator_bulk_disable+0x84/0x17c
+[  111.607362] msm_dsi_phy_disable+0x60/0x88 [msm]
+[  111.611791] dsi_mgr_bridge_post_disable+0x120/0x1cc [msm]
+[  111.616578] drm_atomic_bridge_chain_post_disable+0x120/0x1c0
+[  111.621877] drm_atomic_helper_commit_encoder_bridge_post_disable+0x94/0x1a4
+[  111.627741] drm_atomic_helper_commit_modeset_disables+0x3c/0xd8
+[  111.634816] msm_atomic_commit_tail+0x224/0x6ac [msm]
+[  111.640790] commit_tail+0xcc/0x194
+[  111.645716] drm_atomic_helper_commit+0x2b4/0x2d4
+[  111.649033] drm_atomic_commit+0xd4/0x108
+[  111.653883] drm_atomic_helper_set_config+0x6c/0xf0
+[  111.657888] drm_mode_setcrtc+0x308/0x724
+[  111.662564] drm_ioctl_kernel+0xf0/0x140
+[  111.666729] drm_ioctl+0x27c/0x3ec
+[  111.670714] __arm64_sys_ioctl+0xb0/0x108
+[  111.673935] invoke_syscall+0x6c/0x11c
+[  111.678010] el0_svc_common+0x98/0xe8
+[  111.681657] do_el0_svc+0x2c/0x3c
+[  111.685383] el0_svc+0x40/0x9c
+[  111.688678] el0t_64_sync_handler+0x88/0x134
+[  111.691647] el0t_64_sync+0x1a0/0x1a4
+[  111.696067] ---[ end trace 0000000000000000 ]---
+[  111.699673] Failed to disable vcca: -EIO
+[  111.704464] msm_dsi_phy c996400.phy: Runtime PM usage count underflow!
+[  111.708478] ------------[ cut here ]------------
+[  111.714673] unbalanced disables for pm660l_l1
+[  111.719488] WARNING: drivers/regulator/core.c:3262 at _regulator_disable+0x7c/0x348, CPU#1: a6l_epd_play/804
+[  111.723871] Modules linked in: panel_a6l_epd_dsi(OE) panel_ft8719_tianma_1080x2340(OE) msm(E) drm_dp_aux_bus(E) drm_display_helper(E) cec(E) qcom_aoss(E) llcc_qcom(E) ubwc_config(E) ocmem(E) mdt_loader(E) gpu_sched(E) drm_gpuvm(E) drm_exec(E) tps65185(OE)
+[  111.734232] CPU: 1 UID: 0 PID: 804 Comm: a6l_epd_play Tainted: G        W  OE       7.2.3-a6l-probe+ #1 PREEMPT 
+[  111.756090] Tainted: [W]=WARN, [O]=OOT_MODULE, [E]=UNSIGNED_MODULE
+[  111.766412] Hardware name: Hisense A6L (HLTE730T) bring-up prototype (DT)
+[  111.772419] pstate: 60000005 (nZCv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  111.779275] pc : _regulator_disable+0x7c/0x348
+[  111.785913] lr : _regulator_disable+0x7c/0x348
+[  111.790426] sp : ffff8000833037a0
+[  111.794827] x29: ffff8000833037d0 x28: 0000000000000000 x27: 0000000000000018
+[  111.798378] x26: ffff000086ffdbc0 x25: 0000000000000018 x24: 0000000000000000
+[  111.805494] x23: 00000000ffffffff x22: ffff000081d29000 x21: 0000000000000001
+[  111.812612] x20: ffff000086ffdbc0 x19: ffff000081d29000 x18: ffff80008295d0a8
+[  111.819730] x17: 00000000ad8fc065 x16: 00000000ad8fc065 x15: 0000000000000003
+[  111.826846] x14: ffffa73f332b09f0 x13: 000000000000046c x12: 0000000000000003
+[  111.833966] x11: 0000000000000003 x10: 0000000000000002 x9 : e13045bbc217f400
+[  111.841084] x8 : e13045bbc217f400 x7 : 205d333736343137 x6 : 372e31313120205b
+[  111.848203] x5 : ffffa73f335259e8 x4 : ffff800083303367 x3 : 0000000000000000
+[  111.855320] x2 : 0000000000000000 x1 : ffff800083303570 x0 : 0000000000000021
+[  111.862437] Call trace:
+[  111.869375] _regulator_disable+0x7c/0x348 (P)
+[  111.871676] regulator_bulk_disable+0x84/0x17c
+[  111.876189] msm_dsi_phy_disable+0x60/0x88 [msm]
+[  111.880621] dsi_mgr_bridge_post_disable+0x12c/0x1cc [msm]
+[  111.885414] drm_atomic_bridge_chain_post_disable+0x120/0x1c0
+[  111.890717] drm_atomic_helper_commit_encoder_bridge_post_disable+0x94/0x1a4
+[  111.896638] drm_atomic_helper_commit_modeset_disables+0x3c/0xd8
+[  111.903655] msm_atomic_commit_tail+0x224/0x6ac [msm]
+[  111.909625] commit_tail+0xcc/0x194
+[  111.914536] drm_atomic_helper_commit+0x2b4/0x2d4
+[  111.917865] drm_atomic_commit+0xd4/0x108
+[  111.922707] drm_atomic_helper_set_config+0x6c/0xf0
+[  111.926721] drm_mode_setcrtc+0x308/0x724
+[  111.931390] drm_ioctl_kernel+0xf0/0x140
+[  111.935554] drm_ioctl+0x27c/0x3ec
+[  111.939536] __arm64_sys_ioctl+0xb0/0x108
+[  111.942759] invoke_syscall+0x6c/0x11c
+[  111.946832] el0_svc_common+0x98/0xe8
+[  111.950481] do_el0_svc+0x2c/0x3c
+[  111.954204] el0_svc+0x40/0x9c
+[  111.957494] el0t_64_sync_handler+0x88/0x134
+[  111.960474] el0t_64_sync+0x1a0/0x1a4
+[  111.964889] ---[ end trace 0000000000000000 ]---
+[  111.968507] Failed to disable vcca: -EIO
+[  111.973161] msm_dsi_phy c994400.phy: Runtime PM usage count underflow!
+[  111.993524] a6l_src_pll: byte1_clk_src -> dsi0pllbyte (0), pclk1_clk_src -> dsi0pll (0)
+[  111.994442] dsi_link_clk_set_rate_6g: Failed to set rate pixel clk, -22
+[  112.000865] msm_dsi_host_power_on: failed to enable link clocks. ret=-22
+[  112.008039] dsi_mgr_bridge_power_on: power on host 1 failed, -22
+[  112.014158] msm_dsi c996000.dsi: Power on failed: -22
+[  112.049281] panel-a6l-epd-dsi c996000.dsi.0: bridge (prepare): IDREG ret=-6 id=00000000
+[  112.049889] panel-a6l-epd-dsi c996000.dsi.0: bridge (enable): IDREG ret=-6 id=00000000
+[  112.114916] [drm:dpu_encoder_phys_vid_wait_for_commit_done:545] [dpu error]vblank timeout: 60020840
+[  112.115296] [drm:dpu_kms_wait_for_commit_done:527] [dpu error]wait for commit done returned -110
+[  112.122799] [drm:dpu_encoder_frame_done_timeout:2731] [dpu error]enc37 frame done timeout

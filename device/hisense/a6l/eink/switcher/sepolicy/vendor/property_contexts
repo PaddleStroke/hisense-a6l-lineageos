@@ -1,0 +1,3 @@
+# a6l_dualux (agent dualux)
+vendor.dualux.state                   u:object_r:vendor_dualux_prop:s0
+vendor.dualux.lcd_blank               u:object_r:vendor_dualux_prop:s0

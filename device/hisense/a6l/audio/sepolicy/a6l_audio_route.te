@@ -1,0 +1,11 @@
+# audio3 (24 Sep 2026): /vendor/bin/a6l-audio-route (mixer routing daemon for the Hisense A6L card)
+type a6l_audio_route, domain;
+type a6l_audio_route_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_audio_route)
+
+# ALSA control device (/dev/snd/controlC*) and card enumeration
+allow a6l_audio_route audio_device:dir r_dir_perms;
+allow a6l_audio_route audio_device:chr_file rw_file_perms;
+r_dir_file(a6l_audio_route, proc_asound)
+# /vendor/etc/mixer_paths_a6l.xml
+allow a6l_audio_route vendor_configs_file:file r_file_perms;

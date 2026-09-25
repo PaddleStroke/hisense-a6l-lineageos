@@ -1,0 +1,136 @@
+diff --git a/drivers/gpu/drm/msm/dsi/dsi.h b/drivers/gpu/drm/msm/dsi/dsi.h
+index 93c028a12..7d99c1693 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi.h
++++ b/drivers/gpu/drm/msm/dsi/dsi.h
+@@ -82,6 +82,9 @@ enum drm_mode_status msm_dsi_host_check_dsc(struct mipi_dsi_host *host,
+ 					    const struct drm_display_mode *mode);
+ unsigned long msm_dsi_host_get_mode_flags(struct mipi_dsi_host *host);
+ int msm_dsi_host_register(struct mipi_dsi_host *host);
++bool msm_dsi_phy_a6l_enabled(void);
++void msm_dsi_phy_a6l_save(struct msm_dsi_phy *phy);
++void msm_dsi_phy_a6l_reslave(struct msm_dsi_phy *phy);
+ void msm_dsi_host_unregister(struct mipi_dsi_host *host);
+ void msm_dsi_host_set_phy_mode(struct mipi_dsi_host *host,
+ 			struct msm_dsi_phy *src_phy);
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_manager.c b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+index 46faeaae9..c36c7ece0 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi_manager.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+@@ -614,3 +614,17 @@ const char *msm_dsi_get_te_source(struct msm_dsi *msm_dsi)
+ {
+ 	return msm_dsi->te_source;
+ }
++
++/* Hisense A6L: called by the e-paper panel driver once DSI1 video is running (the verified replay timing). */
++int msm_dsi_a6l_reslave(void)
++{
++	struct msm_dsi *d1 = dsi_mgr_get_dsi(DSI_1);
++
++	if (!msm_dsi_phy_a6l_enabled() || !d1 || !d1->phy || !d1->phy_enabled)
++		return -ENODEV;
++	msm_dsi_phy_a6l_save(d1->phy);
++	msm_dsi_host_reset_phy(d1->host);
++	msm_dsi_phy_a6l_reslave(d1->phy);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(msm_dsi_a6l_reslave);
+diff --git a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c
+index a156c7e7c..0caf887f9 100644
+--- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c
++++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_14nm.c
+@@ -939,6 +939,36 @@ static void dsi_14nm_dphy_set_timing(struct msm_dsi_phy *phy,
+ 	       base + REG_DSI_14nm_PHY_LN_TIMING_CTRL_11(lane_idx));
+ }
+ 
++/*
++ * Hisense A6L: the rear e-paper bridge (TC358767, no REFCLK) only runs when the DSI1 lanes are clocked from
++ * DSI0's PLL, as the stock kernel always does. With msm.a6l_dsi1_slave=1 both PHYs keep their standalone
++ * programming (PLL1 still feeds the DSI1 controller byte/pixel clocks) but PHY1 takes its HS bit clock from
++ * PLL0: PHY1 GLBL_TEST_CTRL.BITCLK_HS_SEL=1, PLL1 CLKBUFLR_EN=0, PLL0 CLKBUFLR_EN=3.
++ * Verified by register replay on hardware, 22 Sep 2026 (bridge ACK, images on the panel).
++ */
++static bool a6l_dsi1_slave;
++module_param(a6l_dsi1_slave, bool, 0444);
++MODULE_PARM_DESC(a6l_dsi1_slave, "Hisense A6L: clock the DSI1 PHY lanes from the DSI0 PLL (e-paper bridge)");
++
++static void a6l_dsi1_slave_apply(struct msm_dsi_phy *phy)
++{
++	struct dsi_pll_14nm *p0 = pll_14nm_list[DSI_0];
++
++	if (phy->id == DSI_1) {
++		u32 g = readl(phy->base + REG_DSI_14nm_PHY_CMN_GLBL_TEST_CTRL);
++
++		writel(g | DSI_14nm_PHY_CMN_GLBL_TEST_CTRL_BITCLK_HS_SEL, phy->base + REG_DSI_14nm_PHY_CMN_GLBL_TEST_CTRL);
++		writel(0, phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++		if (p0 && p0->phy && p0->phy->pll_on)
++			writel(3, p0->phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++		pr_info("a6l_dsi1_slave: PHY1 bitclk from PLL0 (PLL0 %s)\n",
++			p0 && p0->phy && p0->phy->pll_on ? "on, clkbuf=3" : "NOT ON");
++	} else {
++		writel(3, phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++		pr_info("a6l_dsi1_slave: PLL0 clkbuf=3\n");
++	}
++}
++
+ static int dsi_14nm_phy_enable(struct msm_dsi_phy *phy,
+ 			       struct msm_dsi_phy_clk_request *clk_req)
+ {
+@@ -1005,6 +1035,9 @@ static int dsi_14nm_phy_enable(struct msm_dsi_phy *phy,
+ 		return ret;
+ 	}
+ 
++	/* A6L: no slaving at power-up (breaks the bridge); done later by msm_dsi_a6l_reslave() */
++	(void)a6l_dsi1_slave_apply;
++
+ 	/* Remove power down from PLL and all lanes */
+ 	writel(0xff, base + REG_DSI_14nm_PHY_CMN_CTRL_0);
+ 
+@@ -1114,3 +1147,48 @@ const struct msm_dsi_phy_cfg dsi_phy_14nm_6150_cfgs = {
+ 	.io_start = { 0xae94400 },
+ 	.num_dsi_phy = 1,
+ };
++
++/* Hisense A6L: literal kernel version of the hardware-verified PHY1 "slave" replay (22 Sep 2026):
++ * save the standalone-programmed PHY1 CMN+lane registers, the caller resets the PHY (DSI1 ctrl PHY_RESET),
++ * then write them back in the replay order with PHY1 bit clock taken from PLL0 and PLL1 left unprogrammed. */
++static u32 a6l_saved[0x380 / 4];
++
++bool msm_dsi_phy_a6l_enabled(void)
++{
++	return a6l_dsi1_slave;
++}
++
++void msm_dsi_phy_a6l_save(struct msm_dsi_phy *phy)
++{
++	unsigned int off;
++
++	for (off = 0x10; off < 0x380; off += 4)
++		a6l_saved[off / 4] = readl(phy->base + off);
++}
++
++void msm_dsi_phy_a6l_reslave(struct msm_dsi_phy *phy)
++{
++	struct dsi_pll_14nm *p0 = pll_14nm_list[DSI_0];
++	void __iomem *b = phy->base;
++	unsigned int off;
++
++	writel(a6l_saved[0x4c / 4], b + 0x4c);				/* LDO_CNTRL */
++	writel(a6l_saved[0x18 / 4] | DSI_14nm_PHY_CMN_GLBL_TEST_CTRL_BITCLK_HS_SEL, b + 0x18);
++	for (off = 0x10; off < 0x100; off += 4)
++		if (off != 0x18 && off != 0x1c && off != 0x24 && off != 0x48 && off != 0x4c)
++			writel(a6l_saved[off / 4], b + off);
++	writel(0, b + 0x48);						/* PLL_CNTRL */
++	for (off = 0x100; off < 0x380; off += 4)
++		writel(a6l_saved[off / 4], b + off);			/* lanes */
++	writel(2, b + 0x24);						/* CMN_CTRL_1 pulse */
++	usleep_range(2000, 2500);
++	writel(0, b + 0x24);
++	writel(0xff, b + 0x1c);						/* CTRL_0: all on */
++	writel(0, phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++	if (p0 && p0->phy && p0->phy->pll_on)
++		writel(3, p0->phy->pll_base + REG_DSI_14nm_PHY_PLL_CLKBUFLR_EN);
++	writel(1, b + 0x48);
++	usleep_range(5000, 6000);
++	pr_info("a6l_dsi1_slave: PHY1 reset + re-slaved (glbl %x clkcfg0 %x PLL0 %s)\n", readl(b + 0x18),
++		readl(b + 0x10), p0 && p0->phy && p0->phy->pll_on ? "on" : "OFF");
++}

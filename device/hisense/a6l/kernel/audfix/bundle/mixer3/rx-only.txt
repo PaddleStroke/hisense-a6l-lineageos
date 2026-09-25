@@ -1,0 +1,2 @@
+# audfix: ONLY the playback route of MultiMedia1 (works with the upstream AND the patched q6routing)
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|1

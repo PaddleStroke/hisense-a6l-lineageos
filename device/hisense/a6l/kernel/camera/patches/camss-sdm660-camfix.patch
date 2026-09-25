@@ -1,0 +1,97 @@
+--- camss/camss.c	2026-09-24 15:48:33.345506455 +0200
++++ /home/a6l/camfix/camss/camss.c	2026-09-24 15:48:33.391785394 +0200
+@@ -4692,7 +4692,8 @@
+ 
+ static int vfe_parent_dev_ops_get(struct camss *camss, int id)
+ {
+-	int ret = -EINVAL;
++	/* A6L: CSID2/3 on ISPIF SoCs have no same-index VFE (they reach VFEs through ISPIF) */
++	int ret = camss->ispif ? 0 : -EINVAL;
+ 
+ 	if (id < camss->res->vfe_num) {
+ 		struct vfe_device *vfe = &camss->vfe[id];
+@@ -5388,7 +5389,8 @@
+ 	if (camss->res->version == CAMSS_8x16 ||
+ 	    camss->res->version == CAMSS_8x39 ||
+ 	    camss->res->version == CAMSS_8x53 ||
+-	    camss->res->version == CAMSS_8x96) {
++	    camss->res->version == CAMSS_8x96 ||
++	    camss->res->version == CAMSS_660) {
+ 		camss->ispif = devm_kcalloc(dev, 1, sizeof(*camss->ispif), GFP_KERNEL);
+ 		if (!camss->ispif)
+ 			return -ENOMEM;
+--- camss/camss-csiphy.c	2026-09-24 15:48:33.344505563 +0200
++++ /home/a6l/camfix/camss/camss-csiphy.c	2026-09-24 15:48:33.393701205 +0200
+@@ -22,6 +22,11 @@
+ #include "camss-csiphy.h"
+ #include "camss.h"
+ 
++static bool a6l_phy_fast = true;
++module_param(a6l_phy_fast, bool, 0644);
++MODULE_PARM_DESC(a6l_phy_fast, "A6L: CSIPHY timer at the highest level (stock-like, 269.33 MHz)");
++
++
+ #define MSM_CSIPHY_NAME "msm_csiphy"
+ 
+ static const struct csiphy_format_info formats_8x16[] = {
+@@ -157,6 +162,8 @@
+ 			long round_rate;
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (a6l_phy_fast && min_rate && min_rate < 200000001ULL)
++				min_rate = 200000001ULL;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+@@ -606,7 +613,8 @@
+ 	if (camss->res->version == CAMSS_8x16 ||
+ 	    camss->res->version == CAMSS_8x39 ||
+ 	    camss->res->version == CAMSS_8x53 ||
+-	    camss->res->version == CAMSS_8x96) {
++	    camss->res->version == CAMSS_8x96 ||
++	    camss->res->version == CAMSS_660) {
+ 		csiphy->base_clk_mux =
+ 			devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
+ 		if (IS_ERR(csiphy->base_clk_mux))
+--- camss/camss-csid.c	2026-09-24 15:48:33.344290136 +0200
++++ /home/a6l/camfix/camss/camss-csid.c	2026-09-24 15:48:33.394333885 +0200
+@@ -26,6 +26,11 @@
+ #include "camss-csid-gen1.h"
+ #include "camss.h"
+ 
++static bool a6l_csid_fast = true;
++module_param(a6l_csid_fast, bool, 0644);
++MODULE_PARM_DESC(a6l_csid_fast, "A6L: CSID core clock >= 310 MHz (stock csi_src rate)");
++
++
+ /* offset of CSID registers in VFE region for VFE 480 */
+ #define VFE_480_CSID_OFFSET 0x1200
+ #define VFE_480_LITE_CSID_OFFSET 0x200
+@@ -562,6 +567,8 @@
+ 			long rate;
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (a6l_csid_fast && min_rate && min_rate < 200000001ULL)
++				min_rate = 200000001ULL;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+@@ -590,6 +597,7 @@
+ 				dev_err(dev, "clk set rate failed: %d\n", ret);
+ 				return ret;
+ 			}
++			dev_info(dev, "A6L_CSID%u %s rate %ld (link_freq %lld lanes %u)\n", csid->id, clock->name, rate, (long long)link_freq, csid->phy.lane_cnt);
+ 		} else if (clock->nfreqs) {
+ 			clk_set_rate(clock->clk, clock->freq[0]);
+ 		}
+--- camss/camss-csiphy-3ph-1-0.c	2026-09-24 15:48:33.344457450 +0200
++++ /home/a6l/camfix/camss/camss-csiphy-3ph-1-0.c	2026-09-24 15:48:33.394459469 +0200
+@@ -1159,6 +1159,8 @@
+ 	int i;
+ 
+ 	settle_cnt = csiphy_settle_cnt_calc(link_freq, csiphy->timer_clk_rate);
++	dev_info(csiphy->camss->dev, "A6L_CSIPHY%d link_freq %lld timer %u settle_cnt %u lanes %u mask 0x%x csid %u\n",
++		 csiphy->id, (long long)link_freq, csiphy->timer_clk_rate, settle_cnt, c->num_data, lane_mask, cfg->csid_id);
+ 
+ 	val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
+ 	for (i = 0; i < c->num_data; i++)

@@ -1,0 +1,37 @@
+# Hisense A6L rear e-ink (agent eink3, docs/eink3-20260924.md). Installed as /vendor/etc/init/a6l_eink.rc by a6l_epdd.
+#
+# vendor.a6l_epdd  : owns the e-ink (DRM lease from the patched composer, rails, library, waveform). Socket a6l_epd.
+# vendor.a6l_eink  : mode (persist.vendor.eink.mode, set by vendor.a6l_dualux which owns key 616 since 25 Sep; set
+#                    persist.vendor.eink.key_dev=auto to give the key back to the mirror), mirror capture + refresh policy
+#                    (persist.vendor.eink.refresh, live), rear touch bridge.
+# Neither ever opens /dev/dri/card* before the composer holds DRM master (see a6l_epdd --no-master).
+
+on post-fs-data
+    mkdir /data/vendor/epd 0770 system system
+
+on early-boot
+    # panel NOR through spidev, read-only, only if the DT has the a6l-eink-flash-read SPI node (harmless otherwise)
+    write /sys/bus/spi/devices/spi0.0/driver_override spidev
+    write /sys/bus/spi/drivers/spidev/bind spi0.0
+    write /sys/bus/spi/devices/spi1.0/driver_override spidev
+    write /sys/bus/spi/drivers/spidev/bind spi1.0
+
+on property:init.svc.vendor.hwcomposer-3=running
+    start vendor.a6l_epdd
+    start vendor.a6l_eink
+
+service vendor.a6l_epdd /vendor/bin/hw/a6l_epdd --socket a6l_epd --no-master --lease hwc:a6l.hwc.lease --wait-drm 60 --waveform /mnt/vendor/persist/epd/epd-nor.bin --waveform /data/vendor/epd/epd-nor.bin --nor-spidev auto --waveform-cache /data/vendor/epd/epd-nor.bin --waveform /vendor/etc/epd/epd-nor.bin --lib /vendor/lib64/libtcon_eink.so --idle-off ${persist.vendor.eink.idle_off_s:-30} --wakelock
+    class hal
+    user system
+    group system graphics wakelock
+    socket a6l_epd stream 0660 system system
+    disabled
+    task_profiles ServiceCapacityLow
+
+service vendor.a6l_eink /vendor/bin/a6l_eink_mirror --source drm --wait-prop sys.boot_completed=1 --epd-socket /dev/socket/a6l_epd --interval ${persist.vendor.eink.interval_ms:-250} --clear-every ${persist.vendor.eink.clear_every:-10} --key-dev ${persist.vendor.eink.key_dev:-none}
+    class hal
+    user system
+    group system graphics input uhid
+    capabilities SYS_ADMIN
+    disabled
+    task_profiles ServiceCapacityLow

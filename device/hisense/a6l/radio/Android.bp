@@ -1,0 +1,132 @@
+// Hisense A6L radio: AIDL radio HAL (V4) over QMI/QRTR for the SDM660 modem on a mainline kernel
+// (agent ril, 24 Sep 2026). See docs/ril-20260924.md.
+// No soong_namespace: module names are unique (a6l-/liba6l-prefixed), and building them by name
+// with `m` needs them exported to Make.
+
+cc_defaults {
+    name: "a6l-radio-defaults",
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-parameter",
+        // binder_to_string.h uses deprecated codecvt_utf8_utf16 (same as libminradio upstream)
+        "-D_LIBCPP_DISABLE_DEPRECATION_WARNINGS",
+        "-DANDROID_UTILS_REF_BASE_DISABLE_IMPLICIT_CONSTRUCTION",
+    ],
+}
+
+// Portable QMI/QRTR client (no Android deps besides liblog): codec, QRTR transport, typed
+// DMS/UIM/NAS/WMS/VOICE/WDS/WDA requests, data-call manager, rmnet netlink, SMS PDU helpers.
+cc_library_static {
+    name: "liba6lqmi",
+    defaults: ["a6l-radio-defaults"],
+    vendor: true,
+    host_supported: true,
+    srcs: ["qmi/src/*.cc"],
+    export_include_dirs: ["qmi/include"],
+    target: {
+        android: {
+            shared_libs: ["liblog"],
+        },
+    },
+}
+
+// libminradio copied from hardware/interfaces/radio/aidl/minradio (Apache-2.0) and built as a
+// plain static library: the upstream module enables ASan/fuzzer sanitizers and is meant for an
+// APEX example, not for a production vendor binary.
+cc_library_static {
+    name: "liba6lminradio",
+    defaults: ["a6l-radio-defaults"],
+    vendor: true,
+    export_include_dirs: ["minradio/include"],
+    srcs: [
+        "minradio/RadioSlotBase.cpp",
+        "minradio/ResponseTracker.cpp",
+        "minradio/SlotContext.cpp",
+        "minradio/config/RadioConfig.cpp",
+        "minradio/data/RadioData.cpp",
+        "minradio/modem/RadioModem.cpp",
+        "minradio/network/RadioNetwork.cpp",
+        "minradio/network/RadioNetworkResponseTracker.cpp",
+        "minradio/network/structs.cpp",
+        "minradio/response.cpp",
+        "minradio/sim/apps/AraM.cpp",
+        "minradio/sim/apps/FilesystemApp.cpp",
+        "minradio/sim/apps/tlv.cpp",
+        "minradio/sim/App.cpp",
+        "minradio/sim/AppManager.cpp",
+        "minradio/sim/Filesystem.cpp",
+        "minradio/sim/IccUtils.cpp",
+        "minradio/sim/RadioSim.cpp",
+    ],
+    shared_libs: [
+        "android.hardware.radio.config-V4-ndk",
+        "android.hardware.radio.data-V4-ndk",
+        "android.hardware.radio.modem-V4-ndk",
+        "android.hardware.radio.network-V4-ndk",
+        "android.hardware.radio.sim-V4-ndk",
+        "libbase",
+        "libbinder_ndk",
+        "libutils",
+    ],
+}
+
+cc_binary {
+    name: "android.hardware.radio-service.a6l",
+    defaults: ["a6l-radio-defaults"],
+    vendor: true,
+    relative_install_path: "hw",
+    srcs: [
+        "hal/ModemCore.cpp",
+        "hal/RadioMessagingVoice.cpp",
+        "hal/RadioNetworkData.cpp",
+        "hal/RadioSimModemConfig.cpp",
+        "hal/service.cpp",
+    ],
+    local_include_dirs: ["hal"],
+    static_libs: [
+        "liba6lqmi",
+        "liba6lminradio",
+    ],
+    shared_libs: [
+        "android.hardware.radio.config-V4-ndk",
+        "android.hardware.radio.data-V4-ndk",
+        "android.hardware.radio.messaging-V4-ndk",
+        "android.hardware.radio.modem-V4-ndk",
+        "android.hardware.radio.network-V4-ndk",
+        "android.hardware.radio.sim-V4-ndk",
+        "android.hardware.radio.voice-V4-ndk",
+        "libbase",
+        "libbinder_ndk",
+        "libcutils",
+        "liblog",
+        "libutils",
+    ],
+    init_rc: ["init/android.hardware.radio-service.a6l.rc"],
+    vintf_fragments: ["init/android.hardware.radio-service.a6l.xml"],
+    overrides: ["rild"],
+}
+
+// Attended-test / debug tool (also built statically with the NDK: tools/build-ril-ndk.sh)
+cc_binary {
+    name: "a6l-qmi",
+    defaults: ["a6l-radio-defaults"],
+    vendor: true,
+    srcs: ["tools/a6l_qmi_cli.cc"],
+    static_libs: ["liba6lqmi"],
+    shared_libs: ["liblog"],
+}
+
+cc_test_host {
+    name: "a6l-qmi-tests",
+    defaults: ["a6l-radio-defaults"],
+    srcs: [
+        "tests/fake_modem.cc",
+        "tests/qmi_tests.cc",
+    ],
+    static_libs: ["liba6lqmi"],
+    test_options: {
+        unit_test: true,
+    },
+}

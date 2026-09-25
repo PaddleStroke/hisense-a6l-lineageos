@@ -1,0 +1,34 @@
+# vendor.a6l_epdd — owns the rear e-ink (eink3, docs/eink3-20260924.md)
+type a6l_epdd, domain;
+type a6l_epdd_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_epdd)
+
+# DRM lease from the patched composer: abstract SOCK_SEQPACKET (class unix_stream_socket) + the lessee fd (SCM_RIGHTS).
+# The lessee fd is a /dev/dri/card* file opened by the composer; we never open the card ourselves (--no-master).
+allow a6l_epdd self:unix_stream_socket create_stream_socket_perms;
+allow a6l_epdd hal_graphics_composer_default:unix_stream_socket connectto;
+allow a6l_epdd hal_graphics_composer_default:fd use;
+allow a6l_epdd gpu_device:chr_file { read write ioctl map getattr };
+
+# control socket (created by init), clients: vendor.a6l_eink
+allow a6l_epdd a6l_epd_socket:sock_file rw_file_perms;
+
+# stock software TCON, dlopen'ed from /vendor/lib64 (vendor_file: already allowed for vendor domains)
+
+# rails (epd_power), bring-up status, TPS65185 temperature
+allow a6l_epdd sysfs_a6l_epd:dir r_dir_perms;
+allow a6l_epdd sysfs_a6l_epd:file rw_file_perms;
+allow a6l_epdd sysfs_a6l_epd:lnk_file read;
+allow a6l_epdd sysfs:dir r_dir_perms;
+allow a6l_epdd sysfs:lnk_file read;
+allow a6l_epdd sysfs:file r_file_perms;		# /sys/class/drm/*/modes + connector_id, /sys/class/spidev, hwmon names
+
+# waveform: persist copy (read), /data/vendor cache (rw), panel NOR through spidev (read-only opcodes, enforced in code)
+allow a6l_epdd mnt_vendor_file:dir r_dir_perms;
+allow a6l_epdd mnt_vendor_file:file r_file_perms;
+allow a6l_epdd a6l_epd_data_file:dir create_dir_perms;
+allow a6l_epdd a6l_epd_data_file:file create_file_perms;
+allow a6l_epdd a6l_epd_spi_device:chr_file rw_file_perms;
+
+# hold a wakelock while a waveform is being driven
+wakelock_use(a6l_epdd)

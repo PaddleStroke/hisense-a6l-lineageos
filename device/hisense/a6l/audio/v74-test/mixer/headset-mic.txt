@@ -1,0 +1,7 @@
+# Stock "headset-mic" -> adc2: ADC2 Volume=8(path)/6, DEC1 MUX=ADC2, ADC2 MUX=INP2. Front end: stock "audio-record" = MultiMedia1 Mixer INT3_MI2S_TX.
+# Here capture uses MultiMedia2 (MultiMedia1 stays the playback FE). INT3_MI2S_TX == LPI_MI2S_TX_3 (AFE port 144) in mainline.
+MultiMedia2 Mixer LPI_MI2S_TX_3|1
+ADC2 MUX|INP2
+DEC1 MUX|ADC2
+CIC1 MUX|AMIC
+ADC2 Volume|4

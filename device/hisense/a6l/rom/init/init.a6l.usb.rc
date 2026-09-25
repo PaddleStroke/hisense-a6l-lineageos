@@ -1,0 +1,12 @@
+# A6L rom-v1 USB gadget (agent flash). AOSP init.usb.configfs.rc does the gadget; we name the controller and, because
+# the kernel runs with a6l_manual_usb=1 (the gate the V71/V74 recovery also uses), release the D+ pullup after every
+# (re)bind of the UDC with soft_connect.
+on boot
+    setprop sys.usb.configfs 1
+    setprop sys.usb.controller a800000.usb
+
+on property:sys.usb.state=*
+    write /sys/class/udc/a800000.usb/soft_connect connect
+
+on property:sys.usb.ffs.ready=1
+    write /sys/class/udc/a800000.usb/soft_connect connect

@@ -1,0 +1,3 @@
+# Hisense A6L radio HAL (agent ril)
+/vendor/bin/hw/android\.hardware\.radio-service\.a6l    u:object_r:hal_radio_default_exec:s0
+/vendor/bin/a6l-qmi                                     u:object_r:a6l_qmi_exec:s0

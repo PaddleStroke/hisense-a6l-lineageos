@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- audio3 (24 Sep 2026): the ASoC headset jack of the Hisense A6L card is an input device (SW_HEADPHONE_INSERT /
+     SW_MICROPHONE_INSERT, "Hisense A6L Headset Jack"); there is no h2w switch class / extcon. -->
+<resources>
+    <bool name="config_useDevInputEventForAudioJack">true</bool>
+</resources>

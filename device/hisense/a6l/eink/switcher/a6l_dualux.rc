@@ -1,0 +1,18 @@
+# Hisense A6L LCD <-> e-ink switcher (agent dualux, docs/dualux-20260925.md). Installed by a6l_dualux.
+on boot
+    # LCD backlight power (the composer blanks it on display off; a6l_dualux holds it off in e-ink mode)
+    chown system system /sys/class/backlight/backlight/bl_power
+    chmod 0664 /sys/class/backlight/backlight/bl_power
+    # rear e-ink frontlight (DT overlay a6l-eink-frontlight-v75: leds-pwm "epd-backlight", stock name)
+    chown system system /sys/class/leds/epd-backlight/brightness
+    chmod 0664 /sys/class/leds/epd-backlight/brightness
+
+on property:init.svc.vendor.hwcomposer-3=running
+    start vendor.a6l_dualux
+
+service vendor.a6l_dualux /vendor/bin/a6l_dualux
+    class hal
+    user system
+    group system input uhid graphics
+    task_profiles ServiceCapacityLow
+    disabled

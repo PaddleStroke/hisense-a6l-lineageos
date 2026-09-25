@@ -1,0 +1,574 @@
+From: eink3 <a6l@localhost>
+Subject: [PATCH] drm_hwcomposer: ignore listed connectors and lease them to a trusted client
+
+vendor.hwc.drm.ignore_connectors (comma list of connector names or "mode:WxH") keeps connectors out of
+UpdateFrontendDisplays(), so SurfaceFlinger never sees them. With vendor.hwc.drm.lease_socket set, a small server on an
+abstract AF_UNIX socket hands a DRM lease of such a connector (+ a free CRTC and its free primary planes, which stay
+reserved) to a root/system/graphics client. Hisense A6L: the rear e-ink (384x725) driven by vendor.a6l_epdd.
+
+diff --git a/Android.bp b/Android.bp
+index 4183e34..31e2fbb 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -119,6 +119,7 @@ filegroup {
+         "drm/DrmMode.cpp",
+         "drm/DrmPlane.cpp",
+         "drm/DrmProperty.cpp",
++        "drm/LeaseServer.cpp",
+         "drm/ResourceManager.cpp",
+         "drm/UEventListener.cpp",
+         "drm/VSyncWorker.cpp",
+diff --git a/drm/LeaseServer.cpp b/drm/LeaseServer.cpp
+new file mode 100644
+index 0000000..35c7990
+--- /dev/null
++++ b/drm/LeaseServer.cpp
+@@ -0,0 +1,273 @@
++/*
++ * Copyright (C) 2026 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#define LOG_TAG "drmhwc"
++
++#include "LeaseServer.h"
++
++#include <fcntl.h>
++#include <poll.h>
++#include <sys/eventfd.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++#include <xf86drm.h>
++#include <xf86drmMode.h>
++
++#include <cerrno>
++#include <cstddef>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <mutex>
++
++#include "drm/DrmConnector.h"
++#include "drm/DrmCrtc.h"
++#include "drm/DrmDevice.h"
++#include "drm/DrmEncoder.h"
++#include "drm/DrmPlane.h"
++#include "drm/ResourceManager.h"
++#include "utils/log.h"
++
++namespace android::drm_hwcomposer {
++
++namespace {
++// Only compared by address: marks CRTCs/planes that belong to a lease.
++const char kLeaseTag = 0;
++auto LeasePipelineTag() -> const DrmDisplayPipeline * {
++  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
++  return reinterpret_cast<const DrmDisplayPipeline *>(&kLeaseTag);
++}
++constexpr uid_t kUidRoot = 0;
++constexpr uid_t kUidSystem = 1000;
++constexpr uid_t kUidGraphics = 1003;
++}  // namespace
++
++auto LeaseServer::Start(ResourceManager &res_man,
++                        const std::string &socket_name)
++    -> std::unique_ptr<LeaseServer> {
++  sockaddr_un addr{};
++  if (socket_name.empty() || socket_name.size() + 1 > sizeof(addr.sun_path)) {
++    ALOGE("LeaseServer: bad socket name '%s'", socket_name.c_str());
++    return {};
++  }
++  const int lfd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
++  if (lfd < 0) {
++    ALOGE("LeaseServer: socket: %s", strerror(errno));
++    return {};
++  }
++  addr.sun_family = AF_UNIX;
++  addr.sun_path[0] = '\0'; /* abstract namespace: no file, no init socket */
++  memcpy(&addr.sun_path[1], socket_name.data(), socket_name.size());
++  const auto len = static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + 1 +
++                                          socket_name.size());
++  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
++  if (bind(lfd, reinterpret_cast<sockaddr *>(&addr), len) != 0 ||
++      listen(lfd, 2) != 0) {
++    ALOGE("LeaseServer: bind/listen @%s: %s", socket_name.c_str(),
++          strerror(errno));
++    close(lfd);
++    return {};
++  }
++  const int sfd = eventfd(0, EFD_CLOEXEC);
++  if (sfd < 0) {
++    close(lfd);
++    return {};
++  }
++  auto server = std::unique_ptr<LeaseServer>(
++      new LeaseServer(res_man, lfd, sfd));
++  server->thread_ = std::thread(&LeaseServer::Run, server.get());
++  ALOGI("LeaseServer: listening on @%s", socket_name.c_str());
++  return server;
++}
++
++LeaseServer::LeaseServer(ResourceManager &res_man, int listen_fd, int stop_fd)
++    : res_man_(res_man), listen_fd_(listen_fd), stop_fd_(stop_fd) {
++}
++
++LeaseServer::~LeaseServer() {
++  const uint64_t one = 1;
++  if (write(stop_fd_, &one, sizeof(one)) != sizeof(one)) {
++    ALOGE("LeaseServer: stop signal failed");
++  }
++  if (thread_.joinable())
++    thread_.join();
++  {
++    const std::unique_lock lock(res_man_.GetMainLock());
++    while (!held_.empty())
++      ReleaseLocked(held_.begin()->first);
++  }
++  close(listen_fd_);
++  close(stop_fd_);
++}
++
++void LeaseServer::Run() {
++  for (;;) {
++    pollfd fds[2] = {{listen_fd_, POLLIN, 0}, {stop_fd_, POLLIN, 0}};
++    if (poll(fds, 2, -1) < 0) {
++      if (errno == EINTR)
++        continue;
++      ALOGE("LeaseServer: poll: %s", strerror(errno));
++      return;
++    }
++    if ((fds[1].revents & POLLIN) != 0)
++      return;
++    if ((fds[0].revents & POLLIN) == 0)
++      continue;
++    const int cfd = accept4(listen_fd_, nullptr, nullptr, SOCK_CLOEXEC);
++    if (cfd < 0)
++      continue;
++    Serve(cfd);
++    close(cfd);
++  }
++}
++
++void LeaseServer::Serve(int client_fd) {
++  ucred cred{};
++  socklen_t clen = sizeof(cred);
++  std::string reply;
++  int lease_fd = -1;
++  char req[64] = {};
++
++  if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED, &cred, &clen) != 0 ||
++      (cred.uid != kUidRoot && cred.uid != kUidSystem &&
++       cred.uid != kUidGraphics)) {
++    ALOGE("LeaseServer: refusing uid %d pid %d", cred.uid, cred.pid);
++    reply = "ERR permission denied";
++  } else {
++    pollfd p = {client_fd, POLLIN, 0};
++    const ssize_t n = poll(&p, 1, 2000) == 1
++                          ? recv(client_fd, req, sizeof(req) - 1, 0)
++                          : -1;
++    unsigned long conn_id = 0;
++    char *end = nullptr;
++    if (n > 6 && strncmp(req, "LEASE ", 6) == 0) {
++      conn_id = strtoul(&req[6], &end, 10);
++    }
++    if (conn_id == 0 || end == &req[6]) {
++      reply = "ERR bad request";
++    } else {
++      const std::unique_lock lock(res_man_.GetMainLock());
++      lease_fd = CreateLease(static_cast<uint32_t>(conn_id), reply);
++    }
++    ALOGI("LeaseServer: pid %d uid %d: %s", cred.pid, cred.uid, reply.c_str());
++  }
++
++  iovec iov = {reply.data(), reply.size()};
++  msghdr msg{};
++  msg.msg_iov = &iov;
++  msg.msg_iovlen = 1;
++  alignas(cmsghdr) char cbuf[CMSG_SPACE(sizeof(int))] = {};
++  if (lease_fd >= 0) {
++    msg.msg_control = cbuf;
++    msg.msg_controllen = sizeof(cbuf);
++    cmsghdr *c = CMSG_FIRSTHDR(&msg);
++    c->cmsg_level = SOL_SOCKET;
++    c->cmsg_type = SCM_RIGHTS;
++    c->cmsg_len = CMSG_LEN(sizeof(int));
++    memcpy(CMSG_DATA(c), &lease_fd, sizeof(int));
++  }
++  if (sendmsg(client_fd, &msg, MSG_NOSIGNAL) < 0) {
++    ALOGE("LeaseServer: sendmsg: %s", strerror(errno));
++  }
++  if (lease_fd >= 0)
++    close(lease_fd); /* the client owns its copy now; the lease lives on */
++}
++
++void LeaseServer::ReleaseLocked(uint32_t connector_id) {
++  auto it = held_.find(connector_id);
++  if (it == held_.end())
++    return;
++  /* ENOENT when the lessee already closed its fd: the kernel ended it */
++  drmModeRevokeLease(*it->second.dev->GetFd(), it->second.lessee_id);
++  held_.erase(it); /* drops the placeholder bindings */
++}
++
++auto LeaseServer::CreateLease(uint32_t connector_id, std::string &reply)
++    -> int {
++  DrmConnector *conn = nullptr;
++  for (auto &drm : res_man_.GetDrmDevices()) {
++    for (const auto &c : drm->GetConnectors()) {
++      if (c->GetId() == connector_id)
++        conn = c.get();
++    }
++  }
++  if (conn == nullptr) {
++    reply = "ERR no such connector";
++    return -1;
++  }
++  if (!res_man_.IsConnectorIgnored(*conn)) {
++    reply = "ERR connector " + conn->GetName() +
++            " is not in vendor.hwc.drm.ignore_connectors";
++    return -1;
++  }
++  ReleaseLocked(connector_id);
++
++  auto &dev = conn->GetDev();
++  Held held;
++  held.dev = &dev;
++  for (const auto &enc : dev.GetEncoders()) {
++    if (held.crtc || !conn->SupportsEncoder(*enc))
++      continue;
++    for (const auto &crtc : dev.GetCrtcs()) {
++      if (enc->SupportsCrtc(*crtc)) {
++        held.crtc = crtc->BindPipeline(LeasePipelineTag());
++        if (held.crtc)
++          break;
++      }
++    }
++  }
++  if (!held.crtc) {
++    reply = "ERR no free CRTC for " + conn->GetName();
++    return -1;
++  }
++  std::vector<uint32_t> objs = {conn->GetId(), held.crtc->Get()->GetId()};
++  std::string plane_list;
++  for (const auto &plane : dev.GetPlanes()) {
++    if (plane->GetType() != DRM_PLANE_TYPE_PRIMARY ||
++        !plane->IsCrtcSupported(*held.crtc->Get()))
++      continue;
++    auto owner = plane->BindPipeline(LeasePipelineTag());
++    if (!owner)
++      continue; /* in use by a display pipeline */
++    objs.emplace_back(plane->GetId());
++    plane_list += (plane_list.empty() ? "" : ",") +
++                  std::to_string(plane->GetId());
++    held.planes.emplace_back(std::move(owner));
++  }
++  if (held.planes.empty()) {
++    reply = "ERR no free primary plane";
++    return -1;
++  }
++
++  uint32_t lessee_id = 0;
++  const int lfd = drmModeCreateLease(*dev.GetFd(), objs.data(),
++                                     static_cast<int>(objs.size()), O_CLOEXEC,
++                                     &lessee_id);
++  if (lfd < 0) {
++    reply = std::string("ERR drmModeCreateLease: ") + strerror(errno);
++    return -1;
++  }
++  held.lessee_id = lessee_id;
++  reply = "OK lessee=" + std::to_string(lessee_id) +
++          " connector=" + std::to_string(conn->GetId()) +
++          " crtc=" + std::to_string(held.crtc->Get()->GetId()) +
++          " planes=" + plane_list;
++  held_[connector_id] = std::move(held);
++  return lfd;
++}
++
++}  // namespace android::drm_hwcomposer
+diff --git a/drm/LeaseServer.h b/drm/LeaseServer.h
+new file mode 100644
+index 0000000..0db8c9d
+--- /dev/null
++++ b/drm/LeaseServer.h
+@@ -0,0 +1,80 @@
++/*
++ * Copyright (C) 2026 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#pragma once
++
++#include <cstdint>
++#include <map>
++#include <memory>
++#include <string>
++#include <thread>
++#include <vector>
++
++#include "drm/DrmDisplayPipeline.h"
++
++namespace android::drm_hwcomposer {
++
++class DrmConnector;
++class DrmCrtc;
++class DrmDevice;
++class DrmPlane;
++class ResourceManager;
++
++/*
++ * Connectors listed in vendor.hwc.drm.ignore_connectors are never attached as
++ * displays. When vendor.hwc.drm.lease_socket is set as well, this server hands
++ * a DRM lease of such a connector (plus a free CRTC and the free primary
++ * planes that can feed it) to one trusted client (uid root/system/graphics)
++ * over an abstract AF_UNIX SOCK_SEQPACKET socket.
++ *
++ * Protocol (one packet each way):
++ *   client: "LEASE <connector-id>"
++ *   server: "OK lessee=<id> connector=<id> crtc=<id> planes=<id>[,<id>...]"
++ *           + the lessee fd as SCM_RIGHTS, or "ERR <reason>".
++ * A new request for the same connector revokes the previous lease first, so a
++ * restarted client always gets a fresh one. Leased CRTCs/planes stay bound to
++ * a placeholder pipeline so the composer never uses them itself.
++ */
++class LeaseServer {
++ public:
++  static auto Start(ResourceManager &res_man, const std::string &socket_name)
++      -> std::unique_ptr<LeaseServer>;
++  ~LeaseServer();
++  LeaseServer(const LeaseServer &) = delete;
++  LeaseServer &operator=(const LeaseServer &) = delete;
++
++ private:
++  LeaseServer(ResourceManager &res_man, int listen_fd, int stop_fd);
++  void Run();
++  void Serve(int client_fd);
++  auto CreateLease(uint32_t connector_id, std::string &reply) -> int;
++  void ReleaseLocked(uint32_t connector_id);
++
++  struct Held {
++    DrmDevice *dev{};
++    uint32_t lessee_id{};
++    std::shared_ptr<BindingOwner<DrmCrtc>> crtc;
++    std::vector<std::shared_ptr<BindingOwner<DrmPlane>>> planes;
++  };
++
++  ResourceManager &res_man_;
++  const int listen_fd_;
++  const int stop_fd_;
++  std::map<uint32_t, Held> held_;
++  std::thread thread_;
++};
++
++}  // namespace android::drm_hwcomposer
+diff --git a/drm/ResourceManager.cpp b/drm/ResourceManager.cpp
+index defec12..30d8566 100644
+--- a/drm/ResourceManager.cpp
++++ b/drm/ResourceManager.cpp
+@@ -19,6 +19,7 @@
+ #include <android-base/strings.h>
+ #include <sys/stat.h>
+ 
++#include <cstdio>
+ #include <ctime>
+ #include <sstream>
+ 
+@@ -27,6 +28,8 @@
+ #include "drm/DrmConnector.h"
+ #include "drm/DrmDevice.h"
+ #include "drm/DrmDisplayPipeline.h"
++#include "drm/DrmMode.h"
++#include "drm/LeaseServer.h"
+ #include "drm/UEventListener.h"
+ #include "utils/log.h"
+ #include "utils/properties.h"
+@@ -41,6 +44,7 @@ ResourceManager::ResourceManager(
+ 
+ ResourceManager::~ResourceManager() {
+   uevent_listener_->StopThread();
++  lease_server_.reset();
+ }
+ 
+ void ResourceManager::Init() {
+@@ -88,6 +92,8 @@ void ResourceManager::Init() {
+   auto display_names = base::Tokenize(display_str, ",");
+   displays_.insert(display_names.begin(), display_names.end());
+ 
++  ignored_connectors_ = base::Tokenize(Properties::IgnoredConnectors(), ",");
++
+   scale_with_gpu_ = Properties::ScaleWithGpu();
+   ctm_handling_ = Properties::GetCtmHandling();
+ 
+@@ -116,6 +122,11 @@ void ResourceManager::Init() {
+ 
+   UpdateFrontendDisplays();
+ 
++  auto lease_socket = Properties::LeaseSocketName();
++  if (!ignored_connectors_.empty() && !lease_socket.empty()) {
++    lease_server_ = LeaseServer::Start(*this, lease_socket);
++  }
++
+   initialized_ = true;
+ }
+ 
+@@ -127,6 +138,7 @@ void ResourceManager::DeInit() {
+ 
+   uevent_listener_->RegisterHotplugHandler({});
+ 
++  lease_server_.reset(); /* revokes leases, unbinds their CRTCs/planes */
+   DetachAllFrontendDisplays();
+   drms_.clear();
+ 
+@@ -149,6 +161,14 @@ void ResourceManager::UpdateFrontendDisplays() {
+ 
+   for (auto *conn : ordered_connectors) {
+     conn->UpdateModes();
++    if (IsConnectorIgnored(*conn)) {
++      /* e.g. a rear e-ink panel driven by its own service through a lease */
++      if (attached_pipelines_.count(conn) != 0) {
++        frontend_interface_->UnbindDisplay(attached_pipelines_[conn]);
++        attached_pipelines_.erase(conn);
++      }
++      continue;
++    }
+     auto connected = conn->IsConnected();
+     auto attached = attached_pipelines_.count(conn) != 0;
+ 
+@@ -188,6 +208,23 @@ void ResourceManager::UpdateFrontendDisplays() {
+   frontend_interface_->FinalizeDisplayBinding();
+ }
+ 
++auto ResourceManager::IsConnectorIgnored(DrmConnector &conn) const -> bool {
++  for (const auto &entry : ignored_connectors_) {
++    if (entry == conn.GetName())
++      return true;
++    unsigned w = 0;
++    unsigned h = 0;
++    // NOLINTNEXTLINE(cert-err34-c)
++    if (sscanf(entry.c_str(), "mode:%ux%u", &w, &h) == 2) {
++      for (const auto &mode : conn.GetModes()) {
++        if (mode.GetRawMode().hdisplay == w && mode.GetRawMode().vdisplay == h)
++          return true;
++      }
++    }
++  }
++  return false;
++}
++
+ void ResourceManager::DetachStalePipelines(
+     const std::vector<std::unique_ptr<DrmConnector>> &stale_connectors) {
+   for (const auto &conn : stale_connectors) {
+diff --git a/drm/ResourceManager.h b/drm/ResourceManager.h
+index 03b10d8..6adb838 100644
+--- a/drm/ResourceManager.h
++++ b/drm/ResourceManager.h
+@@ -29,6 +29,7 @@ enum class CtmHandling;
+ class DrmConnector;
+ class DrmDevice;
+ struct DrmDisplayPipeline;
++class LeaseServer;
+ class UEventListener;
+ 
+ class PipelineToFrontendBindingInterface {
+@@ -82,6 +83,13 @@ class ResourceManager {
+ 
+   static auto GetTimeMonotonicNs() -> int64_t;
+ 
++  auto &GetDrmDevices() {
++    return drms_;
++  }
++
++  /* vendor.hwc.drm.ignore_connectors: never attached, may be leased */
++  auto IsConnectorIgnored(DrmConnector &conn) const -> bool;
++
+  private:
+   auto GetOrderedConnectors() -> std::vector<DrmConnector *>;
+   void UpdateFrontendDisplays();
+@@ -91,6 +99,8 @@ class ResourceManager {
+ 
+   std::vector<std::unique_ptr<DrmDevice>> drms_;
+   std::set<std::string> displays_;
++  std::vector<std::string> ignored_connectors_;
++  std::unique_ptr<LeaseServer> lease_server_;
+ 
+   // Android properties:
+   bool scale_with_gpu_{};
+diff --git a/drm/meson.build b/drm/meson.build
+index 59a7585..6ceaa2b 100644
+--- a/drm/meson.build
++++ b/drm/meson.build
+@@ -11,6 +11,7 @@ src_common += files(
+     'DrmMode.cpp',
+     'DrmPlane.cpp',
+     'DrmProperty.cpp',
++    'LeaseServer.cpp',
+     'ResourceManager.cpp',
+     'UEventListener.cpp',
+     'VSyncWorker.cpp',
+diff --git a/utils/properties.cpp b/utils/properties.cpp
+index f8063a9..8280fc0 100644
+--- a/utils/properties.cpp
++++ b/utils/properties.cpp
+@@ -164,6 +164,27 @@ auto Properties::GetDevicePath() -> std::string {
+   return {path_pattern};
+ }
+ 
++/**
++ * Connectors that must never become displays (comma separated). Each entry is
++ * a connector name ("DSI-2") or "mode:<W>x<H>" (any connector offering that
++ * mode), e.g. the Hisense A6L rear e-ink: "mode:384x725". Such connectors can
++ * be handed to a trusted client as a DRM lease, see LeaseSocketName().
++ */
++auto Properties::IgnoredConnectors() -> std::string {
++  char buf[PROPERTY_VALUE_MAX] = {};
++  property_get("vendor.hwc.drm.ignore_connectors", buf, "");
++  return {buf};
++}
++
++/**
++ * Abstract AF_UNIX socket name for the DRM lease server (empty = disabled).
++ */
++auto Properties::LeaseSocketName() -> std::string {
++  char buf[PROPERTY_VALUE_MAX] = {};
++  property_get("vendor.hwc.drm.lease_socket", buf, "");
++  return {buf};
++}
++
+ auto Properties::DropDrmMasterAfterInit() -> bool {
+   return (property_get_bool("ro.vendor.hwc.drop_drm_master", 0) != 0);
+ }
+diff --git a/utils/properties.h b/utils/properties.h
+index 1c9b182..d2cee35 100644
+--- a/utils/properties.h
++++ b/utils/properties.h
+@@ -40,6 +40,8 @@ class Properties {
+   static auto DropDrmMasterAfterInit() -> bool;
+   static auto ForcedHolePunchingEnabled() -> bool;
+   static auto ForceP3Support() -> bool;
++  static auto IgnoredConnectors() -> std::string;
++  static auto LeaseSocketName() -> std::string;
+ };
+ 
+ }  // namespace android::drm_hwcomposer

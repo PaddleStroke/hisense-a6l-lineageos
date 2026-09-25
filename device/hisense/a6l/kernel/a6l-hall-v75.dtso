@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L Hall sensor (stock: hisense,hall-device, gpio75, pull-up, IRQ falling edge, vdd-supply pm660_l13 1.8 V).
+// Exposed as SW_LID via a separate gpio-keys instance.
+// misc agent 24 Sep: attended V74 showed gpio75 always high. gpio-keys has no supply property, so an always-on
+// regulator-fixed consumer ("hall_vdd") now holds an explicit vote on pm660 L13 (vin-supply) - we no longer rely
+// on L13 being left on by someone else. NOTE: a weak (fridge) magnet may not trip the sensor; use a speaker/flip-
+// cover magnet close to the sensor.
+// Polarity assumed active-low (open-drain Hall switch pulled up) - verify with a magnet (attended H1).
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+
+&tlmm {
+	hall_int_default: hall-int-default-state {
+		pins = "gpio75";
+		function = "gpio";
+		drive-strength = <6>;
+		bias-pull-up;
+	};
+};
+
+&{/} {
+	a6l_hall_vdd: hall-vdd-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "a6l_hall_vdd_1p8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		vin-supply = <&a6l_vreg_l13a>;	/* pm660 L13 (base DT range 1.8 V) */
+		regulator-always-on;
+		regulator-boot-on;
+		startup-delay-us = <1000>;
+	};
+
+	hall-sensor {
+		compatible = "gpio-keys";
+		label = "hall";
+		pinctrl-names = "default";
+		pinctrl-0 = <&hall_int_default>;
+
+		event-hall {
+			label = "Hall Effect Sensor";
+			gpios = <&tlmm 75 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_LID>;
+			linux,can-disable;
+			debounce-interval = <15>;
+			wakeup-source;
+		};
+	};
+};

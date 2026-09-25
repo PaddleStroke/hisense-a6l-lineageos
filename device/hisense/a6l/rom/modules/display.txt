@@ -1,0 +1,18 @@
+# bundle-v74 order (23 Sep, proven): e-ink PMIC, GPU (msm ALWAYS separate_gpu_kms=1), LCD panel, e-ink panel (V73), touch
+tps65185.ko
+drm_exec.ko
+drm_gpuvm.ko
+gpu-sched.ko
+mdt_loader.ko
+ocmem.ko
+ubwc_config.ko
+llcc-qcom.ko
+qcom_aoss.ko
+cec.ko
+drm_display_helper.ko
+drm_dp_aux_bus.ko
+msm.ko separate_gpu_kms=1
+panel-ft8719-tianma-1080x2340.ko
+panel-a6l-epd-dsi.ko
+# front + rear touch (FT8719 front, FT5x06 rear 3-0038), v71/bundle/touch
+edt-ft5x06.ko

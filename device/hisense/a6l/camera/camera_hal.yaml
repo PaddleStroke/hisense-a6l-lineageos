@@ -1,0 +1,13 @@
+# libcamera Android HAL configuration for the Hisense A6L (install to /vendor/etc/libcamera/camera_hal.yaml).
+# Camera IDs = sensor firmware-node paths created by a6l-camera-v75.dtbo (libcamera uses the DT path as ID).
+# Rotation/location from stock camera_config.xml (MountAngle) and stock DT qcom,mount-angle.
+cameras:
+  "/base/soc@0/cci@ca0c000/i2c-bus@0/camera@1a":   # IMX576 rear main (+ GT9769 VCM)
+    location: back
+    rotation: 90
+  "/base/soc@0/cci@ca0c000/i2c-bus@1/camera@2d":   # S5K3T1 front
+    location: front
+    rotation: 270
+  "/base/soc@0/cci@ca0c000/i2c-bus@1/camera@20":   # Hi-846 rear wide (aux)
+    location: back
+    rotation: 90

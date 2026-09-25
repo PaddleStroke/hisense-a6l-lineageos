@@ -1,0 +1,3 @@
+# Hisense A6L radio HAL (agent ril). Distinct prefix from the hals agent's vendor.a6l.* / persist.vendor.a6l.*
+ro.vendor.a6l.ril.          u:object_r:vendor_a6l_ril_prop:s0
+persist.vendor.a6l.ril.     u:object_r:vendor_a6l_ril_prop:s0

@@ -1,0 +1,32 @@
+{
+  "candidate_sha256": "417164b78c3bc7c43eba3039caab240194b5a69000b78737c50c3503f398bcf9",
+  "previous_sha256": "24ede49b0f34b10f216617cb007c757e495fa2df1b6cd1ddd0afd63f9819da62",
+  "files": {
+    "DiagnosticRecoveryProtocolV74R.py": "b35aa7b91276a86f109b5b0dbbc23e4adffba27d0904319b317e97aec32e1d04",
+    "Write-LaptopDiagnosticRecovery-user-v74r.py": "f49cc900cfc085fb7ae6fc0d1f0e0dc1d48adead0cd3a057f19830163a0b229d",
+    "Inspect-DiagnosticRecovery-user-v74r.py": "72417db2329c1ea00e5d5d018ff21a7c342af513bee4531abc8b04c30ef706db",
+    "Run-LaptopDiagnosticInstall-user-v74r.py": "a562e41b8ac251d576337df86d6ae45b15b26738d8e2a51d8cdd91809bc24542",
+    "Run-LaptopDiagnosticRestore-user-v74r.py": "45cc17432df9517fe1a3824041cbade47da55780614894e9535f4c00a0ee40e2",
+    "Verify-ControlsV74RReadbacks.py": "051cf542823a6ec4be9abc674038746cce7c0e95fb9fba2cae2776df690c9b47",
+    "Run-LaptopControlsCapture-v74r.py": "8ae4264cdea4e7aa74ddfe82604e02c942ededd4063e13ed0beb6c51d409f72c",
+    "Launch-ControlsV74R.py": "083fc19845bb74737b05dbacdce89964be34f06509c13eabfcb8c3d1a5b65f6a",
+    "Launch-ControlsV74RInstall.py": "e80f2c8234e3085ebae0f7ce397131c449a070b56cf37ba63b250abd38795ab0",
+    "RecoveryTransitionV74R.py": "1f8c3d71bf9089cdb5a916b17d816dc162b0cb9d16fe0a1174aee55e2b8d477f",
+    "Test-RecoveryTransitionV74R.py": "352fb3e3364c91cf4ca7a112823cc687ccfdaecb8f6bd9b8026b137bfe240121",
+    "Test-DiagnosticRecoveryProtocolV74R.py": "187525d6ae4096f2e08f3cd702bb1681e465cf34d511407e03c0ac46461fcd3a"
+  },
+  "sources": {
+    "DiagnosticRecoveryProtocolV74.py": "b35aa7b91276a86f109b5b0dbbc23e4adffba27d0904319b317e97aec32e1d04",
+    "Write-LaptopDiagnosticRecovery-user-v74.py": "8138dd02ff64ccc63d6cb49c7d04cb737e91f731e02f9874f472033963c479cb",
+    "Inspect-DiagnosticRecovery-user-v74.py": "98d2cbb521384188717cab595b54e3e29e28058e5b2f5d283fe22bbe4cd046c9",
+    "Run-LaptopDiagnosticInstall-user-v74.py": "2b7e905fc01a073f9d36eb674a78c2542aec1ae43bc9604f1dbea71d10ef9971",
+    "Run-LaptopDiagnosticRestore-user-v74.py": "6341d050710c3cfc6789f07a85d3c88c5614a637730fe6622e5596f2f84a6504",
+    "Verify-ControlsV74Readbacks.py": "a4bdbac5ed2a3cee2ddcb8a93b2f10b4e9090dbe6b748e7c083deca9afd5434a",
+    "Run-LaptopControlsCapture-v74.py": "55993895b2c6480815b7324747ef7e9525b32bdb9b70d4a6b25a0be4c94df749",
+    "Launch-ControlsV74.py": "a21d52b4296e901a4a00adc450fff4c94cb6271575082afc637d5cb0004bb4e9",
+    "Launch-ControlsV74Install.py": "536be1b14c66c715945891dbc3532337764a8feff7fb7801a33aca660f04c9a2",
+    "RecoveryTransitionV74.py": "2b626194a9027b9d8e494c2f9024dbb4313819cc90c531ff686d8bafca1467f8",
+    "Test-RecoveryTransitionV74.py": "27287b0520e3254fd416c683dc7ea6598cf761d234da71e0e8e37341998a934c",
+    "Test-DiagnosticRecoveryProtocolV74.py": "1a91e4cbaf3d8224cf4eb98b162896413caa2b18cf53b9d0701cabc9283a2e66"
+  }
+}

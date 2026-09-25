@@ -1,0 +1,50 @@
+From: dualux agent <a6l@localhost>
+Subject: [PATCH] drm_hwcomposer: hold the LCD backlight off while vendor.dualux.lcd_blank=1 (Hisense A6L e-ink mode)
+
+---
+--- a/utils/SysfsBacklightController.h	2026-09-24 22:49:00.141376847 +0200
++++ b/utils/SysfsBacklightController.h	2026-09-24 22:49:00.146214617 +0200
+@@ -67,6 +67,7 @@
+   std::string name_;
+   std::string sysfs_path_;
+   bool powered_;
++  bool blank_hold_ = false;  // A6L dualux: vendor.dualux.lcd_blank
+   float max_;
+   bool hw_handles_encoding_;
+   std::unique_ptr<BacklightFileInterface> file_intf_;
+--- a/utils/SysfsBacklightController.cpp	2026-09-24 22:49:00.125762522 +0200
++++ b/utils/SysfsBacklightController.cpp	2026-09-24 22:49:00.137746154 +0200
+@@ -22,6 +22,7 @@
+ 
+ #include <android-base/file.h>
+ #include <android-base/parseint.h>
++#include <android-base/properties.h>
+ #include <android-base/strings.h>
+ 
+ #include "utils/log.h"
+@@ -168,7 +169,24 @@
+     return false;
+   }
+ 
+-  if (!powered_) {
++  // Hisense A6L (dualux): while the rear e-ink is the active screen, a6l_dualux sets vendor.dualux.lcd_blank=1. Keep
++  // the LCD backlight powered down but still store the requested value in `brightness` (the backlight core keeps it
++  // without applying it while bl_power != 0); a6l_dualux reads it back and drives the e-ink frontlight with it.
++  if (::android::base::GetBoolProperty("vendor.dualux.lcd_blank", false)) {
++    if (powered_ || !blank_hold_) {
++      if (!file_intf_->WriteStringToFile(std::to_string(FB_BLANK_POWERDOWN),
++                                         power_path)) {
++        ALOGW("Failed to hold backlight off at %s (%d)", power_path.c_str(),
++              errno);
++      }
++    }
++    powered_ = false;
++    blank_hold_ = true;
++  } else {
++    blank_hold_ = false;
++  }
++
++  if (!powered_ && !blank_hold_) {
+     if (!file_intf_->WriteStringToFile(std::to_string(FB_BLANK_UNBLANK),
+                                        power_path)) {
+       ALOGW("Failed to turn backlight on at %s (%d)", power_path.c_str(),

@@ -1,0 +1,204 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L cameras (all three) for mainline CAMSS (qcom,sdm660-camss) + CCI. Supersedes a6l-camera-hi846-v75.dtso.
+// Wiring from stock DT (qcom,cci@ca0c000 camera@0/1/2) + vendor/etc/camera/camera_config.xml + sensor libs:
+//   slot0 rear main  IMX576  CCI0 0x1a  MCLK0 gpio32  reset gpio46  CSIPHY0 (CSID0)  4 lanes  VCM GT9769 CCI0 0x0c
+//   slot1 rear aux   Hi-846  CCI1 0x20  MCLK2 gpio34  reset gpio48  CSIPHY1 (CSID2)  4 lanes
+//   slot2 front      S5K3T1  CCI1 0x2d  MCLK1 gpio33  reset gpio47  CSIPHY2 (CSID1)  4 lanes
+//   AVDD (sensors) + VAF (VCM) = one 2.8 V fixed regulator, enable gpio51, vin pm660l_bob.
+//   DVDD/DOVDD are not switched by the stock kernel (board rails) -> always-on dummies here.
+//   LaneMask 0x1F / LaneAssign 0x4320 for all three = straight 4-lane wiring.
+// camfix 24 Sep: + CSID vdda/vdd_sec rails (stock pm660_l1 1.2 V / pm660l_l1 0.925 V).
+// UNTESTED. Modules: i2c-qcom-cci, qcom-camss, imx576_a6l, s5k3t1, hi846, gt9769.
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/qcom,mmcc-sdm660.h>
+
+&{/} {
+	cam_avdd_2p8: cam-avdd-2p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_avdd_2p8";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&tlmm 51 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <1000>;
+	};
+
+	cam_dummy_1p8: cam-dummy-1p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_dovdd_board";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+	};
+
+	cam_dummy_1p2: cam-dummy-1p2 {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_dvdd_board";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-always-on;
+	};
+};
+
+&tlmm {
+	cam_mclk0_default: cam-mclk0-default-state {
+		pins = "gpio32";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	cam_mclk1_default: cam-mclk1-default-state {
+		pins = "gpio33";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	cam_mclk2_default: cam-mclk2-default-state {
+		pins = "gpio34";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+};
+
+&cci {
+	status = "okay";
+};
+
+&cci_i2c0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	vcm_main: vcm@c {
+		compatible = "giantec,gt9769";
+		reg = <0x0c>;
+		vdd-supply = <&cam_avdd_2p8>;
+	};
+
+	camera@1a {
+		compatible = "sony,imx576";
+		reg = <0x1a>;
+		clocks = <&mmcc CAMSS_MCLK0_CLK>;
+		assigned-clocks = <&mmcc CAMSS_MCLK0_CLK>;
+		assigned-clock-rates = <24000000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_mclk0_default>;
+		reset-gpios = <&tlmm 46 GPIO_ACTIVE_LOW>;
+		vdda-supply = <&cam_avdd_2p8>;
+		vddio-supply = <&cam_dummy_1p8>;
+		vddd-supply = <&cam_dummy_1p2>;
+		rotation = <90>;
+		orientation = <1>;	/* back */
+		lens-focus = <&vcm_main>;
+
+		port {
+			imx576_ep: endpoint {
+				data-lanes = <1 2 3 4>;
+				link-frequencies = /bits/ 64 <255000000 1011000000 627000000>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+};
+
+&cci_i2c1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	camera@20 {
+		compatible = "hynix,hi846";
+		reg = <0x20>;
+		clocks = <&mmcc CAMSS_MCLK2_CLK>;
+		assigned-clocks = <&mmcc CAMSS_MCLK2_CLK>;
+		assigned-clock-rates = <24000000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_mclk2_default>;
+		reset-gpios = <&tlmm 48 GPIO_ACTIVE_LOW>;
+		vdda-supply = <&cam_avdd_2p8>;
+		vddio-supply = <&cam_dummy_1p8>;
+		vddd-supply = <&cam_dummy_1p2>;
+		rotation = <90>;
+		orientation = <1>;	/* back */
+
+		port {
+			hi846_ep: endpoint {
+				data-lanes = <1 2 3 4>;
+				link-frequencies = /bits/ 64 <80000000 200000000>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+
+	camera@2d {
+		compatible = "samsung,s5k3t1";
+		reg = <0x2d>;
+		clocks = <&mmcc CAMSS_MCLK1_CLK>;
+		assigned-clocks = <&mmcc CAMSS_MCLK1_CLK>;
+		assigned-clock-rates = <24000000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_mclk1_default>;
+		reset-gpios = <&tlmm 47 GPIO_ACTIVE_LOW>;
+		vdda-supply = <&cam_avdd_2p8>;
+		vddio-supply = <&cam_dummy_1p8>;
+		vddd-supply = <&cam_dummy_1p2>;
+		rotation = <270>;
+		orientation = <0>;	/* front */
+
+		port {
+			s5k3t1_ep: endpoint {
+				data-lanes = <1 2 3 4>;
+				link-frequencies = /bits/ 64 <282000000>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+};
+
+&camss {
+	status = "okay";
+
+	/*
+	 * camfix 24 Sep: CSID/CSIPHY analog rails (camss: "supply vdda/vdd_sec not found").
+	 * Stock qcom,csid@ca30x00: qcom,mipi-csi-vdd-supply = pm660_l1 (1.2 V, qcom,csi-vdd-voltage 1200000)
+	 * and vdd_sec-supply = pm660l_l1 (925 mV). In the V74 DT: a6l_vreg_l1a = pm660 l1 (1.15-1.25 V),
+	 * vreg_l1b = pm660l l1 (0.8-0.925 V). Both are RPM LDOs whose ranges are already set by the base DT.
+	 */
+	vdda-supply = <&a6l_vreg_l1a>;
+	vdd_sec-supply = <&vreg_l1b>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			csiphy0_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				clock-lanes = <7>;
+				remote-endpoint = <&imx576_ep>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			csiphy1_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				clock-lanes = <7>;
+				remote-endpoint = <&hi846_ep>;
+			};
+		};
+
+		port@2 {
+			reg = <2>;
+			csiphy2_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				clock-lanes = <7>;
+				remote-endpoint = <&s5k3t1_ep>;
+			};
+		};
+	};
+};

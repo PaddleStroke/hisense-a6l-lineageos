@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// OFFLINE CANDIDATE "B2" (23 Sep 2026, agent radio), never booted. Supersedes a6l-bluetooth.dtso ("B1").
+// WCN3990 Bluetooth on BLSP2 UART1 (0x0c1af000), same UART as stock (stock alias blsp2_uart1_hs, bluetooth = /bt_wcn3990).
+// Fix vs B1: give the port a fixed serial alias. msm_serial takes the line from of_alias_get_id("serial"); a port
+// WITHOUT an alias gets a dynamic line from a counter that starts at 0, which is already owned by the console
+// (serial0 = &blsp1_uart2) -> uart_add_one_port() finds the line busy -> -EINVAL (21 Sep: "uartclk = 19200000" then -22).
+// The failed probe also overwrote line 0's msm_port clk/mapbase/irq fields (msm_serial_probe fills the static port
+// before uart_add_one_port), so the fix matters for console hygiene too.
+// Rails are the same pm660 LDOs already described for Wi-Fi (M1: L9/L6/L19) and the front ALS (S1: L13). Apply after M1+S1.
+// hci_uart/btqca are modules: nothing initialises the controller until the attended script loads them (RF-capable).
+/dts-v1/;
+/plugin/;
+&blsp2_uart1 {
+    status = "okay";
+    bluetooth {
+        compatible = "qcom,wcn3990-bt";
+        vddxo-supply = <&a6l_vreg_l9a>;
+        vddrf-supply = <&a6l_vreg_l6a>;
+        vddch0-supply = <&a6l_vreg_l19a>;
+        vddio-supply = <&a6l_vreg_l13a>;
+        max-speed = <3200000>;
+    };
+};
+/ {
+    fragment@94 { target-path = "/aliases"; __overlay__ { serial1 = "/soc@0/serial@c1af000"; }; };
+    fragment@95 { target-path = "/chosen"; __overlay__ { hisense,a6l-bluetooth = "b2"; }; };
+};

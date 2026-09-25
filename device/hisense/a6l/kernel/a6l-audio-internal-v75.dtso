@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// V75 CANDIDATE (audio3 agent, 24 Sep 2026), never booted. Internal audio path only (headset, headset mic, main mic; the
+// earpiece is wired too but broken on Pierre's unit). Same content as a6l-audio-internal.dtso ("a1") except the FIX below.
+// For a base DTB WITHOUT sound links / q6asm-dais children (mainline sdm630.dtsi-based build). On the V71/V74 base.dtb,
+// which already carries the a1 nodes in the wrong order, fdtoverlay cannot reorder anything: there the fix is the module
+// patch a6l-q6asm-dai-xlate-v75.patch (q6asm-dai.ko resolves <&q6asmdai N> by reg), which is also correct for this file.
+//
+// ROOT CAUSE of the 23 Sep "inverted DPCM" (audio2 diag r180): fdtoverlay PREPENDS new child nodes, so a1's
+// "dai@0 { }; dai@1 { };" under &q6asmdai ended up as dai@1, dai@0 in the merged DTB. q6asm-dai.c has no of_xlate_dai_name,
+// so snd_soc_get_dlc() maps <&q6asmdai 0> to the FIRST child = MultiMedia2. Link "MultiMedia1" (pcmC0D0) therefore used the
+// MultiMedia2 DAI and vice versa: with "LPI_MI2S_RX_0 Audio Mixer MultiMedia1" (MM_DL1) and "MultiMedia2 Mixer
+// LPI_MI2S_TX_3" (MM_UL2) on, only pcmC0D1p and pcmC0D0c had a back end -> exactly the observed open() pattern (EINVAL =
+// dpcm_fe_dai_open "no backend DAIs"). Nothing was wrong with the DPCM direction, q6routing or the link flags.
+// FIX: children below are written in REVERSE order (dai@1 first) so that the merged DTB lists dai@0, dai@1 (index == reg).
+// The dai-links stay reversed on purpose too (merged order must be MultiMedia1, MultiMedia2, then the q6routing BEs).
+// Check: tools/check-audio-dt-links.py <merged.dtb> must print "A6L_DT_CHECK PASS rule=both".
+/dts-v1/;
+/plugin/;
+&lpass_codec { status = "okay"; };
+&pm660l_codec {
+    vdd-cdc-io-supply = <&a6l_vreg_s4a>;
+    vdd-cdc-tx-rx-cx-supply = <&a6l_vreg_s4a>;
+    vdd-micbias-supply = <&vreg_l7b>;
+    qcom,micbias-lvl = <2600>;
+    qcom,micbias1-ext-cap;
+    status = "okay";
+};
+&q6afedai {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    dai@144 { reg = <144>; qcom,sd-lines = <0 1>; };   /* LPI_MI2S_TX_3 (q6afe-dai resolves by port id: order irrelevant) */
+    dai@137 { reg = <137>; qcom,sd-lines = <0 1>; };   /* LPI_MI2S_RX_0 */
+};
+&q6asmdai {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    dai@1 { reg = <1>; };   /* REVERSED ON PURPOSE -> merged: dai@0 (MultiMedia1) first, dai@1 (MultiMedia2) second */
+    dai@0 { reg = <0>; };
+};
+&sound {
+    compatible = "qcom,sdm660-sndcard";
+    model = "Hisense A6L";
+    pinctrl-names = "default";
+    pinctrl-0 = <&cdc_pdm_default>, <&cdc_dmic_default>;
+    audio-routing = "PDM_RX1", "Digital PDM_RX1", "PDM_RX2", "Digital PDM_RX2", "PDM_RX3", "Digital PDM_RX3",
+                    "Digital LPASS_PDM_TX", "PDM_TX", "AMIC1", "MIC BIAS External1", "AMIC2", "MIC BIAS External2";
+    // REVERSED ON PURPOSE: merged order = MultiMedia1, MultiMedia2, Internal MI2S Playback, Internal MI2S Capture
+    int3-mi2s-dai-link {
+        link-name = "Internal MI2S Capture";
+        cpu { sound-dai = <&q6afedai 144>; };
+        platform { sound-dai = <&q6routing>; };
+        codec { sound-dai = <&pm660l_codec 1>, <&lpass_codec 1>; };
+    };
+    int0-mi2s-dai-link {
+        link-name = "Internal MI2S Playback";
+        cpu { sound-dai = <&q6afedai 137>; };
+        platform { sound-dai = <&q6routing>; };
+        codec { sound-dai = <&pm660l_codec 0>, <&lpass_codec 0>; };
+    };
+    mm2-dai-link { link-name = "MultiMedia2"; cpu { sound-dai = <&q6asmdai 1>; }; };
+    mm1-dai-link { link-name = "MultiMedia1"; cpu { sound-dai = <&q6asmdai 0>; }; };
+};
+/ {
+    fragment@90 {
+        target-path = "/remoteproc/glink-edge/rpm-requests/regulators-1";
+        __overlay__ { a6l_vreg_s4a: s4 { regulator-min-microvolt = <1805000>; regulator-max-microvolt = <2040000>; regulator-enable-ramp-delay = <200>; regulator-always-on; }; };
+    };
+    fragment@91 { target-path = "/chosen"; __overlay__ { hisense,a6l-audio = "a1-v75"; }; };
+};

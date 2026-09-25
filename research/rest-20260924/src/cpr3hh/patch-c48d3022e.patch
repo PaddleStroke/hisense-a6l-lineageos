@@ -1,0 +1,65 @@
+From c48d3022ed661b226df3c370c7a69ad91c9c5c18 Mon Sep 17 00:00:00 2001
+From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
+Date: Mon, 28 Aug 2023 13:42:17 +0200
+Subject: [PATCH] soc: qcom: cpr-common: Add support for flat fuse adjustment
+
+CPR3 makes use of post-calculation flat value adjustments. Add the
+necessary bits to the common functions to support it.
+
+Signed-off-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
+[Konrad: separate this patch out of a bigger one]
+Signed-off-by: Konrad Dybcio <konrad.dybcio@linaro.org>
+---
+ drivers/pmdomain/qcom/cpr-common.c | 9 ++++++---
+ drivers/pmdomain/qcom/cpr-common.h | 1 +
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/pmdomain/qcom/cpr-common.c b/drivers/pmdomain/qcom/cpr-common.c
+index ea85f6b4b..44c681bbb 100644
+--- a/drivers/pmdomain/qcom/cpr-common.c
++++ b/drivers/pmdomain/qcom/cpr-common.c
+@@ -49,7 +49,7 @@ int cpr_populate_ring_osc_idx(struct device *dev,
+ EXPORT_SYMBOL_GPL(cpr_populate_ring_osc_idx);
+ 
+ static int cpr_read_fuse_uV(int init_v_width, int step_size_uV, int ref_uV,
+-			    int step_volt, const char *init_v_efuse,
++			    int adj, int step_volt, const char *init_v_efuse,
+ 			    struct device *dev)
+ {
+ 	int steps, uV;
+@@ -67,6 +67,9 @@ static int cpr_read_fuse_uV(int init_v_width, int step_size_uV, int ref_uV,
+ 
+ 	uV = ref_uV + steps * step_size_uV;
+ 
++	/* Apply open-loop fixed adjustments to fused values */
++	uV += adj;
++
+ 	return DIV_ROUND_UP(uV, step_volt) * step_volt;
+ }
+ 
+@@ -119,8 +122,8 @@ int cpr_populate_fuse_common(struct device *dev,
+ 
+ 	/* Populate uV */
+ 	uV = cpr_read_fuse_uV(init_v_width, init_v_step,
+-			      fdata->ref_uV, step_volt,
+-			      cpr_fuse->init_voltage, dev);
++			      fdata->ref_uV, fdata->volt_oloop_adjust,
++			      step_volt, cpr_fuse->init_voltage, dev);
+ 	if (uV < 0)
+ 		return uV;
+ 
+diff --git a/drivers/pmdomain/qcom/cpr-common.h b/drivers/pmdomain/qcom/cpr-common.h
+index 1f2ebf939..0aa227617 100644
+--- a/drivers/pmdomain/qcom/cpr-common.h
++++ b/drivers/pmdomain/qcom/cpr-common.h
+@@ -22,6 +22,7 @@ struct fuse_corner_data {
+ 	int ref_uV;
+ 	int max_uV;
+ 	int min_uV;
++	int volt_oloop_adjust;
+ 	int max_volt_scale;
+ 	int max_quot_scale;
+ 	/* fuse quot */
+-- 
+2.43.0
+

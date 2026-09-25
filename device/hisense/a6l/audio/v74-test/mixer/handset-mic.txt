@@ -1,0 +1,5 @@
+# Stock "handset-mic" -> adc1: ADC1 Volume=8, DEC1 MUX=ADC1, ADC1_INP1 Switch=1 (no ADC1_INP1 switch in mainline).
+MultiMedia2 Mixer LPI_MI2S_TX_3|1
+DEC1 MUX|ADC1
+CIC1 MUX|AMIC
+ADC1 Volume|4

@@ -1,0 +1,10 @@
+type a6l_macs, domain;
+type a6l_macs_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_macs)
+allow a6l_macs a6l_modem_block_device:blk_file r_file_perms;
+allow a6l_macs self:udp_socket create_socket_perms;
+allowxperm a6l_macs self:udp_socket ioctl { SIOCGIFHWADDR SIOCSIFHWADDR SIOCGIFFLAGS };
+allow a6l_macs self:bluetooth_socket create_socket_perms_no_ioctl;
+allow a6l_macs self:capability { net_admin net_raw };
+allow a6l_macs sysfs_net:dir r_dir_perms;
+allow a6l_macs sysfs:dir r_dir_perms;

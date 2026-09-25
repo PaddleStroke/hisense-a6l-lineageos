@@ -1,0 +1,29 @@
+--- hi846.c	2026-09-24 15:48:33.346655627 +0200
++++ /home/a6l/camfix/mod/hi846.c	2026-09-24 15:48:33.394849492 +0200
+@@ -1709,6 +1709,17 @@
+ 		return 0;
+ 	}
+ 
++	if (hi846->nr_lanes == 4) {
++		const struct hi846_mode *nm =
++			v4l2_find_nearest_size(supported_modes, ARRAY_SIZE(supported_modes),
++					       width, height, mf->width, mf->height);
++
++		if (!nm->reg_list_4lane.num_of_regs)
++			nm = &supported_modes[2];
++		mf->width = nm->width;
++		mf->height = nm->height;
++	}
++
+ 	if (hi846->nr_lanes == 2) {
+ 		if (!hi846->cur_mode->reg_list_2lane.num_of_regs) {
+ 			dev_err(&client->dev,
+@@ -2085,7 +2096,7 @@
+ 	if (ret)
+ 		goto err_power_off;
+ 
+-	hi846->cur_mode = &supported_modes[0];
++	hi846->cur_mode = &supported_modes[hi846->nr_lanes == 4 ? 2 : 0];
+ 
+ 	ret = hi846_init_controls(hi846);
+ 	if (ret) {

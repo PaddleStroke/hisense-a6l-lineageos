@@ -1,0 +1,54 @@
+SHARED_MEM=0x00002000 rc=0 restr=0x0 size=0x2000
+  FT_V4    off=0x0288 size=   88 end=0x02e0 
+  FT_V6    off=0x02e8 size=   88 end=0x0340 
+  RT_V4    off=0x0348 size=   28 end=0x0364 
+  RT_V6    off=0x0368 size=   28 end=0x0384 
+  MDM_HDR  off=0x0388 size=  320 end=0x04c8 
+  DRV      off=0x04cc size=   56 end=0x0504 
+  MDM_COMP off=0x0508 size=  512 end=0x0708 
+  MDM      off=0x070c size= 6384 end=0x1ffc 
+  END      off=0x2000 size=    0 end=0x2000 
+  QMI: hdr 904..1223 rt4 start 840 end-idx 6 rt6 start 872 end-idx 6 ft4 648 ft6 744 mdm 1804+6384 zip 1288..1799
+  downstream v2.6L: ft4 648 ft6 744 rt4 840(idx 0..6 modem, 7..14 apps) rt6 904 mdm_hdr 968..1287 comp 0x510+512 mdm 1812+6376 end 0x2000
+  LAYOUT_OK
+SHARED_MEM=0x00003000 rc=0 restr=0x0 size=0x3000
+  FT_V4    off=0x0288 size=   88 end=0x02e0 
+  FT_V6    off=0x02e8 size=   88 end=0x0340 
+  RT_V4    off=0x0348 size=   28 end=0x0364 
+  RT_V6    off=0x0368 size=   28 end=0x0384 
+  MDM_HDR  off=0x0388 size=  320 end=0x04c8 
+  DRV      off=0x04cc size=   56 end=0x0504 
+  MDM_COMP off=0x0508 size=  512 end=0x0708 
+  MDM      off=0x070c size=10480 end=0x2ffc 
+  END      off=0x3000 size=    0 end=0x3000 
+  QMI: hdr 904..1223 rt4 start 840 end-idx 6 rt6 start 872 end-idx 6 ft4 648 ft6 744 mdm 1804+10480 zip 1288..1799
+  downstream v2.6L: ft4 648 ft6 744 rt4 840(idx 0..6 modem, 7..14 apps) rt6 904 mdm_hdr 968..1287 comp 0x510+512 mdm 1812+6376 end 0x2000
+  LAYOUT_OK
+SHARED_MEM=0x01002000 rc=0 restr=0x100 size=0x1f00
+  FT_V4    off=0x0388 size=   88 end=0x03e0 
+  FT_V6    off=0x03e8 size=   88 end=0x0440 
+  RT_V4    off=0x0448 size=   28 end=0x0464 
+  RT_V6    off=0x0468 size=   28 end=0x0484 
+  MDM_HDR  off=0x0488 size=  320 end=0x05c8 
+  DRV      off=0x05cc size=   56 end=0x0604 
+  MDM_COMP off=0x0608 size=  512 end=0x0808 
+  MDM      off=0x080c size= 6128 end=0x1ffc 
+  END      off=0x2000 size=    0 end=0x2000 
+  QMI: hdr 1160..1479 rt4 start 1096 end-idx 6 rt6 start 1128 end-idx 6 ft4 904 ft6 1000 mdm 2060+6128 zip 1544..2055
+  downstream v2.6L: ft4 904 ft6 1000 rt4 1096(idx 0..6 modem, 7..14 apps) rt6 1160 mdm_hdr 1224..1543 comp 0x510+512 mdm 2068+6376 end 0x2000
+  LAYOUT_OK
+SHARED_MEM=0x00004000 rc=0 restr=0x0 size=0x4000
+  FT_V4    off=0x0288 size=   88 end=0x02e0 
+  FT_V6    off=0x02e8 size=   88 end=0x0340 
+  RT_V4    off=0x0348 size=   28 end=0x0364 
+  RT_V6    off=0x0368 size=   28 end=0x0384 
+  MDM_HDR  off=0x0388 size=  320 end=0x04c8 
+  DRV      off=0x04cc size=   56 end=0x0504 
+  MDM_COMP off=0x0508 size=  512 end=0x0708 
+  MDM      off=0x070c size=14576 end=0x3ffc 
+  END      off=0x4000 size=    0 end=0x4000 
+  QMI: hdr 904..1223 rt4 start 840 end-idx 6 rt6 start 872 end-idx 6 ft4 648 ft6 744 mdm 1804+14576 zip 1288..1799
+  downstream v2.6L: ft4 648 ft6 744 rt4 840(idx 0..6 modem, 7..14 apps) rt6 904 mdm_hdr 968..1287 comp 0x510+512 mdm 1812+6376 end 0x2000
+  LAYOUT_OK
+ipa_rules words=14
+sizeof fifo_desc 8 v4_rule_init 8 v6_rule_init 8 hdr_local 8 hdr_system 8 dma_smem 16

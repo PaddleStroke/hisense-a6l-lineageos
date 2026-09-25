@@ -1,0 +1,5 @@
+# Hisense A6L gpio-keys "A6L side keys" (a6l-buttons.dtso). A device-specific layout replaces Generic.kl for this
+# device, so volume-up must be listed too. Code 616 = the e-ink side key: handled by vendor.a6l_eink directly from
+# evdev (short press = mirror on/off, long press = clear); mapped to MACRO_1 so apps never see an unknown key.
+key 115   VOLUME_UP
+key 616   MACRO_1

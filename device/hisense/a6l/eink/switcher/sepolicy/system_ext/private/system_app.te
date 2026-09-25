@@ -1,0 +1,2 @@
+# A6LDisplaySwitcher (android:sharedUserId=android.uid.system): e-ink settings + switch/clear requests
+set_prop(system_app, a6l_dualux_ctl_prop)

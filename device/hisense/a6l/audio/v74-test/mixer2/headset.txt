@@ -1,0 +1,9 @@
+# Stock "headphones": RX1/RX2 MIX1 INP1=RX1/RX2, RDAC2 MUX=RX2, HPHL/HPHR=Switch (as run by hand in r160).
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|1
+Digital RX1 MIX1 INP1|RX1
+Digital RX2 MIX1 INP1|RX2
+RDAC2 MUX|RX2
+Digital RX1 Digital Volume|@RAW@
+Digital RX2 Digital Volume|@RAW@
+HPHL|Switch
+HPHR|Switch

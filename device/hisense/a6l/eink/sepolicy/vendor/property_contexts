@@ -1,0 +1,3 @@
+# Hisense A6L rear e-ink (eink3): persist.vendor.eink.{mode,reading,touch_transform,idle_off_s,interval_ms,clear_every}
+persist.vendor.eink.    u:object_r:vendor_eink_prop:s0
+vendor.eink.            u:object_r:vendor_eink_prop:s0

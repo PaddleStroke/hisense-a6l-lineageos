@@ -1,0 +1,12 @@
+# Lines to MERGE into /vendor/etc/ueventd.rc (owned by the realinit/flash agents).
+/dev/qcom_rmtfs_mem*      0660   root       system
+/dev/rfkill               0660   root       bluetooth
+/dev/iio:device*          0660   system     system
+/dev/uinput               0660   uhid       uhid
+# IIO sysfs for the sensors HAL (SMGR accel/gyro/mag, tmd3702)
+/sys/devices/*iio:device* buffer/enable            0664 system system
+/sys/devices/*iio:device* buffer/length            0664 system system
+/sys/devices/*iio:device* sampling_frequency       0664 system system
+/sys/devices/*iio:device* trigger/current_trigger  0664 system system
+# backlight (lights HAL)
+/sys/class/backlight/*    brightness                        0664 system system

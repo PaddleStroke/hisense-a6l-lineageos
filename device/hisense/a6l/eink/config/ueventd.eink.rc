@@ -1,0 +1,5 @@
+# Hisense A6L rear e-ink (eink3): append to /vendor/etc/ueventd.rc (see eink.mk). Applied on add/bind uevents.
+# epd_power (TPS65185 rails, written by a6l_epdd per update) lives on the DSI1 mipi-dsi device of the V73 panel driver.
+/sys/devices/platform/soc*/*.display-subsystem/*.dsi/*.dsi.0 epd_power   0660 system system
+# the panel NOR, read-only use by a6l_epdd (spidev only exists with the a6l-eink-flash-read DT node)
+/dev/spidev*               0660   system     system

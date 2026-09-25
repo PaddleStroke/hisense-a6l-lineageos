@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// V75 CANDIDATE (kvoice agent, 24 Sep 2026), never booted. MOBILE DATA path, step 1: IPA v2.6L on SDM660.
+// Stock DT (firmware/extracted/device-trees/stock-00.dts, qcom,ipa@14780000): qcom,ipa-hw-ver = <6> = IPA_HW_v2_6L in the
+// msm-4.4 enum (msm_ipa.h: v2_6L = 6, v3_0 = 10 ...), reg-names "ipa-base" 0x14780000+0x4effc / "bam-base" 0x14784000+0x26934,
+// ipa-irq SPI 333, bam-irq SPI 432, core_clk = RPM IPA clock, ipa_smmu_ap = anoc2 SMMU SID 0x19c0 (s1-bypass), rmnet-ipa.
+// Mainline 7.2 drivers/net/ipa supports only IPA v3.1+ (GSI) -> driver = ipa-legacy (IPA v2.x over BAM; Sireesh Kodali /
+// Vladimir Lypak RFC 2021, squashed as drivers/net/ipa-legacy by Alejandro Tafalla on msm8953-mainline alikates/6.5/ipa),
+// ported to 7.2.3 by device/hisense/a6l/kernel/kvoice/ipa/a6l-ipa-legacy-fix.py (+ compatible "qcom,sdm660-ipa").
+// Layout follows msm8953 (ipa-reg = ipa-base + 0x40000, ipa-shared = ipa-base + 0x45000, BAM pipes 2..9 = the
+// downstream IPA_2_6L ep_mapping column, identical for every v2.6L SoC).
+// The BAM uses a PRIVATE compatible bound by a6l_ipa_bam.ko (bam_dma fork with descriptor metadata + immediate-command
+// flag): the phone kernel has bam_dma built in (=y) without those features, so the stock driver must not bind it.
+// No "interconnects": ipa-legacy then skips bandwidth votes (of_icc_get returns a NULL path). Candidates if needed:
+// memory <&a2noc 0 &bimc 5> (MASTER_IPA -> SLAVE_EBI), imem <&a2noc 0 &snoc 13> (SLAVE_IMEM).
+/dts-v1/;
+/plugin/;
+
+/ {
+    fragment@0 {
+        target-path = "/soc@0";
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <1>;
+
+            a6l_ipa: ipa@147c0000 {
+                compatible = "qcom,sdm660-ipa";
+                reg = <0x147c0000 0x5000>, <0x147c5000 0x2000>;
+                reg-names = "ipa-reg", "ipa-shared";
+                interrupts = <0 333 1>;                     /* GIC_SPI 333 IRQ_TYPE_EDGE_RISING */
+                interrupt-names = "ipa";
+                clocks = <&rpmcc 68>;                       /* RPM_SMD_IPA_CLK */
+                clock-names = "core";
+                iommus = <&anoc2_smmu 0x19c0>;              /* stock ipa_smmu_ap */
+                dmas = <&a6l_ipa_bam 2>, <&a6l_ipa_bam 3>, <&a6l_ipa_bam 4>, <&a6l_ipa_bam 5>,
+                       <&a6l_ipa_bam 6>, <&a6l_ipa_bam 7>, <&a6l_ipa_bam 8>, <&a6l_ipa_bam 9>;
+                dma-names = "ap_lan_rx", "cmd_tx", "ap_modem_tx", "ap_modem_rx",
+                            "modem_lan_tx", "modem_cmd_tx", "modem_lan_rx", "modem_ap_rx";
+                modem-remoteproc = <&remoteproc_mss>;
+            };
+
+            a6l_ipa_bam: dma-controller@14784000 {
+                compatible = "a6l,ipa-bam-v1.7.0";          /* a6l_ipa_bam.ko only (NOT the built-in bam_dma) */
+                reg = <0x14784000 0x26934>;
+                interrupts = <0 432 4>;                     /* GIC_SPI 432 IRQ_TYPE_LEVEL_HIGH */
+                clocks = <&rpmcc 68>;
+                clock-names = "bam_clk";
+                iommus = <&anoc2_smmu 0x19c0>;              /* same SID as the IPA core (BAM is inside IPA) */
+                #dma-cells = <1>;
+                qcom,ee = <0>;
+            };
+        };
+    };
+    fragment@1 { target-path = "/chosen"; __overlay__ { hisense,a6l-ipa = "kvoice-ipa-v75"; }; };
+};

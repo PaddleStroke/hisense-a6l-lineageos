@@ -1,0 +1,5 @@
+# UNVERIFIED sysfs paths (mainline 7.2 PM660L WLED "backlight" and the leds-pwm frontlight): the real paths are printed
+# by `readlink -f /sys/class/backlight/backlight /sys/class/leds/epd-backlight` (test D10). Wrong paths only mean the
+# nodes keep the generic `sysfs` label (fine while permissive).
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-03/0-03:pmic@3:leds@d800/backlight u:object_r:sysfs_a6l_dualux:s0
+genfscon sysfs /devices/platform/a6l-epd-frontlight/leds u:object_r:sysfs_a6l_dualux:s0

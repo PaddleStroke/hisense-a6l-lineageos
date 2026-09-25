@@ -1,0 +1,65 @@
+--- ovl.c.orig	2026-09-24 13:41:20.392727828 +0000
++++ a6l_ipa2_ovl.c	2026-09-24 13:42:43.191725051 +0000
+@@ -7,6 +7,7 @@
+  * platform device ipa@14780000 appears at once; load ipa2_lite.ko FIRST so it binds immediately.
+  * The modem must NOT be running yet (the IPA probe resets the whole IPA block).
+  */
++#include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/printk.h>
+@@ -15,6 +16,11 @@
+ static bool identity;
+ module_param(identity, bool, 0444);
+ MODULE_PARM_DESC(identity, "use the identity-domain (SMMU bypass) variant of the IPA node");
++/* A6L ipa2fix: node without "iommus" -> no anoc2 SMMU programming at all. Only for register-level steps
++ * (ipa2_lite stop_at<=13): any IPA DMA would then be an unmatched stream (USFCFG fault). */
++static bool noiommu;
++module_param(noiommu, bool, 0444);
++MODULE_PARM_DESC(noiommu, "use the variant without iommus (register steps only, no DMA)");
+ 
+ static int ovcs_id;
+ 
+@@ -22,9 +28,20 @@
+ {
+ 	const void *fdt = identity ? a6l_ipa_identity_dtbo : a6l_ipa_dtbo;
+ 	u32 size = identity ? sizeof(a6l_ipa_identity_dtbo) : sizeof(a6l_ipa_dtbo);
++	const char *vname = identity ? "identity" : "translated";
+ 	struct device_node *np;
+ 	int ret;
+ 
++	if (noiommu) {
++		if (identity) {
++			pr_err("A6L_IPA2_OVL identity=1 and noiommu=1 are exclusive\n");
++			return -EINVAL;
++		}
++		fdt = a6l_ipa_noiommu_dtbo;
++		size = sizeof(a6l_ipa_noiommu_dtbo);
++		vname = "noiommu";
++	}
++
+ 	np = of_find_compatible_node(NULL, NULL, "qcom,sdm660-ipa-lite");
+ 	if (!np)
+ 		np = of_find_compatible_node(NULL, NULL, "qcom,sdm660-ipa");	/* kvoice ipa-legacy overlay */
+@@ -41,6 +58,11 @@
+ 	}
+ 	of_node_put(np);
+ 
++	/* the platform device is created, SMMU-attached and probed (ipa2_lite already loaded) inside this call */
++	pr_emerg("A6L_IPA_OVL_STEP applying %s overlay (device create + SMMU attach + ipa2_lite probe follow)\n", vname);
++	if (!noiommu)
++		pr_emerg("A6L_IPA_OVL_STEP SMMU attach anoc2 SID 0x19c0 next; the next line should be A6L_IPA_STEP 0\n");
++	msleep(50);
+ 	ret = of_overlay_fdt_apply(fdt, size, &ovcs_id, NULL);
+ 	if (ret) {
+ 		pr_err("A6L_IPA2_OVL of_overlay_fdt_apply failed: %d\n", ret);
+@@ -48,8 +70,7 @@
+ 			of_overlay_remove(&ovcs_id);
+ 		return ret;
+ 	}
+-	pr_info("A6L_IPA2_OVL applied (ovcs %d): ipa@14780000 (%s)\n", ovcs_id,
+-		identity ? "identity/bypass SMMU domain" : "translated SMMU domain");
++	pr_emerg("A6L_IPA2_OVL applied (ovcs %d): ipa@14780000 (%s)\n", ovcs_id, vname);
+ 	return 0;
+ }
+ 

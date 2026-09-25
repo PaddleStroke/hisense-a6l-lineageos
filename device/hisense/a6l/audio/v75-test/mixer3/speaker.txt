@@ -1,0 +1,2 @@
+# Stock "speaker": TERT_MI2S_RX Audio Mixer MultiMedia1 = 1 (TFA Profile=music applied separately). HPH stays ZERO.
+TERT_MI2S_RX Audio Mixer MultiMedia1|1

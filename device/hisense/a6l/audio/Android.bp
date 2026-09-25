@@ -1,0 +1,19 @@
+// audio3 (24 Sep 2026): Hisense A6L real-card audio support (see route/a6l_audio_route.c, mixer_paths_a6l.xml).
+cc_binary {
+    name: "a6l-audio-route",
+    vendor: true,
+    srcs: ["route/a6l_audio_route.c"],
+    shared_libs: [
+        "libaudioroute",
+        "libtinyalsa",
+        "liblog",
+    ],
+    cflags: ["-Wall", "-Werror"],
+    init_rc: ["route/a6l-audio-route.rc"],
+}
+
+prebuilt_etc {
+    name: "mixer_paths_a6l.xml",
+    vendor: true,
+    src: "mixer_paths_a6l.xml",
+}

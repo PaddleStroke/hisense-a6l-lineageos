@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// V74 CANDIDATE (audio2 agent, 23 Sep 2026), never booted. VARIANT FOR A BASE THAT ALREADY CONTAINS THE V71 SOUND LINKS (base.dtb of V71 does: mm1, mm2, int0, int3).
+// fdtoverlay cannot reorder or delete nodes and prepends new ones, so a plain new tert link would become link 0 and q6routing
+// would probe before q6asm-dai (all MM_DL routes fail, card -19). Instead this overlay only ADDS/OVERWRITES:
+//   new head node  -> MultiMedia1 FE;  old mm1-dai-link -> MultiMedia2 FE;  old mm2-dai-link -> Speaker Playback BE (tert).
+// Resulting link order: MultiMedia1, MultiMedia2, Speaker Playback, Internal MI2S Playback, Internal MI2S Capture.
+// If the V74 base is built WITHOUT sound links, use a6l-audio-speaker-v74.dtso instead. Adds the loudspeaker path: NXP TFA9894 smart amp (I2C 0x34 on c1b6000 = blsp_i2c6) fed by TERTIARY MI2S
+// (AFE port 0x1004, LPI gpio4 SCK / gpio5 WS / gpio6 SD0 / gpio7 SD1, stock "func4").
+// Needs, before the card can bind (otherwise the WHOLE card defers, headset included):
+//   * pinctrl-sdm660-lpass-lpi.ko rebuilt with a6l-lpi-ter-mi2s-v74.patch (functions ter_mi2s_clk/ws/data), and
+//   * snd-soc-tfa98xx.ko (tfa98xx-a6l port) loaded before the machine driver, /lib/firmware/tfa98xx.cnt (stock container).
+// Stock facts (firmware/extracted/device-trees/stock-00.dts): tfa98xx@34 { vdd-supply = pm660_l13; reset-gpio = tlmm 76;
+// irq-gpio = tlmm 77 }, qcom,msm-dai-q6-mi2s-tert { rx-lines = 0x2 (SD1), tx-lines = 0x1 (SD0 = amp feedback, unused here) },
+// audio_platform_info: SND_DEVICE_OUT_SPEAKER -> TERT_MI2S_RX; mixer_paths "speaker": TERT_MI2S_RX Audio Mixer MultiMedia1 = 1.
+// sm8250.c already handles TERTIARY_MI2S_RX (TER_MI2S_IBIT 1.536 MHz, CPU = clock master, codec BC_FC I2S).
+/dts-v1/;
+/plugin/;
+
+&lpi_tlmm {
+    a6l_ter_mi2s_default: a6l-ter-mi2s-default-state {
+        clk-pins { pins = "gpio4"; function = "ter_mi2s_clk"; drive-strength = <8>; bias-disable; };
+        ws-pins { pins = "gpio5"; function = "ter_mi2s_ws"; drive-strength = <8>; bias-disable; };
+        data-pins { pins = "gpio6", "gpio7"; function = "ter_mi2s_data"; drive-strength = <8>; bias-disable; };
+    };
+};
+
+&blsp_i2c6 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    status = "okay";                               /* already okay (front ALS at 0x47) */
+    a6l_speaker_amp: audio-amplifier@34 {
+        compatible = "nxp,tfa98xx";                /* tfa98xx-a6l driver; also accepts "tfa,tfa9894" */
+        reg = <0x34>;
+        vdd-supply = <&a6l_vreg_l13a>;             /* pm660 L13 1.8 V (the driver does not switch it; already on) */
+        reset-gpio = <&tlmm 76 0>;                 /* GPIO_ACTIVE_HIGH, as stock */
+        irq-gpio = <&tlmm 77 0>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&a6l_ter_mi2s_default>;       /* LPI pins muxed when the amp probes (stock switches active/sleep) */
+        #sound-dai-cells = <0>;
+    };
+};
+
+&q6afedai {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    dai@20 { reg = <20>; qcom,sd-lines = <1>; };      /* TERTIARY_MI2S_RX: stock rx-lines 0x2 = SD1 (gpio7) */
+};
+
+&sound {
+    a6l-mm1-head-dai-link { link-name = "MultiMedia1"; cpu { sound-dai = <&q6asmdai 0>; }; };   /* prepended -> link 0 */
+    mm1-dai-link { link-name = "MultiMedia2"; cpu { sound-dai = <&q6asmdai 1>; }; };            /* existing node, link 1 */
+    mm2-dai-link {                                                                              /* existing node, link 2 */
+        link-name = "Speaker Playback";
+        cpu { sound-dai = <&q6afedai 20>; };             /* TERTIARY_MI2S_RX */
+        platform { sound-dai = <&q6routing>; };
+        codec { sound-dai = <&a6l_speaker_amp>; };
+    };
+};
+
+/ { fragment@91 { target-path = "/chosen"; __overlay__ { hisense,a6l-audio = "a1-speaker-onbase-v74"; }; }; };
