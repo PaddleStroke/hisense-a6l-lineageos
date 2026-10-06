@@ -40,3 +40,8 @@ allow a6l_dualux sysfs_leds:lnk_file read;
 get_prop(a6l_dualux, vendor_eink_prop)
 get_prop(a6l_eink_mirror, vendor_dualux_prop)
 get_prop(a6l_eink_mirror, a6l_eink_animation_prop)
+
+# eink-round3 0016: suspend-aware watchdog reads /sys/power/suspend_stats/{success,fail} (falls back to the
+# CLOCK_BOOTTIME - CLOCK_MONOTONIC check when unreadable)
+allow a6l_dualux sysfs_power:dir search;
+allow a6l_dualux sysfs_power:file r_file_perms;

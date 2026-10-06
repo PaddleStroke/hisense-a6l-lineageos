@@ -135,8 +135,25 @@ static void test_brightness(void) {
     dx_fl_default(&f); dx_set_awake(&S, 0); CHECK(dx_frontlight_level(&S, &f, 4095, 4095, 0, 255) == 0, "asleep -> off");
     reset(DX_LCD, 1); CHECK(dx_frontlight_level(&S, &f, 4095, 4095, 0, 255) == 0, "LCD mode -> frontlight off");
 }
+/* eink-round3 0016 */
+static void test_watchdog_restore(void) {
+    CHECK(!dx_watchdog_suspended(7, 7, 10.2, 10.1), "watchdog: no suspend, clocks together -> genuine hang, fire");
+    CHECK(dx_watchdog_suspended(7, 8, 10.2, 10.1), "watchdog: suspend counter moved -> re-arm");
+    CHECK(dx_watchdog_suspended(-1, -1, 27.5, 10.3), "watchdog: no counter, boottime 17 s ahead of monotonic -> re-arm");
+    CHECK(!dx_watchdog_suspended(-1, 8, 10.5, 10.1), "watchdog: counter unreadable at heartbeat, clocks together -> fire");
+    CHECK(dx_watchdog_suspended(7, 7, 43.0, 41.5), "watchdog: s2idle where monotonic ran on (counter same) but boottime still 1.5 s ahead -> re-arm");
+    CHECK(dx_restore_screen("eink", 1, 0, 100) == DX_EINK, "restore: died on the e-ink -> e-ink");
+    CHECK(dx_restore_screen("eink-asleep", 1, 0, 100) == DX_EINK, "restore: died asleep on the e-ink -> e-ink");
+    CHECK(dx_restore_screen("lcd", 1, 0, 100) == DX_LCD, "restore: clean stop published lcd -> LCD");
+    CHECK(dx_restore_screen("", 1, 0, 100) == DX_LCD, "restore: boot (no state) -> LCD");
+    CHECK(dx_restore_screen("eink", 0, 0, 100) == DX_LCD, "restore: disabled -> LCD");
+    CHECK(dx_restore_screen("eink", 1, 80, 100) == DX_LCD, "restore: restored 20 s ago (crash loop) -> LCD");
+    CHECK(dx_restore_screen("eink", 1, 30, 100) == DX_EINK, "restore: last restore 70 s ago -> e-ink");
+    CHECK(dx_restore_screen("eink", 1, 500, 100) == DX_EINK, "restore: stale stamp from before a reboot (in the future) ignored");
+}
 
 int main(void) {
+    test_watchdog_restore();
     test_eink_key(); test_power_key(); test_power_failopen(); test_requests(); test_brightness();
     struct dx_fl_cfg f;
     reset(DX_EINK, 1); dx_fl_default(&f); S.appearance_hold = 1;

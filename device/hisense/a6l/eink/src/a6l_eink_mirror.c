@@ -32,6 +32,10 @@
  *        [--tone B,W,G] (grey tone curve before quantisation: black clip, white clip, gamma x100; default 24,232,150;
  *        0,255,100 = linear; persist.sys.a6l.eink.contrast still widens the black/white points live)
  *        [--reply-timeout ms] (a6l_epdd reply deadline, default 30000; also bounds socket writes)
+ *        [--copy-guard-kib N] (eink-round3: drm source copies each plane in N KiB chunks and re-reads the plane set between
+ *        chunks, so an A->B->A buffer flip during the copy discards the torn capture; default 1024, 0 = off)
+ *        [--keep-crtc-front-off] (eink-round3: do NOT send "power off" when the LCD CRTC goes off; by default the e-ink
+ *        CRTC follows the LCD CRTC so it is never enabled across a system suspend)
  *   live properties (dualux, 25 Sep): persist.sys.a6l.eink.refresh (auto|quality|partial|fast|fastest, overrides .reading),
  *        persist.sys.a6l.eink.clear_every, vendor.eink.clear_req (any change = ghost refresh; written by a6l_dualux),
  *        persist.sys.a6l.eink.contrast (0..100, black/white point stretch before the e-ink quantisation)
@@ -235,6 +239,10 @@ static int capture_file(const char *path) {
 
 /* ---------------- source: DRM planes of the LCD CRTC (ROM) ---------------- */
 #define CAP_FRONT_OFF 1	/* capture result: the LCD CRTC is inactive (screen off) */
+#define CAP_TORN 2	/* eink-round3: the plane set changed during the copy: discarded, not a failure (no 40-failure pause) */
+static size_t guard_chunk = GUARDED_COPY_CHUNK;	/* --copy-guard-kib N, 0 = off (old before/after-only check) */
+static int keep_crtc_front_off;			/* --keep-crtc-front-off: old behaviour (e-ink CRTC stays on) */
+static struct front_follow front_ff;
 #ifndef NO_DRM
 static int drm_fd = -1;
 static uint64_t prop_of(uint32_t obj, uint32_t type, const char *name, uint64_t def) {
@@ -283,8 +291,27 @@ static int dma_read_sync(int fd, uint64_t flags) {
     do { rc = ioctl(fd, DMA_BUF_IOCTL_SYNC, &sy); } while (rc && (errno == EINTR || errno == EAGAIN) && !stop);
     return rc;
 }
+/* eink-round3: plane set re-checked between copy chunks (A -> B -> A guard, eink_logic.h guarded_copy) */
+struct copy_guard { int fd; uint32_t crtc; const struct a6l_plane_snapshot *before; int diff; };
+static int copy_guard_same(void *p) {
+    struct copy_guard *g = p; struct a6l_plane_snapshot mid;
+    if (a6l_plane_snapshot_read(g->fd, g->crtc, &mid)) { g->diff = -3; return 0; }
+    if (a6l_plane_snapshot_equal(g->before, &mid)) return 1;
+    g->diff = -2;	/* -2 = CRTC/plane count changed, >= 0 = first plane (resources index) whose tuple changed */
+    if (mid.count == g->before->count && a6l_object_tuple_equal(&mid.crtc, &g->before->crtc))
+        for (unsigned i = 0; i < mid.count; i++) if (!a6l_object_tuple_equal(&mid.planes[i], &g->before->planes[i])) { g->diff = (int)i; break; }
+    return 0;
+}
+static unsigned capture_discards; static double capture_discard_since;	/* consecutive torn/changed captures */
+static void capture_discarded(const char *why, int plane, int quiet) {
+    if (!capture_discards++) capture_discard_since = now();
+    if ((!quiet && capture_discards == 1) || capture_discards % 25 == 0)
+        LOG("capture discarded (%s; changed plane %d): %u in a row over %.1f s%s", why, plane, capture_discards, now() - capture_discard_since,
+            capture_discards >= 25 ? " - the front screen redraws continuously, no torn picture is sent" : "");
+}
 static int capture_drm(void) {
     double sync_ms = 0, copy_ms = 0, compose_ms = 0;
+    int torn = 0;
     static unsigned captures;
     if (drm_fd < 0 && !drm_allowed()) return CAP_FRONT_OFF;	/* treated like "front off": paused, not a failure */
     if (drm_fd < 0 && drm_open_once()) { LOG("WARN no KMS card with an LCD connector"); return -1; }
@@ -373,7 +400,13 @@ static int capture_drm(void) {
                 if (!p) ok = 0; else { scanout_copy = p; scanout_copy_n = bytes; }
             }
             ts = now();
-            if (ok) memcpy(scanout_copy, map + fb->offsets[0], bytes);
+            if (ok) {	/* eink-round3: chunked, the plane set re-read between chunks (an A->B->A flip tears the copy) */
+                struct copy_guard g = {drm_fd, crtc, &before, -1}; int nchk = 0;
+                if (guarded_copy(scanout_copy, map + fb->offsets[0], bytes, guard_chunk, guard_chunk ? copy_guard_same : NULL, &g, &nchk) < 0) {
+                    char why[64]; snprintf(why, sizeof why, "plane set changed during the copy of plane %d, check %d", k, nchk);
+                    capture_discarded(why, g.diff, 0); ok = 0; torn = 1;
+                }
+            }
             copy_ms += (now() - ts) * 1000;
             if (synced && dma_read_sync(dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ)) {
                 LOG("WARN dma-buf read end sync: %s", strerror(errno)); ok = 0;
@@ -389,7 +422,7 @@ static int capture_drm(void) {
         for (int h = 0; h < 4; h++) if (fb->handles[h]) { int dup = 0; for (int g = 0; g < h; g++) if (fb->handles[g] == fb->handles[h]) dup = 1;
             if (!dup) { struct drm_gem_close gc = {.handle = fb->handles[h]}; drmIoctl(drm_fd, DRM_IOCTL_GEM_CLOSE, &gc); } }
         drmModeFreeFB2(fb);
-        if (!ok) return -1;
+        if (!ok) return torn ? CAP_TORN : -1;
     }
     uint32_t after_crtc=0;int after_w=0,after_h=0;
     int after_lcd=lcd_crtc(&after_crtc,&after_w,&after_h);
@@ -400,8 +433,10 @@ static int capture_drm(void) {
         LOG("WARN capture tuple changed/query failed: result=%d error=%s seq=%s%llu->%s%llu; discard",after_ok,after_ok<0?strerror(after_errno):"none",
             seq_before_ok?"":"unavailable:",(unsigned long long)seq_before,
             seq_after_ok?"":"unavailable:",(unsigned long long)seq_after);
-        return -1;
+        capture_discarded("plane set changed by the end of the copy", -1, 1);
+        return after_ok ? -1 : CAP_TORN;
     }
+    if (capture_discards) { LOG("capture consistent again after %u discards (%.1f s)", capture_discards, now() - capture_discard_since); capture_discards = 0; }
     /* Vblank normally advances during a CPU copy. It is a diagnostic, not a
      * producer-ownership fence or a reason to discard otherwise equal tuples. */
     if(captures<3||captures%120==0)
@@ -840,6 +875,8 @@ int main(int argc, char **argv) {
         else if (OPT("--touch-transform")) snprintf(transform_forced, sizeof transform_forced, "%s", v);
         else if (OPT("--front")) { if (sscanf(v, "%dx%d", &front_w, &front_h) != 2) return 2; }
         else if (!strcmp(a,"--auto-small-regal")) auto_small_regal=1;
+        else if (OPT("--copy-guard-kib")) guard_chunk = atoi(v) > 0 ? (size_t)atoi(v) * 1024 : 0;
+        else if (!strcmp(a, "--keep-crtc-front-off")) keep_crtc_front_off = 1;
         else if (OPT("--reply-timeout")) reply_timeout_ms = atoi(v) > 0 ? atoi(v) : 30000;
         else if (OPT("--wait-prop")) wait_prop = v; else if (!strcmp(a, "--touch-debug")) touch_debug = 1;
         else if (OPT("--send")) {	/* one-shot client: send one command to a6l_epdd, print the reply (attended tests) */
@@ -928,7 +965,14 @@ int main(int argc, char **argv) {
             if (!access(pth, R_OK)) last_ok = frame; else snprintf(pth, sizeof pth, source + 6, last_ok); rc = capture_file(pth); }
         else { LOG("FAIL unknown source %s", source); return 2; }
         frame++;
-        if (rc == CAP_FRONT_OFF) { if (!paused) { LOG("front screen off: paused (rear touch not forwarded)"); forward = 0; touch_release_all(); } paused = 1; continue; }
+        if (rc == CAP_FRONT_OFF) { if (!paused) { LOG("front screen off: paused (rear touch not forwarded)"); forward = 0; touch_release_all(); } paused = 1;
+            /* eink-round3: the e-ink CRTC follows the LCD CRTC, so no system suspend saves/restores an enabled lessee CRTC
+             * (6 Oct 16:07: e-ink on across a suspend -> LCD scan-out of an unmapped buffer after the next LCD switch).
+             * The picture stays on the panel; the next update does the bring-up again (as after idle-off). */
+            if (front_follow_step(&front_ff, 1) && !keep_crtc_front_off) { queue_cmd("power off", 0); LOG("front screen off: e-ink CRTC off (no suspend with the lessee CRTC enabled)"); pump(); }
+            continue; }
+        front_follow_step(&front_ff, 0);
+        if (rc == CAP_TORN) { fails = 0; continue; }	/* eink-round3: retried at the next interval; never sent, never a failure */
         if (rc) { if (++fails >= 40) { LOG("FAIL 40 consecutive capture failures: pausing 30 s"); fails = 0; next_cap = now() + 30; } continue; }
         if (paused) { LOG("front screen on: resumed"); paused = 0; forward = 1; }
         fails = 0; double tcap = now() - t0;

@@ -18,6 +18,9 @@
  *                   [--front-dev P|auto|none] [--no-uinput] [--awake-file P] [--lcd-bl NAME] [--fl PATH] [--exit-after S]
  *   --sysroot / --prop-dir / FIFOs: host tests only (tests/run-tests.sh). Properties then live as files in --prop-dir.
  *   --fake-uinput P: host tests only: the "uinput keyboard" is the file P (raw input_events appended, no ioctls).
+ *   --watchdog-s N: host tests only: main-loop watchdog period (default 10 s; eink-round3 0016: suspend-aware).
+ *   eink-round3 0016: after an unexpected death on the e-ink (vendor.dualux.state still eink*) the restarted daemon comes
+ *   back on the e-ink, at most once per 60 s (vendor.dualux.restored_at); persist.sys.a6l.dualux.restore=0 disables it.
  *
  * r5 review pass2 F20 (28 Sep 2026) — the physical power key is FAIL-OPEN (Android keeps a working power key whenever
  * this daemon cannot deliver its replacement events):
@@ -355,6 +358,44 @@ static void drain(int kind) {
     }	/* front touch: grabbed = read and dropped; not grabbed = Android has its own copy, ours is discarded */
 }
 
+/* ---------------- eink-round3 0016: suspend-aware main-loop watchdog ----------------
+ * r5 pass2 F20 kept alarm(WATCHDOG_S) re-armed by every loop iteration. On this kernel the timer keeps running while
+ * the frozen daemon is in a system suspend (s2idle), so it fired after every sleep longer than ~10 s (6 Oct: SIGALRM at
+ * the resumes after 17 s and 43 s) and init restarted the daemon on the LCD. Now the SIGALRM handler forgives an expiry
+ * when a suspend happened since the last heartbeat (kernel suspend counter moved, or CLOCK_BOOTTIME ran > 1 s ahead of
+ * CLOCK_MONOTONIC: dx_watchdog_suspended) and re-arms; otherwise (a real hang) it dies with SIGALRM exactly as before.
+ * Everything in the handler is async-signal-safe (open/read/close, clock_gettime, alarm, signal, raise). */
+static int watchdog_s = WATCHDOG_S;	/* --watchdog-s N: host tests only */
+static char wd_path[2][640];
+static volatile long wd_count = -1;
+static struct timespec wd_boot, wd_mono;
+static volatile sig_atomic_t wd_rearms, wd_saved;
+static long wd_read_count(void) {	/* /sys/power/suspend_stats/{success,fail}, summed; -1 = unreadable */
+    long sum = 0;
+    for (int i = 0; i < 2; i++) {
+        int fd = open(wd_path[i], O_RDONLY | O_CLOEXEC); if (fd < 0) return -1;
+        char b[32]; ssize_t r = read(fd, b, sizeof b - 1); close(fd); if (r <= 0) return -1;
+        long v = 0; int any = 0; for (ssize_t k = 0; k < r && b[k] >= '0' && b[k] <= '9'; k++) { v = v * 10 + (b[k] - '0'); any = 1; }
+        if (!any) return -1; sum += v;
+    }
+    return sum;
+}
+static double ts_diff(const struct timespec *a, const struct timespec *b) { return (double)(a->tv_sec - b->tv_sec) + (a->tv_nsec - b->tv_nsec) / 1e9; }
+static void wd_heartbeat(void) {
+    if (wd_saved) { LOG("watchdog: %d expiry(ies) during a system suspend forgiven, re-armed (no restart)", (int)wd_saved); wd_saved = 0; }
+    wd_count = wd_read_count(); clock_gettime(CLOCK_BOOTTIME, &wd_boot); clock_gettime(CLOCK_MONOTONIC, &wd_mono);
+    wd_rearms = 0; alarm((unsigned)watchdog_s);
+}
+static void on_alarm(int sig) {
+    struct timespec b, m; long c = wd_read_count();
+    clock_gettime(CLOCK_BOOTTIME, &b); clock_gettime(CLOCK_MONOTONIC, &m);
+    if (wd_rearms < DX_WATCHDOG_MAX_REARMS && dx_watchdog_suspended(wd_count, c, ts_diff(&b, &wd_boot), ts_diff(&m, &wd_mono))) {
+        wd_rearms++; wd_saved++; wd_count = c; wd_boot = b; wd_mono = m; alarm((unsigned)watchdog_s); return; }
+    signal(sig, SIG_DFL); raise(sig);	/* a real hang: die as before; init restarts us (the screen is restored, see main) */
+}
+#define P_RESTORED_AT "vendor.dualux.restored_at"
+static double boottime_s(void) { struct timespec ts; clock_gettime(CLOCK_BOOTTIME, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
+
 int main(int argc, char **argv) {
     double exit_after = 0;
     for (int i = 1; i < argc; i++) {
@@ -364,12 +405,27 @@ int main(int argc, char **argv) {
         else if (OPT("--power-dev")) power_spec = v; else if (OPT("--front-dev")) front_spec = v; else if (OPT("--awake-file")) awake_file = v;
         else if (OPT("--fake-uinput")) fake_uinput = v; else if (OPT("--lcd-bl")) lcd_bl_name = v; else if (OPT("--fl")) fl_spec = v; else if (OPT("--exit-after")) exit_after = atof(v);
         else if (!strcmp(a, "--no-uinput")) use_uinput = 0;
+        else if (OPT("--watchdog-s")) watchdog_s = atoi(v) > 0 ? atoi(v) : WATCHDOG_S;
         else { fprintf(stderr, "usage: see the header of a6l_dualux.c\n"); return 2; }
     }
-    signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGPIPE, SIG_IGN); signal(SIGALRM, SIG_DFL);
+    signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGPIPE, SIG_IGN);
+    snprintf(wd_path[0], sizeof wd_path[0], "%s/sys/power/suspend_stats/success", sysroot);
+    snprintf(wd_path[1], sizeof wd_path[1], "%s/sys/power/suspend_stats/fail", sysroot);
+    { struct sigaction sa; memset(&sa, 0, sizeof sa); sa.sa_handler = on_alarm; sigemptyset(&sa.sa_mask); sa.sa_flags = SA_RESTART; sigaction(SIGALRM, &sa, NULL); }
     struct dx_cfg c; dx_default_cfg(&c); dx_fl_default(&FL);
     find_lcd_backlight(); find_frontlight(); find_lcd_dpms();
-    dx_init(&S, &c, DX_LCD, read_awake());	/* the phone always boots on the LCD */
+    /* The phone always boots on the LCD (vendor.dualux.state is empty after a reboot, and a clean stop publishes "lcd").
+     * eink-round3 0016: after an UNEXPECTED restart while the e-ink was the active screen (watchdog, crash), come back on
+     * the e-ink instead of silently dropping to the LCD; at most once per 60 s (a crash loop falls back to the LCD, power
+     * key left to Android). persist.sys.a6l.dualux.restore=0 disables it. */
+    char prev_state[32] = ""; prop_get(P_STATE, prev_state, sizeof prev_state);
+    double now_boot = boottime_s(), last_restore = prop_double(P_RESTORED_AT, 0);
+    int start_screen = dx_restore_screen(prev_state, prop_int("persist.sys.a6l.dualux.restore", 1), last_restore, now_boot);
+    if (start_screen == DX_EINK) { char b[32]; snprintf(b, sizeof b, "%.0f", now_boot); prop_set(P_RESTORED_AT, b);
+        LOG("previous instance ended on the e-ink (state %s): restoring the e-ink screen", prev_state); }
+    else if (!strncmp(prev_state, "eink", 4)) LOG("WARN previous instance ended on the e-ink (state %s) but %s: starting on the LCD", prev_state,
+        prop_int("persist.sys.a6l.dualux.restore", 1) ? "it was already restored < 60 s ago (crash loop?)" : "restore is disabled");
+    dx_init(&S, &c, start_screen, read_awake());
     read_cfg(); uinput_open();
     open_dev(DEV_KEY, key_spec); open_dev(DEV_POWER, power_spec); open_dev(DEV_FRONT, front_spec);
     char req_last[96] = ""; prop_get(P_REQ, req_last, sizeof req_last);	/* requests made before we started are stale */
@@ -379,7 +435,7 @@ int main(int argc, char **argv) {
     LOG("start: screen=%s awake=%d eink_key=%s power_long=%d ms fl=%s uinput=%s", dx_state_name(&S), S.awake, S.cfg.ekey_in_eink ? "clear" : "sleep", S.cfg.power_long_ms, fl_dir[0] ? fl_dir : "none", S.no_inject ? "NO (power key left to Android)" : "yes");
     double t0 = now(), next_slow = 0, next_scan = now() + 5;
     while (!stop && (!exit_after || now() - t0 < exit_after)) {
-        alarm(WATCHDOG_S);	/* r5 pass2 F20: a hung loop must not keep the power key grabbed */
+        wd_heartbeat();	/* r5 pass2 F20: a hung loop must not keep the power key grabbed (0016: suspend-aware) */
         struct pollfd p[NDEV]; int map[NDEV], n = 0;
         for (int k = 0; k < NDEV; k++) if (dev_fd[k] >= 0) { map[n] = k; p[n++] = (struct pollfd){dev_fd[k], POLLIN, 0}; }
         int held = S.ek_down || S.pw_down, to = held ? 50 : S.appearance_hold ? 50 : S.screen == DX_EINK ? 100 : 250;

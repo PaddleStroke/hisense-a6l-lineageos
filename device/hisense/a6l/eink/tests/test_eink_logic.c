@@ -263,7 +263,42 @@ static void test_tone(void) {
     tone_lut(l, 0, 0, 255, 200); CHECK(l[128] >= 62 && l[128] <= 66, "tone: gamma 2.0 at 128/255 = %d (exp. 64)", l[128]);
     tone_lut(l, 0, 200, 210, 150); CHECK(l[100] > 0 && l[100] < 255, "tone: nonsense clips ignored (%d)", l[100]);
 }
+/* eink-round3: A -> B -> A during the copy. The simulated scanout swaps the displayed slot every `period` checks (a
+ * refresh); the BufferQueue slot A is re-rendered while B is shown. A before/after FB comparison accepts that copy. */
+struct scan_sim { int calls, flip_at, back_at; int fb; uint8_t *slot_a; size_t n; };
+static int scan_same(void *p) {
+    struct scan_sim *s = p; s->calls++;
+    if (s->calls == s->flip_at) { s->fb = 2; memset(s->slot_a, 0x77, s->n); }	/* B shown, A re-rendered */
+    if (s->calls == s->back_at) s->fb = 1;					/* A shown again */
+    return s->fb == 1;
+}
+static void test_guarded_copy(void) {
+    enum { N = 10 * 1024 * 1024 + 123 };
+    static uint8_t src[N], dst[N]; int k = 0;
+    for (size_t i = 0; i < N; i++) src[i] = (uint8_t)(i * 31 + 7);
+    struct scan_sim s = {0, -1, -1, 1, src, N};
+    CHECK(guarded_copy(dst, src, N, GUARDED_COPY_CHUNK, scan_same, &s, &k) == N && !memcmp(dst, src, N), "guarded copy: unchanged plane set -> complete, exact copy");
+    CHECK(k == 11 && s.calls == 11, "guarded copy: 10 MiB + tail in 1 MiB chunks = 11 checks (%d)", k);
+    for (size_t i = 0; i < N; i++) src[i] = (uint8_t)(i * 31 + 7);
+    struct scan_sim aba = {0, 4, 6, 1, src, N};
+    CHECK(guarded_copy(dst, src, N, GUARDED_COPY_CHUNK, scan_same, &aba, &k) == -1 && k == 4, "guarded copy: A->B->A flip is caught at the first check after it (check %d)", k);
+    /* what the before/after-only comparison accepted: same FB at both ends, rows from two different frames */
+    for (size_t i = 0; i < N; i++) src[i] = (uint8_t)(i * 31 + 7);
+    struct scan_sim old = {0, 4, 6, 1, src, N};
+    for (int c = 0; c < 11; c++) { size_t o = (size_t)c << 20, m = N - o < (1u << 20) ? N - o : (1u << 20); memcpy(dst + o, src + o, m); scan_same(&old); }
+    CHECK(old.fb == 1 && dst[0] != 0x77 && dst[N - 1] == 0x77, "guarded copy: reference - unguarded copy ends on the same FB but is torn");
+    CHECK(guarded_copy(dst, src, 0, 0, scan_same, &s, &k) == 0 && k == 0, "guarded copy: empty buffer");
+    CHECK(guarded_copy(dst, src, 100, 0, NULL, NULL, &k) == 100 && k == 1, "guarded copy: no checker, default chunk");
+}
+static void test_front_follow(void) {
+    struct front_follow f = {0};
+    CHECK(front_follow_step(&f, 0) == 0, "front follow: LCD on -> nothing");
+    CHECK(front_follow_step(&f, 1) == 1, "front follow: LCD off -> e-ink CRTC off once");
+    CHECK(front_follow_step(&f, 1) == 0 && front_follow_step(&f, 1) == 0, "front follow: repeated off captures -> no repeat");
+    CHECK(front_follow_step(&f, 0) == 0 && front_follow_step(&f, 1) == 1, "front follow: next sleep -> off again");
+}
 int main(void) {
+    test_guarded_copy(); test_front_follow();
     test_tone(); test_policy_release_settle(); test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
     printf("%s: %d checks, %d failures\n", fails ? "EINK_LOGIC_TESTS_FAIL" : "EINK_LOGIC_TESTS_PASS", checks, fails);
     return fails != 0;

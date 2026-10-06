@@ -28,6 +28,8 @@
  *   --wait-drm S   keep retrying DRM/lease for S seconds at start (default 0)
  *   --socket NAME | --listen PATH | --fifo PATH | --script F | --show F   (command sources)
  *   --idle-off S (0 = never; default 0)  --no-startup-clear  --wakelock (default on with --socket/--listen)
+ *   --crtc-wakelock 0|1 (default 1): wakelock "a6l_epdd_crtc" while the e-ink CRTC is on (eink-round3: never suspend
+ *                  with the lessee CRTC enabled; timed idle-off + 15 s, released by power off / idle-off / exit)
  *   v2/v3 options: --mode --clear-every --temp --rot180 --no-dither --dither fs|ordered|none --hold --dry --power --xon-line --lead --tail
  *   --overlap-gen 0|1 (eink-round2, experimental, default 0): generate the waveform frames while rails-on + lead scans run
  *                  --save-mode --mode-file
@@ -363,6 +365,7 @@ static int temperature(void) {
 #ifdef A6L_EPDD_HOSTTEST	/* tests/test_epdd_drive.c: fake rail switch and page flips (no DRM, no sysfs) */
 static int a6l_test_power(int on);
 static int a6l_test_flip(uint32_t id);
+static int a6l_test_modeset(void);
 #endif
 static int power(int on) {
 #ifdef A6L_EPDD_HOSTTEST
@@ -398,6 +401,24 @@ static void wakelock(int on) {
     if (!use_wakelock || dry) return;
     int f = open(on ? "/sys/power/wake_lock" : "/sys/power/wake_unlock", O_WRONLY | O_CLOEXEC); if (f < 0) return;
     if (write(f, "a6l_epdd", 8) != 8) { static int warned; if (!warned++) LOG("WARN wakelock: %s", strerror(errno)); }
+    close(f);
+}
+/* eink-round3: the e-ink CRTC (a lessee CRTC) must never be enabled across a system suspend. The kernel's
+ * drm_mode_config_helper_suspend/resume saves and re-commits it behind the composer's and our back (V73 bring-up runs
+ * inside the resume path), and the only filmed LCD scan-out corruption (6 Oct 16:07:34, ~90 s of MDP SMMU faults) started
+ * at the first LCD switch after exactly that sequence. Held from the modeset to crtc_off (power off / idle-off / exit).
+ * Timed (idle-off + 15 s, refreshed per update) so a crashed daemon cannot block suspend for ever; untimed with
+ * --idle-off 0 because the CRTC then stays on until "power off". --crtc-wakelock 0 restores the old behaviour. */
+static int crtc_wakelock_on = 1, crtc_wl_held, idle_off_s;
+static void crtc_wakelock(int on) {
+    if (!crtc_wakelock_on || dry) return;
+    if (!on && !crtc_wl_held) return;
+    crtc_wl_held = on;
+    if (!use_wakelock) return;
+    int f = open(on ? "/sys/power/wake_lock" : "/sys/power/wake_unlock", O_WRONLY | O_CLOEXEC); if (f < 0) return;
+    char b[64]; int n = on && idle_off_s > 0 ? snprintf(b, sizeof b, "a6l_epdd_crtc %lld", (long long)(idle_off_s + 15) * 1000000000LL)
+                                             : snprintf(b, sizeof b, "a6l_epdd_crtc");
+    if (write(f, b, (size_t)n) != n && on) { static int warned; if (!warned++) LOG("WARN crtc wakelock: %s", strerror(errno)); }	/* unlock of a lock that is not held = EINVAL */
     close(f);
 }
 
@@ -597,6 +618,10 @@ out:
     return rc;
 }
 static void drm_close(void) {	/* v4: lease lost / composer restarted: drop everything, the next update reopens */
+    /* eink-round3: closing the lessee fd removes our fbs but does not disable the CRTC; switch it off while we still can
+     * (fails harmlessly when the lease is already revoked), then drop the no-suspend lock with it. */
+    if (dfd >= 0 && crtc && started && !dry) drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL);
+    crtc_wakelock(0);
     if (dfd >= 0) close(dfd);	/* fbs and dumb buffers go with the file; the mappings stay valid until munmap */
     if (idle.map && idle.map != MAP_FAILED) munmap(idle.map, FRAME);
     if (fa.map && fa.map != MAP_FAILED) munmap(fa.map, FRAME);
@@ -674,6 +699,9 @@ static int drm_lease_pidfd(const char *lease_arg, int crtc_index) {
     close(dfd); dfd = lfd; return 0;
 }
 static int drm_start(void) {	/* modeset = panel prepare+enable = kernel bring-up (V73 panel driver) */
+#ifdef A6L_EPDD_HOSTTEST
+    return a6l_test_modeset();
+#endif
     char st[200];
     for (int attempt = 1; attempt <= 3; attempt++) {
         if (drmModeSetCrtc(dfd, crtc, idle.id, 0, 0, &conn_id, 1, &mode_info)) { int e = errno; LOG("FAIL setcrtc: %s", strerror(e)); if (lost_errno(e)) drm_lost = 1; return -1; }
@@ -687,6 +715,7 @@ static int drm_start(void) {	/* modeset = panel prepare+enable = kernel bring-up
 static void crtc_off(const char *why) {
     if (dry || dfd < 0 || !crtc || !started) return;
     drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); started = 0; LOG("e-ink CRTC off (%s)", why);
+    crtc_wakelock(0);
 }
 
 /* ---------------- updates ---------------- */
@@ -742,7 +771,9 @@ static int drive_job(int n, struct gen_job *job);
 static int drive(int n) { return drive_job(n, NULL); }
 static int drive_job(int n, struct gen_job *job) {	/* scan out the n frames of the current update; rails only around the drive (v2) */
     double tcold = now();
-    if (!started) { if (drm_start()) return -1; started = 1; }	/* modeset with the real strobe pattern, as a6l_epd_play did */
+    /* modeset with the real strobe pattern, as a6l_epd_play did; eink-round3: no suspend while the e-ink CRTC is on */
+    if (!started) { crtc_wakelock(1); if (drm_start()) { crtc_wakelock(0); return -1; } started = 1; }
+    else crtc_wakelock(1);	/* refresh the timed lock: idle-off counts from this update */
     double cold_ms = (now() - tcold) * 1000;
     if (job && last_gen_ms > 0) {	/* rails on only so early that rails-on + lead end when generation is expected to end */
         double lead_s = lead / 85.0, budget = last_gen_ms / 1000 - last_rails_on_ms / 1000 - lead_s;
@@ -915,8 +946,8 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     if (!strcmp(line, "quit")) { stop = 1; snprintf(reply, rn, "OK quitting"); return 0; }
     if (!strcmp(line, "status")) {
         char st[200]; bringup_status(st, sizeof st);
-        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d crtc=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms,
-                 started ? "on" : "off", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot, st[0] ? st : "-");
+        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d crtc=%s crtc_wakelock=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms,
+                 started ? "on" : "off", crtc_wl_held ? "held" : "free", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot, st[0] ? st : "-");
         return 0;
     }
     if (!strcmp(line, "power off")) { crtc_off("requested"); snprintf(reply, rn, "OK crtc off"); return 0; }
@@ -1000,7 +1031,6 @@ static void client_input(struct client *c) {
         memmove(c->buf, c->buf + used, c->len - used); c->len -= used;
     }
 }
-static int idle_off_s;
 static void serve(int lfd) {
     for (int i = 0; i < MAXCL; i++) cl[i].fd = -1;
     while (!stop) {
@@ -1065,6 +1095,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--socket") && v) sock_name = argv[++i]; else if (!strcmp(a, "--listen") && v) listen_at = argv[++i];
         else if (!strcmp(a, "--idle-off") && v) idle_off_s = atoi(argv[++i]); else if (!strcmp(a, "--no-startup-clear")) startup_clear = 0;
         else if (!strcmp(a, "--wakelock")) wl = 1; else if (!strcmp(a, "--no-wakelock")) wl = 0;
+        else if (!strcmp(a, "--crtc-wakelock") && v) crtc_wakelock_on = atoi(argv[++i]) != 0;
         else { fprintf(stderr, "usage: see source header (%s)\n", a); return 2; }
     }
     signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGPIPE, SIG_IGN); setvbuf(stdout, NULL, _IOLBF, 0);
@@ -1073,6 +1104,9 @@ int main(int argc, char **argv) {
     if (lead < 2 || lead > 40) { LOG("WARN --lead %d out of range 2..40: using 10", lead); lead = 10; }
     if (tail < 4 || tail > 60) { LOG("WARN --tail %d out of range 4..60: using 20", tail); tail = 20; }
     use_wakelock = wl >= 0 ? wl : (sock_name || listen_at);
+    /* eink-round3: a previous instance that died with the e-ink CRTC on may have left its no-suspend lock behind */
+    if (use_wakelock && !dry) { int keep = crtc_wakelock_on; crtc_wakelock_on = 1; crtc_wl_held = 1; crtc_wakelock(0); crtc_wakelock_on = keep; }
+    LOG("e-ink CRTC no-suspend lock: %s (idle-off %d s)", crtc_wakelock_on && !dry ? "on" : "off", idle_off_s);
     if (save_mode) return drm_open() ? 1 : 0;	/* v3: only record connector + mode (drm_open exits) */
     int lfd = -1;	/* take the socket early so clients can connect (they get replies once we are ready) */
     if (sock_name) lfd = init_socket(sock_name); else if (listen_at) lfd = listen_path(listen_at);
@@ -1108,7 +1142,7 @@ int main(int argc, char **argv) {
         while (!stop) { FILE *q = fopen(fifo, "r"); if (!q) { LOG("FAIL fifo %s", fifo); break; } commands(q); fclose(q); }
     }
 out:
-    if (!dry) { power(0); if (crtc && dfd >= 0) drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); }
+    if (!dry) { power(0); if (crtc && dfd >= 0) drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); crtc_wakelock(0); }
     if (xon_fd >= 0) { struct gpio_v2_line_values v = {0, 1}; ioctl(xon_fd, GPIO_V2_LINE_SET_VALUES_IOCTL, &v); close(xon_fd); }
     LOG("exit");
     return 0;

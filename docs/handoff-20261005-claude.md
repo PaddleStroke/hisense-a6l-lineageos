@@ -472,3 +472,16 @@ x3 must pass, then video + real sleep with pm_async=1, then drop the init.qcom.r
   scan-out corruption after e-ink -> LCD switch (screenshots normal => scan-out level). Agents: camera-round3, eink-round3.
 - System build running: e-ink 0010-0012 applied (Dualux reconcile + high-contrast + frameworks/base 0004 instant fling,
   applied to frameworks/base working tree like the pipeline prep does). Output round2-system-20261006/.
+
+### 6 Oct ~17:00 local — HW ISP M2 closed loop works on the phone; camera round 3 + system kit ready
+
+- HW ISP test A (M1 module + ispcap 12344faf `-a ae,awb,ccm,af`): 29.6 fps, AE/AWB/CCM/AF converge; image neutral,
+  well exposed on a backlit window, sharp (phone-test-20261006/auto.png). Test B: m2a module (c998cc7c) loads after a
+  guarded rmmod of M1 (0000 guard verified: no oops); contrast 1.2 applied (auto-c12.png). Violation 0xd A/B inconclusive
+  (+10 bars xform=1, +0 xform=0, +0 auto xform=1). Agent continues: violation, libcamera integration + packaging.
+- System kit staged: /home/pierrelouis/A6L-usb-20260915/rom-r7c-r2sys-20261006 (system 4f29076d: framework.jar fling,
+  A6LDisplaySwitcher.apk, system_ext sepolicy; Aperture.apk inside = 0238cb6b, identical to the /data/app trial the
+  phone runs). extra/start-r2sys-flash.py, check-r2sys-install.py. Commit 89212e8.
+- Camera round 3 (firmware/extracted/camera-round3-20261006/): AF 0034 (rescans climb from current position, keep
+  focus after lock), AE 0035 (faster convergence), chroma denoise 0036 (core) + 0037 (IPA). IPA-only build be807526;
+  core-coupled build libcamera.so 0de15051 + IPA 1e3e20be (same signing key; core reproduced byte-identically).

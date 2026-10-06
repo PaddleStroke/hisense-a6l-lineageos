@@ -19,6 +19,8 @@ static int a6l_test_power(int on) {
     n_off++; if (off_err_count > 0) { off_err_count--; return -1; }
     rails_on = 0; return 0;
 }
+static int modeset_err, n_modeset;
+static int a6l_test_modeset(void) { n_modeset++; return modeset_err ? -1 : 0; }
 static int a6l_test_flip(uint32_t id) {
     (void)id;
     if (flip_fail_at >= 0 && nflips >= flip_fail_at) return -1;
@@ -110,6 +112,26 @@ int main(void) {
     on_err = 0;
     EXPECT(frame() == 0 && !panel_unknown && !rails_on, "overlap: recovery clear + frame OK");
     overlap_gen = 0;
+
+    /* eink-round3: no system suspend while the (leased) e-ink CRTC is enabled: the lock follows the CRTC, not the update */
+    crtc = 7; started = 0; n_modeset = 0; crtc_wl_held = 0;
+    EXPECT(frame() == 0 && started && n_modeset == 1 && crtc_wl_held, "crtc lock: taken with the modeset of a cold CRTC");
+    EXPECT(frame() == 0 && n_modeset == 1 && crtc_wl_held, "crtc lock: kept (refreshed) while the CRTC stays on between updates");
+    EXPECT(exec_cmd("power off", NULL, reply, sizeof reply) == 0 && !started && !crtc_wl_held, "crtc lock: released by power off");
+    modeset_err = 1;
+    EXPECT(frame() != 0 && !started && !crtc_wl_held, "crtc lock: released when the modeset fails");
+    modeset_err = 0;
+    EXPECT(frame() == 0 && started && crtc_wl_held, "crtc lock: recovery frame takes it again");
+    idle_off_s = 1; last_update_t = now() - 5;
+    if (idle_off_s > 0 && started && last_update_t && now() - last_update_t > idle_off_s) crtc_off("idle");	/* = serve() */
+    EXPECT(!started && !crtc_wl_held, "crtc lock: released by idle-off");
+    idle_off_s = 0;
+    EXPECT(frame() == 0 && crtc_wl_held, "crtc lock: held again before the lessee fd is dropped");
+    { void *a = fa.map, *b = fb2.map; fa.map = fb2.map = NULL; drm_close(); dfd = 100; fa.map = a; fb2.map = b; }
+    EXPECT(!crtc_wl_held && !started, "crtc lock: released when the lessee fd is dropped (drm_close)");
+    crtc_wakelock_on = 0; crtc = 7;
+    EXPECT(frame() == 0 && started && !crtc_wl_held, "crtc lock: --crtc-wakelock 0 keeps the old behaviour");
+    crtc_wakelock_on = 1;
 
     printf("A6L_EPDD_DRIVE_TEST %s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;

@@ -281,3 +281,24 @@ void tone_lut(uint8_t lut[256], int contrast, int black_clip, int white_clip, in
         lut[i] = (uint8_t)v;
     }
 }
+
+long guarded_copy(void *dst, const void *src, size_t n, size_t chunk, int (*still_same)(void *ctx), void *ctx, int *checks) {
+    size_t done = 0;
+    int k = 0;
+    if (!chunk) chunk = GUARDED_COPY_CHUNK;
+    while (done < n) {
+        size_t c = n - done < chunk ? n - done : chunk;
+        memcpy((uint8_t *)dst + done, (const uint8_t *)src + done, c);
+        done += c;
+        k++;
+        if (still_same && !still_same(ctx)) { if (checks) *checks = k; return -1; }
+    }
+    if (checks) *checks = k;
+    return (long)n;
+}
+int front_follow_step(struct front_follow *f, int front_off) {
+    if (!front_off) { f->off = 0; return 0; }
+    if (f->off) return 0;
+    f->off = 1;
+    return 1;
+}

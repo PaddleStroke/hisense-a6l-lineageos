@@ -128,3 +128,13 @@ int dx_frontlight_level(const struct dx_state *s, const struct dx_fl_cfg *c, int
     if (lvl > fl_max) lvl = fl_max;
     return pct == 0 ? 0 : lvl;
 }
+
+int dx_watchdog_suspended(long count_at_heartbeat, long count_now, double d_boot, double d_mono) {
+    if (count_at_heartbeat >= 0 && count_now >= 0 && count_now != count_at_heartbeat) return 1;
+    return d_boot - d_mono > 1.0;
+}
+int dx_restore_screen(const char *prev_state, int enabled, double last_restore_boot_s, double now_boot_s) {
+    if (!enabled || !prev_state || strncmp(prev_state, "eink", 4)) return DX_LCD;
+    if (last_restore_boot_s > 0 && now_boot_s >= last_restore_boot_s && now_boot_s - last_restore_boot_s < DX_RESTORE_WINDOW_S) return DX_LCD;
+    return DX_EINK;
+}

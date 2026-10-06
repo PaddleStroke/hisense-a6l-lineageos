@@ -90,3 +90,17 @@ struct dx_fl_cfg {
 void dx_fl_default(struct dx_fl_cfg *c);
 /* frontlight level (0..fl_max) for LCD request v/lcd_max; 0 unless e-ink active + awake + enabled */
 int dx_frontlight_level(const struct dx_state *s, const struct dx_fl_cfg *c, int v, int lcd_max, int hw_linear, int fl_max);
+
+/* eink-round3 0016: suspend-aware main-loop watchdog and screen restore after an unexpected restart.
+ * The alarm(10) watchdog fired after every system suspend longer than ~10 s (6 Oct: SIGALRM at the 17 s and 43 s
+ * resumes): the frozen loop could not re-arm it while the timer clock kept running in s2idle, and the restarted daemon
+ * came back on the LCD. dx_watchdog_suspended(): did a system suspend (or a frozen period) happen since the last
+ * heartbeat? Yes if the kernel's suspend counter (success + fail, -1 = unreadable) changed, or if CLOCK_BOOTTIME advanced
+ * more than 1 s further than CLOCK_MONOTONIC. A genuine hang (no suspend) keeps firing. */
+int dx_watchdog_suspended(long count_at_heartbeat, long count_now, double d_boot, double d_mono);
+#define DX_WATCHDOG_MAX_REARMS 10	/* consecutive expiries forgiven without a heartbeat in between */
+/* Start screen: restore the e-ink only when the previous instance died while it was the active screen (vendor.dualux.state
+ * still "eink"/"eink-asleep": a clean stop publishes "lcd", a reboot clears it), restoring is enabled, and no restore
+ * happened in the last 60 s (crash loop -> fail safe on the LCD, power key left to Android). */
+#define DX_RESTORE_WINDOW_S 60.0
+int dx_restore_screen(const char *prev_state, int enabled, double last_restore_boot_s, double now_boot_s);

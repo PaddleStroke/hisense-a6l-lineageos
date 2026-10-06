@@ -36,4 +36,5 @@ python3 "$S/tests/e2e.py" "$W" ./dualux && ok e2e || ko e2e
 python3 "$S/tests/e2e_failopen.py" "$W" ./dualux && ok "e2e fail-open power key (r5 pass2 F20)" || ko "e2e fail-open"
 python3 "$S/tests/e2e_exit_asleep.py" "$W" ./dualux && ok "e2e exit while asleep keeps the backlight off (r5 bug hunt E3)" || ko "e2e exit while asleep"
 python3 "$S/tests/e2e_appearance.py" "$W" "$W/dualux" && ok "pre-light appearance tokens, first frame, timeout and sleep" || ko "appearance handshake"
+python3 "$S/tests/e2e_watchdog.py" "$W" "$W/dualux" && ok "watchdog survives a suspend, kills a hang; e-ink restored after an unexpected restart (eink-round3 0016)" || ko "watchdog / restore"
 echo "RESULT pass=$pass fail=$fail"; [ $fail = 0 ] && echo DUALUX_TESTS_PASS || echo DUALUX_TESTS_FAIL

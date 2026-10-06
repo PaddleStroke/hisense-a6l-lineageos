@@ -136,3 +136,21 @@ int plane_opaque_fullscreen(const struct plane_geo *q, int fw, int fh, int gw, i
 #define TONE_DEFAULT_WHITE 232
 #define TONE_DEFAULT_GAMMA 150
 void tone_lut(uint8_t lut[256], int contrast, int black_clip, int white_clip, int gamma_x100);
+
+/* ---------------- 6. capture integrity and CRTC following (eink-round3-20261006) ---------------- */
+#include <stddef.h>
+/* A scanout buffer is copied out of write-combined memory in 60-180 ms per 1080x2340 plane (logged "copy=" stage), i.e.
+ * across 4-11 vblanks. Comparing the plane set (FB ids, geometry) only before and after cannot see a BufferQueue slot
+ * that flips away and comes back (A -> B -> A): the copy then mixes rows of two different frames and is accepted
+ * ("capture tuple stable ... producer reuse unproved"). guarded_copy() copies in chunks and calls still_same(ctx)
+ * after every chunk; a displayed FB stays committed for at least one refresh (16.7 ms at 60 Hz), so with chunks shorter
+ * than that every flip is observed. Returns n when the whole buffer was copied with every check passing, -1 as soon as a
+ * check fails (dst then holds a partial copy and must be discarded). *checks = number of checks made. */
+long guarded_copy(void *dst, const void *src, size_t n, size_t chunk, int (*still_same)(void *ctx), void *ctx, int *checks);
+#define GUARDED_COPY_CHUNK (1u << 20)	/* 1 MiB: ~6 ms at the measured ~170 MB/s WC read rate */
+
+/* The e-ink CRTC must follow the front (LCD) CRTC: when Android turns the LCD CRTC off (sleep, also while the e-ink is
+ * the active screen) the e-ink CRTC is switched off too, so a system suspend never saves/restores an enabled lessee
+ * CRTC (the 6 Oct 16:07 LCD scan-out corruption). front_follow_step() returns 1 exactly once per front-off period. */
+struct front_follow { int off; };
+int front_follow_step(struct front_follow *f, int front_off);
