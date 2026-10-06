@@ -78,13 +78,38 @@ static int a6l_object_tuple_equal(const struct a6l_object_tuple *a,
                                   const struct a6l_object_tuple *b) {
  return a->id==b->id&&a->present==b->present&&!memcmp(a->v,b->v,sizeof a->v);
 }
-static int a6l_plane_snapshot_equal(const struct a6l_plane_snapshot *a,
+__attribute__((unused)) static int a6l_plane_snapshot_equal(const struct a6l_plane_snapshot *a,
                                     const struct a6l_plane_snapshot *b) {
  if(a->count!=b->count||a->x!=b->x||a->y!=b->y||
     a->width!=b->width||a->height!=b->height||
     !a6l_object_tuple_equal(&a->crtc,&b->crtc))return 0;
  for(unsigned i=0;i<a->count;i++)
   if(!a6l_object_tuple_equal(&a->planes[i],&b->planes[i]))return 0;
+ return 1;
+}
+/* eink-round4: one plane's tuple (same required set and zpos default as a6l_plane_snapshot_read) */
+static int a6l_plane_tuple_read(int fd,uint32_t plane_id,unsigned idx,struct a6l_object_tuple *out) {
+ return a6l_object_tuple_read(fd,plane_id,DRM_MODE_OBJECT_PLANE,(1u<<10)-1,idx,out);
+}
+static int a6l_plane_on_crtc(const struct a6l_object_tuple *p,uint32_t crtc) {
+ return p->v[PF_CRTC]==crtc&&p->v[PF_FB]!=0;
+}
+/* eink-round4: same picture LAYOUT on the LCD CRTC: same CRTC tuple and size, the same planes on it with the same
+ * geometry, z-order, rotation, alpha and blend. FB_ID is ignored (a plane flipping its content is not a layout change:
+ * each plane copy is guarded on its own), and planes that are on neither side's LCD CRTC (the leased e-ink CRTC's plane,
+ * unused planes) are ignored. Returns 1 when equal. */
+static int a6l_plane_layout_equal(const struct a6l_plane_snapshot *a,
+                                  const struct a6l_plane_snapshot *b,uint32_t crtc) {
+ if(a->count!=b->count||a->x!=b->x||a->y!=b->y||
+    a->width!=b->width||a->height!=b->height||
+    !a6l_object_tuple_equal(&a->crtc,&b->crtc))return 0;
+ for(unsigned i=0;i<a->count;i++) {
+  const struct a6l_object_tuple *p=&a->planes[i],*q=&b->planes[i];
+  int on_a=a6l_plane_on_crtc(p,crtc),on_b=a6l_plane_on_crtc(q,crtc);
+  if(!on_a&&!on_b)continue;
+  if(on_a!=on_b||p->id!=q->id||p->present!=q->present)return 0;
+  for(int f=0;f<PF_N;f++)if(f!=PF_FB&&p->v[f]!=q->v[f])return 0;
+ }
  return 1;
 }
 #endif

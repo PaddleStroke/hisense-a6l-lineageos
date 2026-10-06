@@ -34,6 +34,11 @@
  *        [--reply-timeout ms] (a6l_epdd reply deadline, default 30000; also bounds socket writes)
  *        [--copy-guard-kib N] (eink-round3: drm source copies each plane in N KiB chunks and re-reads the plane set between
  *        chunks, so an A->B->A buffer flip during the copy discards the torn capture; default 1024, 0 = off)
+ *        [--guard-max N,MS] (eink-round4: a capture whose LCD plane layout changed, or whose plane kept flipping during its
+ *        own copy, is discarded at most N times in a row / for MS since the first discard, then the newest capture is
+ *        accepted; default 3,400; 0,0 = never discard. Content flips of OTHER planes no longer discard anything)
+ *        [--pipeline 0|1] (eink-round4, default 1: the next page is captured while a6l_epdd still drives the current
+ *        update, timed to end at its reply, and sent at the reply; 0 = capture only after the reply)
  *        [--keep-crtc-front-off] (eink-round3: do NOT send "power off" when the LCD CRTC goes off; by default the e-ink
  *        CRTC follows the LCD CRTC so it is never enabled across a system suspend)
  *   live properties (dualux, 25 Sep): persist.sys.a6l.eink.refresh (auto|quality|partial|fast|fastest, overrides .reading),
@@ -148,10 +153,11 @@ static void appearance_snapshot(char *v, size_t n) {
  * scanout gate before its private capture. Do not recapture just to reach
  * consec==2: submit that first eligible page with Auto's normal burst waveform.
  * Keep explicit quality/reading settle and every normal rate/queue guard. */
-static struct pol_action appearance_policy_step(struct pol_state *ps, double t,
-                                                double moving, double vs_panel,
-                                                int busy_now, const char *captured) {
-    struct pol_action a = pol_step(ps, t, moving, vs_panel, busy_now);
+/* eink-round4: the capture's motion was already recorded (pol_observe) when it was taken, possibly during the previous
+ * update (pipelined capture); this only decides. */
+static struct pol_action appearance_policy_decide(struct pol_state *ps, double t, double vs_panel,
+                                                  int busy_now, const char *captured) {
+    struct pol_action a = pol_decide(ps, t, vs_panel, busy_now);
     if (a.kind != POL_NONE || !captured[0] || ps->cfg.reading || ps->cfg.fixed_fast ||
         busy_now || vs_panel <= 0 || (t - ps->done_t) * 1000 < ps->cfg.min_gap_ms ||
         ps->win_n >= ps->cfg.max_per_min) return a;
@@ -242,6 +248,8 @@ static int capture_file(const char *path) {
 #define CAP_TORN 2	/* eink-round3: the plane set changed during the copy: discarded, not a failure (no 40-failure pause) */
 static size_t guard_chunk = GUARDED_COPY_CHUNK;	/* --copy-guard-kib N, 0 = off (old before/after-only check) */
 static int keep_crtc_front_off;			/* --keep-crtc-front-off: old behaviour (e-ink CRTC stays on) */
+static struct cap_guard cguard;			/* eink-round4: discard bound, the mirror never starves */
+static int guard_max_discards = CAP_GUARD_MAX_DISCARDS, guard_max_ms = CAP_GUARD_MAX_MS;	/* --guard-max N,MS */
 static struct front_follow front_ff;
 #ifndef NO_DRM
 static int drm_fd = -1;
@@ -275,7 +283,7 @@ static int lcd_crtc(uint32_t *crtc_id, int *w, int *h) {	/* active CRTC driving 
     if (res) drmModeFreeResources(res);
     return found;
 }
-struct pl { uint32_t fb; int64_t zpos; int cx, cy, cw, ch; double sx, sy, sw, sh; uint32_t rot, alpha; int blend; };	/* F41: + rotation/alpha/blend */
+struct pl { uint32_t fb; int64_t zpos; int cx, cy, cw, ch; double sx, sy, sw, sh; uint32_t rot, alpha; int blend; unsigned ri; };	/* F41: + rotation/alpha/blend; round4: + plane resource index */
 static int cmp_pl(const void *a, const void *b) { const struct pl *x = a, *y = b; return x->zpos < y->zpos ? -1 : x->zpos > y->zpos; }
 static int drm_allowed(void) {	/* --wait-prop NAME=VALUE: the card is only opened once the composer surely holds master */
     if (!wait_prop) return 1;
@@ -291,27 +299,125 @@ static int dma_read_sync(int fd, uint64_t flags) {
     do { rc = ioctl(fd, DMA_BUF_IOCTL_SYNC, &sy); } while (rc && (errno == EINTR || errno == EAGAIN) && !stop);
     return rc;
 }
-/* eink-round3: plane set re-checked between copy chunks (A -> B -> A guard, eink_logic.h guarded_copy) */
-struct copy_guard { int fd; uint32_t crtc; const struct a6l_plane_snapshot *before; int diff; };
+/* eink-round4: each plane's copy is guarded by THAT plane's tuple only (FB id + geometry, re-read between chunks). A
+ * flip of another plane (status bar, navigation bar, a second app layer) during the copy does not tear this plane's
+ * pixels; it was or will be copied consistently on its own. Round 3 compared the whole plane set and discarded the
+ * capture whenever any plane flipped: 6 Oct 17:01, "changed plane 2" (the 1080x75 status bar layer) discarded 75
+ * captures in 15.4 s and 94 in 45.5 s, so a swipe back and a pulled shade never reached the e-ink. */
+struct copy_guard { int fd; uint32_t plane; unsigned idx; struct a6l_object_tuple expect; int changed; };
 static int copy_guard_same(void *p) {
-    struct copy_guard *g = p; struct a6l_plane_snapshot mid;
-    if (a6l_plane_snapshot_read(g->fd, g->crtc, &mid)) { g->diff = -3; return 0; }
-    if (a6l_plane_snapshot_equal(g->before, &mid)) return 1;
-    g->diff = -2;	/* -2 = CRTC/plane count changed, >= 0 = first plane (resources index) whose tuple changed */
-    if (mid.count == g->before->count && a6l_object_tuple_equal(&mid.crtc, &g->before->crtc))
-        for (unsigned i = 0; i < mid.count; i++) if (!a6l_object_tuple_equal(&mid.planes[i], &g->before->planes[i])) { g->diff = (int)i; break; }
-    return 0;
+    struct copy_guard *g = p; struct a6l_object_tuple t;
+    if (a6l_plane_tuple_read(g->fd, g->plane, g->idx, &t)) { g->changed = -3; return 0; }
+    if (a6l_object_tuple_equal(&t, &g->expect)) return 1;
+    g->changed = 1; return 0;
 }
-static unsigned capture_discards; static double capture_discard_since;	/* consecutive torn/changed captures */
+/* eink-round4: last consistent copy of each plane (by resource index), the fallback for a plane that flips during every
+ * copy of it. Up to one full-screen buffer per plane in use (~10 MB each); swapped with the scratch copy, never copied. */
+struct plane_cache { uint8_t *buf; size_t cap; int valid; uint32_t id, fmt, w, h, pitch; double t; };
+static struct plane_cache pcache[16];
+static unsigned capture_discards; static double capture_discard_since;	/* consecutive discarded captures (logging) */
+#define PLANE_RETRIES 2	/* a plane that flipped during its own copy is copied again from its new buffer, twice at most */
 static void capture_discarded(const char *why, int plane, int quiet) {
     if (!capture_discards++) capture_discard_since = now();
     if ((!quiet && capture_discards == 1) || capture_discards % 25 == 0)
-        LOG("capture discarded (%s; changed plane %d): %u in a row over %.1f s%s", why, plane, capture_discards, now() - capture_discard_since,
-            capture_discards >= 25 ? " - the front screen redraws continuously, no torn picture is sent" : "");
+        LOG("capture discarded (%s; plane %d): %u in a row over %.1f s", why, plane, capture_discards, now() - capture_discard_since);
+}
+static void pl_fill(struct pl *q, const struct a6l_object_tuple *p, unsigned ri) {
+    const uint64_t *v = p->v;
+    q->fb = (uint32_t)v[PF_FB]; q->zpos = (int64_t)v[PF_ZPOS];
+    q->cx = (int)(int32_t)v[PF_CX]; q->cy = (int)(int32_t)v[PF_CY]; q->cw = (int)v[PF_CW]; q->ch = (int)v[PF_CH];
+    q->sx = v[PF_SX] / 65536.0; q->sy = v[PF_SY] / 65536.0; q->sw = v[PF_SW] / 65536.0; q->sh = v[PF_SH] / 65536.0;
+    q->rot = (uint32_t)v[PF_ROT]; q->alpha = (uint32_t)v[PF_ALPHA]; q->blend = (int)v[PF_BLEND]; q->ri = ri;
+}
+static int pl_same_geometry(const struct pl *a, const struct pl *b) {
+    return a->zpos == b->zpos && a->cx == b->cx && a->cy == b->cy && a->cw == b->cw && a->ch == b->ch && a->sx == b->sx &&
+           a->sy == b->sy && a->sw == b->sw && a->sh == b->sh && a->rot == b->rot && a->alpha == b->alpha && a->blend == b->blend;
+}
+static void gem_close_fb(drmModeFB2 *fb) {	/* GETFB2 creates GEM handles: close each distinct one */
+    for (int h = 0; h < 4; h++) if (fb->handles[h]) { int dup = 0; for (int g = 0; g < h; g++) if (fb->handles[g] == fb->handles[h]) dup = 1;
+        if (!dup) { struct drm_gem_close gc = {.handle = fb->handles[h]}; drmIoctl(drm_fd, DRM_IOCTL_GEM_CLOSE, &gc); } }
+}
+/* Copy + compose one plane. Returns 0 = composed (with *torn = 1 when the final attempt still saw its own buffer flip),
+ * 1 = the plane flipped during its copy and this was not the final attempt (nothing composed, retry), -1 = error. */
+static int capture_plane(struct pl *q, const struct a6l_object_tuple *expect, int k, int final_attempt, int *torn,
+                         double *sync_ms, double *copy_ms, double *compose_ms, int *checks) {
+    drmModeFB2 *fb = drmModeGetFB2(drm_fd, q->fb); if (!fb) { LOG("WARN GETFB2 %u: %s", q->fb, strerror(errno)); return -1; }
+    int ok = 1, bpp = 0, alpha = 0, bgr = 0, rc = 0; uint32_t f = fb->pixel_format;
+    if (f == DRM_FORMAT_XRGB8888 || f == DRM_FORMAT_ARGB8888) { bpp = 4; alpha = f == DRM_FORMAT_ARGB8888; bgr = 1; }
+    else if (f == DRM_FORMAT_XBGR8888 || f == DRM_FORMAT_ABGR8888) { bpp = 4; alpha = f == DRM_FORMAT_ABGR8888; }
+    else if (f == DRM_FORMAT_RGB565) bpp = 2;
+    if (!bpp) { static int w1; if (!w1++) LOG("WARN plane fb format %.4s unsupported", (char *)&f); ok = 0; }
+    if ((fb->flags & DRM_MODE_FB_MODIFIERS) && fb->modifier != DRM_FORMAT_MOD_LINEAR) { static int warned; if (!warned++) LOG("WARN fb modifier 0x%llx (compressed/tiled): drm source cannot read it", (unsigned long long)fb->modifier); ok = 0; }
+    struct plane_geo geo = {q->cx, q->cy, q->cw, q->ch, q->sx, q->sy, q->sw, q->sh, q->rot, q->alpha, q->blend};
+    /* Log layout changes, not every buffer swap: next attended trace can
+     * establish whether the identity/alpha fast path covers the real page. */
+    { static char layouts[16][240]; char layout[240];
+      snprintf(layout, sizeof layout, "%.4s fb=%ux%u dst=%d,%d %dx%d src=%.2f,%.2f %.2fx%.2f rot=%u alpha=%u blend=%d", (char *)&f, fb->width, fb->height, q->cx, q->cy, q->cw, q->ch, q->sx, q->sy, q->sw, q->sh, q->rot, q->alpha, q->blend);
+      if (k >= 0 && k < 16 && strcmp(layouts[k], layout)) { snprintf(layouts[k], sizeof layouts[k], "%s", layout); LOG("plane %d layout: %s", k, layout); }
+    }
+    if (plane_supported(&geo)) { static int w3; if (!w3++) LOG("WARN plane rotation 0x%x / alpha 0x%x / blend mode %d unsupported: capture refused", q->rot, q->alpha, q->blend); ok = 0; }
+    if (!fb->handles[0]) { static int w2; if (!w2++) LOG("WARN GETFB2 returned no handle (needs CAP_SYS_ADMIN)"); ok = 0; }
+    int dmafd = -1; uint8_t *map = MAP_FAILED; size_t len = (size_t)fb->pitches[0] * fb->height + fb->offsets[0];
+    if (len > MAXRAW || !fb->height || !fb->width || fb->pitches[0] < (uint64_t)fb->width * bpp) {
+        LOG("WARN invalid/oversized scanout layout: %ux%u pitch=%u offset=%u", fb->width, fb->height, fb->pitches[0], fb->offsets[0]); ok = 0;
+    }
+    if (ok && !drmPrimeHandleToFD(drm_fd, fb->handles[0], DRM_CLOEXEC, &dmafd)) map = mmap(NULL, len, PROT_READ, MAP_SHARED, dmafd, 0);
+    if (ok && map == MAP_FAILED) { LOG("WARN prime map fb %u: %s", q->fb, strerror(errno)); ok = 0; }
+    if (ok) {
+        double ts = now();
+        int synced = !dma_read_sync(dmafd, DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ);
+        if (!synced) { LOG("WARN dma-buf read sync: %s", strerror(errno)); ok = 0; }
+        *sync_ms += (now() - ts) * 1000;
+        /* Scanout mappings can be uncached/write-combined. Bulk-copy once
+         * into normal CPU memory rather than issuing byte loads for each
+         * luma/blend operation. No mapping or GEM handle survives capture. */
+        size_t bytes = (size_t)fb->pitches[0] * fb->height;
+        if (ok && bytes > scanout_copy_n) {
+            uint8_t *p = realloc(scanout_copy, bytes);
+            if (!p) ok = 0; else { scanout_copy = p; scanout_copy_n = bytes; }
+        }
+        ts = now();
+        const uint8_t *pixels = scanout_copy;
+        struct plane_cache *pc = q->ri < 16 ? &pcache[q->ri] : NULL;
+        if (ok) {	/* chunked; THIS plane's tuple re-read between chunks (an A->B->A flip of it tears the copy) */
+            struct copy_guard g = {drm_fd, expect->id, q->ri, *expect, 0}; int nchk = 0;
+            if (guarded_copy(scanout_copy, map + fb->offsets[0], bytes, guard_chunk, guard_chunk ? copy_guard_same : NULL, &g, &nchk) < 0) {
+                if (g.changed == -3) { LOG("WARN plane %d tuple query failed during the copy: %s", k, strerror(errno)); ok = 0; }
+                else if (!final_attempt) rc = 1;
+                else if (pc && pc->valid && pc->id == expect->id && pc->fmt == f && pc->w == fb->width && pc->h == fb->height &&
+                         pc->pitch == fb->pitches[0] && now() - pc->t < 2.0) {
+                    /* eink-round4: still flipping on every retry (an animation inside an open shade): show this plane's
+                     * last CONSISTENT copy (<= 2 s old) instead of a torn one. A slightly old shade picture, never the
+                     * "artefacts that move" of round 3 (still seen a few times per 20 s with copy_guard_kib=0). */
+                    pixels = pc->buf; *torn = 2;
+                } else {	/* no recent consistent copy of this plane: finish the copy (round 3 discarded it) */
+                    guarded_copy(scanout_copy, map + fb->offsets[0], bytes, 0, NULL, NULL, NULL); *torn = 1;
+                }
+            } else if (pc && guard_chunk) {	/* consistent: keep it as this plane's fallback (buffer swap, no copy) */
+                uint8_t *b = pc->buf; size_t c = pc->cap;
+                pc->buf = scanout_copy; pc->cap = scanout_copy_n; scanout_copy = b; scanout_copy_n = c; pixels = pc->buf;
+                pc->valid = 1; pc->id = expect->id; pc->fmt = f; pc->w = fb->width; pc->h = fb->height; pc->pitch = fb->pitches[0]; pc->t = now();
+            }
+            *checks += nchk;
+        }
+        *copy_ms += (now() - ts) * 1000;
+        if (synced && dma_read_sync(dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ)) {
+            LOG("WARN dma-buf read end sync: %s", strerror(errno)); ok = 0;
+        }
+        /* F41: reflection, rotation, scaling and the plane's blend equation (eink_logic.c plane_compose, host-tested) */
+        struct plane_fb pf = {pixels, fb->pitches[0], (int)fb->width, (int)fb->height, bpp, bgr, alpha};
+        ts = now();
+        if (ok && rc == 0 && plane_compose(gray, gw, gh, &geo, &pf)) ok = 0;
+        *compose_ms += (now() - ts) * 1000;
+    }
+    if (map != MAP_FAILED) munmap(map, len);
+    if (dmafd >= 0) close(dmafd);
+    gem_close_fb(fb);
+    drmModeFreeFB2(fb);
+    return ok ? rc : -1;
 }
 static int capture_drm(void) {
     double sync_ms = 0, copy_ms = 0, compose_ms = 0;
-    int torn = 0;
     static unsigned captures;
     if (drm_fd < 0 && !drm_allowed()) return CAP_FRONT_OFF;	/* treated like "front off": paused, not a failure */
     if (drm_fd < 0 && drm_open_once()) { LOG("WARN no KMS card with an LCD connector"); return -1; }
@@ -328,14 +434,8 @@ static int capture_drm(void) {
     if (gray_alloc(lw, lh)) return -1; memset(gray, 0, (size_t)gw * gh);
     struct pl pls[16]; int n=0;
     for(unsigned i=0;i<before.count;i++) {
-        const struct a6l_object_tuple *p=&before.planes[i];const uint64_t *v=p->v;
-        if(v[PF_CRTC]!=crtc||!v[PF_FB])continue;
-        struct pl *q=&pls[n++];q->fb=(uint32_t)v[PF_FB];q->zpos=(int64_t)v[PF_ZPOS];
-        q->cx=(int)(int32_t)v[PF_CX];q->cy=(int)(int32_t)v[PF_CY];
-        q->cw=(int)v[PF_CW];q->ch=(int)v[PF_CH];
-        q->sx=v[PF_SX]/65536.0;q->sy=v[PF_SY]/65536.0;
-        q->sw=v[PF_SW]/65536.0;q->sh=v[PF_SH]/65536.0;
-        q->rot=(uint32_t)v[PF_ROT];q->alpha=(uint32_t)v[PF_ALPHA];q->blend=(int)v[PF_BLEND];
+        if(!a6l_plane_on_crtc(&before.planes[i],crtc))continue;
+        pl_fill(&pls[n++],&before.planes[i],i);
     }
     if (!n) { LOG("WARN no plane on the LCD CRTC"); return -1; }
     qsort(pls, (size_t)n, sizeof pls[0], cmp_pl);
@@ -357,92 +457,54 @@ static int capture_drm(void) {
                      fb->pitches[0] >= (uint64_t)fb->width * bpp &&
                      (!(fb->flags & DRM_MODE_FB_MODIFIERS) || fb->modifier == DRM_FORMAT_MOD_LINEAR) &&
                      plane_opaque_fullscreen(&geo, (int)fb->width, (int)fb->height, lw, lh);
-        /* GETFB2 creates GEM handles even for this metadata-only probe. */
-        for (int h = 0; h < 4; h++) if (fb->handles[h]) { int dup = 0; for (int g = 0; g < h; g++) if (fb->handles[g] == fb->handles[h]) dup = 1;
-            if (!dup) { struct drm_gem_close gc = {.handle = fb->handles[h]}; drmIoctl(drm_fd, DRM_IOCTL_GEM_CLOSE, &gc); } }
+        gem_close_fb(fb);	/* GETFB2 creates GEM handles even for this metadata-only probe. */
         drmModeFreeFB2(fb);
         if (opaque) { first = k; break; }
     }
+    int layout_changed = 0, torn = 0, torn_plane = -1, retries = 0, checks = 0;
     for (int k = first; k < n; k++) {
-        struct pl *q = &pls[k]; drmModeFB2 *fb = drmModeGetFB2(drm_fd, q->fb); if (!fb) { LOG("WARN GETFB2 %u: %s", q->fb, strerror(errno)); return -1; }
-        int ok = 1, bpp = 0, alpha = 0, bgr = 0; uint32_t f = fb->pixel_format;
-        if (f == DRM_FORMAT_XRGB8888 || f == DRM_FORMAT_ARGB8888) { bpp = 4; alpha = f == DRM_FORMAT_ARGB8888; bgr = 1; }
-        else if (f == DRM_FORMAT_XBGR8888 || f == DRM_FORMAT_ABGR8888) { bpp = 4; alpha = f == DRM_FORMAT_ABGR8888; }
-        else if (f == DRM_FORMAT_RGB565) bpp = 2;
-        if (!bpp) { static int w1; if (!w1++) LOG("WARN plane fb format %.4s unsupported", (char *)&f); ok = 0; }
-        if ((fb->flags & DRM_MODE_FB_MODIFIERS) && fb->modifier != DRM_FORMAT_MOD_LINEAR) { static int warned; if (!warned++) LOG("WARN fb modifier 0x%llx (compressed/tiled): drm source cannot read it", (unsigned long long)fb->modifier); ok = 0; }
-        struct plane_geo geo = {q->cx, q->cy, q->cw, q->ch, q->sx, q->sy, q->sw, q->sh, q->rot, q->alpha, q->blend};
-        /* Log layout changes, not every buffer swap: next attended trace can
-         * establish whether the identity/alpha fast path covers the real page. */
-        { static char layouts[16][240]; char layout[240];
-          snprintf(layout, sizeof layout, "%.4s fb=%ux%u dst=%d,%d %dx%d src=%.2f,%.2f %.2fx%.2f rot=%u alpha=%u blend=%d", (char *)&f, fb->width, fb->height, q->cx, q->cy, q->cw, q->ch, q->sx, q->sy, q->sw, q->sh, q->rot, q->alpha, q->blend);
-          if (strcmp(layouts[k], layout)) { snprintf(layouts[k], sizeof layouts[k], "%s", layout); LOG("plane %d layout: %s", k, layout); }
-        }
-        if (plane_supported(&geo)) { static int w3; if (!w3++) LOG("WARN plane rotation 0x%x / alpha 0x%x / blend mode %d unsupported: capture refused", q->rot, q->alpha, q->blend); ok = 0; }
-        if (!fb->handles[0]) { static int w2; if (!w2++) LOG("WARN GETFB2 returned no handle (needs CAP_SYS_ADMIN)"); ok = 0; }
-        int dmafd = -1; uint8_t *map = MAP_FAILED; size_t len = (size_t)fb->pitches[0] * fb->height + fb->offsets[0];
-        if (len > MAXRAW || !fb->height || !fb->width || fb->pitches[0] < (uint64_t)fb->width * bpp) {
-            LOG("WARN invalid/oversized scanout layout: %ux%u pitch=%u offset=%u", fb->width, fb->height, fb->pitches[0], fb->offsets[0]); ok = 0;
-        }
-        if (ok && !drmPrimeHandleToFD(drm_fd, fb->handles[0], DRM_CLOEXEC, &dmafd)) map = mmap(NULL, len, PROT_READ, MAP_SHARED, dmafd, 0);
-        if (ok && map == MAP_FAILED) { LOG("WARN prime map fb %u: %s", q->fb, strerror(errno)); ok = 0; }
-        if (ok) {
-            double ts = now();
-            int synced = !dma_read_sync(dmafd, DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ);
-            if (!synced) { LOG("WARN dma-buf read sync: %s", strerror(errno)); ok = 0; }
-            sync_ms += (now() - ts) * 1000;
-            /* Scanout mappings can be uncached/write-combined. Bulk-copy once
-             * into normal CPU memory rather than issuing byte loads for each
-             * luma/blend operation. No mapping or GEM handle survives capture. */
-            size_t bytes = (size_t)fb->pitches[0] * fb->height;
-            if (ok && bytes > scanout_copy_n) {
-                uint8_t *p = realloc(scanout_copy, bytes);
-                if (!p) ok = 0; else { scanout_copy = p; scanout_copy_n = bytes; }
+        struct pl *q = &pls[k];
+        struct a6l_object_tuple cur = before.planes[q->ri];
+        for (int attempt = 0; ; attempt++) {
+            if (attempt) {	/* the plane flipped during its own copy: copy the buffer it shows now */
+                struct pl fresh;
+                if (a6l_plane_tuple_read(drm_fd, cur.id, q->ri, &cur)) { LOG("WARN plane tuple query failed: %s", strerror(errno)); return -1; }
+                if (!a6l_plane_on_crtc(&cur, crtc)) { layout_changed = 1; break; }	/* the plane left the LCD: skip it */
+                pl_fill(&fresh, &cur, q->ri);
+                if (!pl_same_geometry(&fresh, q)) layout_changed = 1;
+                *q = fresh; retries++;
             }
-            ts = now();
-            if (ok) {	/* eink-round3: chunked, the plane set re-read between chunks (an A->B->A flip tears the copy) */
-                struct copy_guard g = {drm_fd, crtc, &before, -1}; int nchk = 0;
-                if (guarded_copy(scanout_copy, map + fb->offsets[0], bytes, guard_chunk, guard_chunk ? copy_guard_same : NULL, &g, &nchk) < 0) {
-                    char why[64]; snprintf(why, sizeof why, "plane set changed during the copy of plane %d, check %d", k, nchk);
-                    capture_discarded(why, g.diff, 0); ok = 0; torn = 1;
-                }
-            }
-            copy_ms += (now() - ts) * 1000;
-            if (synced && dma_read_sync(dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ)) {
-                LOG("WARN dma-buf read end sync: %s", strerror(errno)); ok = 0;
-            }
-            /* F41: reflection, rotation, scaling and the plane's blend equation (eink_logic.c plane_compose, host-tested) */
-            struct plane_fb pf = {scanout_copy, fb->pitches[0], (int)fb->width, (int)fb->height, bpp, bgr, alpha};
-            ts = now();
-            if (ok && plane_compose(gray, gw, gh, &geo, &pf)) ok = 0;
-            compose_ms += (now() - ts) * 1000;
+            int t = 0, r = capture_plane(q, &cur, k, attempt >= PLANE_RETRIES, &t, &sync_ms, &copy_ms, &compose_ms, &checks);
+            if (r < 0) return -1;
+            if (r == 0) { if (t) { torn = t > torn ? t : torn; torn_plane = k; } break; }
         }
-        if (map != MAP_FAILED) munmap(map, len);
-        if (dmafd >= 0) close(dmafd);
-        for (int h = 0; h < 4; h++) if (fb->handles[h]) { int dup = 0; for (int g = 0; g < h; g++) if (fb->handles[g] == fb->handles[h]) dup = 1;
-            if (!dup) { struct drm_gem_close gc = {.handle = fb->handles[h]}; drmIoctl(drm_fd, DRM_IOCTL_GEM_CLOSE, &gc); } }
-        drmModeFreeFB2(fb);
-        if (!ok) return torn ? CAP_TORN : -1;
     }
     uint32_t after_crtc=0;int after_w=0,after_h=0;
     int after_lcd=lcd_crtc(&after_crtc,&after_w,&after_h);
     int after_ok=after_lcd&&after_crtc==crtc?a6l_plane_snapshot_read(drm_fd,crtc,&after):-1;
     int after_errno=errno;
     int seq_after_ok=!drmCrtcGetSequence(drm_fd,crtc,&seq_after,&seq_ns);
-    if(after_ok||!a6l_plane_snapshot_equal(&before,&after)) {
-        LOG("WARN capture tuple changed/query failed: result=%d error=%s seq=%s%llu->%s%llu; discard",after_ok,after_ok<0?strerror(after_errno):"none",
-            seq_before_ok?"":"unavailable:",(unsigned long long)seq_before,
-            seq_after_ok?"":"unavailable:",(unsigned long long)seq_after);
-        capture_discarded("plane set changed by the end of the copy", -1, 1);
-        return after_ok ? -1 : CAP_TORN;
+    if (after_ok < 0 && after_lcd && after_crtc == crtc) {
+        LOG("WARN capture end tuple query failed: %s", strerror(after_errno)); return -1;
     }
-    if (capture_discards) { LOG("capture consistent again after %u discards (%.1f s)", capture_discards, now() - capture_discard_since); capture_discards = 0; }
+    if (after_ok || !a6l_plane_layout_equal(&before, &after, crtc)) layout_changed = 1;	/* LCD off/changed or new layout */
+    enum capk kind = torn ? CAPK_TORN : layout_changed ? CAPK_LAYOUT : CAPK_OK;
+    unsigned streak = cguard.discards; double streak_ms = streak ? (now() - cguard.first_t) * 1000 : 0;
+    enum cap_verdict verdict = cap_guard_step(&cguard, kind, now());
+    if (verdict == CV_DISCARD) {
+        capture_discarded(kind == CAPK_TORN ? "a plane flipped during each copy of it" : "LCD plane layout changed during the capture", torn_plane, 0);
+        return CAP_TORN;
+    }
+    if (verdict == CV_FORCE && (cguard.forced <= 3 || cguard.forced % 25 == 0))
+        LOG("capture accepted after %u discards (%.0f ms, %s): newest picture sent, the next consistent capture cleans it up (%u forced)",
+            streak, streak_ms, kind != CAPK_TORN ? "layout change" : torn == 2 ? "a plane keeps flipping: its last consistent copy is shown" : "a plane keeps flipping, no consistent copy yet", cguard.forced);
+    if (capture_discards) { LOG("capture %s after %u discards (%.1f s)", verdict == CV_FORCE ? "forced" : "consistent again", capture_discards, now() - capture_discard_since); capture_discards = 0; }
     /* Vblank normally advances during a CPU copy. It is a diagnostic, not a
      * producer-ownership fence or a reason to discard otherwise equal tuples. */
     if(captures<3||captures%120==0)
-        LOG("capture tuple stable: planes=%u seq=%s%llu->%s%llu; producer reuse unproved",before.count,
+        LOG("capture tuple stable: planes=%u seq=%s%llu->%s%llu retries=%d checks=%d",before.count,
             seq_before_ok?"":"unavailable:",(unsigned long long)seq_before,
-            seq_after_ok?"":"unavailable:",(unsigned long long)seq_after);
+            seq_after_ok?"":"unavailable:",(unsigned long long)seq_after,retries,checks);
     captures++;
     if (captures <= 3 || sync_ms + copy_ms + compose_ms > 250 || captures % 120 == 0)
         LOG("capture stages: planes=%d culled=%d sync=%.0f ms copy=%.0f ms compose=%.0f ms", n, first, sync_ms, copy_ms, compose_ms);
@@ -489,9 +551,6 @@ static int appearance_scanout_barrier(const char *request) {
 
 /* ---------------- conversion: area average into 720x1440 (or 1440x720) ---------------- */
 static uint8_t out[OW * OH]; static int out_w = OW, out_h = OH, geo_ox, geo_oy, geo_dw, geo_dh;
-static float *acc; static size_t acc_n;
-struct hweight { int first, last; double left, right; };
-static struct hweight *hweights; static size_t hweights_n;
 /* dualux (25 Sep): contrast LUT (persist.sys.a6l.eink.contrast 0..100, stock "high contrast text"): linear stretch
  * between a black point and a white point (0 = identity; 100 = 0..60 -> black, 195..255 -> white) */
 static uint8_t lut[256]; static int lut_contrast = -1;
@@ -502,41 +561,16 @@ static void lut_build(int c) {
     if (c < 0) c = 0; if (c > 100) c = 100; lut_contrast = c;
     tone_lut(lut, c, tone_black, tone_white, tone_gamma);
 }
+static struct area_resizer resizer;	/* eink-round4: fixed-point area average (eink_logic.c area_resize, host-tested) */
 static void resample(void) {
     if (lut_contrast < 0) lut_build(0);
     int land = gw > gh; out_w = land ? OH : OW; out_h = land ? OW : OH;
     memset(out, 255, sizeof out);	/* letterbox bars = white (paper) */
     int dw, dh, ox, oy; fit_geometry(gw, gh, out_w, out_h, fit, &ox, &oy, &dw, &dh);
     geo_ox = ox; geo_oy = oy; geo_dw = dw; geo_dh = dh;
-    size_t need = (size_t)dw * gh; if (need > acc_n) { free(acc); acc = malloc(need * sizeof *acc); acc_n = acc ? need : 0; if (!acc) return; }
-    double fx = (double)gw / dw, fy = (double)gh / dh;
-    if ((size_t)dw > hweights_n) {
-        struct hweight *p = realloc(hweights, (size_t)dw * sizeof *p);
-        if (!p) return;
-        hweights = p; hweights_n = (size_t)dw;
-    }
-    for (int x = 0; x < dw; x++) {
-        double a = x * fx, b = a + fx; int i0 = (int)a, i1 = (int)b; if (i1 >= gw) i1 = gw - 1;
-        hweights[x] = (struct hweight){i0, i1, i0 + 1 - a, b > i1 ? b - i1 : 0};
-    }
-    /* Scan rows contiguously. The old column-first loop repeatedly evicted
-     * cache lines across the entire 6 MiB intermediate image on this CPU. */
-    for (int y = 0; y < gh; y++) {
-        const uint8_t *r = gray + (size_t)y * gw; float *dst = acc + (size_t)y * dw;
-        for (int x = 0; x < dw; x++) {
-            const struct hweight *p = &hweights[x]; double s = 0;
-            if (p->first == p->last) s = r[p->first] * fx;
-            else { s += r[p->first] * p->left; for (int i = p->first + 1; i < p->last; i++) s += r[i]; if (p->right > 0) s += r[p->last] * p->right; }
-            dst[x] = (float)(s / fx);
-        }
-    }
-    for (int y = 0; y < dh; y++) {
-        int yy = y + oy; if (yy < 0 || yy >= out_h) continue;
-        double a = y * fy, b = a + fy; int j0 = (int)a, j1 = (int)b; if (j1 >= gh) j1 = gh - 1;
-        for (int x = 0; x < dw; x++) { int xx = x + ox; if (xx < 0 || xx >= out_w) continue; double s;
-            if (j0 == j1) s = acc[(size_t)j0 * dw + x] * fy; else { s = acc[(size_t)j0 * dw + x] * (j0 + 1 - a); for (int j = j0 + 1; j < j1; j++) s += acc[(size_t)j * dw + x]; if (b > j1) s += acc[(size_t)j1 * dw + x] * (b - j1); }
-            int v = (int)(s / fy + 0.5); out[(size_t)yy * out_w + xx] = lut[v > 255 ? 255 : v < 0 ? 0 : v]; }
-    }
+    /* Same box filter as the pre-round4 double version (within one grey level, exact on flat areas), several times
+     * faster: the 6 Oct logs show resize=100-104 ms per capture, paid twice between a finger lift and the settled update */
+    if (area_resize(&resizer, gray, gw, gh, out, out_w, out_h, ox, oy, dw, dh, lut)) { static int w; if (!w++) LOG("WARN resize: out of memory"); }
 }
 #define NT ((OW / TS) * (OH / TS))
 static uint8_t cur_t[NT], prev_t[NT], shown_t[NT]; static int have_prev, have_shown, cur_land, shown_land, prev_land;
@@ -688,8 +722,15 @@ static void pump(void) {	/* send the next queued command when idle */
     if (epd_send(&q[0])) { if (!dry && epd < 0) { qn = 0; inflight = INF_OTHER; cmd_result(0, "a6l_epdd unreachable"); } return; }
     memmove(&q[0], &q[1], sizeof q[0]); qn--;
 }
+/* eink-round4 pipelining: typical frame command -> reply time and capture + resize time (EMAs), used to start the next
+ * capture so that it ends about when a6l_epdd replies */
+static double est_reply_s = 0.9, est_capture_s = 0.25;
+/* start the capture a little early: an early capture is only slightly older, a late one delays the next command */
+static double precapture_due(void) { double lead = est_reply_s * 0.85 - est_capture_s - 0.03; return cmd_t + (lead > 0 ? lead : 0); }
 static int on_reply(char *line, struct pol_state *ps) {	/* returns 1 if a command completed */
-    LOG("epdd: %s (%.2f s)", line, now() - cmd_t);
+    double dur = now() - cmd_t;
+    LOG("epdd: %s (%.2f s)", line, dur);
+    if (inflight == INF_FRAME && !strncmp(line, "OK", 2) && dur > 0.05 && dur < 5) est_reply_s = 0.7 * est_reply_s + 0.3 * dur;
     busy = 0; cmd_result(!strncmp(line, "OK", 2), "a6l_epdd error reply"); pol_done(ps, now()); return 1;
 }
 static void epd_input(struct pol_state *ps) {
@@ -847,6 +888,49 @@ static void read_props(int *mode_changed, int *reading_changed) {
 }
 static void set_state(const char *s) { static char last[64]; if (strcmp(last, s)) { snprintf(last, sizeof last, "%s", s); if (use_props && !dry) prop_set(P_STATE, s); LOG("state: %s", s); } }
 
+/* ---------------- eink-round4: pipelined capture and decision ---------------- */
+struct staged_capture { int valid, frame; double t, tcap, tresample, tdamage, moving; unsigned gesture; char appearance[96]; };
+static struct staged_capture staged;
+static int pipeline = 1;		/* --pipeline 0|1 (rc persist.vendor.eink.pipeline): capture during the drive */
+static double precap_cmd_t = -1;	/* the command during whose drive the pipelined capture was taken */
+static int release_settling(const struct pol_state *ps) {	/* 0005 settle window after a held drag was released */
+    return ps->release_t > 0 && ps->cfg.release_quiet_ms > 0 && (now() - ps->release_t) * 1000 < ps->cfg.release_max_ms;
+}
+static double capture_interval(const struct pol_state *ps) {
+    /* the settle needs one unchanged capture pair after the lift: take them back to back, not interval_ms apart */
+    return release_settling(ps) ? 0.03 : interval_ms / 1000.0;
+}
+/* Damage against the panel picture, appearance tagging, policy decision and queueing of the capture held in out/cur_t
+ * (the latest one). Returns 1 when a frame was queued. */
+static int decide_capture(struct pol_state *ps, const struct staged_capture *sc, const char *how) {
+    char capture_appearance[96]; snprintf(capture_appearance, sizeof capture_appearance, "%s", sc->appearance);
+    if (capture_appearance[0]) {	/* the tag must still be the current request at decision time */
+        char current[96]; appearance_snapshot(current, sizeof current);
+        if (strcmp(current, capture_appearance)) capture_appearance[0] = 0;
+    }
+    double vs_panel = have_shown && shown_land == cur_land ? diff_frac(cur_t, shown_t) : 1.0;
+    if (have_shown && shown_land == cur_land && vs_panel == 0 && pixel_damage(out, shown_pixels)) {
+        vs_panel = 1.0 / NT;
+        LOG("frame %d: pixel damage missed by tile means", sc->frame);
+    }
+    /* An identical static page still needs a fresh, correctly tagged ACK
+     * when preparing a new switch; tile equality is not appearance readiness. */
+    if (capture_appearance[0]) {
+        char panel_ready[96]; prop_get("vendor.eink.ready", panel_ready, sizeof panel_ready);
+        if (strcmp(panel_ready, capture_appearance)) vs_panel = 1.0;
+    }
+    if (!dry && epd < 0) return 0;
+    if (now() < retry_at) return 0;	/* F36: bounded backoff after a failed / unacknowledged update */
+    struct pol_action a = appearance_policy_decide(ps, now(), vs_panel, busy || qn > 0, capture_appearance);
+    ordinary_small_auto(ps, &a, sc->moving, capture_appearance);
+    if (a.kind == POL_NONE) return 0;
+    LOG("frame %d policy: kind=%d mode=%s fixed=%d moving=%.6f vs_panel=%.6f capture=%.0f ms resize=%.0f ms damage=%.3f ms gesture=%u%s%s",
+        sc->frame, a.kind, a.mode ? a.mode : "none", ps->cfg.fixed_fast, sc->moving, vs_panel,
+        sc->tcap * 1000, sc->tresample * 1000, sc->tdamage * 1000, sc->gesture, how[0] ? " " : "", how);
+    queue_policy_frame(&a, capture_appearance, sc->tcap * 1000, sc->tresample * 1000);
+    return 1;
+}
+
 int main(int argc, char **argv) {
     t_start = now(); pol_default_cfg(&pcfg);
     for (int i = 1; i < argc; i++) {
@@ -876,6 +960,12 @@ int main(int argc, char **argv) {
         else if (OPT("--front")) { if (sscanf(v, "%dx%d", &front_w, &front_h) != 2) return 2; }
         else if (!strcmp(a,"--auto-small-regal")) auto_small_regal=1;
         else if (OPT("--copy-guard-kib")) guard_chunk = atoi(v) > 0 ? (size_t)atoi(v) * 1024 : 0;
+        else if (OPT("--pipeline")) pipeline = atoi(v) != 0;
+        else if (OPT("--guard-max")) {	/* eink-round4: N discards / MS since the first one, then the newest capture is accepted */
+            int nd, ms;
+            if (sscanf(v, "%d,%d", &nd, &ms) == 2 && nd >= 0 && nd <= 100 && ms >= 0 && ms <= 10000) { guard_max_discards = nd; guard_max_ms = ms; }
+            else fprintf(stderr, "ignoring bad --guard-max '%s' (N 0..100,MS 0..10000)\n", v);
+        }
         else if (!strcmp(a, "--keep-crtc-front-off")) keep_crtc_front_off = 1;
         else if (OPT("--reply-timeout")) reply_timeout_ms = atoi(v) > 0 ? atoi(v) : 30000;
         else if (OPT("--wait-prop")) wait_prop = v; else if (!strcmp(a, "--touch-debug")) touch_debug = 1;
@@ -899,6 +989,7 @@ int main(int argc, char **argv) {
     pcfg.reading = reading;
     if (use_props && !reading && !refresh_mode[0]) pol_apply_refresh_mode(&pcfg, "stock");	/* default before the first prop read */
     struct pol_state ps; pol_init(&ps, &pcfg, now()); ack_policy = &ps;
+    cap_guard_init(&cguard, guard_max_discards, guard_max_ms);
     int active = 0, paused = 0, frame = 0, fails = 0; double next_cap = now(), next_props = now();
     LOG("start: source=%s interval=%d mode=%s reading=%d clear-every=%d active=%s fit=%s%s", source, interval_ms, mode_name(mode), reading, pcfg.clear_every, pcfg.active_mode, fit == FIT_STRETCH ? "stretch" : fit == FIT_CROP ? "crop" : "letterbox", dry ? " DRY" : "");
     LOG("tone: black clip %d, white clip %d, gamma %.2f; release settle %d ms (max %d ms)", tone_black, tone_white, tone_gamma / 100.0, pcfg.release_quiet_ms, pcfg.release_max_ms);
@@ -918,8 +1009,8 @@ int main(int argc, char **argv) {
         /* epdd retains its image/library state across power off and performs a
          * recovery clear itself after a failed drive. Switching sides needs no
          * unconditional clear-white + INIT sequence before showing the page. */
-        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; pol_init(&ps, &pcfg, t); policy_epoch++; have_prev = have_shown = 0; forward = 1; LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
-        if (mode != EINK_MIRROR && active) { active = 0; policy_epoch++; forward = 0; touch_release_all(); qn = 0; queue_cmd("power off", 0); LOG("mirror OFF (e-ink keeps the last picture)"); }
+        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; pol_init(&ps, &pcfg, t); policy_epoch++; have_prev = have_shown = 0; staged.valid = 0; forward = 1; LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
+        if (mode != EINK_MIRROR && active) { active = 0; staged.valid = 0; policy_epoch++; forward = 0; touch_release_all(); qn = 0; queue_cmd("power off", 0); LOG("mirror OFF (e-ink keeps the last picture)"); }
         if (!dry && epd < 0) epd_connect();
         { static double next_touch_scan; if (touch_fd < 0 && t >= next_touch_scan) { next_touch_scan = t + 5; input_quiet = 1; touch_attach(); input_quiet = 0; } }
         set_state(!active ? "off" : epd < 0 && !dry ? "mirror-no-epdd" : paused ? "mirror-paused" : reading ? "mirror-reading" : "mirror");
@@ -928,7 +1019,11 @@ int main(int argc, char **argv) {
         if (key_fd >= 0) { ik = n; p[n++] = (struct pollfd){key_fd, POLLIN, 0}; }
         if (touch_fd >= 0) { it = n; p[n++] = (struct pollfd){touch_fd, POLLIN, 0}; }
         if (epd >= 0) { ie = n; p[n++] = (struct pollfd){epd, POLLIN, 0}; }
-        double until = active && !busy && !qn ? next_cap : t + 0.1; if (ks.down) until = t + 0.05; if (dry && busy && dry_done_at < until) until = dry_done_at; if (next_props < until) until = next_props;
+        double until = active && !busy && !qn ? (staged.valid ? t : next_cap) : t + 0.1; if (ks.down) until = t + 0.05;
+        if (active && busy && pipeline && precap_cmd_t != cmd_t) {	/* eink-round4: wake for the pipelined capture */
+            double due = precapture_due(); if (due < next_cap) due = next_cap;
+            if (due < until) until = due > t ? due : t;
+        } if (dry && busy && dry_done_at < until) until = dry_done_at; if (next_props < until) until = next_props;
         int to = (int)((until - now()) * 1000); if (to < 0) to = 0;
         int r = poll(p, (nfds_t)n, to);
         if (r < 0 && errno != EINTR) { LOG("FAIL poll: %s", strerror(errno)); break; }
@@ -941,21 +1036,41 @@ int main(int argc, char **argv) {
             if (mode_forced >= 0) mode_forced = nm; mode = nm; if (use_props) prop_set(P_MODE, mode_name(nm)); }
         if (ka == KA_CLEAR) { LOG("e-ink key long press: refresh");
             queue_manual_refresh(); }
-        if (dry && busy && now() >= dry_done_at) { busy = 0; cmd_result(1, NULL); pol_done(&ps, now()); LOG("done (simulated)"); }
+        if (dry && busy && now() >= dry_done_at) {
+            if (inflight == INF_FRAME) est_reply_s = 0.7 * est_reply_s + 0.3 * (now() - cmd_t);
+            busy = 0; cmd_result(1, NULL); pol_done(&ps, now()); LOG("done (simulated)"); }
         if (!dry && busy && (now() - cmd_t) * 1000 > reply_timeout_ms) {	/* F36: lost reply: the connection is out of step */
             LOG("WARN a6l_epdd reply timeout (%.1f s): dropping the connection", now() - cmd_t);
             epd_drop(); busy = 0; qn = 0; cmd_result(0, "reply timeout"); pol_done(&ps, now()); }
         pump();
-        /* Capturing/converting frames while busy cannot queue another update,
-         * but blocks socket replies and input for up to a second. Poll those
-         * events, then capture the latest page once the panel is available. */
-        if (!active || busy || qn || now() < next_cap) continue;
+        /* eink-round4 pipelining. Before: nothing was captured while a6l_epdd drove an update, so every cycle paid
+         * capture + resize (~240 ms, 6 Oct logs: capture=122-142 ms resize=100-104 ms) after the reply. Now one capture
+         * is taken DURING the drive, timed to end about when the reply arrives (est_reply_s - est_capture_s), staged,
+         * and decided at the reply: the next frame command leaves at once. During a release settle (0005) captures run
+         * back to back while busy, so the settled page is staged too. A drag still holds captures. */
+        if (active && staged.valid && !busy && !qn) {
+            int stale = now() - staged.t > 1.0 || staged.gesture != gesture_generation || (suppress_drag_frames() && touch_any_drag());
+            staged.valid = 0;
+            if (stale) { next_cap = now(); continue; }
+            if (decide_capture(&ps, &staged, "staged")) pump();
+            next_cap = now() + capture_interval(&ps);
+            continue;
+        }
+        if (!active || now() < next_cap) continue;
+        int precapture = 0;
+        if (busy || qn) {
+            if (!pipeline || qn || inflight != INF_FRAME) continue;
+            int settle = release_settling(&ps);
+            if (!settle && (precap_cmd_t == cmd_t || now() < precapture_due())) continue;
+            precapture = 1;
+        }
         if (suppress_drag_frames() && touch_any_drag()) { next_cap = now() + 0.02; continue; }
         /* capture + policy */
         char capture_appearance[96], after_appearance[96];
         appearance_snapshot(capture_appearance, sizeof capture_appearance);
         if (!appearance_scanout_barrier(capture_appearance)) { next_cap = now() + 0.02; continue; }
-        next_cap += interval_ms / 1000.0; if (next_cap < now()) next_cap = now() + interval_ms / 1000.0;
+        double ivl = capture_interval(&ps);
+        next_cap += ivl; if (next_cap < now()) next_cap = now() + ivl;
         unsigned capture_gesture = gesture_generation;
         double t0 = now(); int rc;
         if (!strcmp(source, "screencap")) rc = capture_screencap();
@@ -965,7 +1080,8 @@ int main(int argc, char **argv) {
             if (!access(pth, R_OK)) last_ok = frame; else snprintf(pth, sizeof pth, source + 6, last_ok); rc = capture_file(pth); }
         else { LOG("FAIL unknown source %s", source); return 2; }
         frame++;
-        if (rc == CAP_FRONT_OFF) { if (!paused) { LOG("front screen off: paused (rear touch not forwarded)"); forward = 0; touch_release_all(); } paused = 1;
+        if (precapture) precap_cmd_t = cmd_t;
+        if (rc == CAP_FRONT_OFF) { cap_guard_reset(&cguard); if (!paused) { LOG("front screen off: paused (rear touch not forwarded)"); forward = 0; touch_release_all(); } paused = 1;
             /* eink-round3: the e-ink CRTC follows the LCD CRTC, so no system suspend saves/restores an enabled lessee CRTC
              * (6 Oct 16:07: e-ink on across a suspend -> LCD scan-out of an unmapped buffer after the next LCD switch).
              * The picture stays on the panel; the next update does the bring-up again (as after idle-off). */
@@ -977,6 +1093,7 @@ int main(int argc, char **argv) {
         if (paused) { LOG("front screen on: resumed"); paused = 0; forward = 1; }
         fails = 0; double tcap = now() - t0;
         double tr = now(); resample(); cur_land = out_w > out_h; tiles(cur_t); double tresample = now() - tr;
+        est_capture_s = 0.7 * est_capture_s + 0.3 * (tcap + tresample);
         appearance_snapshot(after_appearance, sizeof after_appearance);
         if (strcmp(capture_appearance, after_appearance)) capture_appearance[0] = 0;
         /* Input may have arrived during the bounded CPU copy/resize. Drain it
@@ -990,31 +1107,14 @@ int main(int argc, char **argv) {
         /* Equal tile averages can hide real text changes. Keep exact damage
          * for submission and quiet timing, but do not invent a motion burst. */
         int pixel_motion = have_prev && prev_land == cur_land && pixel_damage(out, prev_pixels);
+        pol_observe(&ps, now(), moving);	/* eink-round4: motion history at capture time (decision may come later) */
         if (pixel_motion && moving == 0) ps.last_change = now();
         memcpy(prev_t, cur_t, NT); memcpy(prev_pixels, out, sizeof prev_pixels); have_prev = 1; prev_land = cur_land;
-        double vs_panel = have_shown && shown_land == cur_land ? diff_frac(cur_t, shown_t) : 1.0;
-        if (have_shown && shown_land == cur_land && vs_panel == 0 && pixel_damage(out, shown_pixels)) {
-            vs_panel = 1.0 / NT;
-            LOG("frame %d: pixel damage missed by tile means", frame);
-        }
-        double tdamage = now() - td;
-        /* An identical static page still needs a fresh, correctly tagged ACK
-         * when preparing a new switch; tile equality is not appearance readiness. */
-        if (capture_appearance[0]) {
-            char panel_ready[96]; prop_get("vendor.eink.ready", panel_ready, sizeof panel_ready);
-            if (strcmp(panel_ready, capture_appearance)) vs_panel = 1.0;
-        }
-        if (frame <= 3 || tcap + tresample > 0.75 || frame % 240 == 0) LOG("frame %d: %dx%d capture %.0f ms, resize/tiles %.0f ms, moving %.3f, vs panel %.3f", frame, gw, gh, tcap * 1000, tresample * 1000, moving, vs_panel);
-        if (!dry && epd < 0) continue;
-        if (now() < retry_at) continue;	/* F36: bounded backoff after a failed / unacknowledged update */
-        struct pol_action a = appearance_policy_step(&ps, now(), moving, vs_panel, busy || qn > 0, capture_appearance);
-        ordinary_small_auto(&ps,&a,moving,capture_appearance);
-        if (a.kind == POL_NONE) continue;
-        LOG("frame %d policy: kind=%d mode=%s fixed=%d moving=%.6f vs_panel=%.6f capture=%.0f ms resize=%.0f ms damage=%.3f ms gesture=%u",
-            frame, a.kind, a.mode ? a.mode : "none", ps.cfg.fixed_fast, moving, vs_panel,
-            tcap * 1000, tresample * 1000, tdamage * 1000, capture_gesture);
-        queue_policy_frame(&a, capture_appearance, tcap * 1000, tresample * 1000);
-        pump();
+        struct staged_capture sc = {1, frame, now(), tcap, tresample, now() - td, moving, capture_gesture, ""};
+        snprintf(sc.appearance, sizeof sc.appearance, "%s", capture_appearance);
+        if (frame <= 3 || tcap + tresample > 0.75 || frame % 240 == 0) LOG("frame %d: %dx%d capture %.0f ms, resize/tiles %.0f ms, moving %.3f%s", frame, gw, gh, tcap * 1000, tresample * 1000, moving, precapture ? " (staged during the drive)" : "");
+        if (precapture || busy || qn) { staged = sc; continue; }	/* the panel is still busy: decided at the reply */
+        if (decide_capture(&ps, &sc, "")) pump();
     }
     while (!stop && busy && dry) { usleep(20000); if (now() >= dry_done_at) busy = 0; }
     if (ui >= 0) { touch_release_all(); ioctl(ui, UI_DEV_DESTROY); close(ui); }

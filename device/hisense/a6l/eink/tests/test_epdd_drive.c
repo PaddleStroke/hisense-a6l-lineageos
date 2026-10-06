@@ -21,8 +21,11 @@ static int a6l_test_power(int on) {
 }
 static int modeset_err, n_modeset;
 static int a6l_test_modeset(void) { n_modeset++; return modeset_err ? -1 : 0; }
+static double fake_suspended, suspend_at_flip = -1;
+static double a6l_test_suspended_s(void) { return fake_suspended; }
 static int a6l_test_flip(uint32_t id) {
     (void)id;
+    if (suspend_at_flip >= 0 && nflips >= suspend_at_flip) { fake_suspended += 40; suspend_at_flip = -1; }
     if (flip_fail_at >= 0 && nflips >= flip_fail_at) return -1;
     if (!rails_on) { printf("FAIL scanout with the rails off\n"); exit(1); }
     nflips++; return 0;
@@ -37,6 +40,7 @@ static int frame(void) { return exec_cmd("frame 720 1440 quality", px, reply, si
 
 int main(void) {
     tc_init = Init_Eink_SWTcon; tc_decide = ModeDecision_MirrorMode; tc_update = Update_Display_Image;
+    a6l_test_suspended_hook = a6l_test_suspended_s;
     for (int i = 0; i < RING; i++) { ring[i].data = calloc(1, FRAME); ring[i].size = FRAME; }
     img.data = calloc(1, RGBA); img.size = RGBA; last_img = malloc(RGBA);
     static uint8_t flash[FLASH]; memset(flash, 0x5a, sizeof flash);
@@ -132,6 +136,70 @@ int main(void) {
     crtc_wakelock_on = 0; crtc = 7;
     EXPECT(frame() == 0 && started && !crtc_wl_held, "crtc lock: --crtc-wakelock 0 keeps the old behaviour");
     crtc_wakelock_on = 1;
+
+    /* eink-round4: a system suspend in the middle of the drive (6 Oct 17:01:56) -> ERR, picture unknown, next frame recovers */
+    nflips = 0; suspend_at_flip = 6; u = updates;
+    EXPECT(frame() != 0 && !strncmp(reply, "ERR", 3) && panel_unknown, "suspend during the drive -> ERR, panel state unknown");
+    EXPECT(frame() == 0 && !panel_unknown && updates == u + 4, "  ... next frame: recovery clear (white + INIT) then the picture");
+    /* eink-round4: kernel wakelock writes are checked and reported (EPERM without CAP_BLOCK_SUSPEND was silent) */
+    { FILE *f = fopen("t_wake_lock", "w"); if (f) fclose(f); f = fopen("t_wake_unlock", "w"); if (f) fclose(f); }
+    use_wakelock = 1; wl_lock_path = "t_wake_lock"; wl_unlock_path = "t_wake_unlock";
+    EXPECT(frame() == 0 && wl_err == 0, "wakelock: lock write accepted");
+    exec_cmd("status", NULL, reply, sizeof reply);
+    EXPECT(strstr(reply, "kernel_wakelock=ok") != NULL, "status reports kernel_wakelock=ok");
+    wl_lock_path = "/nonexistent-a6l/wake_lock";
+    EXPECT(frame() == 0 && wl_err == ENOENT, "wakelock: failed lock write recorded (update still driven)");
+    exec_cmd("status", NULL, reply, sizeof reply);
+    EXPECT(strstr(reply, "kernel_wakelock=No such file") != NULL, "status reports the wakelock failure");
+    wl_lock_path = "t_wake_lock";
+    EXPECT(frame() == 0 && wl_err == 0, "wakelock: recovers when the write works again");
+    use_wakelock = 0;
+
+    /* eink-round4: the table-dither / direct-pack input path is byte-identical to img_from_grey() */
+    {
+        static uint8_t in[IW * IH]; static int16_t g16[IW * IH]; uint8_t *ref = malloc(RGBA); int same = 1;
+        unsigned s = 7; for (int i = 0; i < IW * IH; i++) { s = s * 1103515245u + 12345u; in[i] = (uint8_t)(s >> 16); }
+        int saved_dither = dither, saved_rot = rot180;
+        for (int d = 0; d <= 2; d += 2) for (int r = 0; r < 2; r++) for (int o = 0; o < 2; o++) {
+            int w = o ? IW : IH, h = o ? IH : IW;
+            dither = d; rot180 = r;
+            for (int i = 0; i < w * h; i++) g16[i] = in[i];
+            img_from_grey(g16, w, h); memcpy(ref, img.data, RGBA);
+            memset(img.data, 0, RGBA); img_from_u8(in, w, h);
+            if (memcmp(ref, img.data, RGBA)) { same = 0; printf("  mismatch dither=%d rot180=%d %dx%d\n", d, r, w, h); }
+        }
+        dither = saved_dither; rot180 = saved_rot; free(ref);
+        EXPECT(same, "fast input path == img_from_grey (ordered/none, rot180 0/1, portrait/landscape)");
+    }
+
+    /* eink-round4 --chain: reply after the waveform, rails held for the tail time, a frame arriving meanwhile starts warm */
+    chain = 1; started = 1; crtc_wakelock_on = 0; n_on = 0; n_off = 0; nflips = 0; u = updates;
+    EXPECT(frame() == 0 && !strncmp(reply, "OK", 2) && rails_held && rails_on && n_on == 1 && n_off == 0, "chain: OK reply with the rails still up (held)");
+    exec_cmd("status", NULL, reply, sizeof reply);
+    EXPECT(strstr(reply, "rails=held") != NULL, "chain: status reports rails=held");
+    int flips_cold = nflips; nflips = 0;
+    EXPECT(frame() == 0 && n_on == 1 && n_off == 0 && rails_held && nflips == flips_cold - lead, "chain: next frame within the tail time: no rails cycle, no lead scans");
+    rails_hold_until = now() - 1;
+    if (rails_held && now() >= rails_hold_until) rails_release("tail: no chained update");	/* = serve() */
+    EXPECT(!rails_held && !rails_on && n_off == 1, "chain: rails switched off when no frame came within the tail time");
+    EXPECT(frame() == 0 && n_on == 2 && rails_held, "chain: after the tail a frame is cold again (rails on + lead)");
+    EXPECT(exec_cmd("power off", NULL, reply, sizeof reply) == 0 && !rails_held && !rails_on && !started, "chain: power off switches the held rails off first");
+    started = 1;
+    EXPECT(frame() == 0 && rails_held, "chain: held again");
+    nflips = 0; flip_fail_at = 3;
+    EXPECT(frame() != 0 && !rails_held && !rails_on && panel_unknown, "chain: a failed warm drive switches the rails off, panel unknown");
+    flip_fail_at = -1;
+    EXPECT(frame() == 0 && !panel_unknown, "chain: recovery clear + frame OK");
+    off_err_count = 2; rails_hold_until = now() - 1;
+    rails_release("test");
+    EXPECT(rails_off_fail >= 2 && panel_unknown && !rails_held, "chain: a failed delayed rails-off is counted and makes the panel unknown");
+    off_err_count = 0;
+    EXPECT(frame() == 0 && !panel_unknown, "chain: ... and the next frame recovers");
+    overlap_gen = 1; n_on = 0; rails_release("test");
+    EXPECT(frame() == 0 && rails_held && n_on == 1, "chain + overlap-gen (rc defaults): cold frame OK, rails held");
+    EXPECT(frame() == 0 && rails_held && n_on == 1 && !panel_unknown, "chain + overlap-gen: chained frame OK without a rails cycle");
+    overlap_gen = 0;
+    rails_release("test end"); chain = 0; crtc_wakelock_on = 1;
 
     printf("A6L_EPDD_DRIVE_TEST %s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;

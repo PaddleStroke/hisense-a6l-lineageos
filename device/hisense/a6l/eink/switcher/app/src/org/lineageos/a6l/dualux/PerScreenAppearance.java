@@ -114,16 +114,21 @@ final class PerScreenAppearance {
     void setTheme(String choice) {
         if (!"light".equals(choice) && !"dark".equals(choice) && !"lcd".equals(choice)) return;
         mPrefs.edit().putString("eink_theme", choice).apply();
-        update(Dualux.daemonRunning() && Dualux.isEink());
+        update(Dualux.daemonRunning() && Dualux.isEink(), !AppearanceGate.contrastMayChange(Dualux.get(Dualux.PREPARE, "")));
     }
 
     boolean available() { return mTheme != null; }
 
-    boolean update(boolean eink) {
+    /** @param switching a screen switch is in flight (vendor.dualux.prepare set): leave the contrast level alone. */
+    boolean update(boolean eink, boolean switching) {
         try {
             mAnimations.update(eink);
             // eink-round2: high-contrast Material scheme with the e-ink themes; "Follow the LCD theme" keeps the LCD look.
-            mContrast.update(eink && !"lcd".equals(theme()));
+            // eink-round4: never during a switch. The contrast change regenerates the theme overlays (assets-paths
+            // config change, a second relaunch of every activity): WM's sync engine then stayed busy past the 1.5 s
+            // themed-redraw deadline and every switch waited for the daemon's 3 s fail-open (6 Oct 17:01:44-47). It is
+            // applied by the 500 ms bookkeeping right after the switch; the e-ink then shows one more update.
+            if (!switching) mContrast.update(eink && !"lcd".equals(theme()));
             String animationState = eink ? "1" : "0";
             if (!animationState.equals(Dualux.get(Dualux.NO_ANIMATIONS, ""))) Dualux.set(Dualux.NO_ANIMATIONS, animationState);
             int slop = android.view.ViewConfiguration.get(mContext).getScaledTouchSlop();

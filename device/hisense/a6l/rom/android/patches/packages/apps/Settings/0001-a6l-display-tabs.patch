@@ -182,7 +182,7 @@ index 0000000..9332283
 +            }
 +        }
 +        // The PreferenceScreen can outlive a recreated fragment view.
-+        for (String key : new String[]{"screen", "appearance", "refresh_section", "frontlight", "keys", "other"}) {
++        for (String key : new String[]{"screen", "appearance", "lockscreen", "refresh_section", "clear_section", "frontlight", "keys", "other"}) {
 +            Preference old = mGroups[2].findPreference("a6l_eink_" + key);
 +            if (old != null && old.getParent() == mGroups[2]) mGroups[2].removePreference(old);
 +        }
@@ -265,7 +265,7 @@ new file mode 100644
 index 0000000..7f88a1d
 --- /dev/null
 +++ b/src/com/android/settings/display/A6lEinkPreferences.java
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,203 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +package com.android.settings.display;
 +
@@ -336,7 +336,10 @@ index 0000000..7f88a1d
 +        });
 +        screen.addPreference(mSwitch);
 +
++        // eink-round4: this tab is the only e-ink settings UI (the Dualux "E-ink display" screen was removed): every
++        // control and help text of that screen lives here, with the same values and the same Dualux strings.
 +        PreferenceCategory appearance = section(parent, "appearance", "sec_appearance");
++        info(appearance, "theme_help", "theme_help");
 +        list(appearance, "theme", "sec_appearance", new String[]{"light", "dark", "lcd"},
 +                "theme_light", "theme_dark", "theme_lcd");
 +        list(appearance, "wallpaper", "sec_wallpaper", new String[]{"white", "lcd"},
@@ -344,14 +347,16 @@ index 0000000..7f88a1d
 +        PreferenceCategory refresh = section(parent, "refresh_section", "sec_refresh");
 +        list(refresh, "refresh", "sec_refresh", new String[]{"stock", "auto", "quality", "partial", "fast", "fastest"},
 +                "mode_stock", "mode_auto", "mode_quality", "mode_partial", "mode_fast", "mode_fastest");
++        PreferenceCategory ghosting = section(parent, "clear_section", "sec_clear");
 +        Preference clear = new Preference(mContext);
 +        clear.setKey("a6l_eink_clear");
 +        clear.setTitle(text("clear_now"));
 +        clear.setOnPreferenceClickListener(p -> { call("request", "clear", null); return true; });
-+        refresh.addPreference(clear);
-+        slider(refresh, "clear_every", "clear_interval", 30);
-+        slider(refresh, "contrast", "contrast_title", 100);
++        ghosting.addPreference(clear);
++        slider(ghosting, "clear_every", "clear_interval", 30);
++        slider(ghosting, "contrast", "contrast_title", 100);
 +        PreferenceCategory light = section(parent, "frontlight", "sec_frontlight");
++        info(light, "fl_help", "fl_help");
 +        toggle(light, "fl_enable", "fl_enable");
 +        slider(light, "fl_max", "fl_limit", 100);
 +        list(light, "fl_gamma", "fl_curve", new String[]{"1", "2"}, "fl_linear", "fl_curve");
@@ -367,6 +372,14 @@ index 0000000..7f88a1d
 +        int id = mResources.getIdentifier(name, "string", PACKAGE);
 +        if (id == 0) throw new IllegalStateException("Missing A6L string: " + name);
 +        return mResources.getString(id, args);
++    }
++    private void info(PreferenceGroup parent, String key, String summary) {
++        Preference pref = new Preference(mContext);
++        pref.setKey("a6l_eink_" + key);
++        pref.setPersistent(false);
++        pref.setSelectable(false);
++        pref.setSummary(text(summary));
++        parent.addPreference(pref);
 +    }
 +    private PreferenceCategory section(PreferenceGroup parent, String key, String title) {
 +        PreferenceCategory category = new PreferenceCategory(mContext);
@@ -438,19 +451,22 @@ index 0000000..7f88a1d
 +                catch (NumberFormatException e) { Log.w("A6lEinkPreferences", "Invalid numeric setting", e); }
 +            }
 +        }
++        String state = snapshot.getString("state", "");
 +        mSwitch.setTitle(text(isEink() ? "switch_to_lcd" : "switch_to_eink"));
-+        mSwitch.setEnabled(!snapshot.getString("state", "").isEmpty());
++        mSwitch.setEnabled(!state.isEmpty());
++        mSwitch.setSummary(state.isEmpty() ? text("daemon_missing")
++                : text("screen_now", text(isEink() ? "screen_eink" : "screen_lcd"), state) + "\n" + text("keys_help"));
 +        updateSummaries();
 +    }
++    private int intValue(String key, int def) {
++        try { return Integer.parseInt(mSnapshot.getString(key, Integer.toString(def))); }
++        catch (NumberFormatException e) { return def; }
++    }
 +    private void updateSummaries() {
-+        Preference interval = mValues.get("clear_every");
-+        int n = 10;
-+        try { n = Integer.parseInt(mSnapshot.getString("clear_every", "10")); }
-+        catch (NumberFormatException ignored) { }
-+        interval.setSummary(n == 0 ? text("clear_never") : text("clear_every", n));
-+        for (String key : new String[]{"contrast", "fl_max"}) {
-+            mValues.get(key).setSummary(mSnapshot.getString(key, "0") + "%");
-+        }
++        int n = intValue("clear_every", 10), contrast = intValue("contrast", 0), flMax = intValue("fl_max", 100);
++        mValues.get("clear_every").setSummary(n == 0 ? text("clear_never") : text("clear_every", n));
++        mValues.get("contrast").setSummary(contrast == 0 ? text("contrast_off") : text("contrast", contrast));
++        mValues.get("fl_max").setSummary(text("fl_max", flMax));
 +    }
 +}
 diff --git a/res/layout/a6l_display_tab_group.xml b/res/layout/a6l_display_tab_group.xml

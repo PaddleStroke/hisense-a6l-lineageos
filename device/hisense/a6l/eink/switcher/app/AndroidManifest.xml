@@ -25,18 +25,19 @@
             android:exported="true"
             android:permission="android.permission.WRITE_SECURE_SETTINGS" />
 
+        <!-- eink-round4: Settings > Display > E-ink tab is the only e-ink settings UI. This invisible activity forwards
+             the old entry points there: the SETTINGS action and long-press on any of our Quick Settings tiles. -->
         <activity
-            android:name=".SettingsActivity"
+            android:name=".SettingsLink"
             android:label="@string/settings_title"
             android:exported="true"
-            android:theme="@android:style/Theme.DeviceDefault.Settings">
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
                 <action android:name="org.lineageos.a6l.dualux.SETTINGS" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- Controls live directly in Settings' E-ink tab; keep this page for tile long-press. -->
-            <!-- long-press on any of our Quick Settings tiles opens this screen -->
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>

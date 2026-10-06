@@ -16,10 +16,16 @@ void pol_init(struct pol_state *s, const struct pol_cfg *c, double now) {
 int pol_in_burst(const struct pol_state *s) { return s->burst; }
 void pol_gesture_released(struct pol_state *s, double now) { s->release_t = now; }
 
+void pol_observe(struct pol_state *s, double t, double moving) {
+    if (moving > 0) { s->last_change = t; s->consec++; } else s->consec = 0;
+}
 struct pol_action pol_step(struct pol_state *s, double now, double moving, double vs_panel, int busy) {
+    pol_observe(s, now, moving);
+    return pol_decide(s, now, vs_panel, busy);
+}
+struct pol_action pol_decide(struct pol_state *s, double now, double vs_panel, int busy) {
     struct pol_action a = {POL_NONE, NULL};
     const struct pol_cfg *c = &s->cfg;
-    if (moving > 0) { s->last_change = now; s->consec++; } else s->consec = 0;
     if (now - s->win_t >= 60) { s->win_t = now; s->win_n = 0; }
     double quiet_ms = (now - s->last_change) * 1000;
     int can = !busy && (now - s->done_t) * 1000 >= c->min_gap_ms && s->win_n < c->max_per_min;
@@ -295,6 +301,97 @@ long guarded_copy(void *dst, const void *src, size_t n, size_t chunk, int (*stil
     }
     if (checks) *checks = k;
     return (long)n;
+}
+/* ---------------- 8. fixed-point area resize (eink-round4) ---------------- */
+#define AREA_SH 12
+/* Per output index: first source index and `taps` weights (zero padded, so every output reads exactly `taps` source
+ * samples: constant trip count, no per-pixel branches). Weights of one output sum to exactly 1 << AREA_SH. */
+static int area_axis_build(int src, int out, struct area_axis **ax, uint16_t **w, int *taps_out) {
+    double f = (double)src / out; int taps = (int)f + 2; if (taps > src) taps = src;
+    struct area_axis *a = malloc((size_t)out * sizeof *a); uint16_t *ww = calloc((size_t)out * taps, sizeof *ww);
+    if (!a || !ww) { free(a); free(ww); return -1; }
+    for (int o = 0; o < out; o++) {
+        double lo = o * f, hi = lo + f; int i0 = (int)lo, i1 = (int)hi;	/* as the double version: last index clamped */
+        if (i1 >= src) i1 = src - 1;
+        if (i0 > i1) i0 = i1;
+        int n = i1 - i0 + 1; if (n > taps) n = taps;
+        int v[16] = {0}, sum = 0, big = 0;
+        for (int k = 0; k < n && k < 16; k++) {
+            int i = i0 + k; double ov = (i + 1 < hi ? i + 1 : hi) - (i > lo ? i : lo);
+            if (k == n - 1 && i == src - 1 && hi > i + 1) ov = hi - i;	/* edge: the double version gives the clamped pixel the rest */
+            if (ov < 0) ov = 0;
+            v[k] = (int)(ov / f * (1 << AREA_SH) + 0.5); sum += v[k];
+            if (v[k] > v[big]) big = k;
+        }
+        v[big] += (1 << AREA_SH) - sum;		/* exact unit sum: flat areas stay exact */
+        int first = i0, shift = 0;
+        if (first + taps > src) { shift = first + taps - src; first -= shift; }	/* keep all taps inside the image */
+        for (int k = 0; k < n; k++) ww[(size_t)o * taps + k + shift] = (uint16_t)v[k];
+        a[o] = (struct area_axis){first, taps, o * taps};
+    }
+    *ax = a; *w = ww; *taps_out = taps; return 0;
+}
+void area_resizer_free(struct area_resizer *r) {
+    free(r->hx); free(r->vy); free(r->hw); free(r->vw); free(r->acc); free(r->row); memset(r, 0, sizeof *r);
+}
+int area_resize(struct area_resizer *r, const uint8_t *src, int gw, int gh, uint8_t *dst, int ow, int oh,
+                int ox, int oy, int dw, int dh, const uint8_t lut[256]) {
+    if (gw <= 0 || gh <= 0 || dw <= 0 || dh <= 0 || dw > 8192 || dh > 8192 || gw > 8192 || gh > 8192) return -1;
+    int ht = 0, vt = 0;
+    if (r->gw != gw || r->gh != gh || r->dw != dw || r->dh != dh || !r->acc) {
+        area_resizer_free(r);
+        if (area_axis_build(gw, dw, &r->hx, &r->hw, &ht) || area_axis_build(gh, dh, &r->vy, &r->vw, &vt)) { area_resizer_free(r); return -1; }
+        r->acc_n = (size_t)dw * gh; r->acc = malloc(r->acc_n * sizeof *r->acc); r->row = malloc((size_t)dw * sizeof *r->row);
+        if (!r->acc || !r->row) { area_resizer_free(r); return -1; }
+        r->gw = gw; r->gh = gh; r->dw = dw; r->dh = dh;
+    }
+    ht = r->hx[0].n; vt = r->vy[0].n;
+    /* horizontal: acc = sum(w * src), value x 4096 (<= 255 * 4096) */
+    for (int y = 0; y < gh; y++) {
+        const uint8_t *s = src + (size_t)y * gw; uint32_t *d = r->acc + (size_t)y * dw;
+        const struct area_axis *a = r->hx; const uint16_t *w = r->hw;
+        if (ht == 3)	/* 1080 -> 720 (x1.5) and every factor in [1, 2): three taps */
+            for (int x = 0; x < dw; x++, w += 3) { const uint8_t *p = s + a[x].first; d[x] = (uint32_t)w[0] * p[0] + (uint32_t)w[1] * p[1] + (uint32_t)w[2] * p[2]; }
+        else
+            for (int x = 0; x < dw; x++, w += ht) { const uint8_t *p = s + a[x].first; uint32_t v = 0; for (int k = 0; k < ht; k++) v += (uint32_t)w[k] * p[k]; d[x] = v; }
+    }
+    /* vertical, row by row (contiguous): sum(w * acc) <= 255 * 4096 * 4096 < 2^32 */
+    for (int y = 0; y < dh; y++) {
+        int yy = y + oy; if (yy < 0 || yy >= oh) continue;
+        const struct area_axis *a = &r->vy[y]; const uint16_t *w = r->vw + a->off;
+        uint32_t *row = r->row; const uint32_t *s0 = r->acc + (size_t)a->first * dw;
+        if (vt == 3) {
+            const uint32_t *s1 = s0 + dw, *s2 = s1 + dw; uint32_t w0 = w[0], w1 = w[1], w2 = w[2];
+            for (int x = 0; x < dw; x++) row[x] = w0 * s0[x] + w1 * s1[x] + w2 * s2[x];
+        } else {
+            uint32_t w0 = w[0];
+            for (int x = 0; x < dw; x++) row[x] = w0 * s0[x];
+            for (int k = 1; k < vt; k++) { const uint32_t *s = s0 + (size_t)k * dw; uint32_t wk = w[k]; for (int x = 0; x < dw; x++) row[x] += wk * s[x]; }
+        }
+        uint8_t *o = dst + (size_t)yy * ow;
+        int x0 = ox < 0 ? -ox : 0, x1 = dw + ox > ow ? ow - ox : dw;
+        for (int x = x0; x < x1; x++) {
+            uint32_t v = (row[x] + (1u << (2 * AREA_SH - 1))) >> (2 * AREA_SH);
+            o[x + ox] = lut[v > 255 ? 255 : v];
+        }
+    }
+    return 0;
+}
+
+void cap_guard_init(struct cap_guard *g, int max_discards, int max_ms) {
+    memset(g, 0, sizeof *g);
+    g->max_discards = max_discards < 0 ? 0 : max_discards; g->max_ms = max_ms < 0 ? 0 : max_ms;
+}
+void cap_guard_reset(struct cap_guard *g) { g->discards = 0; g->first_t = 0; }
+enum cap_verdict cap_guard_step(struct cap_guard *g, enum capk kind, double now) {
+    if (kind == CAPK_OK) { g->discards = 0; return CV_ACCEPT; }
+    if (!g->discards) g->first_t = now;
+    /* this capture would be discard number discards + 1: past the count or the time bound -> accept it */
+    if ((unsigned)g->max_discards <= g->discards || (g->discards && (now - g->first_t) * 1000 >= g->max_ms)) {
+        g->discards = 0; g->forced++; return CV_FORCE;
+    }
+    g->discards++;
+    return CV_DISCARD;
 }
 int front_follow_step(struct front_follow *f, int front_off) {
     if (!front_off) { f->off = 0; return 0; }

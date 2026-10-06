@@ -4,7 +4,8 @@ package org.lineageos.a6l.dualux;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 
-/** Quick Settings: e-ink refresh mode; tap cycles auto -> quality -> reading -> fast -> fastest (applied live). */
+/** Quick Settings: e-ink refresh mode; tap cycles stock -> auto -> quality -> reading -> fast -> fastest -> stock
+ * (RefreshModes.MODES, applied live); long-press opens Settings > Display > E-ink (SettingsLink). */
 public class RefreshTile extends TileService {
     @Override public void onStartListening() { update(); }
 

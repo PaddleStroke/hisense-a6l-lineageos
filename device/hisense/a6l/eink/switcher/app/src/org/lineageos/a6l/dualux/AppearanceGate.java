@@ -37,6 +37,10 @@ final class AppearanceGate {
         catch (NumberFormatException e) { return false; }
     }
 
+    /** eink-round4: the Material contrast level may only change while no screen switch is in flight (prepare empty):
+     * its overlay regeneration kept WM's sync engine busy past the themed-redraw deadline (3 s switches). */
+    static boolean contrastMayChange(String prepare) { return prepare == null || prepare.isEmpty(); }
+
     /** eink-round2: the daemon can fail open (clear its prepare) before this app ever applied the target, e.g. a
      * prepare begun while Android slept. Bookkeeping then restores theme and animations, but the WM-facing target
      * (sys.a6l.dualux.appearance) keeps the old screen: the rear white wallpaper stayed over the LCD home (user

@@ -66,6 +66,22 @@ check('DisplayTile' in [t.get('{%s}name' % A)[1:] for t in tiles], 'screen-switc
 check('com.android.settings.action.EXTRA_SETTINGS' not in man and 'A6lEinkPreferences' in rd(inline_patch)
       and 'QS_TILE_PREFERENCES' in man, 'controls inline in Display, no duplicate navigation tile; long-press retained')
 
+# eink-round4: Settings > Display > E-ink is the only e-ink settings UI
+ip = ''.join(rd(p) for p in settings_patches)	# 0001 (tabs) + 0002 (lock screen, eink-lockscreen)
+check('SettingsActivity' not in java and '.SettingsActivity' not in man, 'no Dualux settings screen (Settings E-ink tab is the only UI)')
+link = [c for c in mroot.find('application') if c.tag == 'activity' and c.get('{%s}name' % A) == '.SettingsLink']
+acts = [a.get('{%s}name' % A) for c in link for f in c.findall('intent-filter') for a in f.findall('action')]
+check(len(link) == 1 and 'android.service.quicksettings.action.QS_TILE_PREFERENCES' in acts and 'org.lineageos.a6l.dualux.SETTINGS' in acts
+      and link[0].get('{%s}theme' % A) == '@android:style/Theme.NoDisplay', 'tile long-press and SETTINGS forward to Settings (invisible SettingsLink)')
+key = re.search(r'EINK_KEY = "([^"]+)"', java.get('SettingsTarget', ''))
+check(key is not None and ('setKey("%s")' % key.group(1)) in ip, 'SettingsLink target key is a preference of the Settings E-ink tab')
+modes = re.findall(r'"(\w+)"', re.search(r'MODES = \{([^}]*)\}', java['RefreshModes']).group(1))
+lst = re.search(r'list\(refresh, "refresh", "sec_refresh", new String\[\]\{([^}]*)\}', ip)
+check(lst is not None and re.findall(r'"(\w+)"', lst.group(1)) == modes, 'Settings refresh list == QS tile cycle == %s' % modes)
+keys = re.findall(r'"(\w+)"', re.search(r'KEYS = \{([^}]*)\}', java['SettingsValues'], re.S).group(1))
+bound = set(re.findall(r'(?:list|slider|toggle)\(\w+, "(\w+)"', ip))
+check(set(keys) | {'theme'} <= bound, 'every provider setting has a Settings E-ink tab control (missing %s)' % sorted(set(keys) | {'theme'} - bound))
+
 # no hard-coded user-visible English in tiles/settings (setText/setLabel/setSubtitle with a literal)
 check(not re.search(r'set(Text|Label|Subtitle)\(\s*"', alljava), 'no literal UI text in Java')
 # properties: the app writes only system_ext a6l_dualux_ctl_prop keys and reads no vendor_internal key

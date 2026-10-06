@@ -39,7 +39,6 @@ final class Dualux {
     static final String P_LOCK_CLOCK = "persist.sys.a6l.eink.lock_clock";   // 1 | 0: time + date, minute RTC wake-ups
     static final String P_LOCK_BATTERY = "persist.sys.a6l.eink.lock_battery"; // 1 | 0
     static final String P_LOCK_24H = "persist.sys.a6l.eink.lock_24h";       // mirrored from Android by LockSync
-    static final String[] MODES = {"stock", "auto", "quality", "partial", "fast", "fastest"};
     static final int DEFAULT_CLEAR_EVERY = 10;   // a6l_eink.rc default (--clear-every 10)
 
     private static Method sGet, sSet;
@@ -79,28 +78,12 @@ final class Dualux {
     }
 
     static String refreshMode() {
-        // persist.vendor.eink.reading is vendor_internal (system_app may not read it): unset/unknown = auto, which is
+        // persist.vendor.eink.reading is vendor_internal (system_app may not read it): unset/unknown = stock, which is
         // also what the mirror applies when persist.sys.a6l.eink.refresh is unset and .reading is 0 (the build default)
-        String m = get(P_REFRESH, "");
-        for (String k : MODES) if (k.equals(m)) return m;
-        return "stock";
+        return RefreshModes.normalize(get(P_REFRESH, ""));
     }
 
-    static String nextMode(String m) {
-        for (int i = 0; i < MODES.length; i++) if (MODES[i].equals(m)) return MODES[(i + 1) % MODES.length];
-        return MODES[0];
-    }
-
-    static int modeLabel(String m) {
-        switch (m) {
-            case "stock": return R.string.mode_stock;
-            case "quality": return R.string.mode_quality;
-            case "partial": return R.string.mode_partial;
-            case "fast": return R.string.mode_fast;
-            case "fastest": return R.string.mode_fastest;
-            default: return R.string.mode_auto;
-        }
-    }
+    static String nextMode(String m) { return RefreshModes.next(m); }
 
     /** Short, translated mode name for the Quick Settings subtitle. */
     static int shortLabel(String m) {

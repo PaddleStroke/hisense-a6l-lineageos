@@ -33,6 +33,9 @@ public final class AppearanceGateTest {
         check(AppearanceGate.reconcile("5 lcd", "", "lcd", 77) == null && AppearanceGate.reconcile("5 eink", "", "eink", 77) == null);
         check(AppearanceGate.reconcile("5 eink", "9 lcd", "lcd", 77) == null);	// in-flight switch belongs to the gate
         check(AppearanceGate.reconcile("5 eink", "", "", 77) == null && AppearanceGate.reconcile("5 eink", "", "lcd", 0) == null);
+        // eink-round4: the contrast level never changes while a switch is in flight (3 s switches, 6 Oct 17:01)
+        check(!AppearanceGate.contrastMayChange("1510431138 eink") && !AppearanceGate.contrastMayChange("9 lcd"));
+        check(AppearanceGate.contrastMayChange("") && AppearanceGate.contrastMayChange(null));
         System.out.println("APPEARANCE_GATE_TEST PASS " + checks);
     }
 }

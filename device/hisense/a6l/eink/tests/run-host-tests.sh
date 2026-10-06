@@ -21,6 +21,8 @@ $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o epdd "$S/src/a6l_epdd.
 $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o mirror "$S/src/a6l_eink_mirror.c" "$S/src/eink_logic.c" -ldrm && ok build-mirror || ko build-mirror
 $CC -O2 -Wall -Wextra -o t_integer "$S/tests/test_plane_integer.c" "$S/src/eink_logic.c" && ./t_integer > t_integer.log 2>&1 && ok plane-integer-equivalence || { ko plane-integer-equivalence; cat t_integer.log; }
 $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o t_appearance "$S/tests/test_mirror_appearance.c" "$S/src/eink_logic.c" -ldrm && ./t_appearance > t_appearance.log 2>&1 && ok mirror-appearance-frame-gate || { ko mirror-appearance-frame-gate; cat t_appearance.log; }
+# eink-round4: only LCD layout changes discard a capture (content flips of other planes / the e-ink lessee plane do not)
+$CC -O1 -Wall -Wextra -Wno-unused-function $DRM -o t_capguard "$S/tests/test_capture_guard.c" && ./t_capguard > t_capguard.log 2>&1 && grep -q "A6L_CAPTURE_GUARD_TEST PASS" t_capguard.log && ok capture-guard-layout || { ko capture-guard-layout; grep FAIL t_capguard.log; }
 python3 "$S/tests/gen_frames.py" frames >/dev/null && ok frames || ko frames
 head -c $((0x70080)) /dev/urandom > wf.bin; head -c $((0x70080)) /dev/zero | tr '\0' '\377' > erased.bin
 rm -rf e2e; mkdir e2e
@@ -46,6 +48,9 @@ grep -q "lockframe.*OK lock picture shown" e2e/client.log && grep -q "lock resto
 n=$(grep -c "epdd: OK" e2e/mirror.log); r=$(grep -c "cmd:" e2e/mirror.log); [ "$n" = "$r" ] && [ "$r" -gt 0 ] && ok "every command answered OK ($r cmds, $n replies)" || ko "unanswered commands ($r cmds, $n OK replies)"
 # r5 review round4 F36: failed / unacknowledged frames are resent for a static page (ERR, disconnect, lost reply)
 python3 "$S/tests/mirror_ack_test.py" ./mirror ack > ack.log 2>&1; grep -q "MIRROR_ACK_TEST PASS" ack.log && ok mirror-ack-resend || { ko mirror-ack-resend; cat ack.log; }
+# eink-round4: pipelined capture: the next page is captured during the (simulated) drive and sent at the reply
+env persist.sys.a6l.eink.refresh=stock timeout 30 ./mirror --dry --interval 100 --source 'files:frames/f%d.raw' --mode mirror --key-dev none --touch-dev none --frames 200 > pipeline.log 2>&1
+python3 "$S/tests/pipeline_check.py" pipeline.log > pipeline_check.log 2>&1 && ok "mirror-pipelined-capture ($(cut -c1-60 pipeline_check.log))" || { ko mirror-pipelined-capture; cat pipeline_check.log; }
 rm -rf io; mkdir io; mkfifo io/key io/touch
 timeout 25 ./mirror --dry --source 'files:frames/f%d.raw' --no-props --key-dev io/key --touch-dev io/touch --touch-debug > io/mirror.log 2>&1 &
 MP=$!; sleep 0.5; python3 "$S/tests/input_test.py" io/key io/touch > io/driver.log 2>&1; sleep 0.5; kill $MP 2>/dev/null; wait $MP 2>/dev/null

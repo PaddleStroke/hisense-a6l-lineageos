@@ -112,7 +112,7 @@ final class PerScreenMemory {
                 // WMS receives the atomic target before the theme Binder call.
                 Dualux.set(Dualux.APPEARANCE, request);
                 notifyWindowProperties(request, false);
-                boolean applied = appearance.update(eink);
+                boolean applied = appearance.update(eink, true);	// eink-round4: contrast after the switch
                 Log.i(Dualux.TAG, "appearance " + request + " stage applied=" + applied
                         + " elapsed_ms=" + (SystemClock.elapsedRealtime() - mAppearanceStarted));
                 return applied;
@@ -181,7 +181,8 @@ final class PerScreenMemory {
 
     private void checkBookkeeping() {
         boolean running = Dualux.daemonRunning();
-        PerScreenAppearance.get(mCtx).update(running && Dualux.isEink());
+        PerScreenAppearance.get(mCtx).update(running && Dualux.isEink(),
+                !AppearanceGate.contrastMayChange(Dualux.get(Dualux.PREPARE, "")));
         if (!running) return;
         reconcileAppearance();
         String now = screen();

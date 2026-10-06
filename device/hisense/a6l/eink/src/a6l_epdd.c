@@ -32,6 +32,8 @@
  *                  with the lessee CRTC enabled; timed idle-off + 15 s, released by power off / idle-off / exit)
  *   v2/v3 options: --mode --clear-every --temp --rot180 --no-dither --dither fs|ordered|none --hold --dry --power --xon-line --lead --tail
  *   --overlap-gen 0|1 (eink-round2, experimental, default 0): generate the waveform frames while rails-on + lead scans run
+ *   --chain 0|1 (eink-round4, default 0, rc 1): reply right after the waveform; keep the rails up over idle frames for the
+ *                  tail time and start a frame that arrives meanwhile without rails-off/on and lead scans
  *                  --save-mode --mode-file
  *   commands: show <file> [mode] | frame <w> <h> [mode] + w*h bytes | clear [full|stock|init|gc] | refresh | mode <m> |
  *             sleep <s> | status | power off | ping | quit | frametest <p5 file> [mode] (test: a PGM through the frame path)
@@ -346,9 +348,38 @@ static void trace_finish(int rc, const char *reply, int physical_attempted) {
     exact_trace.state=TRACE_DONE; /* One attempt per process, including IO failure. */
 }
 
+/* eink-round4: "input 720x1440 prepared in 52-61 ms" (6 Oct logs) is on the critical path of every update. For the
+ * position-stable dithers (ordered, none) the same bytes are produced without the int16 copy: one table lookup per pixel
+ * (ordered16 for every 8x8 phase and grey) and one 32-bit store into the transposed library layout, in row blocks that
+ * keep the strided source reads in cache. Floyd-Steinberg keeps img_from_grey(). Byte-identical (host-tested). */
+static uint8_t ord_lut[64][256]; static int ord_lut_ready;
+static void img_from_u8(const uint8_t *px, int w, int h) {
+    double t0 = now();
+    if (!ord_lut_ready) { for (int p = 0; p < 64; p++) for (int g = 0; g < 256; g++) ord_lut[p][g] = (uint8_t)ordered16(g, (unsigned)(p & 7), (unsigned)(p >> 3)); ord_lut_ready = 1; }
+    uint32_t *dst = img.data; enum { RB = 32 };
+    for (int y0 = 0; y0 < h; y0 += RB) {
+        int y1 = y0 + RB < h ? y0 + RB : h;
+        for (int x = 0; x < w; x++) {
+            int xx = rot180 ? w - 1 - x : x;
+            for (int y = y0; y < y1; y++) {
+                uint8_t v = px[(size_t)y * w + x];
+                if (dither == 2) v = ord_lut[((y & 7) << 3) | (x & 7)][v];
+                int yy = rot180 ? h - 1 - y : y;
+                size_t i = w == IW ? (size_t)yy * IW + IW - 1 - xx : (size_t)xx * IW + yy;	/* = img_set() */
+                dst[i] = 0xff000000u | (uint32_t)v << 16 | (uint32_t)v << 8 | v;	/* little endian: bytes v v v ff */
+            }
+        }
+    }
+    input_dither_ms = 0; input_pack_ms = (now() - t0) * 1000;
+}
 static int load_grey(const uint8_t *px, int w, int h) {	/* v4 "frame" command */
     double t0 = now();
     if (!size_ok(w, h)) { LOG("FAIL frame %dx%d: need 1440x720 or 720x1440", w, h); return -1; }
+    if (dither != 1) {
+        img_from_u8(px, w, h);
+        LOG("input %dx%d prepared in %.0f ms (table dither + direct pack)", w, h, (now() - t0) * 1000);
+        return 0;
+    }
     int16_t *g = malloc((size_t)w * h * sizeof *g); if (!g) return -1;
     for (size_t i = 0; i < (size_t)w * h; i++) g[i] = px[i];
     img_from_grey(g, w, h); free(g);
@@ -405,12 +436,47 @@ static void xon_hold(void) {
     close(chip);
 }
 static int use_wakelock;
+/* eink-round4: kernel/power/wakelock.c pm_wake_lock()/pm_wake_unlock() return -EPERM without CAP_BLOCK_SUSPEND. The
+ * service ran as "user system" without that capability, so every lock write failed (open() succeeds: the file is
+ * radio:wakelock 0660) and the failure was logged once at the first update after boot only. 6 Oct 17:01:56: Android
+ * suspended 0.48 s into update 86 (s2idle entry while the rails were on), the panel suspend cut the rails mid-waveform,
+ * the kernel resume re-committed the enabled lessee CRTC and the next LCD switch faulted in the MDP SMMU again (round 3's
+ * trigger, which 0013's a6l_epdd_crtc lock was meant to remove). The rc now grants BLOCK_SUSPEND; every failed lock write
+ * is logged (rate-limited) and reported by "status" (kernel_wakelock=ok|<errno>). Paths are variables for the host test. */
+static const char *wl_lock_path = "/sys/power/wake_lock", *wl_unlock_path = "/sys/power/wake_unlock";
+static int wl_err;		/* errno of the last failed lock write, 0 = the last lock write succeeded */
+static int wl_write(int lock, const char *what) {
+    int f = open(lock ? wl_lock_path : wl_unlock_path, O_WRONLY | O_CLOEXEC), e = 0;
+    if (f < 0) e = errno ? errno : EIO;
+    else { size_t n = strlen(what); if (write(f, what, n) != (ssize_t)n) e = errno ? errno : EIO; close(f); }
+    if (!lock) return e;	/* unlock of a lock that is not held = EINVAL: not an error */
+    if (e) {
+        static double last; static int last_e;
+        if (e != last_e || now() - last > 60) {
+            LOG("FAIL wakelock '%s' not taken: %s%s - the system can suspend in the middle of an e-ink update", what, strerror(e),
+                e == EPERM ? " (needs CAP_BLOCK_SUSPEND: rc 'capabilities BLOCK_SUSPEND')" : "");
+            last = now(); last_e = e;
+        }
+    } else if (wl_err) LOG("wakelock '%s' taken again (kernel wakelock ok)", what);
+    wl_err = e;
+    return e;
+}
 static void wakelock(int on) {
     if (!use_wakelock || dry) return;
-    int f = open(on ? "/sys/power/wake_lock" : "/sys/power/wake_unlock", O_WRONLY | O_CLOEXEC); if (f < 0) return;
-    if (write(f, "a6l_epdd", 8) != 8) { static int warned; if (!warned++) LOG("WARN wakelock: %s", strerror(errno)); }
-    close(f);
+    wl_write(on, "a6l_epdd");
 }
+/* eink-round4: CLOCK_BOOTTIME - CLOCK_MONOTONIC grows by the time spent in system suspend (s2idle included). A drive
+ * that straddles a suspend has lost its rails (panel suspend) and its frame timing: the picture is unknown. */
+#ifdef A6L_EPDD_HOSTTEST
+static double (*a6l_test_suspended_hook)(void);	/* set by tests/test_epdd_drive.c; other host tests: never suspended */
+static double suspended_s(void) { return a6l_test_suspended_hook ? a6l_test_suspended_hook() : 0; }
+#else
+static double suspended_s(void) {
+    struct timespec b, m;
+    if (clock_gettime(CLOCK_BOOTTIME, &b) || clock_gettime(CLOCK_MONOTONIC, &m)) return 0;
+    return (b.tv_sec - m.tv_sec) + (b.tv_nsec - m.tv_nsec) / 1e9;
+}
+#endif
 /* eink-round3: the e-ink CRTC (a lessee CRTC) must never be enabled across a system suspend. The kernel's
  * drm_mode_config_helper_suspend/resume saves and re-commits it behind the composer's and our back (V73 bring-up runs
  * inside the resume path), and the only filmed LCD scan-out corruption (6 Oct 16:07:34, ~90 s of MDP SMMU faults) started
@@ -423,11 +489,10 @@ static void crtc_wakelock(int on) {
     if (!on && !crtc_wl_held) return;
     crtc_wl_held = on;
     if (!use_wakelock) return;
-    int f = open(on ? "/sys/power/wake_lock" : "/sys/power/wake_unlock", O_WRONLY | O_CLOEXEC); if (f < 0) return;
-    char b[64]; int n = on && idle_off_s > 0 ? snprintf(b, sizeof b, "a6l_epdd_crtc %lld", (long long)(idle_off_s + 15) * 1000000000LL)
-                                             : snprintf(b, sizeof b, "a6l_epdd_crtc");
-    if (write(f, b, (size_t)n) != n && on) { static int warned; if (!warned++) LOG("WARN crtc wakelock: %s", strerror(errno)); }	/* unlock of a lock that is not held = EINVAL */
-    close(f);
+    char b[64];
+    if (on && idle_off_s > 0) snprintf(b, sizeof b, "a6l_epdd_crtc %lld", (long long)(idle_off_s + 15) * 1000000000LL);
+    else snprintf(b, sizeof b, "a6l_epdd_crtc");
+    wl_write(on, b);	/* eink-round4: failures logged, see wl_write() */
 }
 
 /* ---------------- waveform: files, then the panel NOR (READ-ONLY), in the order given ---------------- */
@@ -625,7 +690,9 @@ out:
     if (rc && dfd >= 0) { close(dfd); dfd = -1; }
     return rc;
 }
+static int rails_release(const char *why);
 static void drm_close(void) {	/* v4: lease lost / composer restarted: drop everything, the next update reopens */
+    rails_release("DRM reset");
     /* eink-round3: closing the lessee fd removes our fbs but does not disable the CRTC; switch it off while we still can
      * (fails harmlessly when the lease is already revoked), then drop the no-suspend lock with it. */
     if (dfd >= 0 && crtc && started && !dry) drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL);
@@ -720,7 +787,9 @@ static int drm_start(void) {	/* modeset = panel prepare+enable = kernel bring-up
     }
     return -1;
 }
+static int rails_release(const char *why);
 static void crtc_off(const char *why) {
+    rails_release(why);	/* eink-round4: never leave the rails up behind a switched-off CRTC */
     if (dry || dfd < 0 || !crtc || !started) return;
     drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); started = 0; LOG("e-ink CRTC off (%s)", why);
     crtc_wakelock(0);
@@ -775,28 +844,49 @@ static void job_wait_until(struct gen_job *j, double t_end) {	/* wait for the jo
     }
     pthread_mutex_unlock(&j->mu);
 }
+/* eink-round4 (--chain 1, rc default 1): one update every ~0.8 s instead of ~1.5 s while the page keeps changing.
+ * Stock keeps the rails up during a burst and starts the next waveform ~0.09 s after the previous one (round 1/2 films).
+ * After the last waveform frame the scanout is switched to the idle (no-drive) frame and the reply is sent at once: the
+ * picture on the panel is final, the tail scans only kept the rails up over idle frames. The rails then stay up for the
+ * tail time (tail / 85 Hz, serve() switches them off) and, if the next frame command arrives within it, its waveform
+ * starts without rails-off, rails-on and lead scans (the CRTC kept scanning the idle frame, so the rails had settled).
+ * Rails-on time per cycle is no longer than lead + tail today; the "a6l_epdd" wakelock is held while they are up.
+ * Every other command, power off, idle-off, a lost lease and exit switch the rails off first. */
+static int chain, rails_held; static double rails_hold_until;
+static int rails_release(const char *why) {
+    if (!rails_held) return 0;
+    rails_held = 0;
+    int rc = 0; double t0 = now();
+    if (power(0) && power(0)) { rails_off_fail++; panel_unknown = 1; rc = -1; LOG("FAIL rails not switched off after update %d (%s): panel state unknown", updates, why); }
+    else LOG("rails off after update %d (%s) in %.0f ms", updates, why, (now() - t0) * 1000);
+    wakelock(0);
+    return rc;
+}
 static int drive_job(int n, struct gen_job *job);
 static int drive(int n) { return drive_job(n, NULL); }
 static int drive_job(int n, struct gen_job *job) {	/* scan out the n frames of the current update; rails only around the drive (v2) */
     double tcold = now();
+    int warm = rails_held && started;	/* eink-round4: chained update, rails still up over idle frames */
+    if (rails_held && !started) rails_release("CRTC was off");
+    rails_held = 0;
     /* modeset with the real strobe pattern, as a6l_epd_play did; eink-round3: no suspend while the e-ink CRTC is on */
     if (!started) { crtc_wakelock(1); if (drm_start()) { crtc_wakelock(0); return -1; } started = 1; }
     else crtc_wakelock(1);	/* refresh the timed lock: idle-off counts from this update */
     double cold_ms = (now() - tcold) * 1000;
-    if (job && last_gen_ms > 0) {	/* rails on only so early that rails-on + lead end when generation is expected to end */
+    if (job && last_gen_ms > 0 && !warm) {	/* rails on only so early that rails-on + lead end when generation is expected to end */
         double lead_s = lead / 85.0, budget = last_gen_ms / 1000 - last_rails_on_ms / 1000 - lead_s;
         if (budget > 0) job_wait_until(job, job->t0 + budget);
     }
-    unsigned g0 = gaps; int rc = 0; double t1 = now();
-    if (power(1)) {	/* F35: no waveform scanout without the rails; switch off whatever may have come up */
+    unsigned g0 = gaps; int rc = 0; double t1 = now(), susp0 = suspended_s();
+    if (!warm && power(1)) {	/* F35: no waveform scanout without the rails; switch off whatever may have come up */
         LOG("FAIL rails not switched on: update %d not driven", updates);
         if (power(0)) { rails_off_fail++; LOG("FAIL rails not switched off after the failed switch-on"); }
         last_ms = (int)((now() - t1) * 1000);
         return -1;
     }
     double rails_on_ms = (now() - t1) * 1000, tp = now();
-    last_rails_on_ms = rails_on_ms;
-    for (int i = 0; i < lead && !rc; i++) rc = flip(idle.id);
+    if (!warm) last_rails_on_ms = rails_on_ms;
+    for (int i = 0; i < lead && !rc && !warm; i++) rc = flip(idle.id);
     int extra_idle = 0;
     if (job) {	/* all frames must exist before the first waveform frame; idle scans meanwhile drive nothing */
         while (!rc && !job_done(job)) { rc = flip(idle.id); extra_idle++; }
@@ -808,13 +898,22 @@ static int drive_job(int n, struct gen_job *job) {	/* scan out the n frames of t
     for (int k = 0; k < n && !rc; k++) { struct fb *f = (k & 1) ? &fb2 : &fa; memcpy(f->map, frames[k], FRAME); rc = flip(f->id); }
     double wave_ms = (now() - tp) * 1000; tp = now();
     gd = gaps - gd;
-    for (int i = 0; i < tail && !rc; i++) rc = flip(idle.id);
+    double lost = suspended_s() - susp0;	/* eink-round4: a suspend cut the rails (panel suspend) mid-waveform */
+    int hold = chain && !rc && lost <= 0.05 && tail > 1;
+    if (hold) {	/* eink-round4 chain: idle frame now, reply now, rails off by serve() after the tail time unless chained */
+        rc = flip(idle.id);
+        if (!rc) { rails_held = 1; rails_hold_until = now() + (tail - 1) / 85.0; }
+        else hold = 0;
+    }
+    for (int i = 0; i < tail && !rc && !hold; i++) rc = flip(idle.id);
     double tail_ms = (now() - tp) * 1000; tp = now();
-    if (power(0) && power(0)) {	/* F35: every exit switches the rails off; a failure (after one retry) is an error */
+    if (!rails_held && power(0) && power(0)) {	/* F35: every exit switches the rails off; a failure (after one retry) is an error */
         rails_off_fail++; LOG("FAIL rails not switched off after update %d", updates); rc = -1;
     }
+    if (lost > 0.05) { LOG("FAIL system suspended for %.1f s during update %d: waveform interrupted, panel state unknown", lost, updates); rc = -1; }
     last_ms = (int)((now() - t1) * 1000);
-    LOG("update %d stages mono_ms=%.3f cold=%.0f rails_on=%.0f lead=%.0f waveform=%.0f tail=%.0f rails_off=%.0f%s", updates, now() * 1000, cold_ms, rails_on_ms, lead_ms, wave_ms, tail_ms, (now() - tp) * 1000, job ? " (overlapped generation)" : "");
+    LOG("update %d stages mono_ms=%.3f cold=%.0f rails_on=%.0f lead=%.0f waveform=%.0f tail=%.0f rails_off=%.0f%s%s%s", updates, now() * 1000, cold_ms, rails_on_ms, lead_ms, wave_ms, tail_ms, (now() - tp) * 1000, job ? " (overlapped generation)" : "",
+        warm ? " (chained: rails were up)" : "", rails_held ? " (rails held for the next update)" : "");
     if (job) LOG("update %d overlap: %d extra idle scans while generating", updates, extra_idle);
     LOG("update %d shown in %d ms: %s, missed vblanks during drive=%u (total %u)", updates, last_ms, rc ? "FAILED" : "ok", gd, gaps - g0);
     return rc;
@@ -840,7 +939,7 @@ static int run_update(int force, int m, const char *what) {
                 else break;
             }
             pthread_join(th, NULL);	/* also after an early drive failure: the library state must be quiescent */
-            wakelock(0);
+            if (!rails_held) wakelock(0);	/* eink-round4: held while the rails stay up (chain) */
             if (job.n < 0) rc = -1;
             last_frames = job.n; last_gen_ms = job.ms;
             if (exact_trace.state == TRACE_CAPTURED && exact_trace.update == updates) { exact_trace.frames=job.n; exact_trace.decision=job.nf; exact_trace.temperature=t; }
@@ -869,7 +968,7 @@ static int run_update(int force, int m, const char *what) {
         if (rc && drm_lost) { LOG("WARN DRM access lost (lease revoked / composer restarted?): re-acquiring and driving again"); drm_close(); }
         else break;
     }
-    wakelock(0);
+    if (!rails_held) wakelock(0);	/* eink-round4: held while the rails stay up (chain) */
     last_update_t = now(); if (rc) { fails_total++; panel_unknown = 1; }
     return rc;
 }
@@ -986,8 +1085,8 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     if (!strcmp(line, "quit")) { stop = 1; snprintf(reply, rn, "OK quitting"); return 0; }
     if (!strcmp(line, "status")) {
         char st[200]; bringup_status(st, sizeof st);
-        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d crtc=%s crtc_wakelock=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f lock=%s lock_frames=%d bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms,
-                 started ? "on" : "off", crtc_wl_held ? "held" : "free", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot,
+        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d rails=%s crtc=%s crtc_wakelock=%s kernel_wakelock=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f lock=%s lock_frames=%d bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms, rails_held ? "held" : "off",
+                 started ? "on" : "off", crtc_wl_held ? "held" : "free", !use_wakelock || dry ? "off" : wl_err ? strerror(wl_err) : "ok", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot,
                  lock_on_panel ? "on" : "off", lock_frames, st[0] ? st : "-");
         return 0;
     }
@@ -1007,7 +1106,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     if (!strcmp(line, "clear")) { lock_on_panel = 0; rc = clear_full(); }
     else if (!strncmp(line, "clear ", 6)) { lock_on_panel = 0; rc = clear_kind(line + 6); }
     else if (!strcmp(line, "refresh")) rc = refresh();
-    else if (!strncmp(line, "sleep ", 6)) { sleep((unsigned)atoi(line + 6)); rc = 0; }
+    else if (!strncmp(line, "sleep ", 6)) { rails_release("sleep command"); sleep((unsigned)atoi(line + 6)); rc = 0; }
     else if (sscanf(line, "frame %d %d %31s %15s", &w, &h, mname, flag) >= 2) {
         if (!payload) { snprintf(reply, rn, "ERR frame needs a pixel payload (socket only)"); return -1; }
         if (flag[0] && strcmp(flag, "force")) { snprintf(reply, rn, "ERR unknown frame flag"); return -1; }
@@ -1089,8 +1188,11 @@ static void serve(int lfd) {
         struct pollfd p[MAXCL + 1]; int n = 0; p[n++] = (struct pollfd){lfd, POLLIN, 0};
         for (int i = 0; i < MAXCL; i++) if (cl[i].fd >= 0) p[n++] = (struct pollfd){cl[i].fd, POLLIN, 0};
         trace_poll();
-        int r = poll(p, (nfds_t)n, 1000);
+        int timeout = 1000;
+        if (rails_held) { double ms = (rails_hold_until - now()) * 1000; timeout = ms < 0 ? 0 : ms < 1000 ? (int)ms + 1 : 1000; }
+        int r = poll(p, (nfds_t)n, timeout);
         if (r < 0 && errno != EINTR) { LOG("FAIL poll: %s", strerror(errno)); break; }
+        if (rails_held && now() >= rails_hold_until) rails_release("tail: no chained update");	/* eink-round4 */
         if (idle_off_s > 0 && started && last_update_t && now() - last_update_t > idle_off_s) crtc_off("idle");
         if (r <= 0) continue;
         if (p[0].revents & POLLIN) { int c = accept4(lfd, NULL, NULL, SOCK_CLOEXEC); if (c >= 0) { int k = 0; while (k < MAXCL && cl[k].fd >= 0) k++;
@@ -1141,6 +1243,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--xon-line") && v) xon_line = atoi(argv[++i]); else if (!strcmp(a, "--lead") && v) lead = atoi(argv[++i]);
         else if (!strcmp(a, "--tail") && v) tail = atoi(argv[++i]);
         else if (!strcmp(a, "--overlap-gen") && v) overlap_gen = atoi(argv[++i]) == 1;
+        else if (!strcmp(a, "--chain") && v) chain = atoi(argv[++i]) == 1;
         else if (!strcmp(a, "--lease") && v) { if (nleases < 6) leases[nleases++] = v; i++; } else if (!strcmp(a, "--mode-file") && v) mode_file = argv[++i];
         else if (!strcmp(a, "--save-mode") && v) save_mode = argv[++i];
         else if (!strcmp(a, "--no-master")) no_master = 1; else if (!strcmp(a, "--wait-drm") && v) wait_drm = atoi(argv[++i]);
@@ -1159,6 +1262,8 @@ int main(int argc, char **argv) {
     /* eink-round3: a previous instance that died with the e-ink CRTC on may have left its no-suspend lock behind */
     if (use_wakelock && !dry) { int keep = crtc_wakelock_on; crtc_wakelock_on = 1; crtc_wl_held = 1; crtc_wakelock(0); crtc_wakelock_on = keep; }
     LOG("e-ink CRTC no-suspend lock: %s (idle-off %d s)", crtc_wakelock_on && !dry ? "on" : "off", idle_off_s);
+    /* eink-round4: prove at start-up that the kernel accepts our wakelocks (EPERM without CAP_BLOCK_SUSPEND) */
+    if (use_wakelock && !dry) { if (!wl_write(1, "a6l_epdd")) LOG("kernel wakelock: ok"); wl_write(0, "a6l_epdd"); }
     if (save_mode) return drm_open() ? 1 : 0;	/* v3: only record connector + mode (drm_open exits) */
     int lfd = -1;	/* take the socket early so clients can connect (they get replies once we are ready) */
     if (sock_name) lfd = init_socket(sock_name); else if (listen_at) lfd = listen_path(listen_at);

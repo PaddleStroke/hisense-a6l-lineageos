@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 /* Host unit tests for eink_logic.c (mode policy, key state machine, touch mapping). cc -o t test_eink_logic.c ../src/eink_logic.c */
+#define _GNU_SOURCE
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "../src/eink_logic.h"
 
 static int fails, checks;
@@ -297,8 +300,106 @@ static void test_front_follow(void) {
     CHECK(front_follow_step(&f, 1) == 0 && front_follow_step(&f, 1) == 0, "front follow: repeated off captures -> no repeat");
     CHECK(front_follow_step(&f, 0) == 0 && front_follow_step(&f, 1) == 1, "front follow: next sleep -> off again");
 }
+/* eink-round4: the 6 Oct 17:01 starvation (status bar redrawing: every capture discarded for 15-45 s) cannot recur */
+static void test_cap_guard(void) {
+    struct cap_guard g; cap_guard_init(&g, CAP_GUARD_MAX_DISCARDS, CAP_GUARD_MAX_MS);
+    CHECK(cap_guard_step(&g, CAPK_OK, 1.0) == CV_ACCEPT, "cap guard: consistent capture accepted");
+    CHECK(cap_guard_step(&g, CAPK_LAYOUT, 1.1) == CV_DISCARD && cap_guard_step(&g, CAPK_TORN, 1.2) == CV_DISCARD, "cap guard: layout change / torn copy discarded");
+    CHECK(cap_guard_step(&g, CAPK_OK, 1.3) == CV_ACCEPT && g.discards == 0, "cap guard: a consistent capture ends the streak");
+    /* continuous redraw, captures every 0.1 s: never more than 3 discards and never more than max_ms without a picture */
+    int longest = 0, run = 0, forced = 0; double t = 2.0, last_accept = t, worst_gap = 0;
+    for (int i = 0; i < 300; i++, t += 0.1) {
+        enum cap_verdict v = cap_guard_step(&g, i % 7 == 6 ? CAPK_TORN : CAPK_LAYOUT, t);
+        if (v == CV_DISCARD) { if (++run > longest) longest = run; }
+        else { run = 0; forced += v == CV_FORCE; if (t - last_accept > worst_gap) worst_gap = t - last_accept; last_accept = t; }
+    }
+    CHECK(longest <= CAP_GUARD_MAX_DISCARDS && forced >= 70, "cap guard: endless redraw -> at most %d discards in a row (%d), %d forced pictures", CAP_GUARD_MAX_DISCARDS, longest, forced);
+    CHECK(worst_gap <= CAP_GUARD_MAX_MS / 1000.0 + 0.1 + 1e-9, "cap guard: no picture gap longer than max_ms + one interval (%.2f s)", worst_gap);
+    /* slow captures (0.25 s each, the filmed copy+compose time): the time bound fires after 2 discards */
+    cap_guard_init(&g, CAP_GUARD_MAX_DISCARDS, CAP_GUARD_MAX_MS);
+    CHECK(cap_guard_step(&g, CAPK_LAYOUT, 10.0) == CV_DISCARD && cap_guard_step(&g, CAPK_LAYOUT, 10.25) == CV_DISCARD &&
+          cap_guard_step(&g, CAPK_LAYOUT, 10.5) == CV_FORCE, "cap guard: 400 ms bound with 250 ms captures -> third capture forced");
+    cap_guard_init(&g, 0, 400);
+    CHECK(cap_guard_step(&g, CAPK_TORN, 1.0) == CV_FORCE, "cap guard: max_discards 0 -> nothing is ever discarded");
+    cap_guard_init(&g, 3, 400); cap_guard_step(&g, CAPK_LAYOUT, 1.0); cap_guard_reset(&g);
+    CHECK(cap_guard_step(&g, CAPK_LAYOUT, 9.0) == CV_DISCARD && g.discards == 1, "cap guard: reset (front off) starts a new streak");
+}
+/* eink-round4: the pre-round4 mirror resample() (doubles), verbatim apart from the buffer arguments: the reference */
+static void ref_resample(const uint8_t *gray, int gw, int gh, uint8_t *out, int out_w, int out_h, int ox, int oy, int dw, int dh, const uint8_t *lut) {
+    static float *acc; static size_t acc_n; size_t need = (size_t)dw * gh;
+    if (need > acc_n) { free(acc); acc = malloc(need * sizeof *acc); acc_n = need; }
+    double fx = (double)gw / dw, fy = (double)gh / dh;
+    for (int y = 0; y < gh; y++) {
+        const uint8_t *r = gray + (size_t)y * gw; float *dst = acc + (size_t)y * dw;
+        for (int x = 0; x < dw; x++) {
+            double a = x * fx, b = a + fx; int i0 = (int)a, i1 = (int)b; if (i1 >= gw) i1 = gw - 1; double s = 0;
+            if (i0 == i1) s = r[i0] * fx;
+            else { s += r[i0] * (i0 + 1 - a); for (int i = i0 + 1; i < i1; i++) s += r[i]; if (b > i1) s += r[i1] * (b - i1); }
+            dst[x] = (float)(s / fx);
+        }
+    }
+    for (int y = 0; y < dh; y++) {
+        int yy = y + oy; if (yy < 0 || yy >= out_h) continue;
+        double a = y * fy, b = a + fy; int j0 = (int)a, j1 = (int)b; if (j1 >= gh) j1 = gh - 1;
+        for (int x = 0; x < dw; x++) { int xx = x + ox; if (xx < 0 || xx >= out_w) continue; double s;
+            if (j0 == j1) s = acc[(size_t)j0 * dw + x] * fy; else { s = acc[(size_t)j0 * dw + x] * (j0 + 1 - a); for (int j = j0 + 1; j < j1; j++) s += acc[(size_t)j * dw + x]; if (b > j1) s += acc[(size_t)j1 * dw + x] * (b - j1); }
+            int v = (int)(s / fy + 0.5); out[(size_t)yy * out_w + xx] = lut[v > 255 ? 255 : v < 0 ? 0 : v]; }
+    }
+}
+static double mono_s(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
+static void test_area_resize(void) {
+    enum { GW = 1080, GH = 2340, OW = 720, OH = 1440 };
+    static uint8_t src[GW * GH], a[OW * OH], b[OW * OH]; uint8_t id[256], tone[256];
+    for (int i = 0; i < 256; i++) id[i] = (uint8_t)i;
+    tone_lut(tone, 0, TONE_DEFAULT_BLACK, TONE_DEFAULT_WHITE, TONE_DEFAULT_GAMMA);
+    unsigned seed = 12345;
+    for (int y = 0; y < GH; y++) for (int x = 0; x < GW; x++) {	/* text-like: white page, dark 2-3 px strokes, noise */
+        seed = seed * 1103515245u + 12345u; int v = ((x / 3 + y / 5) % 9 == 0) ? 20 : 235; if ((seed >> 16) % 13 == 0) v = (int)((seed >> 8) & 255);
+        src[(size_t)y * GW + x] = (uint8_t)v;
+    }
+    struct area_resizer r = {0};
+    struct { int ox, oy, dw, dh; const char *what; } g[] = {{0, 0, OW, OH, "stretch"}, {27, 0, 665, OH, "letterbox"}, {0, -84, OW, 1560, "crop"}};
+    for (unsigned k = 0; k < sizeof g / sizeof g[0]; k++) for (int l = 0; l < 2; l++) {
+        const uint8_t *lut = l ? tone : id;
+        memset(a, 255, sizeof a); memset(b, 255, sizeof b);
+        CHECK(area_resize(&r, src, GW, GH, a, OW, OH, g[k].ox, g[k].oy, g[k].dw, g[k].dh, lut) == 0, "area resize %s: ok", g[k].what);
+        ref_resample(src, GW, GH, b, OW, OH, g[k].ox, g[k].oy, g[k].dw, g[k].dh, lut);
+        int maxd = 0; long sum = 0, n1 = 0;
+        for (int i = 0; i < OW * OH; i++) { int d = abs(a[i] - b[i]); if (d > maxd) maxd = d; sum += d; n1 += d > 0; }
+        /* identity LUT: within 1 level; tone LUT: a 1-level input difference can become up to ~2 levels at the steepest point */
+        CHECK(maxd <= (l ? 3 : 1), "area resize %s%s vs double reference: max diff %d", g[k].what, l ? " (tone LUT)" : "", maxd);
+        CHECK(n1 * 100 <= OW * OH * (l ? 3 : 2), "area resize %s%s: %.2f %% of pixels differ", g[k].what, l ? " (tone LUT)" : "", 100.0 * n1 / (OW * OH));
+    }
+    memset(src, 137, sizeof src);
+    memset(a, 0, sizeof a); area_resize(&r, src, GW, GH, a, OW, OH, 0, 0, OW, OH, id);
+    int flat = 1; for (int i = 0; i < OW * OH; i++) flat &= a[i] == 137;
+    CHECK(flat, "area resize: flat grey stays exact (weights sum to one exactly)");
+    memset(src, 255, sizeof src); area_resize(&r, src, GW, GH, a, OW, OH, 0, 0, OW, OH, id);
+    flat = 1; for (int i = 0; i < OW * OH; i++) flat &= a[i] == 255;
+    CHECK(flat, "area resize: white stays 255 (no 32-bit overflow)");
+    double t0 = mono_s(); for (int i = 0; i < 5; i++) area_resize(&r, src, GW, GH, a, OW, OH, 0, 0, OW, OH, id);
+    double t1 = mono_s(); for (int i = 0; i < 5; i++) ref_resample(src, GW, GH, b, OW, OH, 0, 0, OW, OH, id);
+    double t2 = mono_s();
+    printf("area resize timing (host, -O1): fixed point %.1f ms, double reference %.1f ms per frame\n", (t1 - t0) * 200, (t2 - t1) * 200);
+    CHECK((t1 - t0) < (t2 - t1), "area resize: faster than the double reference");
+    area_resizer_free(&r);
+}
+/* eink-round4: pol_step() == pol_observe() + pol_decide() (the staged capture splits them) */
+static void test_policy_split(void) {
+    struct pol_cfg c; pol_default_cfg(&c);
+    struct pol_state a, b; pol_init(&a, &c, 0); pol_init(&b, &c, 0);
+    double mv[] = {0.2, 0.3, 0, 0, 0, 0.1, 0, 0, 0, 0, 0, 0}, t = 0; int same = 1;
+    for (unsigned i = 0; i < sizeof mv / sizeof mv[0]; i++) {
+        t += 0.25;
+        struct pol_action x = pol_step(&a, t, mv[i], mv[i] > 0 ? mv[i] : 0.05, 0);
+        pol_observe(&b, t, mv[i]); struct pol_action y = pol_decide(&b, t, mv[i] > 0 ? mv[i] : 0.05, 0);
+        same &= x.kind == y.kind && (x.mode == y.mode || (x.mode && y.mode && !strcmp(x.mode, y.mode)));
+        if (x.kind != POL_NONE) { pol_sent(&a, &x, t); pol_sent(&b, &y, t); pol_done(&a, t + 0.1); pol_done(&b, t + 0.1); }
+    }
+    CHECK(same && a.consec == b.consec && a.last_change == b.last_change, "policy: step == observe + decide");
+}
 int main(void) {
-    test_guarded_copy(); test_front_follow();
+    test_guarded_copy(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
     test_tone(); test_policy_release_settle(); test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
     printf("%s: %d checks, %d failures\n", fails ? "EINK_LOGIC_TESTS_FAIL" : "EINK_LOGIC_TESTS_PASS", checks, fails);
     return fails != 0;

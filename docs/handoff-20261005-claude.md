@@ -531,3 +531,15 @@ Applied to BOTH trees (workspace + /home/a6l/android/a6l-lineage24):
 Builds (pm-logging-20261005/): round4a-vendor (HW ISP + LS1/LS2) ad05b869 audited (adds a6l_einklock + rc + hwisp
 yamls; nothing removed); round4a-system and round4b-vendor (+ fixes A/B) building. E-ink round 4 and Venus agents
 still running.
+- ~22:00: e-ink round 4 (`firmware/extracted/eink-round4-20261006`, patches 0017-0022) applied to both trees:
+  epdd CAP_BLOCK_SUSPEND (the 64 s stall + returning MDP faults), per-plane copy guard (no 15-45 s freezes; replaces the
+  copy_guard_kib=0 stopgap: clear it after flashing), pipelined capture/early reply/chained updates (latency), no
+  contrast change during a switch (3 s -> ~1 s), Dualux settings screen removed (tile long-press opens Settings >
+  Display > E-ink), Settings 0002 regenerated. Settings sources in the Android tree re-patched (0001+0002 new).
+- KITS on the laptop (both: boot f517fef5 + dtbo retained, vendor+system written; helpers in extra/:
+  start-round4-flash.py, flash-progress-round4.py, check-round4-install.py, check-runtime-round4.py):
+  - rom-r7c-round4e-20261006 = PRIMARY: vendor 6088e10b + system 759b089f (HW ISP + lock screen + reboot fixes A/B +
+    e-ink round 4).
+  - rom-r7c-round4-20261006 = fallback without e-ink round 4: vendor b545064a + system 8f1158d8.
+- Venus encoder (`firmware/extracted/venus-impl-20261006`): built offline, NOT in the kits. Stage A needs
+  boot-venus-cx.img (cdcce6ac, DTB 209dfd65: mmcc on CX, venus okay); staged separately for an attended test.

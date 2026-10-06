@@ -49,6 +49,11 @@ void pol_init(struct pol_state *s, const struct pol_cfg *c, double now);
  * Returns what to send now (kind POL_NONE = nothing). The caller then calls pol_sent() when it really sent it, and
  * pol_done() when the panel finished. */
 struct pol_action pol_step(struct pol_state *s, double now, double moving, double vs_panel, int busy);
+/* eink-round4: pol_step() = pol_observe() (motion history of one capture taken at time t) + pol_decide(). The mirror now
+ * captures while a6l_epdd still drives the previous update (the capture is staged and decided at the ACK), so the two
+ * halves run at different times. */
+void pol_observe(struct pol_state *s, double t, double moving);
+struct pol_action pol_decide(struct pol_state *s, double now, double vs_panel, int busy);
 void pol_sent(struct pol_state *s, const struct pol_action *a, double now);
 void pol_done(struct pol_state *s, double now);
 int pol_in_burst(const struct pol_state *s);
@@ -154,3 +159,40 @@ long guarded_copy(void *dst, const void *src, size_t n, size_t chunk, int (*stil
  * CRTC (the 6 Oct 16:07 LCD scan-out corruption). front_follow_step() returns 1 exactly once per front-off period. */
 struct front_follow { int off; };
 int front_follow_step(struct front_follow *f, int front_off);
+
+/* ---------------- 7. capture acceptance without starvation (eink-round4-20261006) ---------------- */
+/* Round 3 (0014) discarded a capture when ANY plane of the KMS plane set changed during the copy. A plane that redraws
+ * continuously (6 Oct 17:01: "changed plane 2" = the status bar layer, 75 discards in 15.4 s, 94 in 45.5 s) then
+ * starved the mirror: a swipe back or a pulled shade never reached the e-ink. Round 4 classifies each capture:
+ *   CAPK_OK     every plane's copy saw that plane's FB/geometry unchanged and the LCD layout is the same at the end;
+ *               other planes may have flipped content (each one is still a consistent picture of itself) -> accept
+ *   CAPK_LAYOUT the set of LCD planes or a plane's geometry/z-order/blend changed (a window appearing or a shade frame
+ *               mid-animation) -> discard, retry at the next interval
+ *   CAPK_TORN   a plane flipped during its own copy on every retry (A->B->A guard, the round-3 drawer artefact) -> discard
+ * and never starves: once max_discards captures in a row were discarded, or max_ms passed since the first of them, the
+ * newest capture is accepted anyway (CV_FORCE). The next consistent capture differs where the forced one was off and is
+ * sent by the normal damage path (the cleanup update). max_discards 0 = accept everything (no discards). */
+enum capk { CAPK_OK = 0, CAPK_LAYOUT = 1, CAPK_TORN = 2 };
+enum cap_verdict { CV_ACCEPT = 0, CV_DISCARD = 1, CV_FORCE = 2 };
+struct cap_guard { unsigned discards; double first_t; int max_discards, max_ms; unsigned forced; };
+void cap_guard_init(struct cap_guard *g, int max_discards, int max_ms);
+enum cap_verdict cap_guard_step(struct cap_guard *g, enum capk kind, double now);
+void cap_guard_reset(struct cap_guard *g);	/* front screen off / mirror restart: a new streak starts */
+#define CAP_GUARD_MAX_DISCARDS 3
+#define CAP_GUARD_MAX_MS 400
+
+/* ---------------- 8. fixed-point area resize (eink-round4-20261006) ---------------- */
+/* The mirror's 1080x2340 -> 720x1440 area average cost ~100 ms per capture in doubles (logged "resize=100-104 ms"),
+ * twice on the critical path after a finger lift (the release settle needs two captures). Same box filter with integer
+ * weights (each output's source weights sum to exactly 4096 per axis): within 1 grey level of the double version
+ * (host-tested against it), exact on flat areas. Weights are cached per geometry. */
+struct area_axis { int first, n, off; };
+struct area_resizer {
+    int gw, gh, dw, dh;			/* cached geometry */
+    struct area_axis *hx, *vy; uint16_t *hw, *vw; uint32_t *acc, *row; size_t acc_n;
+};
+/* src gw x gh grey -> dst (ow x oh, already filled with the letterbox colour) at ox,oy with size dw x dh, through lut.
+ * Returns 0, -1 on allocation failure / bad geometry. */
+int area_resize(struct area_resizer *r, const uint8_t *src, int gw, int gh, uint8_t *dst, int ow, int oh,
+                int ox, int oy, int dw, int dh, const uint8_t lut[256]);
+void area_resizer_free(struct area_resizer *r);
