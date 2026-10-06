@@ -293,6 +293,162 @@ static void test_guarded_copy(void) {
     CHECK(guarded_copy(dst, src, 0, 0, scan_same, &s, &k) == 0 && k == 0, "guarded copy: empty buffer");
     CHECK(guarded_copy(dst, src, 100, 0, NULL, NULL, &k) == 100 && k == 1, "guarded copy: no checker, default chunk");
 }
+/* ---------------- eink-round5: the notification-drawer case (plane_copy_policy) ----------------
+ * One 1080x2340 XRGB plane (4352 B rows, 10.2 MB) of a BufferQueue with 3 slots, animated at 60 Hz (the shade being
+ * pulled / an animating notification): frame f is rendered into slot f % 3 and shown during [f T, (f+1) T). When frame
+ * f+1 is shown, the slot of frame f is released and the producer renders frame f+3 into it, top to bottom, from d0 ms
+ * after the release over R ms. The mirror reads write-combined memory at ~110 MB/s (6 Oct logs: copy=156-195 ms for
+ * ~20 MB), so a plane copy takes ~93 ms = 5-6 flips. Each row carries its frame number at both ends; a capture is valid
+ * when its rows are bands of CONSECUTIVE frames from top to bottom, each frame displayed during the copy (a clean seam
+ * per flip, like a vsync tear); rows of a buffer being re-rendered show up as a jump (N -> N+3) or a step back. */
+#define DR_ROWS 2340
+#define DR_ROWB 4352
+#define DR_N ((size_t)DR_ROWS * DR_ROWB)
+#define DR_KB_MS 110.0			/* KB per ms */
+struct drawer {
+    double t, T, d0, R, open_ms; size_t knob; int retries, opens;
+    int rowframe[3][DR_ROWS]; uint8_t *slot[3];
+    int geom_change_frame, gone_frame, opened_geom;
+};
+static int dr_shown(const struct drawer *d) { return d->T > 0 ? (int)(d->t / d->T) : 0; }
+static int dr_geom(const struct drawer *d, int f) { return d->geom_change_frame > 0 && f >= d->geom_change_frame; }
+static int dr_row_frame(const struct drawer *d, int s, int r) {	/* newest frame (= s mod 3) whose row r is rendered by t */
+    if (d->T <= 0) return s;
+    /* frame s + 3k (k >= 1) is rendered into row r once (s + 3k - 2) T + d0 + R r / ROWS <= t (frames 0..2 exist at t = 0) */
+    double x = ((d->t - d->d0 - d->R * r / DR_ROWS) / d->T + 2 - s) / 3.0;
+    int k = x < 1 ? 0 : (int)x;
+    return s + 3 * k;
+}
+static void dr_advance(struct drawer *d, double ms) {
+    d->t += ms;
+    for (int s = 0; s < 3; s++) for (int r = 0; r < DR_ROWS; r++) {
+        int f = dr_row_frame(d, s, r); if (f == d->rowframe[s][r]) continue;
+        d->rowframe[s][r] = f; uint8_t *row = d->slot[s] + (size_t)r * DR_ROWB;
+        memcpy(row, &f, 4); memcpy(row + DR_ROWB - 4, &f, 4);
+    }
+}
+static size_t dr_chunk_now(const struct drawer *d) {	/* the chunk plane_copy_policy uses for this open */
+    size_t c = pcopy_chunk(d->knob, DR_N);
+    return d->opens > d->retries && c > PCOPY_STITCH_CHUNK ? PCOPY_STITCH_CHUNK : c;
+}
+static int dr_open(void *p, const uint8_t **px, uint32_t *gen) {
+    struct drawer *d = p; d->opens++; dr_advance(d, d->open_ms);
+    int f = dr_shown(d); if (d->gone_frame > 0 && f >= d->gone_frame) return 1;
+    *px = d->slot[f % 3]; *gen = 100 + (uint32_t)(f % 3);
+    int g = dr_geom(d, f), changed = d->opens > 1 && g != d->opened_geom; d->opened_geom = g;
+    return changed ? 2 : 0;
+}
+static void dr_close(void *p) { (void)p; }
+static int dr_still(void *p, uint32_t gen) {
+    struct drawer *d = p; dr_advance(d, dr_chunk_now(d) / 1024.0 / DR_KB_MS);
+    int f = dr_shown(d);
+    return 100 + (uint32_t)(f % 3) == gen && dr_geom(d, f) == d->opened_geom && !(d->gone_frame > 0 && f >= d->gone_frame);
+}
+static const struct pcopy_ops dr_ops = {dr_open, dr_close, dr_still};
+static void dr_init(struct drawer *d, double T, double t0, size_t knob) {
+    uint8_t *keep[3] = {d->slot[0], d->slot[1], d->slot[2]};
+    memset(d, 0, sizeof *d); memcpy(d->slot, keep, sizeof keep);
+    d->T = T; d->d0 = 1.0; d->R = 8.0; d->open_ms = 0.3; d->knob = knob; d->retries = PCOPY_RETRIES;
+    for (int s = 0; s < 3; s++) for (int r = 0; r < DR_ROWS; r++) d->rowframe[s][r] = -1;
+    dr_advance(d, t0);
+}
+/* 1 = valid; *bands = number of frame bands; f0..f1 = frames displayed during the copy */
+static int dr_valid(const uint8_t *dst, int f0, int f1, int *bands) {
+    int prev = -1, ok = 1; *bands = 0;
+    for (int r = 0; r < DR_ROWS; r++) {	/* a row cut by a chunk boundary at a seam: its start from frame a, its end from a + 1 */
+        int a, b; memcpy(&a, dst + (size_t)r * DR_ROWB, 4); memcpy(&b, dst + (size_t)r * DR_ROWB + DR_ROWB - 4, 4);
+        if (a < f0 || b > f1 || (b != a && b != a + 1)) ok = 0;
+        if (a != prev) { if (prev >= 0 && a != prev + 1) ok = 0; (*bands)++; prev = a; }
+        if (b != prev) { (*bands)++; prev = b; }
+    }
+    return ok;
+}
+/* round 4 (0018) references: knob 0 = a copy without any check, accepted as consistent; guard on = a guarded copy, after
+ * the last retry the whole plane copied again unguarded from the final attempt's buffer (*torn = 1, forced after 400 ms) */
+static void dr_copy_unguarded(struct drawer *d, uint8_t *dst, const uint8_t *src) {
+    for (size_t o = 0; o < DR_N; o += GUARDED_COPY_CHUNK) {
+        size_t c = DR_N - o < GUARDED_COPY_CHUNK ? DR_N - o : GUARDED_COPY_CHUNK;
+        memcpy(dst + o, src + o, c); dr_advance(d, c / 1024.0 / DR_KB_MS);
+    }
+}
+static int dr_round4_guard_on(struct drawer *d, uint8_t *dst) {	/* returns 1 when the torn finish was used */
+    for (int attempt = 0; attempt <= PCOPY_RETRIES; attempt++) {
+        dr_advance(d, d->open_ms); int f = dr_shown(d); const uint8_t *src = d->slot[f % 3]; uint32_t gen = 100 + (uint32_t)(f % 3); int flipped = 0;
+        for (size_t o = 0; o < DR_N && !flipped; o += GUARDED_COPY_CHUNK) {
+            size_t c = DR_N - o < GUARDED_COPY_CHUNK ? DR_N - o : GUARDED_COPY_CHUNK;
+            memcpy(dst + o, src + o, c); dr_advance(d, c / 1024.0 / DR_KB_MS);
+            flipped = 100 + (uint32_t)(dr_shown(d) % 3) != gen;
+        }
+        if (!flipped) return 0;
+        if (attempt == PCOPY_RETRIES) { dr_copy_unguarded(d, dst, src); return 1; }
+    }
+    return 0;
+}
+static void test_drawer_capture(void) {
+    static struct drawer d; static uint8_t *dst;
+    for (int s = 0; s < 3; s++) if (!d.slot[s]) d.slot[s] = calloc(1, DR_N);
+    if (!dst) dst = calloc(1, DR_N);
+    if (!dst || !d.slot[0] || !d.slot[1] || !d.slot[2]) { CHECK(0, "drawer: out of memory"); return; }
+    const double T = 1000.0 / 60; const int NCAP = 40; unsigned seed = 12345;
+    int r4_knob0_bad = 0, r4_forced = 0, r4_forced_bad = 0, new_bad = 0, new_torn = 0, new_stitched = 0, new_ok = 0, max_bands = 0, max_sw = 0;
+    for (int i = 0; i < NCAP; i++) {
+        seed = seed * 1103515245u + 12345u; double t0 = 200 + (seed >> 8) % 4000 / 4.0;
+        int bands, f0, f1;
+        /* round 4 as installed on 6 Oct 21:18 (copy_guard_kib=0): no check, accepted */
+        dr_init(&d, T, t0, 0); dr_advance(&d, d.open_ms); f0 = dr_shown(&d);
+        dr_copy_unguarded(&d, dst, d.slot[f0 % 3]); f1 = dr_shown(&d);
+        if (!dr_valid(dst, f0, f1, &bands)) r4_knob0_bad++;
+        /* round 4 with the guard on: what the never-starve rule forces after 3 discards / 400 ms */
+        dr_init(&d, T, t0, GUARDED_COPY_CHUNK); f0 = dr_shown(&d);
+        if (dr_round4_guard_on(&d, dst)) { r4_forced++; f1 = dr_shown(&d); if (!dr_valid(dst, f0, f1, &bands)) r4_forced_bad++; }
+        /* round 5 */
+        for (int knob = 0; knob < 2; knob++) {
+            dr_init(&d, T, t0, knob ? GUARDED_COPY_CHUNK : 0); f0 = dr_shown(&d) ; struct pcopy_stats st;
+            int r = plane_copy_policy(dst, DR_N, pcopy_chunk(d.knob, DR_N), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dr_ops, &d, &st);
+            f1 = dr_shown(&d);
+            int v = dr_valid(dst, f0, f1, &bands);
+            if (!v || r == PCOPY_ERR || r == PCOPY_GONE) new_bad++;
+            if (r == PCOPY_TORN) new_torn++; else if (r == PCOPY_STITCHED) new_stitched++; else if (r == PCOPY_OK) new_ok++;
+            if (bands > max_bands) max_bands = bands;
+            if (st.switches > max_sw) max_sw = st.switches;
+            if (r == PCOPY_STITCHED && bands > st.switches + 1) new_bad++;
+        }
+    }
+    printf("drawer (60 Hz shade, %d captures): round4 knob0 torn %d/%d; round4 guard-on forced %d (torn %d); round5 ok %d stitched %d torn %d bad %d, max bands %d, max switches %d\n",
+           NCAP, r4_knob0_bad, NCAP, r4_forced, r4_forced_bad, new_ok, new_stitched, new_torn, new_bad, max_bands, max_sw);
+    CHECK(r4_knob0_bad * 4 >= NCAP, "drawer: reproduced - round 4 with copy_guard_kib=0 accepts torn copies (%d/%d)", r4_knob0_bad, NCAP);
+    CHECK(r4_forced > 0 && r4_forced_bad * 2 >= r4_forced, "drawer: reproduced - round 4 guard on: the forced (never-starve) copy is torn (%d/%d)", r4_forced_bad, r4_forced);
+    CHECK(new_bad == 0 && new_torn == 0, "drawer: round 5 never yields a torn plane (bad %d, torn %d of %d)", new_bad, new_torn, 2 * NCAP);
+    CHECK(new_stitched > 0, "drawer: a plane flipping on every copy is stitched (%d), not discarded for ever", new_stitched);
+    CHECK(max_sw <= 8, "drawer: stitching needs few buffer switches (max %d)", max_sw);
+    /* static page: one attempt, exact */
+    dr_init(&d, 0, 500, GUARDED_COPY_CHUNK); struct pcopy_stats st; int bands;
+    int r = plane_copy_policy(dst, DR_N, pcopy_chunk(d.knob, DR_N), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dr_ops, &d, &st);
+    CHECK(r == PCOPY_OK && st.attempts == 1 && st.checks == 10 && dr_valid(dst, 0, 0, &bands) && bands == 1, "drawer: static plane -> consistent copy in one attempt, 10 checks (%d)", st.checks);
+    /* knob 0: one check at the end of the plane, a flip is still seen */
+    dr_init(&d, T, 700, 0); int f0 = dr_shown(&d);
+    r = plane_copy_policy(dst, DR_N, pcopy_chunk(0, DR_N), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dr_ops, &d, &st);
+    CHECK(r == PCOPY_STITCHED && st.attempts == 3 && st.checks > 20 && dr_valid(dst, f0, dr_shown(&d), &bands), "drawer: copy_guard_kib=0 no longer disables the guard: chunked checks (%d), stitched, valid", st.checks);
+    /* the status bar layer (1080x75, 326 KB): shorter than a frame, consistent */
+    int sb_ok = 0;
+    for (int i = 0; i < 20; i++) {
+        dr_init(&d, T, 300 + i * 7.3, GUARDED_COPY_CHUNK); size_t n = (size_t)75 * DR_ROWB;
+        r = plane_copy_policy(dst, n, pcopy_chunk(d.knob, n), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dr_ops, &d, &st);
+        sb_ok += r == PCOPY_OK;
+    }
+    CHECK(sb_ok == 20, "drawer: status-bar sized plane flipping at 60 Hz -> consistent copies (%d/20)", sb_ok);
+    /* the plane changes geometry (scrim alpha / size) mid-copy: restarted on the new geometry, never mixed */
+    dr_init(&d, T, 1000, GUARDED_COPY_CHUNK); d.geom_change_frame = dr_shown(&d) + 2;
+    r = plane_copy_policy(dst, DR_N, pcopy_chunk(d.knob, DR_N), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dr_ops, &d, &st);
+    CHECK((r == PCOPY_OK || r == PCOPY_STITCHED) && st.geometry_changes >= 1 && dr_valid(dst, d.geom_change_frame, dr_shown(&d), &bands),
+          "drawer: geometry change mid-copy -> copy restarted on the new geometry (r=%d, changes %d)", r, st.geometry_changes);
+    /* the plane leaves the CRTC */
+    dr_init(&d, T, 1000, GUARDED_COPY_CHUNK); d.gone_frame = dr_shown(&d) + 1;
+    r = plane_copy_policy(dst, DR_N, pcopy_chunk(d.knob, DR_N), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dr_ops, &d, &st);
+    CHECK(r == PCOPY_GONE, "drawer: plane gone during the copy -> PCOPY_GONE (%d)", r);
+    CHECK(pcopy_chunk(0, 1000) == GUARDED_COPY_CHUNK && pcopy_chunk(4096, 1000) == 4096, "pcopy chunk: knob 0 = default 1 MiB chunks (the guard cannot be switched off)");
+    CHECK(pcache_usable(0.3, 1) && !pcache_usable(0.6, 1) && !pcache_usable(0.1, 0), "plane cache: recent and same geometry only");
+}
 static void test_front_follow(void) {
     struct front_follow f = {0};
     CHECK(front_follow_step(&f, 0) == 0, "front follow: LCD on -> nothing");
@@ -399,7 +555,7 @@ static void test_policy_split(void) {
     CHECK(same && a.consec == b.consec && a.last_change == b.last_change, "policy: step == observe + decide");
 }
 int main(void) {
-    test_guarded_copy(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
+    test_guarded_copy(); test_drawer_capture(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
     test_tone(); test_policy_release_settle(); test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
     printf("%s: %d checks, %d failures\n", fails ? "EINK_LOGIC_TESTS_FAIL" : "EINK_LOGIC_TESTS_PASS", checks, fails);
     return fails != 0;

@@ -86,6 +86,8 @@ struct elk_sm {
     double asleep_since;	/* first time seen asleep on the e-ink (entry delay), 0 = not asleep */
     double last_clean;		/* time of the lock entry or of the last forced (ghost-cleaning) frame */
     int frames;			/* lock frames since the lock began */
+    int restore_pending;	/* eink-round5: a lock picture may still cover the mirror's page: "lock restore" once awake on the e-ink */
+    double eink_since;		/* eink-round5: first time seen awake on the e-ink while a restore is pending (restore delay) */
 };
 struct elk_in {
     int enabled, clock;
@@ -95,13 +97,28 @@ struct elk_in {
     int changed;		/* settings / background / locale changed */
     int clean_min;
     double now;			/* monotonic seconds */
+    int resumed;		/* eink-round5: the system was suspended since the previous step (CLOCK_BOOTTIME - MONOTONIC jumped) */
 };
 struct elk_act {
     int draw, force;		/* send a lockframe (force = forced REGAL ghost cleanup, whole panel) */
     int restore;		/* send "lock restore" (the lock ended: the mirror's picture comes back if nothing replaced it) */
     int arm;			/* keep the minute timer armed */
+    int hold;			/* eink-round5: lock entry pending: hold the wakelock so the system cannot suspend before it */
 };
-#define ELK_ENTRY_DELAY_S 0.3	/* let the mirror's in-flight frame / "power off" go first */
+/* eink-round5: no e-ink modeset while the LCD CRTC is changing state. The composer switches the LCD CRTC off at sleep and
+ * on at wake-up (also in e-ink mode: the LCD panel stays logically on there); the lock path used to modeset the e-ink
+ * CRTC 0.3 s after the screen-off and - after a suspend that won the race against the lock entry - right at the wake-up,
+ * concurrently with the LCD enable (the 6 Oct 21:19 hard reset happened when the user turned the LCD on). Now:
+ *   - entry: 0.8 s after eink-asleep is first seen, restarted after a suspend; the wakelock is held meanwhile (hold);
+ *     no shortcut on a minute tick;
+ *   - lock end on the LCD: nothing (the e-ink keeps the lock picture, as stock kept its poster while the LCD was used);
+ *     the covered page comes back with "lock restore" once awake on the e-ink for ELK_RESTORE_DELAY_S;
+ *   - lock end on the e-ink: "lock restore" after ELK_RESTORE_DELAY_S (the LCD CRTC comes up at that wake-up too);
+ *   - lock disabled while asleep: "lock restore off" at once (no display transition). */
+#define ELK_ENTRY_DELAY_S 0.8
+#define ELK_RESTORE_DELAY_S 1.0
 void elk_sm_init(struct elk_sm *s);
 struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in);
 void elk_sm_sent(struct elk_sm *s, const struct elk_act *a, double now);	/* a lockframe was sent (OK or not) */
+void elk_sm_abort(struct elk_sm *s);		/* eink-round5: the state changed just before the entry frame: not locked */
+void elk_restore_failed(struct elk_sm *s, double now);	/* eink-round5: "lock restore" failed: retried 5 s later */

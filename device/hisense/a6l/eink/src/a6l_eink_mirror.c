@@ -33,7 +33,8 @@
  *        0,255,100 = linear; persist.sys.a6l.eink.contrast still widens the black/white points live)
  *        [--reply-timeout ms] (a6l_epdd reply deadline, default 30000; also bounds socket writes)
  *        [--copy-guard-kib N] (eink-round3: drm source copies each plane in N KiB chunks and re-reads the plane set between
- *        chunks, so an A->B->A buffer flip during the copy discards the torn capture; default 1024, 0 = off)
+ *        chunks, so an A->B->A buffer flip during the copy discards the torn capture; default 1024; eink-round5: 0 = 1024,
+ *        the check can no longer be switched off; a plane that flips during every copy is stitched, see plane_copy_policy)
  *        [--guard-max N,MS] (eink-round4: a capture whose LCD plane layout changed, or whose plane kept flipping during its
  *        own copy, is discarded at most N times in a row / for MS since the first discard, then the newest capture is
  *        accepted; default 3,400; 0,0 = never discard. Content flips of OTHER planes no longer discard anything)
@@ -111,6 +112,25 @@ static void logline(const char *fmt, ...) {
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
+/* eink-round5: display-transition markers in the kernel log ("<6>a6l_eink: ..."; /dev/kmsg is root:system 0620, printk.devkmsg=on).
+ * One timeline with the DPU/DSI/SMMU/PM messages for the round-5 repro (kmsg streamed to the laptop / fsync'ed on the
+ * phone). Android builds only: host tests never write the host's kernel log. */
+static void kmark(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void kmark(const char *fmt, ...) {
+#ifdef __ANDROID__
+    static int fd = -2;
+    if (fd == -2) fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    char b[300]; int n = snprintf(b, sizeof b, "<6>a6l_eink: "); va_list ap; va_start(ap, fmt);
+    int m = vsnprintf(b + n, sizeof b - (size_t)n - 1, fmt, ap); va_end(ap);
+    if (m < 0) return;
+    n += m; if (n > (int)sizeof b - 2) n = (int)sizeof b - 2;
+    b[n++] = '\n'; if (write(fd, b, (size_t)n) < 0) { /* best effort */ }
+#else
+    (void)fmt;
+#endif
+}
+#define KLOG(...) do { LOG(__VA_ARGS__); kmark(__VA_ARGS__); } while (0)
 
 static const char *epd_socket = "/dev/socket/a6l_epd", *outdir, *source = "drm", *screencap = "/system/bin/screencap", *display_id,
                   *key_dev = "auto", *touch_dev = "auto", *wait_prop;
@@ -246,7 +266,7 @@ static int capture_file(const char *path) {
 /* ---------------- source: DRM planes of the LCD CRTC (ROM) ---------------- */
 #define CAP_FRONT_OFF 1	/* capture result: the LCD CRTC is inactive (screen off) */
 #define CAP_TORN 2	/* eink-round3: the plane set changed during the copy: discarded, not a failure (no 40-failure pause) */
-static size_t guard_chunk = GUARDED_COPY_CHUNK;	/* --copy-guard-kib N, 0 = off (old before/after-only check) */
+static size_t guard_chunk = GUARDED_COPY_CHUNK;	/* --copy-guard-kib N; eink-round5: 0 = the default 1 MiB (the guard can no longer be switched off) */
 static int keep_crtc_front_off;			/* --keep-crtc-front-off: old behaviour (e-ink CRTC stays on) */
 static struct cap_guard cguard;			/* eink-round4: discard bound, the mirror never starves */
 static int guard_max_discards = CAP_GUARD_MAX_DISCARDS, guard_max_ms = CAP_GUARD_MAX_MS;	/* --guard-max N,MS */
@@ -303,20 +323,16 @@ static int dma_read_sync(int fd, uint64_t flags) {
  * flip of another plane (status bar, navigation bar, a second app layer) during the copy does not tear this plane's
  * pixels; it was or will be copied consistently on its own. Round 3 compared the whole plane set and discarded the
  * capture whenever any plane flipped: 6 Oct 17:01, "changed plane 2" (the 1080x75 status bar layer) discarded 75
- * captures in 15.4 s and 94 in 45.5 s, so a swipe back and a pulled shade never reached the e-ink. */
-struct copy_guard { int fd; uint32_t plane; unsigned idx; struct a6l_object_tuple expect; int changed; };
-static int copy_guard_same(void *p) {
-    struct copy_guard *g = p; struct a6l_object_tuple t;
-    if (a6l_plane_tuple_read(g->fd, g->plane, g->idx, &t)) { g->changed = -3; return 0; }
-    if (a6l_object_tuple_equal(&t, &g->expect)) return 1;
-    g->changed = 1; return 0;
-}
+ * captures in 15.4 s and 94 in 45.5 s, so a swipe back and a pulled shade never reached the e-ink.
+ * eink-round5: the copy itself is plane_copy_policy() (eink_logic.c, host-tested with a 60 Hz drawer model): the check
+ * can no longer be switched off (round 4 with copy_guard_kib=0 made none: the 6 Oct 21:18 drawer artefacts), and a plane
+ * that flips during its last retry is STITCHED from the buffers it shows (clean seams between consecutive frames)
+ * instead of being finished torn from a buffer the producer is re-rendering. */
 /* eink-round4: last consistent copy of each plane (by resource index), the fallback for a plane that flips during every
  * copy of it. Up to one full-screen buffer per plane in use (~10 MB each); swapped with the scratch copy, never copied. */
-struct plane_cache { uint8_t *buf; size_t cap; int valid; uint32_t id, fmt, w, h, pitch; double t; };
+struct plane_cache { uint8_t *buf; size_t cap; int valid; uint32_t id, fmt, w, h, pitch; double t; struct pl geo; };	/* round5: + geometry */
 static struct plane_cache pcache[16];
 static unsigned capture_discards; static double capture_discard_since;	/* consecutive discarded captures (logging) */
-#define PLANE_RETRIES 2	/* a plane that flipped during its own copy is copied again from its new buffer, twice at most */
 static void capture_discarded(const char *why, int plane, int quiet) {
     if (!capture_discards++) capture_discard_since = now();
     if ((!quiet && capture_discards == 1) || capture_discards % 25 == 0)
@@ -337,12 +353,65 @@ static void gem_close_fb(drmModeFB2 *fb) {	/* GETFB2 creates GEM handles: close 
     for (int h = 0; h < 4; h++) if (fb->handles[h]) { int dup = 0; for (int g = 0; g < h; g++) if (fb->handles[g] == fb->handles[h]) dup = 1;
         if (!dup) { struct drm_gem_close gc = {.handle = fb->handles[h]}; drmIoctl(drm_fd, DRM_IOCTL_GEM_CLOSE, &gc); } }
 }
-/* Copy + compose one plane. Returns 0 = composed (with *torn = 1 when the final attempt still saw its own buffer flip),
- * 1 = the plane flipped during its copy and this was not the final attempt (nothing composed, retry), -1 = error. */
-static int capture_plane(struct pl *q, const struct a6l_object_tuple *expect, int k, int final_attempt, int *torn,
-                         double *sync_ms, double *copy_ms, double *compose_ms, int *checks) {
+/* eink-round5: the buffer side of plane_copy_policy(): map the buffer the plane shows NOW (GETFB2 + PRIME + mmap +
+ * dma-buf read sync) and re-read the plane's own tuple between chunks. The buffer layout (format, size, pitch, offset,
+ * modifier) must stay the one validated by capture_plane(); a new geometry (position, size, z-order, alpha, blend)
+ * restarts the copy and marks the capture as a layout change (discarded unless forced by the never-starve rule). */
+struct drm_pcopy {
+    struct pl *q, geo; uint32_t plane, crtc; unsigned ri;
+    uint32_t fmt, w, h, pitch, off; uint64_t mod;
+    drmModeFB2 *fb; int dmafd, synced, layout_changed, err; uint8_t *map; size_t len; double *sync_ms;
+};
+static void dpc_close(void *p) {
+    struct drm_pcopy *d = p;
+    if (d->synced && dma_read_sync(d->dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ)) LOG("WARN dma-buf read end sync: %s", strerror(errno));
+    d->synced = 0;
+    if (d->map) munmap(d->map, d->len);
+    d->map = NULL;
+    if (d->dmafd >= 0) close(d->dmafd);
+    d->dmafd = -1;
+    if (d->fb) { gem_close_fb(d->fb); drmModeFreeFB2(d->fb); d->fb = NULL; }
+}
+static int dpc_open(void *p, const uint8_t **px, uint32_t *gen) {
+    struct drm_pcopy *d = p; struct a6l_object_tuple t; struct pl fresh;
+    if (a6l_plane_tuple_read(drm_fd, d->plane, d->ri, &t)) { d->err = errno; return -1; }
+    if (!a6l_plane_on_crtc(&t, d->crtc)) { d->layout_changed = 1; return 1; }	/* the plane left the LCD: skip it */
+    pl_fill(&fresh, &t, d->ri);
+    int changed = !pl_same_geometry(&fresh, &d->geo);
+    drmModeFB2 *fb = drmModeGetFB2(drm_fd, fresh.fb);
+    if (!fb) { d->err = errno; return -1; }
+    uint64_t mod = (fb->flags & DRM_MODE_FB_MODIFIERS) ? fb->modifier : DRM_FORMAT_MOD_LINEAR;
+    if (fb->pixel_format != d->fmt || fb->width != d->w || fb->height != d->h || fb->pitches[0] != d->pitch ||
+        fb->offsets[0] != d->off || mod != d->mod || !fb->handles[0]) {	/* another buffer layout: not this picture */
+        gem_close_fb(fb); drmModeFreeFB2(fb); d->layout_changed = 1; return 1;
+    }
+    d->fb = fb; d->len = (size_t)fb->pitches[0] * fb->height + fb->offsets[0];
+    if (drmPrimeHandleToFD(drm_fd, fb->handles[0], DRM_CLOEXEC, &d->dmafd)) { d->err = errno; d->dmafd = -1; dpc_close(d); return -1; }
+    uint8_t *m = mmap(NULL, d->len, PROT_READ, MAP_SHARED, d->dmafd, 0);
+    if (m == MAP_FAILED) { d->err = errno; LOG("WARN prime map fb %u: %s", fresh.fb, strerror(errno)); dpc_close(d); return -1; }
+    d->map = m;
+    double ts = now(); d->synced = !dma_read_sync(d->dmafd, DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ); *d->sync_ms += (now() - ts) * 1000;
+    if (!d->synced) { d->err = errno; LOG("WARN dma-buf read sync: %s", strerror(errno)); dpc_close(d); return -1; }
+    if (changed) { d->layout_changed = 1; d->geo = fresh; }
+    *d->q = fresh;	/* composed with the geometry of the buffer actually copied */
+    *px = d->map + fb->offsets[0]; *gen = fresh.fb;
+    return changed ? 2 : 0;
+}
+static int dpc_still(void *p, uint32_t gen) {
+    struct drm_pcopy *d = p; struct a6l_object_tuple t; struct pl fresh;
+    if (a6l_plane_tuple_read(drm_fd, d->plane, d->ri, &t)) { d->err = errno; return -1; }
+    if (!a6l_plane_on_crtc(&t, d->crtc) || (uint32_t)t.v[PF_FB] != gen) return 0;
+    pl_fill(&fresh, &t, d->ri);
+    return pl_same_geometry(&fresh, &d->geo);
+}
+static const struct pcopy_ops dpc_ops = {dpc_open, dpc_close, dpc_still};
+/* Copy + compose one plane (eink-round5: plane_copy_policy). Returns 0 = composed, *torn = 0 consistent, 1 stitched from
+ * consecutive buffers, 2 its last consistent copy (<= 0.5 s), 3 torn (> 12 flips during one copy); 1 = the plane left the
+ * LCD or changed its buffer layout (not composed: layout change); -1 = error. */
+static int capture_plane(struct pl *q, uint32_t plane_id, uint32_t crtc, int k, int *torn, int *layout_changed,
+                         double *sync_ms, double *copy_ms, double *compose_ms, int *checks, int *switches) {
     drmModeFB2 *fb = drmModeGetFB2(drm_fd, q->fb); if (!fb) { LOG("WARN GETFB2 %u: %s", q->fb, strerror(errno)); return -1; }
-    int ok = 1, bpp = 0, alpha = 0, bgr = 0, rc = 0; uint32_t f = fb->pixel_format;
+    int ok = 1, bpp = 0, alpha = 0, bgr = 0; uint32_t f = fb->pixel_format;
     if (f == DRM_FORMAT_XRGB8888 || f == DRM_FORMAT_ARGB8888) { bpp = 4; alpha = f == DRM_FORMAT_ARGB8888; bgr = 1; }
     else if (f == DRM_FORMAT_XBGR8888 || f == DRM_FORMAT_ABGR8888) { bpp = 4; alpha = f == DRM_FORMAT_ABGR8888; }
     else if (f == DRM_FORMAT_RGB565) bpp = 2;
@@ -357,64 +426,52 @@ static int capture_plane(struct pl *q, const struct a6l_object_tuple *expect, in
     }
     if (plane_supported(&geo)) { static int w3; if (!w3++) LOG("WARN plane rotation 0x%x / alpha 0x%x / blend mode %d unsupported: capture refused", q->rot, q->alpha, q->blend); ok = 0; }
     if (!fb->handles[0]) { static int w2; if (!w2++) LOG("WARN GETFB2 returned no handle (needs CAP_SYS_ADMIN)"); ok = 0; }
-    int dmafd = -1; uint8_t *map = MAP_FAILED; size_t len = (size_t)fb->pitches[0] * fb->height + fb->offsets[0];
+    size_t len = (size_t)fb->pitches[0] * fb->height + fb->offsets[0];
     if (len > MAXRAW || !fb->height || !fb->width || fb->pitches[0] < (uint64_t)fb->width * bpp) {
         LOG("WARN invalid/oversized scanout layout: %ux%u pitch=%u offset=%u", fb->width, fb->height, fb->pitches[0], fb->offsets[0]); ok = 0;
     }
-    if (ok && !drmPrimeHandleToFD(drm_fd, fb->handles[0], DRM_CLOEXEC, &dmafd)) map = mmap(NULL, len, PROT_READ, MAP_SHARED, dmafd, 0);
-    if (ok && map == MAP_FAILED) { LOG("WARN prime map fb %u: %s", q->fb, strerror(errno)); ok = 0; }
-    if (ok) {
-        double ts = now();
-        int synced = !dma_read_sync(dmafd, DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ);
-        if (!synced) { LOG("WARN dma-buf read sync: %s", strerror(errno)); ok = 0; }
-        *sync_ms += (now() - ts) * 1000;
-        /* Scanout mappings can be uncached/write-combined. Bulk-copy once
-         * into normal CPU memory rather than issuing byte loads for each
-         * luma/blend operation. No mapping or GEM handle survives capture. */
-        size_t bytes = (size_t)fb->pitches[0] * fb->height;
-        if (ok && bytes > scanout_copy_n) {
-            uint8_t *p = realloc(scanout_copy, bytes);
-            if (!p) ok = 0; else { scanout_copy = p; scanout_copy_n = bytes; }
-        }
-        ts = now();
-        const uint8_t *pixels = scanout_copy;
-        struct plane_cache *pc = q->ri < 16 ? &pcache[q->ri] : NULL;
-        if (ok) {	/* chunked; THIS plane's tuple re-read between chunks (an A->B->A flip of it tears the copy) */
-            struct copy_guard g = {drm_fd, expect->id, q->ri, *expect, 0}; int nchk = 0;
-            if (guarded_copy(scanout_copy, map + fb->offsets[0], bytes, guard_chunk, guard_chunk ? copy_guard_same : NULL, &g, &nchk) < 0) {
-                if (g.changed == -3) { LOG("WARN plane %d tuple query failed during the copy: %s", k, strerror(errno)); ok = 0; }
-                else if (!final_attempt) rc = 1;
-                else if (pc && pc->valid && pc->id == expect->id && pc->fmt == f && pc->w == fb->width && pc->h == fb->height &&
-                         pc->pitch == fb->pitches[0] && now() - pc->t < 2.0) {
-                    /* eink-round4: still flipping on every retry (an animation inside an open shade): show this plane's
-                     * last CONSISTENT copy (<= 2 s old) instead of a torn one. A slightly old shade picture, never the
-                     * "artefacts that move" of round 3 (still seen a few times per 20 s with copy_guard_kib=0). */
-                    pixels = pc->buf; *torn = 2;
-                } else {	/* no recent consistent copy of this plane: finish the copy (round 3 discarded it) */
-                    guarded_copy(scanout_copy, map + fb->offsets[0], bytes, 0, NULL, NULL, NULL); *torn = 1;
-                }
-            } else if (pc && guard_chunk) {	/* consistent: keep it as this plane's fallback (buffer swap, no copy) */
-                uint8_t *b = pc->buf; size_t c = pc->cap;
-                pc->buf = scanout_copy; pc->cap = scanout_copy_n; scanout_copy = b; scanout_copy_n = c; pixels = pc->buf;
-                pc->valid = 1; pc->id = expect->id; pc->fmt = f; pc->w = fb->width; pc->h = fb->height; pc->pitch = fb->pitches[0]; pc->t = now();
-            }
-            *checks += nchk;
-        }
-        *copy_ms += (now() - ts) * 1000;
-        if (synced && dma_read_sync(dmafd, DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ)) {
-            LOG("WARN dma-buf read end sync: %s", strerror(errno)); ok = 0;
-        }
-        /* F41: reflection, rotation, scaling and the plane's blend equation (eink_logic.c plane_compose, host-tested) */
-        struct plane_fb pf = {pixels, fb->pitches[0], (int)fb->width, (int)fb->height, bpp, bgr, alpha};
-        ts = now();
-        if (ok && rc == 0 && plane_compose(gray, gw, gh, &geo, &pf)) ok = 0;
-        *compose_ms += (now() - ts) * 1000;
-    }
-    if (map != MAP_FAILED) munmap(map, len);
-    if (dmafd >= 0) close(dmafd);
-    gem_close_fb(fb);
+    struct drm_pcopy d = {.q = q, .geo = *q, .plane = plane_id, .crtc = crtc, .ri = q->ri, .fmt = f, .w = fb->width, .h = fb->height,
+                          .pitch = fb->pitches[0], .off = fb->offsets[0], .mod = (fb->flags & DRM_MODE_FB_MODIFIERS) ? fb->modifier : DRM_FORMAT_MOD_LINEAR,
+                          .dmafd = -1, .sync_ms = sync_ms};
+    gem_close_fb(fb);	/* GETFB2 creates GEM handles: the copy maps the buffer the plane shows when it starts */
     drmModeFreeFB2(fb);
-    return ok ? rc : -1;
+    if (!ok) return -1;
+    /* Scanout mappings can be uncached/write-combined. Bulk-copy once into normal CPU memory rather than issuing byte
+     * loads for each luma/blend operation. No mapping or GEM handle survives capture. */
+    size_t bytes = (size_t)d.pitch * d.h;
+    if (bytes > scanout_copy_n) {
+        uint8_t *p = realloc(scanout_copy, bytes);
+        if (!p) return -1;
+        scanout_copy = p; scanout_copy_n = bytes;
+    }
+    double ts = now(), s0 = *sync_ms; struct pcopy_stats st;
+    int r = plane_copy_policy(scanout_copy, bytes, pcopy_chunk(guard_chunk, bytes), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dpc_ops, &d, &st);
+    *copy_ms += (now() - ts) * 1000 - (*sync_ms - s0);
+    *checks += st.checks; *switches += st.switches;
+    if (d.layout_changed) *layout_changed = 1;
+    if (r == PCOPY_ERR) { LOG("WARN plane %d copy: tuple/buffer query failed: %s", k, strerror(d.err)); return -1; }
+    if (r == PCOPY_GONE) return 1;
+    const uint8_t *pixels = scanout_copy;
+    struct plane_cache *pc = q->ri < 16 ? &pcache[q->ri] : NULL;
+    if (r == PCOPY_OK) {	/* consistent: keep it as this plane's fallback (buffer swap, no copy) */
+        *torn = 0;
+        if (pc) {
+            uint8_t *b = pc->buf; size_t c = pc->cap;
+            pc->buf = scanout_copy; pc->cap = scanout_copy_n; scanout_copy = b; scanout_copy_n = c; pixels = pc->buf;
+            pc->valid = 1; pc->id = q->fb; pc->fmt = d.fmt; pc->w = d.w; pc->h = d.h; pc->pitch = d.pitch; pc->t = now(); pc->geo = *q;
+        }
+    } else if (r == PCOPY_TORN && pc && pcache_usable(now() - pc->t, pc->valid && pc->fmt == d.fmt && pc->w == d.w && pc->h == d.h &&
+                                                     pc->pitch == d.pitch && pl_same_geometry(&pc->geo, q))) {
+        pixels = pc->buf; *torn = 2;	/* still flipping after 12 switches: its last consistent copy (<= 0.5 s), never a torn one */
+    } else *torn = r == PCOPY_STITCHED ? 1 : 3;
+    if (r != PCOPY_OK && (*torn == 3 || st.switches > 6)) LOG("WARN plane %d: %d buffer switches during one copy (%s)", k, st.switches, *torn == 3 ? "torn" : "stitched");
+    /* F41: reflection, rotation, scaling and the plane's blend equation (eink_logic.c plane_compose, host-tested) */
+    struct plane_geo g2 = {q->cx, q->cy, q->cw, q->ch, q->sx, q->sy, q->sw, q->sh, q->rot, q->alpha, q->blend};
+    struct plane_fb pf = {pixels, d.pitch, (int)d.w, (int)d.h, bpp, bgr, alpha};
+    ts = now();
+    int rc = plane_compose(gray, gw, gh, &g2, &pf) ? -1 : 0;
+    *compose_ms += (now() - ts) * 1000;
+    return rc;
 }
 static int capture_drm(void) {
     double sync_ms = 0, copy_ms = 0, compose_ms = 0;
@@ -461,23 +518,13 @@ static int capture_drm(void) {
         drmModeFreeFB2(fb);
         if (opaque) { first = k; break; }
     }
-    int layout_changed = 0, torn = 0, torn_plane = -1, retries = 0, checks = 0;
+    int layout_changed = 0, torn = 0, torn_plane = -1, switches = 0, checks = 0;
     for (int k = first; k < n; k++) {
-        struct pl *q = &pls[k];
-        struct a6l_object_tuple cur = before.planes[q->ri];
-        for (int attempt = 0; ; attempt++) {
-            if (attempt) {	/* the plane flipped during its own copy: copy the buffer it shows now */
-                struct pl fresh;
-                if (a6l_plane_tuple_read(drm_fd, cur.id, q->ri, &cur)) { LOG("WARN plane tuple query failed: %s", strerror(errno)); return -1; }
-                if (!a6l_plane_on_crtc(&cur, crtc)) { layout_changed = 1; break; }	/* the plane left the LCD: skip it */
-                pl_fill(&fresh, &cur, q->ri);
-                if (!pl_same_geometry(&fresh, q)) layout_changed = 1;
-                *q = fresh; retries++;
-            }
-            int t = 0, r = capture_plane(q, &cur, k, attempt >= PLANE_RETRIES, &t, &sync_ms, &copy_ms, &compose_ms, &checks);
-            if (r < 0) return -1;
-            if (r == 0) { if (t) { torn = t > torn ? t : torn; torn_plane = k; } break; }
-        }
+        struct pl *q = &pls[k]; int t = 0;
+        int r = capture_plane(q, before.planes[q->ri].id, crtc, k, &t, &layout_changed, &sync_ms, &copy_ms, &compose_ms, &checks, &switches);
+        if (r < 0) return -1;
+        if (r == 1) { layout_changed = 1; continue; }	/* the plane left the LCD / changed buffer layout: skipped */
+        if (t) { torn = t > torn ? t : torn; torn_plane = k; }
     }
     uint32_t after_crtc=0;int after_w=0,after_h=0;
     int after_lcd=lcd_crtc(&after_crtc,&after_w,&after_h);
@@ -492,19 +539,19 @@ static int capture_drm(void) {
     unsigned streak = cguard.discards; double streak_ms = streak ? (now() - cguard.first_t) * 1000 : 0;
     enum cap_verdict verdict = cap_guard_step(&cguard, kind, now());
     if (verdict == CV_DISCARD) {
-        capture_discarded(kind == CAPK_TORN ? "a plane flipped during each copy of it" : "LCD plane layout changed during the capture", torn_plane, 0);
+        capture_discarded(kind == CAPK_TORN ? "a plane flipped during each copy of it (stitched)" : "LCD plane layout changed during the capture", torn_plane, 0);
         return CAP_TORN;
     }
     if (verdict == CV_FORCE && (cguard.forced <= 3 || cguard.forced % 25 == 0))
         LOG("capture accepted after %u discards (%.0f ms, %s): newest picture sent, the next consistent capture cleans it up (%u forced)",
-            streak, streak_ms, kind != CAPK_TORN ? "layout change" : torn == 2 ? "a plane keeps flipping: its last consistent copy is shown" : "a plane keeps flipping, no consistent copy yet", cguard.forced);
+            streak, streak_ms, kind != CAPK_TORN ? "layout change" : torn == 1 ? "a plane keeps flipping: stitched from consecutive frames (clean seams)" : torn == 2 ? "a plane keeps flipping: its last consistent copy is shown" : "a plane keeps flipping: TORN copy (more than 12 flips during one copy)", cguard.forced);
     if (capture_discards) { LOG("capture %s after %u discards (%.1f s)", verdict == CV_FORCE ? "forced" : "consistent again", capture_discards, now() - capture_discard_since); capture_discards = 0; }
     /* Vblank normally advances during a CPU copy. It is a diagnostic, not a
      * producer-ownership fence or a reason to discard otherwise equal tuples. */
     if(captures<3||captures%120==0)
-        LOG("capture tuple stable: planes=%u seq=%s%llu->%s%llu retries=%d checks=%d",before.count,
+        LOG("capture tuple stable: planes=%u seq=%s%llu->%s%llu switches=%d checks=%d",before.count,
             seq_before_ok?"":"unavailable:",(unsigned long long)seq_before,
-            seq_after_ok?"":"unavailable:",(unsigned long long)seq_after,retries,checks);
+            seq_after_ok?"":"unavailable:",(unsigned long long)seq_after,switches,checks);
     captures++;
     if (captures <= 3 || sync_ms + copy_ms + compose_ms > 250 || captures % 120 == 0)
         LOG("capture stages: planes=%d culled=%d sync=%.0f ms copy=%.0f ms compose=%.0f ms", n, first, sync_ms, copy_ms, compose_ms);
@@ -959,7 +1006,7 @@ int main(int argc, char **argv) {
         else if (OPT("--touch-transform")) snprintf(transform_forced, sizeof transform_forced, "%s", v);
         else if (OPT("--front")) { if (sscanf(v, "%dx%d", &front_w, &front_h) != 2) return 2; }
         else if (!strcmp(a,"--auto-small-regal")) auto_small_regal=1;
-        else if (OPT("--copy-guard-kib")) guard_chunk = atoi(v) > 0 ? (size_t)atoi(v) * 1024 : 0;
+        else if (OPT("--copy-guard-kib")) guard_chunk = atoi(v) > 0 ? (size_t)atoi(v) * 1024 : 0;	/* round5: 0 = default (see pcopy_chunk) */
         else if (OPT("--pipeline")) pipeline = atoi(v) != 0;
         else if (OPT("--guard-max")) {	/* eink-round4: N discards / MS since the first one, then the newest capture is accepted */
             int nd, ms;
@@ -990,6 +1037,8 @@ int main(int argc, char **argv) {
     if (use_props && !reading && !refresh_mode[0]) pol_apply_refresh_mode(&pcfg, "stock");	/* default before the first prop read */
     struct pol_state ps; pol_init(&ps, &pcfg, now()); ack_policy = &ps;
     cap_guard_init(&cguard, guard_max_discards, guard_max_ms);
+    LOG("capture guard: every plane copy checked against its own buffer every %zu KiB%s; never-starve bound %d discards / %d ms; a plane flipping during every copy is stitched (eink-round5)",
+        pcopy_chunk(guard_chunk, 0) / 1024, guard_chunk ? "" : " (--copy-guard-kib 0 is no longer honoured: default)", guard_max_discards, guard_max_ms);
     int active = 0, paused = 0, frame = 0, fails = 0; double next_cap = now(), next_props = now();
     LOG("start: source=%s interval=%d mode=%s reading=%d clear-every=%d active=%s fit=%s%s", source, interval_ms, mode_name(mode), reading, pcfg.clear_every, pcfg.active_mode, fit == FIT_STRETCH ? "stretch" : fit == FIT_CROP ? "crop" : "letterbox", dry ? " DRY" : "");
     LOG("tone: black clip %d, white clip %d, gamma %.2f; release settle %d ms (max %d ms)", tone_black, tone_white, tone_gamma / 100.0, pcfg.release_quiet_ms, pcfg.release_max_ms);
@@ -1081,7 +1130,7 @@ int main(int argc, char **argv) {
         else { LOG("FAIL unknown source %s", source); return 2; }
         frame++;
         if (precapture) precap_cmd_t = cmd_t;
-        if (rc == CAP_FRONT_OFF) { cap_guard_reset(&cguard); if (!paused) { LOG("front screen off: paused (rear touch not forwarded)"); forward = 0; touch_release_all(); } paused = 1;
+        if (rc == CAP_FRONT_OFF) { cap_guard_reset(&cguard); if (!paused) { KLOG("front screen off: paused (rear touch not forwarded)"); forward = 0; touch_release_all(); } paused = 1;
             /* eink-round3: the e-ink CRTC follows the LCD CRTC, so no system suspend saves/restores an enabled lessee CRTC
              * (6 Oct 16:07: e-ink on across a suspend -> LCD scan-out of an unmapped buffer after the next LCD switch).
              * The picture stays on the panel; the next update does the bring-up again (as after idle-off). */
@@ -1090,7 +1139,7 @@ int main(int argc, char **argv) {
         front_follow_step(&front_ff, 0);
         if (rc == CAP_TORN) { fails = 0; continue; }	/* eink-round3: retried at the next interval; never sent, never a failure */
         if (rc) { if (++fails >= 40) { LOG("FAIL 40 consecutive capture failures: pausing 30 s"); fails = 0; next_cap = now() + 30; } continue; }
-        if (paused) { LOG("front screen on: resumed"); paused = 0; forward = 1; }
+        if (paused) { KLOG("front screen on: resumed"); paused = 0; forward = 1; }
         fails = 0; double tcap = now() - t0;
         double tr = now(); resample(); cur_land = out_w > out_h; tiles(cur_t); double tresample = now() - tr;
         est_capture_s = 0.7 * est_capture_s + 0.3 * (tcap + tresample);

@@ -33,3 +33,6 @@ allow a6l_einklock a6l_eink_lock_data_file:file r_file_perms;
 # system/sepolicy private/domain.te full_treble_only exemptions), then chown/chmod and setprop vendor.dualux.lock_bg_seq.
 allow init a6l_eink_lock_data_file:dir rw_dir_perms;
 allow init a6l_eink_lock_data_file:file create_file_perms;
+
+# eink-round5: display-transition markers in the kernel log
+allow a6l_einklock kmsg_device:chr_file w_file_perms;

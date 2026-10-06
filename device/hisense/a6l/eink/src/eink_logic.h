@@ -196,3 +196,42 @@ struct area_resizer {
 int area_resize(struct area_resizer *r, const uint8_t *src, int gw, int gh, uint8_t *dst, int ow, int oh,
                 int ox, int oy, int dw, int dh, const uint8_t lut[256]);
 void area_resizer_free(struct area_resizer *r);
+
+/* ---------------- 9. per-plane copy policy: never a torn plane (eink-round5-20261006) ---------------- */
+/* Round 4 (0018) guarded each plane's copy by its own tuple, but (a) with --copy-guard-kib 0 it made NO check at all
+ * (guarded_copy() without a checker, and the end-of-capture comparison ignores FB_ID): every torn copy was accepted.
+ * The 6 Oct 21:18 test ran exactly so (the mirror had been started with persist.vendor.eink.copy_guard_kib=0 and was
+ * not restarted when the property was cleared), hence the drawer artefacts "fully back". (b) With the guard on, a plane
+ * that flipped during its final retry was either shown from a cached copy of the SAME FB id only (rare with a 3-slot
+ * BufferQueue) or copied to the end unguarded (torn), and the never-starve rule then sent that torn picture.
+ * plane_copy_policy():
+ *   - every copy is checked against the plane's own buffer in chunks; --copy-guard-kib 0 now means the default 1 MiB
+ *     (the guard cannot starve the mirror any more, so it can no longer be switched off; one check per plane would miss
+ *     an A->B->A flip during the ~90 ms copy);
+ *   - up to `retries` whole-plane retries from the buffer shown now;
+ *   - final attempt: a STITCHED copy. When the check after a chunk sees a flip, that chunk (it may have been read after
+ *     the old buffer was released to the producer) and everything below it are copied from the new buffer, which is on
+ *     screen. Every band of rows was read while its buffer was displayed, the bands are consecutive frames, so the plane
+ *     has at most a clean one-frame seam per flip (like a vsync tear) - never rows of a buffer being re-rendered (the
+ *     A->B->A "artefacts that draw themselves around and move");
+ *   - PCOPY_TORN only after max_switches flips during one plane copy (> 12 at 60 Hz = longer than any plane copy).
+ * ops->open(ctx, &px, &gen): map the buffer the plane shows NOW; 0 = ok, 2 = ok but the plane geometry/format changed
+ *   since the previous open (the copy restarts at 0), 1 = the plane left the CRTC, -1 = error. ops->close(ctx) unmaps.
+ * ops->still(ctx, gen): 1 = the plane still shows gen, 0 = it flipped (or its geometry changed), -1 = query error. */
+struct pcopy_ops {
+    int (*open)(void *ctx, const uint8_t **px, uint32_t *gen);
+    void (*close)(void *ctx);
+    int (*still)(void *ctx, uint32_t gen);
+};
+enum pcopy_res { PCOPY_ERR = -1, PCOPY_OK = 0, PCOPY_STITCHED = 1, PCOPY_TORN = 2, PCOPY_GONE = 3 };
+struct pcopy_stats { int attempts, checks, switches, geometry_changes; size_t first_seam; };
+#define PCOPY_RETRIES 2				/* whole-plane retries before stitching (as round 4's PLANE_RETRIES) */
+#define PCOPY_MAX_SWITCHES 12
+#define PCOPY_STITCH_CHUNK (256u << 10)		/* final attempt: at most 256 KiB between checks (~60 rows of 1080 px) */
+size_t pcopy_chunk(size_t knob_bytes, size_t n);	/* --copy-guard-kib in bytes: 0 -> GUARDED_COPY_CHUNK, else the knob */
+int plane_copy_policy(uint8_t *dst, size_t n, size_t chunk, int retries, int max_switches,
+                      const struct pcopy_ops *ops, void *ctx, struct pcopy_stats *st);
+/* last consistent copy of a plane: usable instead of a stitched/torn one only if it is recent and of the same buffer
+ * geometry (any FB id of that plane: a BufferQueue cycles 3 buffers, round 4 required the same id) */
+int pcache_usable(double age_s, int same_geometry);
+#define PCACHE_MAX_AGE_S 0.5

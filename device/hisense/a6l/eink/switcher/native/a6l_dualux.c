@@ -80,6 +80,25 @@ static void logline(const char *fmt, ...) {
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
+/* eink-round5: display-transition markers in the kernel log ("<6>a6l_dualux: ..."; /dev/kmsg is root:system 0620, printk.devkmsg=on).
+ * One timeline with the DPU/DSI/SMMU/PM messages for the round-5 repro (kmsg streamed to the laptop / fsync'ed on the
+ * phone). Android builds only: host tests never write the host's kernel log. */
+static void kmark(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void kmark(const char *fmt, ...) {
+#ifdef __ANDROID__
+    static int fd = -2;
+    if (fd == -2) fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    char b[300]; int n = snprintf(b, sizeof b, "<6>a6l_dualux: "); va_list ap; va_start(ap, fmt);
+    int m = vsnprintf(b + n, sizeof b - (size_t)n - 1, fmt, ap); va_end(ap);
+    if (m < 0) return;
+    n += m; if (n > (int)sizeof b - 2) n = (int)sizeof b - 2;
+    b[n++] = '\n'; if (write(fd, b, (size_t)n) < 0) { /* best effort */ }
+#else
+    (void)fmt;
+#endif
+}
+#define KLOG(...) do { LOG(__VA_ARGS__); kmark(__VA_ARGS__); } while (0)
 
 /* ---------------- properties (real, or files in --prop-dir for host tests) ---------------- */
 static int prop_get(const char *k, char *v, size_t n) {
@@ -225,6 +244,8 @@ static struct dx_fl_cfg FL; static unsigned clear_seq; static int last_fl = -1, 
 static char appearance_req[96];
 static double appearance_deadline;
 static void publish(void) {
+    { static char last[16]; const char *st = dx_state_name(&S);	/* eink-round5: state changes in the kernel log */
+      if (strcmp(last, st)) { kmark("state %s -> %s", last[0] ? last : "-", st); snprintf(last, sizeof last, "%s", st); } }
     prop_set("vendor.dualux.lcd_blank", dx_lcd_blank(&S) ? "1" : "0");	/* read by the patched composer (0002 patch): no LCD flash at wake-up */
     prop_set(P_STATE, dx_state_name(&S)); prop_set("persist.vendor.eink.mode", dx_mirror_on(&S) ? "mirror" : "off"); }
 static void enforce_backlight(void) {
@@ -308,7 +329,7 @@ static void appearance_tick(void) {
 }
 static void handle(const struct dx_out *o, const char *why) {
     if (o->set_screen >= 0 || o->wake || o->sleep) LOG("stage decision %s mono_ms=%.3f old=%s target=%d awake=%d wake=%d sleep=%d", why, now() * 1000, dx_state_name(&S), o->set_screen, S.awake, o->wake, o->sleep);
-    if (o->set_screen >= 0 && o->set_screen != S.screen) LOG("%s: %s -> %s", why, S.screen == DX_EINK ? "e-ink" : "LCD", o->set_screen == DX_EINK ? "e-ink" : "LCD");
+    if (o->set_screen >= 0 && o->set_screen != S.screen) KLOG("%s: %s -> %s", why, S.screen == DX_EINK ? "e-ink" : "LCD", o->set_screen == DX_EINK ? "e-ink" : "LCD");
     int old = S.screen; dx_apply(&S, o);
     if (S.screen != old) { begin_appearance(); publish(); enforce_backlight(); apply_grabs(); enforce_frontlight();
         prop_set(P_PREPARE, appearance_req); }
@@ -445,11 +466,17 @@ int main(int argc, char **argv) {
         double t = now();
         struct dx_out o = dx_tick(&S, t); handle(&o, "long press");
         int aw = read_awake(); if (aw != S.awake) { dx_set_awake(&S, aw); LOG("Android %s (%s)", aw ? "awake" : "asleep", dx_state_name(&S)); LOG("stage display awake=%d mono_ms=%.3f hold=%d", aw, now() * 1000, S.appearance_hold);
-            /* eink-lockscreen: keep the system up 2 s after falling asleep on the e-ink, so a6l_einklock reads
-             * vendor.dualux.state = eink-asleep and takes its own wakelock before the first suspend (timed: never sticks) */
+            /* eink-lockscreen: keep the system up after falling asleep on the e-ink, so a6l_einklock reads
+             * vendor.dualux.state = eink-asleep and takes its own wakelock before the first suspend (timed: never sticks).
+             * eink-round5: 3 s (einklock polls every 250 ms, then holds its own lock through its 0.8 s entry delay); the rc
+             * now grants CAP_BLOCK_SUSPEND: until then this write was EPERM and Android suspended ~0.1-0.7 s after the
+             * screen went off (as soon as the mirror's "power off" released a6l_epdd_crtc), before the lock picture. */
             if (!aw && S.screen == DX_EINK && prop_int("persist.sys.a6l.eink.lock", 1)) {
-                char p[600]; snprintf(p, sizeof p, "%s/sys/power/wake_lock", sysroot); int fd = open(p, O_WRONLY | O_CLOEXEC);
-                if (fd >= 0) { static const char wl[] = "a6l_dualux_lock 2000000000"; if (write(fd, wl, sizeof wl - 1) < 0) LOG("WARN lock-screen wakelock: %s", strerror(errno)); close(fd); } }
+                char p[600]; snprintf(p, sizeof p, "%s/sys/power/wake_lock", sysroot); int fd = open(p, O_WRONLY | O_CLOEXEC), e = 0;
+                static const char wl[] = "a6l_dualux_lock 3000000000";
+                if (fd < 0) e = errno; else { if (write(fd, wl, sizeof wl - 1) < 0) e = errno; close(fd); }
+                static int last_e = -1;
+                if (e != last_e) { if (e) LOG("WARN lock-screen hand-over wakelock not taken: %s%s - the system may suspend before the e-ink lock picture", strerror(e), e == EPERM ? " (needs CAP_BLOCK_SUSPEND: rc 'capabilities BLOCK_SUSPEND')" : ""); else LOG("lock-screen hand-over wakelock: ok (3 s)"); last_e = e; } }
             publish(); apply_grabs();
             /* eink-round2: a prepare begun while Android slept (power key on the sleeping e-ink -> LCD) is only seen by
              * the app once it polls again after SCREEN_ON. Give it the full window from the wake-up, not from the key

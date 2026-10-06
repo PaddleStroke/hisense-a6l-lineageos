@@ -297,18 +297,28 @@ long long elk_next_target(double now, int period_s, double lead_s) {
 /* ---------------- lock state machine ---------------- */
 void elk_sm_init(struct elk_sm *s) { memset(s, 0, sizeof *s); }
 struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in) {
-    struct elk_act a = {0, 0, 0, 0};
-    int want = in->enabled && in->asleep_eink;
+    struct elk_act a; memset(&a, 0, sizeof a);
+    int want = in->enabled && in->asleep_eink, awake_eink = in->on_eink && !in->asleep_eink;
     a.arm = in->enabled && in->clock && in->on_eink;	/* armed on the e-ink even awake: a sleep missed by the poll is caught */
     if (!s->locked) {
+        if (s->restore_pending) {	/* eink-round5: the covered page returns only on the e-ink, 1 s after the wake-up */
+            if (in->asleep_eink && !in->enabled) { a.restore = 1; s->restore_pending = 0; }
+            else if (awake_eink) {
+                if (s->eink_since <= 0) s->eink_since = in->now;
+                if (in->now - s->eink_since >= ELK_RESTORE_DELAY_S) { a.restore = 1; s->restore_pending = 0; s->eink_since = 0; }
+            } else if (s->eink_since > 0 && s->eink_since <= in->now) s->eink_since = 0;	/* (a retry backoff stays) */
+        }
         if (!want) { s->asleep_since = 0; return a; }
-        if (s->asleep_since <= 0) s->asleep_since = in->now;
-        if (in->now - s->asleep_since < ELK_ENTRY_DELAY_S && !in->timer_fired) return a;
-        s->locked = 1; s->drew = 0; s->frames = 0; s->last_clean = in->now;
-        a.draw = 1; return a;
+        if (s->asleep_since <= 0 || in->resumed) s->asleep_since = in->now;	/* a suspend inside the entry window restarts it */
+        a.hold = 1;
+        if (in->now - s->asleep_since < ELK_ENTRY_DELAY_S) return a;
+        s->locked = 1; s->drew = 0; s->frames = 0; s->last_clean = in->now; s->restore_pending = 0; s->eink_since = 0;
+        a.restore = 0; a.draw = 1; return a;
     }
     if (!want) {	/* woke up, left the e-ink, or the lock screen was disabled */
-        a.restore = s->drew; s->locked = 0; s->drew = 0; s->asleep_since = 0; s->frames = 0;
+        if (s->drew) { s->restore_pending = 1; s->eink_since = awake_eink ? in->now : 0; }
+        s->locked = 0; s->drew = 0; s->asleep_since = 0; s->frames = 0;
+        if (s->restore_pending && in->asleep_eink) { a.restore = 1; s->restore_pending = 0; }	/* disabled while asleep */
         return a;
     }
     if ((in->timer_fired && in->clock) || in->changed) {
@@ -317,6 +327,8 @@ struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in) {
     }
     return a;
 }
+void elk_sm_abort(struct elk_sm *s) { if (!s->frames) { s->locked = 0; s->drew = 0; s->asleep_since = 0; } }
+void elk_restore_failed(struct elk_sm *s, double now) { s->restore_pending = 1; s->eink_since = now + 4.0; }
 void elk_sm_sent(struct elk_sm *s, const struct elk_act *a, double now) {
     if (!a->draw) return;
     s->drew = 1; s->frames++;

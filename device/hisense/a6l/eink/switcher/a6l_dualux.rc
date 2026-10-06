@@ -14,5 +14,8 @@ service vendor.a6l_dualux /vendor/bin/a6l_dualux
     class hal
     user system
     group system input uhid graphics wakelock
+    # eink-round5: /sys/power/wake_lock needs CAP_BLOCK_SUSPEND (kernel/power/wakelock.c, as a6l_epdd in round 4): without it
+    # the lock-screen hand-over wakelock at e-ink sleep was EPERM and the system could suspend before a6l_einklock drew
+    capabilities BLOCK_SUSPEND
     task_profiles ServiceCapacityLow
     disabled

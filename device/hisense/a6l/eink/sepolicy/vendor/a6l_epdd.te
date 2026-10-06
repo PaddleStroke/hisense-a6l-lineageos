@@ -36,3 +36,15 @@ wakelock_use(a6l_epdd)
 # One-slot nonpersistent debug trace; no socket/data permission changes.
 get_prop(a6l_epdd, vendor_a6l_eink_trace_prop)
 get_prop(a6l_epdd, build_prop)
+
+# eink-round5 (6 Oct 21:18 boot, permissive): the e-ink connector lookup (sysfs_connector: /sys/class/drm/card*-*/modes,
+# connector_id) and the epd_power realpath walk c900000.display-subsystem (sysfs_a6l_drm, rom/sepolicy/vendor/file.te);
+# temperature() reads every /sys/class/hwmon/*/name, hwmon12 is the qcom-battery one (sysfs_batteryinfo).
+allow a6l_epdd sysfs_a6l_drm:dir r_dir_perms;
+allow a6l_epdd sysfs_a6l_drm:file r_file_perms;
+allow a6l_epdd sysfs_a6l_drm:lnk_file read;
+allow a6l_epdd sysfs_batteryinfo:dir r_dir_perms;
+allow a6l_epdd sysfs_batteryinfo:file r_file_perms;
+allow a6l_epdd sysfs_batteryinfo:lnk_file read;
+# eink-round5: display-transition markers in the kernel log
+allow a6l_epdd kmsg_device:chr_file w_file_perms;

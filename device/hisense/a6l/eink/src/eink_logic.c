@@ -399,3 +399,55 @@ int front_follow_step(struct front_follow *f, int front_off) {
     f->off = 1;
     return 1;
 }
+
+/* ---------------- 9. per-plane copy policy (eink-round5) ---------------- */
+size_t pcopy_chunk(size_t knob_bytes, size_t n) { (void)n; return knob_bytes ? knob_bytes : GUARDED_COPY_CHUNK; }
+int pcache_usable(double age_s, int same_geometry) { return same_geometry && age_s >= 0 && age_s <= PCACHE_MAX_AGE_S; }
+/* copy [from, n) from src in chunks, checking the plane after each one. Returns 0 = complete; 1 = flipped, *seam = start
+ * of the chunk after which the flip was seen (that chunk is suspect: it is copied again from the new buffer); -1 = error */
+static int pcopy_run(uint8_t *dst, const uint8_t *src, size_t from, size_t n, size_t chunk, const struct pcopy_ops *ops,
+                     void *ctx, uint32_t gen, struct pcopy_stats *st, size_t *seam) {
+    for (size_t done = from; done < n; ) {
+        size_t c = n - done < chunk ? n - done : chunk;
+        memcpy(dst + done, src + done, c);
+        int s = ops->still(ctx, gen); st->checks++;
+        if (s < 0) return -1;
+        if (!s) { *seam = done; return 1; }
+        done += c;
+    }
+    return 0;
+}
+int plane_copy_policy(uint8_t *dst, size_t n, size_t chunk, int retries, int max_switches,
+                      const struct pcopy_ops *ops, void *ctx, struct pcopy_stats *st) {
+    struct pcopy_stats z; if (!st) st = &z;
+    memset(st, 0, sizeof *st);
+    if (!chunk) chunk = n ? n : 1;
+    const uint8_t *px = NULL; uint32_t gen = 0;
+    for (int attempt = 0; ; attempt++) {
+        int r = ops->open(ctx, &px, &gen);
+        if (r < 0) return PCOPY_ERR;
+        if (r == 1) return PCOPY_GONE;
+        if (r == 2) st->geometry_changes++;
+        st->attempts++;
+        int final = attempt >= retries;
+        size_t ch = final && chunk > PCOPY_STITCH_CHUNK ? PCOPY_STITCH_CHUNK : chunk, seam = 0;
+        int c = pcopy_run(dst, px, 0, n, ch, ops, ctx, gen, st, &seam);
+        if (c <= 0) { ops->close(ctx); return c ? PCOPY_ERR : PCOPY_OK; }
+        if (!final) { ops->close(ctx); continue; }	/* flipped during its own copy: copy the buffer it shows now */
+        /* final attempt: stitch. Rows [0, seam) were read while `gen` was on screen (checked after each chunk). */
+        st->first_seam = seam;
+        while (st->switches < max_switches) {
+            ops->close(ctx);
+            r = ops->open(ctx, &px, &gen);
+            if (r < 0) return PCOPY_ERR;
+            if (r == 1) return PCOPY_GONE;
+            st->switches++;
+            if (r == 2) { st->geometry_changes++; seam = 0; }	/* other geometry: no seam across it, start over */
+            c = pcopy_run(dst, px, seam, n, ch, ops, ctx, gen, st, &seam);
+            if (c <= 0) { ops->close(ctx); return c ? PCOPY_ERR : PCOPY_STITCHED; }
+        }
+        memcpy(dst + seam, px + seam, n - seam);	/* still flipping after max_switches (never seen at 60 Hz) */
+        ops->close(ctx);
+        return PCOPY_TORN;
+    }
+}

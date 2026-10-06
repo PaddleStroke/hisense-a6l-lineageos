@@ -25,3 +25,10 @@ set_prop(a6l_eink_mirror, vendor_eink_prop)
 # system/sepolicy grants only to coredomain/appdomain/vendor_init: without this the read is denied when enforcing, the
 # property reads as "" and the mirror waits for ever (rear screen never mirrors).
 get_prop(a6l_eink_mirror, boot_status_prop)
+
+# eink-round5 (6 Oct 21:18 boot, permissive: avc denied { use } scontext=a6l_eink_mirror tcontext=hal_graphics_allocator_default
+# tclass=fd, path="/dmabuf:"): the PRIME fd of a scanout buffer (GETFB2 handle -> drmPrimeHandleToFD) is the dma-buf file
+# the allocator HAL created; mmap'ing it for the capture needs fd use on the allocator's domain.
+allow a6l_eink_mirror hal_graphics_allocator_default:fd use;
+# eink-round5: display-transition markers in the kernel log (/dev/kmsg write, as hal_health)
+allow a6l_eink_mirror kmsg_device:chr_file w_file_perms;

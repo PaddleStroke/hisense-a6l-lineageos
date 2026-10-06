@@ -49,3 +49,16 @@ allow a6l_dualux sysfs_power:file r_file_perms;
 # eink-lockscreen: a 2 s timed wakelock "a6l_dualux_lock" when Android falls asleep on the e-ink, so a6l_einklock sees
 # vendor.dualux.state = eink-asleep and takes its own lock before the first system suspend
 wakelock_use(a6l_dualux)
+
+# eink-round5 (6 Oct 21:18 boot, permissive): the 0016 suspend-aware watchdog reads /sys/power/suspend_stats/{success,fail}
+# (sysfs_suspend_stats, system/sepolicy genfs, not sysfs_power); LCD awake = dpms of the DRM connector under
+# c900000.display-subsystem (sysfs_a6l_drm); /sys/class/leds/epd-backlight resolves into a sysfs_a6l_dualux directory.
+allow a6l_dualux sysfs_suspend_stats:dir r_dir_perms;
+allow a6l_dualux sysfs_suspend_stats:file r_file_perms;
+allow a6l_dualux sysfs_a6l_drm:dir r_dir_perms;
+allow a6l_dualux sysfs_a6l_drm:file r_file_perms;
+allow a6l_dualux sysfs_a6l_drm:lnk_file read;
+allow a6l_dualux sysfs_a6l_dualux:dir r_dir_perms;
+# eink-round5: the lock-screen hand-over wakelock needs CAP_BLOCK_SUSPEND (a6l_dualux.rc "capabilities BLOCK_SUSPEND");
+# wakelock_use() above already grants block_suspend on the SELinux side. Display-transition markers in the kernel log:
+allow a6l_dualux kmsg_device:chr_file w_file_perms;

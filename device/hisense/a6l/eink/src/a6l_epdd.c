@@ -129,6 +129,25 @@ static void logline(const char *fmt, ...) {
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
+/* eink-round5: display-transition markers in the kernel log ("<6>a6l_epdd: ..."; /dev/kmsg is root:system 0620, printk.devkmsg=on).
+ * One timeline with the DPU/DSI/SMMU/PM messages for the round-5 repro (kmsg streamed to the laptop / fsync'ed on the
+ * phone). Android builds only: host tests never write the host's kernel log. */
+static void kmark(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void kmark(const char *fmt, ...) {
+#ifdef __ANDROID__
+    static int fd = -2;
+    if (fd == -2) fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    char b[300]; int n = snprintf(b, sizeof b, "<6>a6l_epdd: "); va_list ap; va_start(ap, fmt);
+    int m = vsnprintf(b + n, sizeof b - (size_t)n - 1, fmt, ap); va_end(ap);
+    if (m < 0) return;
+    n += m; if (n > (int)sizeof b - 2) n = (int)sizeof b - 2;
+    b[n++] = '\n'; if (write(fd, b, (size_t)n) < 0) { /* best effort */ }
+#else
+    (void)fmt;
+#endif
+}
+#define KLOG(...) do { LOG(__VA_ARGS__); kmark(__VA_ARGS__); } while (0)
 
 /* ---------------- images (unchanged from v2/v3; load_pnm split into header read + img_from_grey) ---------------- */
 static void img_fill(uint8_t v) { uint8_t *p = img.data; for (unsigned i = 0; i < IW * IH; i++) { p[4 * i] = p[4 * i + 1] = p[4 * i + 2] = v; p[4 * i + 3] = 0xff; } }
@@ -692,6 +711,7 @@ out:
 }
 static int rails_release(const char *why);
 static void drm_close(void) {	/* v4: lease lost / composer restarted: drop everything, the next update reopens */
+    kmark("DRM reset (lease lost / composer restarted?)");
     rails_release("DRM reset");
     /* eink-round3: closing the lessee fd removes our fbs but does not disable the CRTC; switch it off while we still can
      * (fails harmlessly when the lease is already revoked), then drop the no-suspend lock with it. */
@@ -779,9 +799,10 @@ static int drm_start(void) {	/* modeset = panel prepare+enable = kernel bring-up
 #endif
     char st[200];
     for (int attempt = 1; attempt <= 3; attempt++) {
-        if (drmModeSetCrtc(dfd, crtc, idle.id, 0, 0, &conn_id, 1, &mode_info)) { int e = errno; LOG("FAIL setcrtc: %s", strerror(e)); if (lost_errno(e)) drm_lost = 1; return -1; }
+        kmark("e-ink CRTC %u modeset on (attempt %d)", crtc, attempt);
+        if (drmModeSetCrtc(dfd, crtc, idle.id, 0, 0, &conn_id, 1, &mode_info)) { int e = errno; KLOG("FAIL setcrtc: %s", strerror(e)); if (lost_errno(e)) drm_lost = 1; return -1; }
         for (int i = 0; i < 10; i++) flip(idle.id);
-        bringup_status(st, sizeof st); LOG("bring-up %d: %s", attempt, st[0] ? st : "(no status attribute)");
+        bringup_status(st, sizeof st); KLOG("bring-up %d: %s", attempt, st[0] ? st : "(no status attribute)");
         if (!st[0] || strstr(st, "bridge_ok=1")) return 0;
         drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); sleep(1);
     }
@@ -791,7 +812,8 @@ static int rails_release(const char *why);
 static void crtc_off(const char *why) {
     rails_release(why);	/* eink-round4: never leave the rails up behind a switched-off CRTC */
     if (dry || dfd < 0 || !crtc || !started) return;
-    drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); started = 0; LOG("e-ink CRTC off (%s)", why);
+    kmark("e-ink CRTC %u off begin (%s)", crtc, why);
+    drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); started = 0; KLOG("e-ink CRTC off (%s)", why);
     crtc_wakelock(0);
 }
 
@@ -1038,6 +1060,7 @@ static int lock_frame(const uint8_t *payload, int w, int h, int m, int force) {
         else have_mirror = 0;
         LOG("lock screen: first lock picture (%s)", have_mirror ? "the current picture is kept for the restore" : "no earlier picture to keep");
     }
+    kmark("lockframe begin (crtc %s, rails %s)", started ? "on" : "off", rails_held ? "held" : "off");
     int rc = recover();
     if (!rc) rc = load_grey(payload, w, h);
     if (!rc) {
@@ -1045,10 +1068,12 @@ static int lock_frame(const uint8_t *payload, int w, int h, int m, int force) {
         rc = run_update(force, m, force ? "lock-clean" : "lock");
     }
     crtc_off("lock picture shown: the system may suspend until the next tick");	/* also after a failure */
+    kmark("lockframe end: %s", rc ? "FAILED" : "ok");
     return rc;
 }
 static int lock_restore(int off, char *reply, size_t rn) {
     int rc = 0;
+    kmark("lock restore%s (lock picture %s)", off ? " off" : "", lock_on_panel ? "shown" : "already replaced");
     if (!lock_on_panel) snprintf(reply, rn, "OK lock restore: nothing to do");
     else if (!have_mirror) { lock_on_panel = 0; snprintf(reply, rn, "OK lock restore: no earlier picture, lock picture kept"); }
     else {
@@ -1090,7 +1115,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
                  lock_on_panel ? "on" : "off", lock_frames, st[0] ? st : "-");
         return 0;
     }
-    if (!strcmp(line, "power off")) { crtc_off("requested"); snprintf(reply, rn, "OK crtc off"); return 0; }
+    if (!strcmp(line, "power off")) { if (started) kmark("power off requested (mirror: LCD off / mirror off)"); crtc_off("requested"); snprintf(reply, rn, "OK crtc off"); return 0; }
     if (!strcmp(line, "lock restore") || !strcmp(line, "lock restore off")) return lock_restore(line[12] != 0, reply, rn);
     if (sscanf(line, "lockframe %d %d %31s %15s", &w, &h, mname, flag) >= 2) {
         if (!payload) { snprintf(reply, rn, "ERR lockframe needs a pixel payload (socket only)"); return -1; }
