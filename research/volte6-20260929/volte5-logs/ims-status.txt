@@ -1,0 +1,6 @@
+A6L_QMI_IMSA_BIND sub=0 ok
+A6L_VOLTE3_IMSA now imsa=present registered=0 voice=0 reg=[status=not-registered err=0] services=[voice=- sms=- vt=- ut=available/wwan]
+A6L_VOLTE3_NAS now ok lte_ims_voice=0 lte_voice_domain=3(0 none,1 IMS,2 1X,3 CS)
+A6L_VOLTE3_VSID now cs_vsid=0x11C05000(VoiceMMode1) lte_vsid=0x11C05000(VoiceMMode1) wlan_vsid=0x11C05000(VoiceMMode1) active=1 priority=1 dds=1
+A6L_VOLTE3_AUDIO_SESSION now lte=mmode1 cs=mmode1
+A6L_QMI_DONE ims-status rc=0

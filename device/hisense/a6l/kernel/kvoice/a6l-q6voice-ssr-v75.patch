@@ -1,0 +1,193 @@
+A6L r5 bug hunt round2 (29 Sep 2026): ADSP restart (SSR / audio PD down) during a call.
+apr_remove() unregisters CVP, CVS, MVM (DT order: the overlay puts CVP first) while the voice path still owns sessions
+on them; the q6voice-dai (MVM child) goes last and ASoC waits there until userspace closes the voice PCMs, then the path
+is stopped/destroyed through services whose devm memory (svc->adev, svc->lock) was freed at unbind and through a removed
+APR router (apr_send_pkt -> adev->dev.parent drvdata): use-after-free. Service now kzalloc + kref (one ref per session,
+APR device pinned for the sessions' dev pointers), `removed` set under a rw_semaphore held around every apr_send_pkt
+(-ENODEV afterwards). q6mvm: a failed of_platform_populate unregisters the service (stale entry, -EEXIST on reprobe).
+Applies after a6l-q6voice-rx-volume-v75.patch (series kernel/rom-v2/series). Built W=1 by tools/check-rom-v2-kernel-series.sh.
+
+--- a/sound/soc/qcom/qdsp6/q6mvm.c
++++ b/sound/soc/qcom/qdsp6/q6mvm.c
+@@ -290,7 +290,15 @@
+ 
+ 	q6mvm_adev = adev;
+ 
+-	return of_platform_populate(adev->dev.of_node, NULL, NULL, &adev->dev);
++	ret = of_platform_populate(adev->dev.of_node, NULL, NULL, &adev->dev);
++	if (ret) {
++		/* A6L r5 bug hunt round2: a failed probe must not leave the service registered (stale after unbind,
++		 * and every later probe of MVM would fail with -EEXIST) */
++		of_platform_depopulate(&adev->dev);
++		q6mvm_adev = NULL;
++		q6voice_common_remove(adev);
++	}
++	return ret;
+ }
+ 
+ static void q6mvm_remove(struct apr_device *adev)
+--- a/sound/soc/qcom/qdsp6/q6voice-common.c
++++ b/sound/soc/qcom/qdsp6/q6voice-common.c
+@@ -2,6 +2,7 @@
+ // Copyright (c) 2020, Stephan Gerhold
+ 
+ #include <linux/module.h>
++#include <linux/rwsem.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
+ #include <linux/soc/qcom/apr.h>
+@@ -11,9 +12,25 @@
+ 
+ #define TIMEOUT_MS	300
+ 
++/*
++ * A6L r5 bug hunt round2 (29 Sep 2026): ADSP restart (SSR / audio PD down) during a call. apr_remove() unregisters the
++ * CVP, CVS and MVM services one by one (DT child order: the overlay puts CVP first) while the voice path still owns
++ * sessions on them; the q6voice-dai (child of MVM) is removed last and ASoC waits there until userspace closes the
++ * voice PCMs. The path is then stopped and its sessions destroyed through services that are already gone: the
++ * service used to be devm memory of the removed APR device (freed at unbind), so q6voice_common_send() /
++ * q6voice_session_release() dereferenced freed memory (svc->adev, svc->lock) and apr_send_pkt() the removed APR
++ * router. Now the service is refcounted (one reference per session, the APR device pinned with it for the
++ * session's dev pointer) and marked removed under a rw_semaphore that every send holds: after removal a command fails
++ * with -ENODEV without touching APR; the session memory and the service outlive the device until the last session
++ * is released.
++ */
+ struct q6voice_service {
+ 	struct apr_device *adev;
+ 	enum q6voice_service_type type;
++	struct kref refcount;
++	/* A6L: read-held around apr_send_pkt(), write-held by remove to set `removed` */
++	struct rw_semaphore rwsem;
++	bool removed;
+ 
+ 	/* Protect sessions array */
+ 	spinlock_t lock;
+@@ -24,6 +41,14 @@
+ static DEFINE_SPINLOCK(q6voice_services_lock);
+ static struct q6voice_service *q6voice_services[Q6VOICE_SERVICE_COUNT] = {0};
+ 
++static void q6voice_service_free(struct kref *ref)
++{
++	struct q6voice_service *svc = container_of(ref, struct q6voice_service, refcount);
++
++	put_device(&svc->adev->dev);
++	kfree(svc);
++}
++
+ int q6voice_common_probe(struct apr_device *adev, enum q6voice_service_type type)
+ {
+ 	struct device *dev = &adev->dev;
+@@ -33,23 +58,29 @@
+ 	if (type >= Q6VOICE_SERVICE_COUNT)
+ 		return -EINVAL;
+ 
+-	svc = devm_kzalloc(dev, sizeof(*svc), GFP_KERNEL);
++	svc = kzalloc(sizeof(*svc), GFP_KERNEL);
+ 	if (!svc)
+ 		return -ENOMEM;
+ 
+ 	svc->adev = adev;
++	get_device(dev);	/* A6L: dropped by the last reference (sessions keep dev pointers) */
+ 	svc->type = type;
++	kref_init(&svc->refcount);
++	init_rwsem(&svc->rwsem);
+ 	spin_lock_init(&svc->lock);
+ 
+-	dev_set_drvdata(dev, svc);
+-
+ 	spin_lock_irqsave(&q6voice_services_lock, flags);
+ 	current_svc = q6voice_services[type];
+ 	if (!current_svc)
+ 		q6voice_services[type] = svc;
+ 	spin_unlock_irqrestore(&q6voice_services_lock, flags);
+ 
+-	return current_svc ? -EEXIST : 0;
++	if (current_svc) {
++		kref_put(&svc->refcount, q6voice_service_free);
++		return -EEXIST;
++	}
++	dev_set_drvdata(dev, svc);
++	return 0;
+ }
+ EXPORT_SYMBOL_GPL(q6voice_common_probe);
+ 
+@@ -64,7 +95,12 @@
+ 		q6voice_services[type] = NULL;
+ 	spin_unlock_irqrestore(&q6voice_services_lock, flags);
+ 
+-	/* TODO: Should probably free up sessions here??? */
++	/* A6L: no command reaches the removed APR device any more; live sessions keep the service until released */
++	down_write(&svc->rwsem);
++	svc->removed = true;
++	up_write(&svc->rwsem);
++	dev_set_drvdata(&adev->dev, NULL);
++	kref_put(&svc->refcount, q6voice_service_free);
+ }
+ EXPORT_SYMBOL_GPL(q6voice_common_remove);
+ 
+@@ -73,6 +109,7 @@
+ 	struct q6voice_session *s = container_of(ref, struct q6voice_session,
+ 						 refcount);
+ 
++	kref_put(&s->svc->refcount, q6voice_service_free);	/* A6L */
+ 	kfree(s);
+ }
+ 
+@@ -114,13 +151,17 @@
+ 
+ 	spin_lock_irqsave(&q6voice_services_lock, flags);
+ 	svc = q6voice_services[type];
++	if (svc)
++		kref_get(&svc->refcount);	/* A6L: owned by the session from here on */
+ 	spin_unlock_irqrestore(&q6voice_services_lock, flags);
+ 	if (!svc)
+ 		return ERR_PTR(-ENODEV);
+ 
+ 	s = kzalloc(sizeof(*s), GFP_KERNEL);
+-	if (!s)
++	if (!s) {
++		kref_put(&svc->refcount, q6voice_service_free);
+ 		return ERR_PTR(-ENOMEM);
++	}
+ 
+ 	s->dev = &svc->adev->dev;
+ 	s->svc = svc;
+@@ -133,7 +174,7 @@
+ 	spin_lock_irqsave(&svc->lock, flags);
+ 	if (svc->sessions[path]) {
+ 		spin_unlock_irqrestore(&svc->lock, flags);
+-		kfree(s);
++		kref_put(&s->refcount, q6voice_session_free);	/* A6L: also drops the service reference */
+ 		return ERR_PTR(-EBUSY);
+ 	}
+ 	svc->sessions[path] = s;
+@@ -206,6 +247,9 @@
+ 
+ 	dev_dbg(dev, "callback: %#x\n", data->hdr.opcode);
+ 
++	if (!v)		/* A6L: reply racing with remove */
++		return 0;
++
+ 	if (data->hdr.dest_port >= Q6VOICE_PATH_COUNT) {
+ 		dev_warn(dev, "callback() called for unhandled/invalid path: %d\n",
+ 			 data->hdr.dest_port);
+@@ -246,9 +290,17 @@
+ 	s->result = 0;
+ 	spin_unlock_irqrestore(&s->lock, flags);
+ 
+-	ret = apr_send_pkt(s->svc->adev, (struct apr_pkt *)hdr);
+-	if (ret < 0)
++	/* A6L: never through a removed APR device (ADSP restart); the reply wait below is outside the lock */
++	down_read(&s->svc->rwsem);
++	if (s->svc->removed)
++		ret = -ENODEV;
++	else
++		ret = apr_send_pkt(s->svc->adev, (struct apr_pkt *)hdr);
++	up_read(&s->svc->rwsem);
++	if (ret < 0) {
++		s->expected_opcode = 0;
+ 		return ret;
++	}
+ 
+ 	ret = wait_event_timeout(s->wait, (s->expected_opcode == 0),
+ 				 msecs_to_jiffies(TIMEOUT_MS));

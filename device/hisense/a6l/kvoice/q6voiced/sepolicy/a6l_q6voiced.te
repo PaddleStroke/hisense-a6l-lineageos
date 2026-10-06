@@ -6,4 +6,11 @@ allow a6l_q6voiced audio_device:dir r_dir_perms;
 allow a6l_q6voiced audio_device:chr_file rw_file_perms;
 allow a6l_q6voiced proc_asound:file r_file_perms;
 # vendor.a6l.voice.active: readable vendor property (the flash agent may give it a dedicated vendor_*_prop type)
-get_prop(a6l_q6voiced, vendor_default_prop)
+get_prop(a6l_q6voiced, vendor_a6l_voice_prop)   # rom-v2: type from radio/sepolicy (set by the radio HAL)
+
+# r5 review (28 Sep 2026): F6 mute socket (init-created /dev/socket/a6l_q6voiced) + F7 call output property
+type a6l_q6voiced_socket, file_type;
+allow a6l_q6voiced self:unix_stream_socket { accept listen read write getopt setopt };
+unix_socket_connect(hal_radio_default, a6l_q6voiced, a6l_q6voiced)
+unix_socket_connect(hal_audio_default, a6l_q6voiced, a6l_q6voiced)
+get_prop(a6l_q6voiced, vendor_a6l_audio_prop)   # type from audio/sepolicy (set by the audio HAL)

@@ -1,0 +1,16 @@
+--- a/drivers/opp/debugfs.c	2026-09-29 20:27:59.119302122 +0200
++++ b/drivers/opp/debugfs.c	2026-09-29 20:27:59.120723018 +0200
+@@ -192,6 +192,13 @@
+ 
+ 	opp_set_dev_name(opp_dev->dev, name);
+ 
++	/*
++	 * In some rare cases (e.g. pmdomain consumer's OPP table being initialized
++	 * in pmdomain->attach), the link may have already been created.
++	 */
++	if (unlikely(debugfs_lookup(name, rootdir)))
++		return;
++
+ 	/* Create device specific directory link */
+ 	opp_dev->dentry = debugfs_create_symlink(name, rootdir,
+ 						 opp_table->dentry_name);

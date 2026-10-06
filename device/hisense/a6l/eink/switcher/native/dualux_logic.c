@@ -12,10 +12,10 @@ void dx_out_init(struct dx_out *o) { memset(o, 0, sizeof *o); o->set_screen = -1
 void dx_apply(struct dx_state *s, const struct dx_out *o) { if (o->set_screen == DX_LCD || o->set_screen == DX_EINK) s->screen = o->set_screen; }
 void dx_set_awake(struct dx_state *s, int awake) { s->awake = !!awake; }
 
-int dx_power_grabbed(const struct dx_state *s) { return s->screen == DX_EINK && s->awake; }
+int dx_power_grabbed(const struct dx_state *s) { return s->screen == DX_EINK && s->awake && !s->no_inject; }	/* r5 pass2 F20 */
 int dx_front_touch_grabbed(const struct dx_state *s) { return s->screen == DX_EINK; }
-int dx_lcd_blank(const struct dx_state *s) { return s->screen == DX_EINK; }
-int dx_mirror_on(const struct dx_state *s) { return s->screen == DX_EINK || s->cfg.mirror_in_lcd; }
+int dx_lcd_blank(const struct dx_state *s) { return s->screen == DX_EINK || s->appearance_hold; }
+int dx_mirror_on(const struct dx_state *s) { return s->appearance_hold != 1 && (s->screen == DX_EINK || s->cfg.mirror_in_lcd); }
 const char *dx_state_name(const struct dx_state *s) { return s->screen == DX_LCD ? "lcd" : s->awake ? "eink" : "eink-asleep"; }
 int dx_screen_parse(const char *v, int def) {
     if (!v || !*v) return def;
@@ -49,7 +49,7 @@ struct dx_out dx_power_key(struct dx_state *s, int value, double now) {
     if (value == 2) return dx_tick(s, now);
     if (value == 1) {
         if (s->pw_down) return o;
-        s->pw_down = 1; s->pw_t = now; s->pw_injected = 0; s->pw_grabbed_at_down = dx_power_grabbed(s);
+        s->pw_down = 1; s->pw_t = now; s->pw_injected = 0; s->pw_grabbed_at_down = dx_power_grabbed(s) && !s->pw_not_held;
         /* not grabbed: Android gets this press itself. If the e-ink is the screen but Android sleeps, the press wakes
          * Android: switch to the LCD at once (stock: the power key wakes the primary screen) */
         if (!s->pw_grabbed_at_down && s->screen == DX_EINK && !s->awake) o.set_screen = DX_LCD;
@@ -60,6 +60,18 @@ struct dx_out dx_power_key(struct dx_state *s, int value, double now) {
     if (!s->pw_grabbed_at_down) return o;
     if (s->pw_injected) { o.power_up = 1; s->pw_injected = 0; return o; }	/* long press was handed to Android */
     o.set_screen = DX_LCD;				/* short press on the e-ink: back to the LCD, no sleep */
+    return o;
+}
+
+struct dx_out dx_power_cancel(struct dx_state *s) {	/* r5 pass2 F20 */
+    struct dx_out o; dx_out_init(&o);
+    if (s->pw_injected) o.power_up = 1;
+    s->pw_down = 0; s->pw_injected = 0; s->pw_grabbed_at_down = 0;
+    return o;
+}
+struct dx_out dx_eink_cancel(struct dx_state *s) {
+    struct dx_out o; dx_out_init(&o);
+    s->ek_down = 0; s->ek_long = 0; s->ek_double = 0; s->ek_pending = 0;
     return o;
 }
 
@@ -107,7 +119,7 @@ double dx_lcd_to_linear(int v, int max, int hw_linear) {
 }
 void dx_fl_default(struct dx_fl_cfg *c) { c->enable = 1; c->max_pct = 100; c->min_level = 1; c->gamma = 1.0; }
 int dx_frontlight_level(const struct dx_state *s, const struct dx_fl_cfg *c, int v, int lcd_max, int hw_linear, int fl_max) {
-    if (s->screen != DX_EINK || !s->awake || !c->enable || fl_max <= 0 || v <= 0) return 0;
+    if (s->appearance_hold || s->screen != DX_EINK || !s->awake || !c->enable || fl_max <= 0 || v <= 0) return 0;
     double b = dx_lcd_to_linear(v, lcd_max, hw_linear);
     if (c->gamma > 0 && c->gamma != 1.0) b = pow(b, c->gamma);
     int pct = c->max_pct < 0 ? 0 : c->max_pct > 100 ? 100 : c->max_pct;

@@ -1,0 +1,58 @@
+Hisense A6L btcall (29 Sep 2026, docs/android-bt-audio-20260929.md) for the AOSP AIDL example audio HAL (StreamPrimary),
+on top of 0001..0003 (touches only AOSP lines, so every patch of the series still reverse-applies for the pipeline's
+"already applied" check). Dormant unless the bridge is enabled:
+  - with persist.vendor.a6l.btcall.bridge=1 the Telephony Rx input and Telephony Tx output streams of the AudioFlinger
+    software call bridge (bridge policy audio/bluetooth/btcall/audio_policy_configuration_btcall.xml) open ALSA
+    pcmC0D<persist.vendor.a6l.btcall.dl_pcm>c (in-call record front end = downlink) and
+    pcmC0D<persist.vendor.a6l.btcall.ul_pcm>p (in-call music front end = uplink) instead of the stub driver.
+    Property unset/0 or no valid pcm number (1..31): AOSP behaviour (stub driver).
+  - the "call is bridged" state is not published by the HAL: a6l-q6voiced and a6l-audio-route see the downlink front end
+    running in /proc/asound (no new IPC, no change to the 0002 publisher).
+Applied in hardware/interfaces by tools/rom-v2-pipeline.sh (audio/patches/*.patch, in order).
+
+--- a/audio/aidl/default/primary/StreamPrimary.cpp
++++ b/audio/aidl/default/primary/StreamPrimary.cpp
+@@ -39,6 +39,23 @@
+ 
+ namespace aidl::android::hardware::audio::core {
+ 
++namespace {
++// Hisense A6L btcall (29 Sep 2026, docs/android-bt-audio-20260929.md): with persist.vendor.a6l.btcall.bridge=1 the
++// Telephony Rx input / Telephony Tx output streams of the AudioFlinger software call bridge (bridge policy
++// audio/bluetooth/btcall) run on real ALSA PCMs of card 0 instead of the stub driver:
++// persist.vendor.a6l.btcall.dl_pcm (in-call record front end, downlink, capture) and
++// persist.vendor.a6l.btcall.ul_pcm (in-call music front end, uplink, playback). -1 = AOSP behaviour (stub).
++int a6lBtcallPcm(const AudioDevice& device) {
++    const auto t = device.type.type;
++    if (t != AudioDeviceType::IN_TELEPHONY_RX && t != AudioDeviceType::OUT_TELEPHONY_TX) return -1;
++    if (!GetBoolProperty("persist.vendor.a6l.btcall.bridge", false)) return -1;
++    return ::android::base::GetIntProperty<int>(t == AudioDeviceType::IN_TELEPHONY_RX
++                                                        ? "persist.vendor.a6l.btcall.dl_pcm"
++                                                        : "persist.vendor.a6l.btcall.ul_pcm",
++                                                -1, 1, 31);
++}
++}  // namespace
++
+ StreamPrimary::StreamPrimary(StreamContext* context, const Metadata& metadata)
+     : StreamAlsaMonoPipe(context, metadata, 3 /*readWriteRetries*/),
+       mIsAsynchronous(!!getContext().getAsyncCallback()),
+@@ -183,6 +200,11 @@
+ // static
+ StreamPrimary::AlsaDeviceId StreamPrimary::getCardAndDeviceId(
+         const std::vector<AudioDevice>& devices) {
++    if (const int pcm = devices.empty() ? -1 : a6lBtcallPcm(devices[0]); pcm >= 0) {
++        LOG(INFO) << __func__ << ": A6L btcall bridge stream on card " << kDefaultCardAndDeviceId.first
++                  << " device " << pcm;
++        return {kDefaultCardAndDeviceId.first, pcm};
++    }
+     if (devices.empty() || devices[0].address.getTag() != AudioDeviceAddress::id) {
+         return kDefaultCardAndDeviceId;
+     }
+@@ -206,6 +228,7 @@
+             GetBoolProperty("ro.boot.audio.tinyalsa.simulate_input", false);
+     static const bool kSimulateOutput =
+             GetBoolProperty("ro.boot.audio.tinyalsa.ignore_output", false);
++    if (a6lBtcallPcm(device) >= 0) return false;  // Hisense A6L btcall: real bridge PCM
+     if (isInput) {
+         return kSimulateInput || device.type.type == AudioDeviceType::IN_TELEPHONY_RX ||
+                device.type.type == AudioDeviceType::IN_FM_TUNER ||

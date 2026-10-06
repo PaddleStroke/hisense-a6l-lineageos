@@ -1,0 +1,2 @@
+# audfix: capture on its own front end MultiMedia2 (pcmC0D1c), as mainline boards do (db845c/sm8250 UCM)
+MultiMedia2 Mixer LPI_MI2S_TX_3|1

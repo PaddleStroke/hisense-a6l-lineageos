@@ -1,0 +1,7 @@
+F66 input_confidence_pct=39 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51
+F66 input_confidence_pct=50 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51
+F66 input_confidence_pct=68 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51
+F66 input_confidence_pct=95 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51
+F66 absent_confidence Android_horizontal_m=10.0 Android_vertical_m=20.0
+F66 no_uncertainty_positive_control accuracy_flags_absent=1
+ROUND12_ACCURACY_REPRODUCTION_PASS (defect present, not fixed)

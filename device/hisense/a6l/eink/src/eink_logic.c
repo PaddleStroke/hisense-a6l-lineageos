@@ -6,8 +6,9 @@
 #include <string.h>
 
 void pol_default_cfg(struct pol_cfg *c) {
-    c->quiet_ms = 300; c->settle_ms = 1000; c->min_gap_ms = 150; c->clear_every = 10; c->max_per_min = 60;
-    c->active_mode = POL_FASTEST; c->reading = 0; c->reading_refresh_every = 8; c->reading_full_frac = 0.6;
+    c->quiet_ms = 300; c->settle_ms = 1000; c->min_gap_ms = 150; c->clear_every = 10; c->max_per_min = 120;
+    c->active_mode = POL_FASTEST; c->fixed_fast = 0; c->reading = 0; c->reading_refresh_every = 8; c->reading_full_frac = 0.6;
+    c->stock = 0;
 }
 void pol_init(struct pol_state *s, const struct pol_cfg *c, double now) {
     memset(s, 0, sizeof *s); s->cfg = *c; s->win_t = now; s->done_t = now - 10; s->last_change = now - 10;
@@ -22,12 +23,30 @@ struct pol_action pol_step(struct pol_state *s, double now, double moving, doubl
     double quiet_ms = (now - s->last_change) * 1000;
     int can = !busy && (now - s->done_t) * 1000 >= c->min_gap_ms && s->win_n < c->max_per_min;
     if (!can) return a;
+    if (c->stock) {
+        /* Stock A6L (filmed 2026-10-06): one REGAL update (39 frames, only changed pixels driven, white never
+         * flashes) per change, of the newest capture, as soon as the panel is free. While scrolling this coalesces
+         * to ~2 grey updates/s, like stock. Ghost cleanup = forced REGAL (mode kept: no 79-frame transition) of the
+         * unchanged page after clear_every updates, deferred until the page has been still for settle_ms. */
+        if (vs_panel > 0 && quiet_ms >= c->quiet_ms) { a.kind = POL_SHOW; a.mode = POL_READING; }
+        else if (vs_panel == 0 && c->clear_every > 0 && s->reading_n >= c->clear_every && quiet_ms >= c->settle_ms) {
+            a.kind = POL_REFRESH; a.mode = POL_READING;
+        }
+        return a;
+    }
+    if (c->fixed_fast) {
+        if (vs_panel > 0) {
+            a.kind = POL_SHOW; a.mode = c->active_mode;
+            if (c->clear_every > 0 && (s->fast_n + 1) % c->clear_every == 0) a.kind = POL_CLEAN_SHOW;
+        }
+        return a;
+    }
     if (c->reading) {
         /* reading mode: never chase motion; one update when the page is still, REGAL (partial, no flash) for small
          * changes, GC16 for page turns; every N partial updates a forced GC16 refresh of the same picture */
         if (vs_panel > 0 && quiet_ms >= c->settle_ms) {
             a.kind = POL_SHOW; a.mode = vs_panel > c->reading_full_frac || !s->primed ? POL_QUALITY : POL_READING;
-            if (!strcmp(a.mode, POL_QUALITY) && c->clear_every > 0 && (s->clean_n + 1) % (c->clear_every * 2) == 0) a.kind = POL_CLEAR_THEN_SHOW;
+            if (!strcmp(a.mode, POL_QUALITY) && c->clear_every > 0 && (s->clean_n + 1) % (c->clear_every * 2) == 0) a.kind = POL_CLEAN_SHOW;
         } else if (vs_panel == 0 && s->reading_n >= c->reading_refresh_every && quiet_ms >= c->settle_ms) {
             a.kind = POL_REFRESH; a.mode = POL_QUALITY;
         }
@@ -37,17 +56,27 @@ struct pol_action pol_step(struct pol_state *s, double now, double moving, doubl
     else if (vs_panel > 0 && (s->burst || s->consec >= 2)) { a.kind = POL_SHOW; a.mode = c->active_mode; }
     else if (vs_panel == 0 && s->fast_on_panel && quiet_ms >= c->settle_ms) { a.kind = POL_REFRESH; a.mode = POL_QUALITY; }
     if (a.kind == POL_SHOW && !strcmp(a.mode, POL_QUALITY) && c->clear_every > 0 && (s->clean_n + 1) % c->clear_every == 0)
-        a.kind = POL_CLEAR_THEN_SHOW;
+        a.kind = POL_CLEAN_SHOW;
     return a;
 }
 void pol_sent(struct pol_state *s, const struct pol_action *a, double now) {
     (void)now;
-    int clean = a->mode && strcmp(a->mode, s->cfg.active_mode) != 0;
+    int clean = a->kind == POL_CLEAN_SHOW || (a->mode && strcmp(a->mode, s->cfg.active_mode) != 0);
     if (s->cfg.reading) clean = 1;
-    s->win_n += a->kind == POL_CLEAR_THEN_SHOW ? 3 : 1;
+    s->win_n++;
     s->primed = 1;
+    if (s->cfg.stock) {	/* REGAL history: count partial updates; the forced cleanup resets the count */
+        if (a->kind == POL_REFRESH || a->kind == POL_CLEAN_SHOW) s->reading_n = 0; else s->reading_n++;
+        s->fast_on_panel = 0; s->burst = 0; return;
+    }
+    if (s->cfg.fixed_fast && a->kind != POL_REFRESH) s->fast_n++;
     if (a->kind == POL_REFRESH) { s->fast_on_panel = 0; s->reading_n = 0; s->burst = 0; return; }
     if (clean) {
+        /* Ordinary Auto REGAL is settled gray history, not a full quality
+         * cleanup. No partial-count forced refresh is added to Auto. */
+        if(!s->cfg.reading&&a->mode&&!strcmp(a->mode,POL_READING)) {
+            s->fast_on_panel=0;s->burst=0;return;
+        }
         s->clean_n++; s->fast_on_panel = 0; s->burst = 0;
         if (s->cfg.reading) { if (!strcmp(a->mode, POL_READING)) s->reading_n++; else s->reading_n = 0; }
     } else { s->fast_on_panel = 1; s->burst = 1; }
@@ -61,8 +90,9 @@ int pol_apply_refresh_mode(struct pol_cfg *c, const char *m) {
     if (!strcmp(m, "auto")) { }
     else if (!strcmp(m, "quality")) { d.reading = 1; d.reading_full_frac = 0.0; d.settle_ms = 700; }
     else if (!strcmp(m, "partial") || !strcmp(m, "reading")) { d.reading = 1; }
-    else if (!strcmp(m, "fast")) { d.active_mode = POL_FAST; d.quiet_ms = 200; d.settle_ms = 800; }
-    else if (!strcmp(m, "fastest")) { d.active_mode = POL_FASTEST; d.quiet_ms = 150; d.settle_ms = 600; }
+    else if (!strcmp(m, "fast")) { d.active_mode = POL_FAST; d.fixed_fast = 1; d.quiet_ms = 200; d.settle_ms = 800; }
+    else if (!strcmp(m, "stock")) { d.stock = 1; d.active_mode = POL_READING; d.quiet_ms = 0; d.settle_ms = 1500; }
+    else if (!strcmp(m, "fastest")) { d.active_mode = POL_FASTEST; d.fixed_fast = 1; d.quiet_ms = 150; d.settle_ms = 600; }
     else return -1;
     *c = d; return 0;
 }
@@ -89,7 +119,9 @@ int mode_parse(const char *s, int def) {
 }
 const char *mode_name(int m) { return m == EINK_MIRROR ? "mirror" : "off"; }
 
-void fit_geometry(int gw, int gh, int pw, int ph, int crop, int *ox, int *oy, int *dw, int *dh) {
+void fit_geometry(int gw, int gh, int pw, int ph, int fit, int *ox, int *oy, int *dw, int *dh) {
+    if (fit == FIT_STRETCH) { *ox = *oy = 0; *dw = pw; *dh = ph; return; }
+    int crop = fit == FIT_CROP;
     double sx = (double)pw / gw, sy = (double)ph / gh, sc = crop ? (sx > sy ? sx : sy) : (sx < sy ? sx : sy);
     int w = (int)(gw * sc + 0.5), h = (int)(gh * sc + 0.5);
     if (!crop) { if (w > pw) w = pw; if (h > ph) h = ph; }
@@ -121,6 +153,81 @@ int tmap_parse_transform(struct tmap *m, const char *s) {
     for (char *t = strtok(buf, ",+ "); t; t = strtok(NULL, ",+ ")) {
         if (!strcmp(t, "swap")) m->swap_xy = 1; else if (!strcmp(t, "invx")) m->inv_x = 1; else if (!strcmp(t, "invy")) m->inv_y = 1;
         else if (!strcmp(t, "none") || !strcmp(t, "0")) {} else return -1;
+    }
+    return 0;
+}
+
+/* ---------------- 4. KMS plane composition (r5 review round4 F41) ---------------- */
+int plane_supported(const struct plane_geo *q) {
+    uint32_t rot = q->rotation & 0xf;
+    if (q->rotation & ~0x3fu) return -1;
+    if (rot != PLANE_ROT_0 && rot != PLANE_ROT_90 && rot != PLANE_ROT_180 && rot != PLANE_ROT_270) return -1;
+    if (q->blend != PLANE_BLEND_NONE && q->blend != PLANE_BLEND_PREMULTI && q->blend != PLANE_BLEND_COVERAGE) return -1;
+    if (q->alpha16 > 0xffff) return -1;
+    return 0;
+}
+static uint8_t luma8(int r, int g, int b) { return (uint8_t)((r * 77 + g * 150 + b * 29) >> 8); }	/* = the mirror's luma() */
+/* Conservative fast-path proof: this plane replaces every output pixel.
+ * Pixel alpha is ignored by KMS NONE blending. Source bounds must be valid. */
+int plane_opaque_fullscreen(const struct plane_geo *q, int fw, int fh, int gw, int gh) {
+    return gw > 0 && gh > 0 && fw >= gw && fh >= gh &&
+           q->cx == 0 && q->cy == 0 && q->cw == gw && q->ch == gh &&
+           q->sx == 0 && q->sy == 0 && q->sw == gw && q->sh == gh &&
+           q->rotation == PLANE_ROT_0 && q->alpha16 == 0xffff &&
+           q->blend == PLANE_BLEND_NONE;
+}
+
+int plane_compose(uint8_t *gray, int gw, int gh, const struct plane_geo *q, const struct plane_fb *fb) {
+    if (plane_supported(q) || q->cw <= 0 || q->ch <= 0) return -1;
+    /* Common LCD scanout: unrotated, 1:1 pixels with full plane alpha. Avoid
+     * floating-point geometry/blending per pixel, including ARGB planes whose
+     * format has alpha even when their content is opaque. The integer blend
+     * equations below round identically (255 is odd, so no half-way tie).
+     * Retain the general path for scaling/rotation/global-alpha planes. */
+    if (q->rotation == PLANE_ROT_0 && q->alpha16 == 0xffff &&
+        q->sx >= 0 && q->sy >= 0 && q->sx == (int)q->sx && q->sy == (int)q->sy &&
+        q->sw == q->cw && q->sh == q->ch && q->sx + q->cw <= fb->w && q->sy + q->ch <= fb->h) {
+        int x0 = q->cx < 0 ? 0 : q->cx, y0 = q->cy < 0 ? 0 : q->cy;
+        int x1 = q->cx + q->cw < gw ? q->cx + q->cw : gw;
+        int y1 = q->cy + q->ch < gh ? q->cy + q->ch : gh;
+        if (x0 >= x1 || y0 >= y1) return 0;
+        for (int y = y0; y < y1; y++) {
+            const uint8_t *s = fb->base + (size_t)(y - q->cy + (int)q->sy) * fb->pitch +
+                               (size_t)(x0 - q->cx + (int)q->sx) * fb->bpp;
+            uint8_t *d = gray + (size_t)y * gw + x0;
+            for (int x = x0; x < x1; x++, s += fb->bpp, d++) {
+                uint8_t lv;
+                if (fb->bpp == 4) lv = fb->bgr ? luma8(s[2], s[1], s[0]) : luma8(s[0], s[1], s[2]);
+                else { uint16_t v = (uint16_t)(s[0] | s[1] << 8); lv = luma8((v >> 11) << 3, ((v >> 5) & 63) << 2, (v & 31) << 3); }
+                if (fb->bpp != 4 || !fb->has_alpha || q->blend == PLANE_BLEND_NONE || s[3] == 255) *d = lv;
+                else if (q->blend == PLANE_BLEND_COVERAGE) *d = (uint8_t)((s[3] * lv + (255 - s[3]) * *d + 127) / 255);
+                else { int v = lv + ((255 - s[3]) * *d + 127) / 255; *d = (uint8_t)(v > 255 ? 255 : v); }
+            }
+        }
+        return 0;
+    }
+    const uint32_t rot = q->rotation & 0xf; const double pa = q->alpha16 / 65535.0;
+    for (int y = q->cy < 0 ? 0 : q->cy; y < q->cy + q->ch && y < gh; y++) {
+        for (int x = q->cx < 0 ? 0 : q->cx; x < q->cx + q->cw && x < gw; x++) {
+            double u = (x - q->cx + 0.5) / q->cw, v = (y - q->cy + 0.5) / q->ch, xn, yn;	/* normalised destination */
+            /* inverse of the counter-clockwise rotation, then of the reflection: normalised source coordinates */
+            if (rot == PLANE_ROT_90) { xn = 1 - v; yn = u; }
+            else if (rot == PLANE_ROT_180) { xn = 1 - u; yn = 1 - v; }
+            else if (rot == PLANE_ROT_270) { xn = v; yn = 1 - u; }
+            else { xn = u; yn = v; }
+            if (q->rotation & PLANE_REFLECT_X) xn = 1 - xn;
+            if (q->rotation & PLANE_REFLECT_Y) yn = 1 - yn;
+            int sxx = (int)(q->sx + xn * q->sw), syy = (int)(q->sy + yn * q->sh);
+            if (sxx < 0 || sxx >= fb->w || syy < 0 || syy >= fb->h) continue;
+            const uint8_t *s = fb->base + (size_t)syy * fb->pitch + (size_t)sxx * fb->bpp; uint8_t lv; int a = 255;
+            if (fb->bpp == 4) { lv = fb->bgr ? luma8(s[2], s[1], s[0]) : luma8(s[0], s[1], s[2]); if (fb->has_alpha) a = s[3]; }
+            else { uint16_t w16 = (uint16_t)(s[0] | s[1] << 8); lv = luma8((w16 >> 11) << 3, ((w16 >> 5) & 63) << 2, (w16 & 31) << 3); }
+            uint8_t *d = &gray[(size_t)y * gw + x];
+            double A = q->blend == PLANE_BLEND_NONE ? 1.0 : a / 255.0, o;
+            if (q->blend == PLANE_BLEND_COVERAGE) o = pa * A * lv + (1 - pa * A) * *d;
+            else o = pa * lv + (1 - pa * A) * *d;	/* None (A = 1) and pre-multiplied */
+            int iv = (int)(o + 0.5); *d = (uint8_t)(iv > 255 ? 255 : iv < 0 ? 0 : iv);
+        }
     }
     return 0;
 }

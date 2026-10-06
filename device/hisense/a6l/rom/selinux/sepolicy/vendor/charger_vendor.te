@@ -1,0 +1,6 @@
+# selinux-release (29 Sep 2026): off-mode charging UI (vendor.charger = health-service.example --charger, minui over DRM).
+# On this device /dev/dri/* is gpu_device (eink/sepolicy/vendor/file_contexts), not graphics_device (the only display type
+# charger_type is granted by AOSP), so in enforcing gr_init fails ("charger: gr_init failed") and the charger shows nothing
+# (charging itself is unaffected). Grant the KMS node.
+allow charger_vendor gpu_device:dir r_dir_perms;
+allow charger_vendor gpu_device:chr_file rw_file_perms;

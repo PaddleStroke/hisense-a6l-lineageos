@@ -1,0 +1,38 @@
+--- a/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
++++ b/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
+@@ -1536,17 +1536,30 @@
+                             }
+                         )
+                         .setResolutionFilter { sizes, _ ->
+-                            NativePhotoPolicy.prioritize(
++                            // enableHighResolution is an overlay capability, not a selected mode.
++                            val standardJpeg =
++                                cameraConfiguration.photoOutputFormat == PhotoOutputFormat.JPEG
++                                        && cameraConfiguration.photoAspectRatio == AspectRatio.RATIO_4_3
++                                        && cameraConfiguration.extensionMode == ExtensionMode.NONE
++                            val orderedSizes = NativePhotoPolicy.prioritize(
+                                 Build.DEVICE,
+                                 cameraConfiguration.camera.cameraId,
+-                                !cameraConfiguration.enableHighResolution
+-                                        && cameraConfiguration.photoOutputFormat == PhotoOutputFormat.JPEG
+-                                        && cameraConfiguration.photoAspectRatio == AspectRatio.RATIO_4_3
+-                                        && cameraConfiguration.extensionMode == ExtensionMode.NONE,
++                                standardJpeg,
+                                 sizes,
+                                 { it.width },
+                                 { it.height },
+                             )
++                            if (Build.DEVICE.equals("a6l", ignoreCase = true)) {
++                                Log.i(
++                                    LOG_TAG,
++                                    "A6L_NATIVE_PHOTO camera=${cameraConfiguration.camera.cameraId}" +
++                                            " standard_jpeg=$standardJpeg" +
++                                            " high_resolution_capability=${cameraConfiguration.enableHighResolution}" +
++                                            " filter_first=${orderedSizes.firstOrNull()}" +
++                                            " candidate_count=${sizes.size}",
++                                )
++                            }
++                            orderedSizes
+                         }
+                         .build()
+ 

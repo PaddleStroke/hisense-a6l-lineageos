@@ -1,0 +1,36 @@
+435: 
+436:   if (!crtc_property_.AtomicSet(pset, crtc_id) ||
+437:       !fb_property_.AtomicSet(pset, layer.fb->GetFbId()) ||
+438:       !crtc_x_property_.AtomicSet(pset, disp.left) ||
+439:       !crtc_y_property_.AtomicSet(pset, disp.top) ||
+440:       !crtc_w_property_.AtomicSet(pset, disp.Width()) ||
+441:       !crtc_h_property_.AtomicSet(pset, disp.Height()) ||
+442:       !src_x_property_.AtomicSet(pset, To1616FixPt(src.left)) ||
+443:       !src_y_property_.AtomicSet(pset, To1616FixPt(src.top)) ||
+444:       !src_w_property_.AtomicSet(pset, To1616FixPt(src.Width())) ||
+445:       !src_h_property_.AtomicSet(pset, To1616FixPt(src.Height()))) {
+446:     return -EINVAL;
+447:   }
+448: 
+449:   if (rotation_property_ &&
+450:       !rotation_property_.AtomicSet(pset, ToDrmRotation(layer.pi.transform))) {
+451:     return -EINVAL;
+452:   }
+453: 
+454:   if (alpha_property_ &&
+455:       !alpha_property_.AtomicSet(pset,
+456:                                  std::lround(layer.pi.alpha * UINT16_MAX))) {
+457:     return -EINVAL;
+458:   }
+459: 
+460:   if (blending_enum_map_.count(layer.bi->blend_mode) != 0 &&
+461:       !blend_property_.AtomicSet(pset,
+462:                                  blending_enum_map_.at(layer.bi->blend_mode))) {
+463:     return -EINVAL;
+464:   }
+465: 
+466:   if (!drm_->GetResMan().UseColorPipeline()) {
+467:     if (color_encoding_enum_map_.count(layer.bi->color_encoding) != 0 &&
+468:         !color_encoding_property_.AtomicSet(pset,
+469:                                             color_encoding_enum_map_.at(
+470:                                                 layer.bi->color_encoding))) {

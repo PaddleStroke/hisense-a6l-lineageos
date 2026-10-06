@@ -1,0 +1,7 @@
+F42 requested_live_modems=1 success=1 readback=2; disable_UICC success=1 reported_enabled=0 QMI_requests=0
+F44 upin_replaces_pin1=1 UPIN_attempts=3 guard=Send; verify/unblock/change/protect PIN_ID=1 expected=3
+F45 requested_bitmap=0x0 applied_GSM_UMTS_LTE=0x1c success=1
+F45 requested_bitmap=0x100000 applied_GSM_UMTS_LTE=0x1c success=1
+F45 readback_claims_NR_only=1
+F46 test_PLMNs=00101,001001 identical_QMI_TLVs=1 MNC_width_TLV_missing=1
+F48 FDN_query success=1 returned_disabled=1 QMI_requests=0

@@ -1,0 +1,10 @@
+{
+  "device/hisense/a6l/gnss/lib/qmi.cpp": "6dcc7737edbabbbd059df1238ea0c1085a13fc52c20b77312759d99f6b5398d6",
+  "device/hisense/a6l/gnss/lib/qmi.h": "540491883d1ca2f8b12dc547af7c3da8ec0986184171bdaf59b7c1242e366219",
+  "device/hisense/a6l/gnss/lib/loc_v02.cpp": "cf4818a4589fb151a494e47da5ef003c94611e146edf522a0a79f9cd7d5418e0",
+  "device/hisense/a6l/gnss/lib/loc_v02.h": "8a88d67b830f62116b03b93cb1452350775d36cf5c14f5b18fe95d03b3a9e8ec",
+  "device/hisense/a6l/gnss/lib/android_map.cpp": "fdab97710f31d96abbf2691d6e993c2de847ae6b6f49aacb9528a6613eef1fdb",
+  "device/hisense/a6l/gnss/lib/android_map.h": "5eece05e36461383a056f8f7988410804d7fd10baa724db8d061a91b56743315",
+  "device/hisense/a6l/gnss/hal/Gnss.cpp": "e99d7fa768c500da171e3f27cf0b81e26766c58fffd0c74295933c5393144a99",
+  "/home/a6l/android/a6l-lineage24/hardware/interfaces/gnss/aidl/android/hardware/gnss/GnssLocation.aidl": "77f842457114984833cddfe9bbf0b6b73c50a4841407c71b2892a5c6f7443f2e"
+}

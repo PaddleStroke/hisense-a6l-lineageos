@@ -1,0 +1,70 @@
+--- a/audio/aidl/default/alsa/StreamAlsaMonoPipe.cpp
++++ b/audio/aidl/default/alsa/StreamAlsaMonoPipe.cpp
+@@ -74,6 +74,9 @@
+         // This is a resume after a pause.
+         return ::android::OK;
+     }
++    // Capture the selector once for both sink mode and producer policy.
++    // A route change joins/closes old pipes before a new start recalculates it.
++    const bool useNativeInput = mIsInput && mUseNativeInput;
+     decltype(mAlsaDeviceProxies) alsaDeviceProxies;
+     decltype(mSources) sources;
+     decltype(mSinks) sinks;
+@@ -82,7 +85,9 @@
+         return status;
+     }
+     for (size_t i = 0; i < alsaDeviceProxies.size(); ++i) {
+-        auto sink = makeSink(mIsInput);  // Do not block the writer when it is on our thread.
++        // Real capture is already paced by ALSA. Keep ring backpressure in
++        // inputIoThread without MonoPipe's synthetic sample-clock regulator.
++        auto sink = makeSink(mIsInput && !useNativeInput);
+         if (sink != nullptr) {
+             sinks.push_back(sink);
+         } else {
+@@ -99,9 +104,11 @@
+     mSinks = std::move(sinks);
+     mIoThreadIsRunning = true;
+     for (size_t i = 0; i < mAlsaDeviceProxies.size(); ++i) {
+-        mIoThreads.emplace_back(
+-                mIsInput ? &StreamAlsaMonoPipe::inputIoThread : &StreamAlsaMonoPipe::outputIoThread,
+-                this, i);
++        if (mIsInput) {
++            mIoThreads.emplace_back(&StreamAlsaMonoPipe::inputIoThread, this, i, useNativeInput);
++        } else {
++            mIoThreads.emplace_back(&StreamAlsaMonoPipe::outputIoThread, this, i);
++        }
+     }
+     return ::android::OK;
+ }
+@@ -192,7 +199,7 @@
+     teardownIo();
+ }
+ 
+-void StreamAlsaMonoPipe::inputIoThread(size_t idx) {
++void StreamAlsaMonoPipe::inputIoThread(size_t idx, bool useNativeInput) {
+ #if defined(__ANDROID__)
+     setWorkerThreadPriority(pthread_gettid_np(pthread_self()));
+     const std::string threadName = (std::string("in_") + std::to_string(idx)).substr(0, 15);
+@@ -212,6 +219,11 @@
+                                            mBufferSizeFrames - bufferFramesWritten);
+                 if (framesWrittenOrError >= 0) {
+                     bufferFramesWritten += framesWrittenOrError;
++                    if (useNativeInput && framesWrittenOrError == 0) {
++                        // Full ring: retain the offset and retry after a short,
++                        // cancellable yield. Never discard a captured batch.
++                        usleep(1000);
++                    }
+                 } else {
+                     LOG(WARNING) << __func__ << "[" << idx
+                                  << "]: Error while writing into the pipe: "
+--- a/audio/aidl/default/include/core-impl/StreamAlsaMonoPipe.h
++++ b/audio/aidl/default/include/core-impl/StreamAlsaMonoPipe.h
+@@ -51,7 +51,7 @@
+     ::android::NBAIO_Format getPipeFormat() const;
+     ::android::sp<::android::MonoPipe> makeSink(bool writeCanBlock);
+     ::android::sp<::android::MonoPipeReader> makeSource(::android::MonoPipe* pipe);
+-    void inputIoThread(size_t idx);
++    void inputIoThread(size_t idx, bool useNativeInput);
+     void outputIoThread(size_t idx);
+     void teardownIo();
+ 

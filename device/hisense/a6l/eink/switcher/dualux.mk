@@ -19,3 +19,6 @@ PRODUCT_COPY_FILES += \
 
 # Settings (persist.sys.a6l.*) need no defaults: unset = auto refresh, clear every 10, contrast 0, e-ink key = sleep,
 # frontlight on at 100 % cap (code defaults in a6l_dualux / a6l_eink_mirror / the app).
+
+# WMS commits per-screen wallpaper visibility before the app acknowledges readiness.
+PRODUCT_SYSTEM_EXT_PROPERTIES += sys.a6l.dualux.wallpaper_sync=1

@@ -1,0 +1,287 @@
+--- a/sound/soc/codecs/msm8916-wcd-analog.c
++++ b/sound/soc/codecs/msm8916-wcd-analog.c
+@@ -15,9 +15,12 @@
+ #include <sound/pcm_params.h>
+ #include <sound/tlv.h>
+ #include <sound/jack.h>
++#include <linux/workqueue.h>
++#include <linux/interrupt.h>
+ 
+ #define CDC_D_REVISION1			(0xf000)
+ #define CDC_D_PERPH_SUBTYPE		(0xf005)
++#define CDC_D_INT_RT_STS		(0xf010)	/* A6L: real-time MBHC irq status (bit5 = button/mic-low comparator) */
+ #define CDC_D_INT_EN_SET		(0xf015)
+ #define CDC_D_INT_EN_CLR		(0xf016)
+ #define MBHC_SWITCH_INT			BIT(7)
+@@ -188,6 +191,7 @@
+ 					CDC_A_MBHC_BTN_VREF_FINE_MASK)
+ #define CDC_A_MBHC_RESULT_1		(0xf158)
+ #define CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK	GENMASK(4, 0)
++#define CDC_A_MBHC_ZDET_ELECT_RESULT	(0xf159)	/* A6L: HS_COMP / MIC_SCHMT / HPHR / HPHL schmitt results (debug) */
+ #define CDC_A_TX_1_EN			(0xf160)
+ #define CDC_A_TX_2_EN			(0xf161)
+ #define CDC_A_TX_1_2_TEST_CTL_1		(0xf162)
+@@ -317,8 +321,34 @@
+ 	unsigned int micbias1_cap_mode;
+ 	unsigned int micbias2_cap_mode;
+ 	unsigned int micbias_mv;
++	/*
++	 * A6L (27 Sep 2026): headset-mic detection after insertion. Upstream only reports SND_JACK_HEADSET when a BTN0
++	 * press+release happened just BEFORE the mechanical insertion interrupt; on the Hisense A6L (PM660L analog
++	 * codec) that never happens, so every headset was reported as headphones ("Mic Jack: Off") although the headset
++	 * mic itself records fine. After insertion we now measure the mic line with MIC BIAS2 on: a 4-pole headset mic
++	 * sits above the highest button threshold (BTN result 0x1f), a 3-pole plug grounds the mic ring (result 0).
++	 */
++	struct delayed_work a6l_hs_work;
++	int a6l_hs_tries;
++	bool a6l_inserted;
++	bool a6l_measuring;
++	/* v2 (28 Sep): button-press irqs seen since the last removal / during the measurement window */
++	int a6l_ins_presses;
++	int a6l_win_presses;
++	int a6l_win_releases;
++	u32 a6l_win_press_res;
++	/* r5 bug hunt round2 kernel-drivers: MBHC irqs, synchronized when the component is removed */
++	int a6l_irq[3];
+ };
+ 
++static bool a6l_mbhc_detect = true;
++module_param(a6l_mbhc_detect, bool, 0644);
++MODULE_PARM_DESC(a6l_mbhc_detect, "A6L: measure the mic line after insertion to detect a headset mic (default on)");
++
++static bool a6l_mbhc_diag = true;
++module_param(a6l_mbhc_diag, bool, 0644);
++MODULE_PARM_DESC(a6l_mbhc_diag, "A6L: dump MBHC registers before/with/after MIC BIAS2 at each measurement (A6L_MBHC_DIAG)");
++
+ static const char *const adc2_mux_text[] = { "ZERO", "INP2", "INP3" };
+ static const char *const rdac2_mux_text[] = { "RX1", "RX2" };
+ static const char *const hph_text[] = { "ZERO", "Switch", };
+@@ -883,6 +913,21 @@
+ {
+ 	struct pm8916_wcd_analog_priv *priv = dev_get_drvdata(component->dev);
+ 
++	int i;
++
++	/*
++	 * r5 bug hunt round2 kernel-drivers (29 Sep 2026): the MBHC irqs are devm-owned by the platform device and stay
++	 * live after the card is unbound (ADSP restart, module unload): a plug event then reported into the freed card
++	 * jack and re-queued the detection work after the cancel below (DAPM of the removed component, codec in reset,
++	 * regulators off; on unload the work outlived priv). Detach the jack first, let running handlers finish, then
++	 * cancel; handlers and the work do nothing without a jack. set_jack re-attaches it on the next card bind.
++	 */
++	WRITE_ONCE(priv->jack, NULL);
++	priv->a6l_inserted = false;
++	for (i = 0; i < ARRAY_SIZE(priv->a6l_irq); i++)
++		if (priv->a6l_irq[i] > 0)
++			synchronize_irq(priv->a6l_irq[i]);
++	cancel_delayed_work_sync(&priv->a6l_hs_work);
+ 	snd_soc_component_update_bits(component, CDC_D_CDC_RST_CTL,
+ 			    RST_CTL_DIG_SW_RST_N_MASK, 0);
+ 
+@@ -1118,6 +1163,11 @@
+ {
+ 	struct pm8916_wcd_analog_priv *priv = arg;
+ 
++	if (priv->a6l_measuring) {
++		priv->a6l_win_releases++;
++		return IRQ_HANDLED;
++	}
++
+ 	if (priv->detect_accessory_type) {
+ 		struct snd_soc_component *component = priv->component;
+ 		u32 val = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1);
+@@ -1139,6 +1189,13 @@
+ 	struct snd_soc_component *component = priv->component;
+ 	u32 btn_result;
+ 
++	priv->a6l_ins_presses++;
++	if (priv->a6l_measuring) {
++		priv->a6l_win_presses++;
++		priv->a6l_win_press_res = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1);
++		return IRQ_HANDLED;
++	}
++
+ 	btn_result = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1) &
+ 				  CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK;
+ 
+@@ -1170,6 +1227,128 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++static void a6l_mbhc_dump(struct snd_soc_component *component, const char *tag)
++{
++	static const u16 dregs[] = { 0xf010, 0xf011, 0xf012, 0xf013, 0xf015, 0xf018, 0xf019,
++				     0xf046, 0xf048, 0xf049, 0xf04a, 0xf110, 0xf118, 0xf191, 0xf197 };
++	char buf[480];
++	int i, n = 0;
++
++	for (i = 0; i < ARRAY_SIZE(dregs); i++)
++		n += scnprintf(buf + n, sizeof(buf) - n, " %03x=%02x", dregs[i] & 0xfff,
++			       snd_soc_component_read(component, dregs[i]) & 0xff);
++	for (i = 0xf140; i <= 0xf15f; i++)
++		n += scnprintf(buf + n, sizeof(buf) - n, " %03x=%02x", i & 0xfff,
++			       snd_soc_component_read(component, i) & 0xff);
++	dev_info(component->dev, "A6L_MBHC_DIAG %s:%s\n", tag, buf);
++}
++
++#define A6L_NSAMP	5
++#define CDC_A_MBHC_ELECT_SCHMT_ISRC_MASK	GENMASK(2, 1)	/* DET_CTL_2, downstream WCD_MBHC_ELECT_SCHMT_ISRC */
++
++/*
++ * v2 (28 Sep 2026). v1 assumed MBHC_RESULT_1 = 0x1f for "mic present"; on the phone a real 4-pole headset gave
++ * btn_result=0x00 elect_result=0x00 at every insertion. RESULT_1 is only the latched button code of the last
++ * button event (0 = BTN0), not a live level, so it cannot tell a mic from a grounded ring by itself. The downstream
++ * msm-4.4 wcd-mbhc-v2 (msm8x16/analog-cdc) rule is used instead: with MIC BIAS2 on and the FSM running,
++ *   no button-press interrupt && HS_COMP_RESULT (ZDET_ELECT_RESULT bit0) == 0  -> HEADSET
++ *   button press (mic line pulled below the BTN0 threshold, i.e. grounded mic ring) -> HEADPHONE (3-pole)
++ * Here "grounded" needs positive evidence on both the live comparator (CDC_D_INT_RT_STS bit5 on every sample) and
++ * a press interrupt since the last removal; everything else (incl. HS_COMP high = mic line open) ends as HEADSET,
++ * so a 4-pole headset is never silently reported as headphones.
++ */
++static void a6l_mbhc_hs_work(struct work_struct *work)
++{
++	struct pm8916_wcd_analog_priv *priv = container_of(to_delayed_work(work),
++			struct pm8916_wcd_analog_priv, a6l_hs_work);
++	struct snd_soc_component *component = priv->component;
++	struct snd_soc_dapm_context *dapm;
++	u32 rt = 0, res = 0, elect = 0, elect_schmt, ctl2, micb2;
++	int i, n_rt_press = 0, n_hscomp = 0, presses, releases;
++	bool grounded;
++
++	/* the card (and its DAPM mutex) exists once the machine driver has set the jack */
++	if (!component || !READ_ONCE(priv->jack) || !priv->a6l_inserted)
++		return;
++	dapm = snd_soc_component_to_dapm(component);
++
++	if (a6l_mbhc_diag)
++		a6l_mbhc_dump(component, "pre");
++	priv->a6l_win_presses = 0;
++	priv->a6l_win_releases = 0;
++	priv->a6l_win_press_res = 0xff;
++	priv->a6l_measuring = true;
++	snd_soc_dapm_force_enable_pin(dapm, "MIC BIAS External2");
++	snd_soc_dapm_sync(dapm);
++	msleep(100);
++	micb2 = snd_soc_component_read(component, CDC_A_MICB_2_EN);
++	if (a6l_mbhc_diag)
++		a6l_mbhc_dump(component, "micb2");
++	for (i = 0; i < A6L_NSAMP; i++) {
++		if (i)
++			msleep(20);
++		rt = snd_soc_component_read(component, CDC_D_INT_RT_STS);
++		res = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1);
++		elect = snd_soc_component_read(component, CDC_A_MBHC_ZDET_ELECT_RESULT);
++		if (rt & MBHC_BUTTON_PRESS_DET)
++			n_rt_press++;
++		if (elect & BIT(0))
++			n_hscomp++;
++	}
++	/* downstream cross-connection check: electrical schmitt current source on for a moment (debug only) */
++	ctl2 = snd_soc_component_read(component, CDC_A_MBHC_DET_CTL_2);
++	snd_soc_component_update_bits(component, CDC_A_MBHC_DET_CTL_2,
++				      CDC_A_MBHC_ELECT_SCHMT_ISRC_MASK, 2 << 1);
++	msleep(20);
++	elect_schmt = snd_soc_component_read(component, CDC_A_MBHC_ZDET_ELECT_RESULT);
++	if (a6l_mbhc_diag)
++		a6l_mbhc_dump(component, "schmt");
++	snd_soc_component_update_bits(component, CDC_A_MBHC_DET_CTL_2,
++				      CDC_A_MBHC_ELECT_SCHMT_ISRC_MASK, ctl2);
++	/* drop the force but keep the pin connected (disable_pin would cut the headset-mic bias for later captures) */
++	snd_soc_dapm_enable_pin(dapm, "MIC BIAS External2");
++	snd_soc_dapm_sync(dapm);
++	msleep(60);	/* let the mic line settle before button interrupts count again */
++	presses = priv->a6l_win_presses;
++	releases = priv->a6l_win_releases;
++	priv->a6l_measuring = false;
++	if (a6l_mbhc_diag)
++		a6l_mbhc_dump(component, "post");
++
++	if (!priv->a6l_inserted)
++		return;
++	dev_info(component->dev,
++		 "A6L_MBHC try %d: micb2_en=0x%02x rt_press=%d/%d hs_comp=%d/%d btn_result=0x%02x elect_result=0x%02x elect_schmt=0x%02x win_press=%d win_rel=%d press_res=0x%02x ins_presses=%d rt=0x%02x\n",
++		 priv->a6l_hs_tries, micb2 & 0xff, n_rt_press, A6L_NSAMP, n_hscomp, A6L_NSAMP,
++		 res & 0xff, elect & 0xff, elect_schmt & 0xff, presses, releases,
++		 priv->a6l_win_press_res & 0xff, priv->a6l_ins_presses, rt & 0xff);
++
++	grounded = n_rt_press == A6L_NSAMP && (presses + priv->a6l_ins_presses) > 0;
++	if (grounded) {
++		if (++priv->a6l_hs_tries < 3) {
++			/* a button may be held during insertion: measure again */
++			mod_delayed_work(system_wq, &priv->a6l_hs_work, msecs_to_jiffies(500));
++			return;
++		}
++		/* mic ring grounded: 3-pole. Release a BTN_0 the press handler may have reported. */
++		snd_soc_jack_report(priv->jack, 0, btn_mask);
++		dev_info(component->dev, "A6L_MBHC_HEADPHONE (mic line grounded: 3-pole)\n");
++		return;
++	}
++	if (n_hscomp == A6L_NSAMP && ++priv->a6l_hs_tries < 3) {
++		/* mic line above HS_VREF (open / not fully inserted yet): measure again */
++		mod_delayed_work(system_wq, &priv->a6l_hs_work, msecs_to_jiffies(500));
++		return;
++	}
++	snd_soc_jack_report(priv->jack, SND_JACK_HEADSET, hs_jack_mask);
++	if (n_hscomp == A6L_NSAMP)
++		dev_info(component->dev, "A6L_MBHC_HEADSET (fallback: hs_comp high, undecided)\n");
++	else if (n_rt_press)
++		dev_info(component->dev, "A6L_MBHC_HEADSET (fallback: rt_press=%d without press irq)\n", n_rt_press);
++	else
++		dev_info(component->dev, "A6L_MBHC_HEADSET (mic detected: no btn0 press with MIC BIAS2 on, hs_comp=0)\n");
++}
++
+ static irqreturn_t pm8916_mbhc_switch_irq_handler(int irq, void *arg)
+ {
+ 	struct pm8916_wcd_analog_priv *priv = arg;
+@@ -1209,8 +1388,19 @@
+ 					    SND_JACK_HEADPHONE, hs_jack_mask);
+ 
+ 		priv->detect_accessory_type = false;
++		dev_info(component->dev, "A6L_MBHC inserted (btn0_released=%d presses=%d)\n",
++			 priv->mbhc_btn0_released, priv->a6l_ins_presses);
++		priv->a6l_inserted = true;
++		priv->a6l_hs_tries = 0;
++		if (a6l_mbhc_detect && READ_ONCE(priv->jack) && !priv->mbhc_btn0_released)
++			mod_delayed_work(system_wq, &priv->a6l_hs_work,
++					 msecs_to_jiffies(300));
+ 
+ 	} else { /* removal */
++		priv->a6l_inserted = false;
++		cancel_delayed_work(&priv->a6l_hs_work);
++		dev_info(component->dev, "A6L_MBHC removed\n");
++		priv->a6l_ins_presses = 0;
+ 		snd_soc_jack_report(priv->jack, 0, hs_jack_mask);
+ 		priv->detect_accessory_type = true;
+ 		priv->mbhc_btn0_released = false;
+@@ -1326,6 +1516,7 @@
+ 	ret = pm8916_wcd_analog_parse_dt(dev, priv);
+ 	if (ret < 0)
+ 		return ret;
++	INIT_DELAYED_WORK(&priv->a6l_hs_work, a6l_mbhc_hs_work);
+ 
+ 	for (i = 0; i < ARRAY_SIZE(supply_names); i++)
+ 		priv->supplies[i].supply = supply_names[i];
+@@ -1341,6 +1532,7 @@
+ 	if (irq < 0)
+ 		return irq;
+ 
++	priv->a6l_irq[0] = irq;
+ 	ret = devm_request_threaded_irq(dev, irq, NULL,
+ 			       pm8916_mbhc_switch_irq_handler,
+ 			       IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+@@ -1356,6 +1548,7 @@
+ 		if (irq < 0)
+ 			return irq;
+ 
++		priv->a6l_irq[1] = irq;
+ 		ret = devm_request_threaded_irq(dev, irq, NULL,
+ 				       mbhc_btn_press_irq_handler,
+ 				       IRQF_TRIGGER_RISING |
+@@ -1370,6 +1563,7 @@
+ 		if (irq < 0)
+ 			return irq;
+ 
++		priv->a6l_irq[2] = irq;
+ 		ret = devm_request_threaded_irq(dev, irq, NULL,
+ 				       mbhc_btn_release_irq_handler,
+ 				       IRQF_TRIGGER_RISING |

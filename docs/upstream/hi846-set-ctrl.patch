@@ -1,0 +1,47 @@
+From: Pierre-Louis Boyer <pierrelouis.boyer@gmail.com>
+Date: Tue, 29 Sep 2026 20:00:00 +0200
+Subject: [PATCH] media: i2c: hi846: Fix hi846_set_ctrl() returning 1 on success
+
+Since commit 04fc06f6dc15 ("media: hi846: fix usage of
+pm_runtime_get_if_in_use()"), hi846_set_ctrl() stores the return value
+of pm_runtime_get_if_in_use() in ret. While the sensor is powered that
+value is 1, and the V4L2_CID_EXPOSURE and V4L2_CID_VBLANK cases only
+pass &ret to hi846_write_reg_16(), which never clears it. The control
+handler therefore returns 1 for these controls even when every register
+write succeeded.
+
+hi846_start_streaming() calls __v4l2_ctrl_handler_setup() and returns
+its non-zero value before MODE_SELECT is written, so the sensor stays in
+standby. hi846_set_stream() then powers the sensor down again but still
+returns 1. Bridge drivers that only check for a negative value (for
+example qcom camss) report a successful STREAMON and then time out
+waiting for the first frame, and the subsequent s_stream(0) triggers
+the WARN_ON() in call_s_stream() because the subdev was never marked as
+streaming.
+
+Reset ret to 0 once runtime PM has confirmed that the device is in use.
+
+Observed on a Hisense A6L (SDM660, qcom camss, Hi-846 on 2 CSI-2 lanes):
+no frames without this change, test pattern and live frames with it
+(1632x1224, 1280x720 and 640x480).
+
+Fixes: 04fc06f6dc15 ("media: hi846: fix usage of pm_runtime_get_if_in_use()")
+Cc: stable@vger.kernel.org
+Signed-off-by: Pierre-Louis Boyer <pierrelouis.boyer@gmail.com>
+---
+ drivers/media/i2c/hi846.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+--- a/drivers/media/i2c/hi846.c
++++ b/drivers/media/i2c/hi846.c
+@@ -1357,6 +1357,8 @@ static int hi846_set_ctrl(struct v4l2_ct
+ 	if (!ret || ret == -EAGAIN)
+ 		return 0;
+ 
++	ret = 0;
++
+ 	switch (ctrl->id) {
+ 	case V4L2_CID_ANALOGUE_GAIN:
+ 		ret = hi846_write_reg(hi846, HI846_REG_ANALOG_GAIN, ctrl->val);
+-- 
+2.43.0

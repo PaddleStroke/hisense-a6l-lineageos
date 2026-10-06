@@ -1,0 +1,47 @@
+#!/bin/bash
+# camfix12 build (29 Sep 2026): camfix + camfix2..camfix11 + camfix12 (stock sdm660 CSIPHY clocks cphy_csidK/csiphyK
+# at 200 MHz + csiK 310 MHz, CSID rail voltages, CSIPHY clock/lane/MISR/ECC-half diagnostics, TG isolation, stale
+# poll-pointer clear: qcom_camss.a6l_v12*) -> qcom-camss.ko. Sensor modules unchanged (camfix11 builds reused).
+# Output: firmware/extracted/camera-20260929-camfix12 (all other files byte-identical to camera-20260929-camfix11 =
+# laptop camera13). Laptop staging (camera14): tools/stage-camfix12-laptop.sh.
+# Never touches out-a6l-rom-r5 or the v67 .config: M= module build in /home/a6l/camfix12*.
+set -u
+W=/mnt/c/Users/Pierre/Desktop/A6L
+K=/home/a6l/kernel/a6l-baseline-7.2
+O=/home/a6l/kernel/out-a6l-phone-v67
+CL=/home/a6l/android/a6l-lineage24/prebuilts/clang/host/linux-x86/clang-r584948/bin
+B=/home/a6l/camfix12; A=$W/firmware/extracted/camera-20260929-camfix12; OLD=$W/firmware/extracted/camera-20260929-camfix11
+P=$W/device/hisense/a6l/kernel/camera
+export PATH="$CL:$PATH" KBUILD_BUILD_USER=a6l KBUILD_BUILD_HOST=a6l-build
+step(){ echo; echo "=== $(date +%T) $*"; }
+[ -e $B ] && B=$B-$(date +%H%M%S)  # never delete an earlier build dir
+mkdir -p $B/camss $B/orig $B/src-snapshot $A/extra
+step sources+patch
+cp -r $K/drivers/media/platform/qcom/camss/. $B/camss/
+cp -r $K/drivers/media/platform/qcom/camss $B/orig/camss; cp $K/drivers/media/i2c/hi846.c $B/hi846.c
+for f in camfix camfix2 camfix3 camfix4 camfix5 camfix6 camfix7 camfix8 camfix9 camfix9b camfix10 camfix11 camfix12; do
+  if [ $f = camfix ]; then python3 $P/patches/${f}_patch.py $B/camss $B/hi846.c; else python3 $P/patches/${f}_patch.py $B/camss; fi \
+    > $B/$f.patchlog 2>&1 || { cat $B/$f.patchlog; echo ${f^^}_PATCH_FAIL; exit 1; }
+done
+cat $B/camfix12.patchlog
+(cd $B && diff -ru orig/camss camss) > $P/patches/camss-sdm660-camfix12-cumulative.patch
+wc -l $P/patches/camss-sdm660-camfix12-cumulative.patch
+step camss module W=1
+make -C $K O=$O ARCH=arm64 LLVM=1 W=1 M=$B/camss -k modules > $B/camss-build.log 2>&1
+grep -E "error|undefined" $B/camss-build.log | head -20
+echo "warnings total $(grep -c 'warning:' $B/camss-build.log), in a6l code: $(grep 'warning:' $B/camss-build.log | grep -c -i 'a6l')"
+grep 'warning:' $B/camss-build.log | head -10
+ls -la $B/camss/qcom-camss.ko || { echo CAMFIX12_BUILD_FAIL; exit 1; }
+modinfo $B/camss/qcom-camss.ko | grep -E "^vermagic|^parm: *a6l_(v11|v12[a-z0-9_]*):" | cut -c1-120
+for s in $(llvm-nm -u $B/camss/qcom-camss.ko | awk '{print $2}' | grep -E "^(clk_get|clk_put|clk_get_parent|clk_get_rate|clk_set_rate|clk_prepare|clk_enable|__clk_get_name|__clk_is_enabled|regulator_set_voltage|regulator_get_voltage|ioremap_prot|ioremap)$" | sort -u); do
+  grep -q -w "$s" $O/Module.symvers && echo "sym $s OK" || echo "sym $s NOT_IN_SYMVERS(check vmlinux)"; done
+llvm-strip --strip-debug $B/camss/qcom-camss.ko
+step assemble $A
+cp $B/camss/*.c $B/camss/*.h $B/src-snapshot/ 2>/dev/null
+for f in $(cd $OLD && ls); do [ -f $OLD/$f ] && cp $OLD/$f $A/; done
+cp $OLD/extra/a6l_cam_ovl.ko $A/extra/
+cp $B/camss/qcom-camss.ko $A/
+cp $W/device/hisense/a6l/camera/run-camera.sh $A/
+(cd $A && sha256sum *.ko extra/a6l_cam_ovl.ko *.dtbo a6l_camcap raw10_to_png.py run-camera.sh load-order.txt > SHA256SUMS; sha256sum qcom-camss.ko imx576_a6l.ko s5k3t1.ko run-camera.sh SHA256SUMS; echo "entries $(ls | wc -l) sums $(wc -l < SHA256SUMS)"; sha256sum -c SHA256SUMS 2>&1 | grep -c ': OK$')
+echo "B=$B"
+echo CAMFIX12_BUILD_DONE

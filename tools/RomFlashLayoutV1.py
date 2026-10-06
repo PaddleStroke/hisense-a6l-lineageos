@@ -87,6 +87,22 @@ def restore_writes(have_rom_changes):
     return out
 
 
+# Partitions a plan may ever program (install/restore). vbmeta, devinfo, recovery, the GPT and everything else: never.
+PROGRAMMABLE = tuple(dict.fromkeys(('boot', 'dtbo', 'vendor', 'system', 'metadata', 'userdata') + ROM_MAY_WRITE))
+
+
+def check_plan(writes):
+    """bug hunt round2 install-tools (29 Sep 2026): every planned program must lie inside ONE programmable partition
+    (labels are informative only; the geometry is what reaches the eMMC). Raises ValueError before any write."""
+    for label, start, sectors in writes:
+        if sectors <= 0 or start < 0:
+            raise ValueError(f'empty/negative planned write: {label}')
+        inside = [n for n in PROGRAMMABLE if PARTITIONS[n][0] <= start and start + sectors <= sum(PARTITIONS[n])]
+        if len(inside) != 1:
+            raise ValueError(f'planned write {label} {start}+{sectors} is not inside one programmable partition')
+    return True
+
+
 def check_layout_against_gpt(primary):
     """Parse the primary GPT (1 MiB read at LBA 0) and require every PARTITIONS entry to match by name and geometry."""
     if len(primary) != GPT_PRIMARY[1] * SECTOR:

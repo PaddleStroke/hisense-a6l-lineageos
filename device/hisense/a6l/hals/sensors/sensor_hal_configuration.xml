@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- OBSOLETE (senshal, 26 Sep 2026): no longer installed. The trout IIO sub-HAL is removed from hals.mk/rom.mk because it
+     only accepts scmi.iio.* names and reads 64-bit channels; sensors.a6l serves the SMGR sensors. -->
 <!-- Hisense A6L: IIO sub-HAL (device/google/trout/hal/sensors/2.1) configuration. DRAFT (agent hals, 24 Sep 2026):
      sensor names must equal the IIO "name" attribute of the SMGR devices as seen on the phone
      (cat /sys/bus/iio/devices/iio:device*/name) and the file must validate against

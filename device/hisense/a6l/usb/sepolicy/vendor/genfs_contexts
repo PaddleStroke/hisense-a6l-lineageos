@@ -1,0 +1,5 @@
+# A6L USB (android-usb, 29 Sep 2026). UNVERIFIED path (V75 DT: dwc3-qcom glue a8f8800.usb, core a800000.usb; the
+# recovery watchdog logged udc=a800000.usb glue_drv=dwc3-qcom-legacy): confirm on the first permissive install with
+# `readlink -f /sys/class/udc/a800000.usb` and `ls -lZ /sys/class/udc/a800000.usb/` -> fix here before enforcing.
+# sysfs_udc = the type system_server reads for the UDC state monitor (config_enableUdcSysfsUsbStateUpdate).
+genfscon sysfs /devices/platform/soc@0/a8f8800.usb/a800000.usb/udc        u:object_r:sysfs_udc:s0

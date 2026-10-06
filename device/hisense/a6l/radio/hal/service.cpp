@@ -24,7 +24,7 @@ static std::shared_ptr<T> publish(const std::string& slot, std::shared_ptr<minim
     auto hal = ndk::SharedRefBase::make<T>(ctx);
     gPublished.push_back(hal);
     ctx->addHal(hal);
-    ModemCore::get().addListener(hal.get());
+    ModemCore::get(ctx->getSlotIndex()).addListener(hal.get());
     CHECK_EQ(AServiceManager_addService(hal->asBinder().get(), instance.c_str()), STATUS_OK) << instance;
     LOG(INFO) << "published " << instance;
     return hal;
@@ -44,22 +44,29 @@ static void main() {
         gPublished.push_back(cfg);
         CHECK_EQ(AServiceManager_addService(cfg->asBinder().get(), instance.c_str()), STATUS_OK);
     }
-    auto slot1 = std::make_shared<minimal::SlotContext>(1);
-    publish<A6lRadioData>("slot1", slot1);
-    publish<A6lRadioModem>("slot1", slot1);
-    publish<A6lRadioNetwork>("slot1", slot1);
-    publish<A6lRadioSim>("slot1", slot1);
-    publish<A6lRadioMessaging>("slot1", slot1);
-    publish<A6lRadioVoice>("slot1", slot1);
-
-    auto& core = ModemCore::get();
-    // rilConnected is sent only once the modem answers; until then every request gets
-    // RADIO_NOT_AVAILABLE (the framework shows "no service", like a phone with the modem off).
-    core.onFirstReady([slot1] {
-        LOG(INFO) << "modem ready: signalling rilConnected to the framework";
-        slot1->setConnected();
-    });
-    core.start();
+    // ril3 (DSDS): slot2 is published when the product runs dual SIM (ro.vendor.a6l.ril.slots=2 or
+    // persist.radio.multisim.config=dsds) AND the VINTF fragment declares it; otherwise single SIM
+    // exactly as v1.
+    const int slots = ModemCore::slotCount();
+    LOG(INFO) << "slots: " << slots;
+    for (int i = 1; i <= slots; i++) {
+        const std::string name = "slot" + std::to_string(i);
+        auto ctx = std::make_shared<minimal::SlotContext>(i);
+        publish<A6lRadioData>(name, ctx);
+        publish<A6lRadioModem>(name, ctx);
+        publish<A6lRadioNetwork>(name, ctx);
+        publish<A6lRadioSim>(name, ctx);
+        publish<A6lRadioMessaging>(name, ctx);
+        publish<A6lRadioVoice>(name, ctx);
+        auto& c = ModemCore::get(i);
+        // rilConnected is sent only once the modem answers; until then every request gets
+        // RADIO_NOT_AVAILABLE (the framework shows "no service", like a phone with the modem off).
+        c.onFirstReady([ctx, name] {
+            LOG(INFO) << "modem ready: signalling rilConnected to the framework (" << name << ")";
+            ctx->setConnected();
+        });
+        c.start();
+    }
     ABinderProcess_joinThreadPool();
     LOG(FATAL) << "binder thread pool exited";
 }

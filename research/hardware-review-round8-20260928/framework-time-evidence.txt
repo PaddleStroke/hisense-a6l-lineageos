@@ -1,0 +1,58 @@
+/home/a6l/android/a6l-lineage24/frameworks/opt/telephony/src/java/com/android/internal/telephony/NetworkIndication.java
+sha256=f42a4120b86913194b94c3396f64947636bf9434b20a1ccfd7d9d09282d688d8
+void nitzTimeReceived(int indicationType, String nitzTime,
+        @ElapsedRealtimeLong long receivedTimeMs, long ageMs) {
+        mRil.processIndication(HAL_SERVICE_NETWORK, indicationType);
+
+        if (mRil.isLogOrTrace()) mRil.unsljLogRet(RIL_UNSOL_NITZ_TIME_RECEIVED, nitzTime);
+
+        // Ignore the NITZ if receivedTimeMs or ageMs is not a valid time.
+        // e.g. receivedTimeMs is non-positive, ageMs is negative or greater than receivedTimeMs.
+        if ((receivedTimeMs <= 0) || (ageMs < 0) || (ageMs >= receivedTimeMs)) {
+            reportAnomaly(UUID.fromString("fc7c56d4-485d-475a-aaff-394203c6cdfc"),
+                    "NITZ indication with invalid parameter");
+
+            mRil.riljLoge("NITZ parameter is invalid, ignoring nitzTimeReceived indication. "
+                + "receivedTimeMs = " + receivedTimeMs + ", ageMs = " + ageMs);
+            return;
+        }
+
+        // TODO: Clean this up with a parcelable class for better self-documentation
+        Object[] result = new Object[3];
+        result[0] = nitzTime;
+        result[1] = receivedTimeMs;
+        result[2] = ageMs;
+
+        boolean ignoreNitz = TelephonyProperties.ignore_nitz().orElse(false);
+
+        if (ignoreNitz) {
+            if (mRil.isLogOrTrace()) mRil.riljLog("ignoring UNSOL_NITZ_TIME_RECEIVED");
+        } else {
+            if (mRil.mNITZTimeRegistrant != null) {
+                mRil.mNITZTimeRegistrant.notifyRegistrant(new AsyncResult(null, result, null));
+            }
+            // in case NITZ time registrant isn't registered yet, or a new registrant
+            // registers later
+            mRil.mLastNITZTimeInfo = result;
+        }
+    }
+
+    /**
+     * Indicate that a registration failure has occurred.
+     * @param cellIdentity a CellIdentity the CellIdentity of the Cell
+     * @param chosenPlmn a 5 or 6 digit alphanumeric string indicating the PLMN on which
+     *        registration failed
+     * @param domain the domain of the failed procedure: CS, PS, or both
+     * @param causeCode the primary failure cause code of the procedure
+     * @param additionalCauseCode an additional cause code if applicable
+     */
+    public void registrationFailed(int indicationTyp
+
+/home/a6l/android/a6l-lineage24/frameworks/opt/telephony/src/java/com/android/internal/telephony/NitzSignal.java
+sha256=318ba7b772a807513326e87d05e74dbdf1552512af724fafcebadb6692d5203e
+public long getAgeAdjustedElapsedRealtimeMillis() {
+        return mReceiptElapsedMillis - mAgeMillis;
+    }
+
+    /**
+     * Creates a {@link UnixEpochTime} containing the UTC time as the nu

@@ -9,23 +9,37 @@
 // it stays disabled (its enable pin is driven by the PM660 parallel logic, off by default), so
 // charging is PM660-only (slower, never faster than stock).
 // VOLTAGE/CURRENT-AFFECTING: attended only, battery temperature must be watched (test C2).
+// power (26 Sep 2026) FIX: qcom_smbx takes its usbin_i/usbin_v IIO channels from pm660_rradc (adc@4500), which is
+// "disabled" in the V74/V75 base -> without &pm660_rradc okay the charger probe defers forever. Also give the FG the
+// charger supply (power-supplies, as every mainline pm660 board) so its STATUS follows the charger.
+// ICL note (qcom_smbx.c smb_status_change_work): SDP 500 mA, CDP 1.5 A, DCP = constant-charge-current-max-microamp
+// below (it is used as the USB INPUT limit); FCC is hard-coded to 1.95 A at probe. Software JEITA: a6l-chg-guard.sh
+// (device/hisense/a6l/power/rom), thresholds from stock fg-gen3 (0/10/44/55 C).
+// pwr27 (27 Sep 2026) FIX: the V74 base already has /battery (label a6l_battery, phandle, from a6l-battery-telemetry)
+// and pm660_fg okay + monitored-battery. Re-declaring "a6l_battery: battery" made the RUNTIME overlay fail
+// (overlay node with a phandle onto a live node with a phandle -> -EINVAL in of_overlay_fdt_apply, plus a duplicate
+// __symbols__ entry), so nothing was applied: rradc stayed disabled ("rradc:" empty) and qcom_smbx never bound.
+// Now the existing nodes are MODIFIED by label (&a6l_battery etc.) - same result for build-time fdtoverlay (ROM).
+// merge r4 (28 Sep 2026): ROM limits = STOCK values. constant-charge-current-max-microamp is the DCP INPUT limit in
+// qcom_smbx (see ICL note) -> 2.0 A = stock qcom,usb-icl-ua. FCC 2.4 A comes from qcom_smbx fcc_max_ua=2400000
+// (rom/modules/charger.txt, A6L patch upper bound = stock), float 4.40 V. The attended C2 test does not use this
+// overlay (power/ovl/a6l-charger-test.dtso + run-power.sh caps FCC <= 1.0 A, ICL <= 0.8 A).
 /dts-v1/;
 /plugin/;
 
-&{/} {
-	a6l_battery: battery {
-		compatible = "simple-battery";
-		charge-full-design-microamp-hours = <3800000>;
-		voltage-max-design-microvolt = <4400000>;
-		voltage-min-design-microvolt = <3400000>;
-		constant-charge-current-max-microamp = <1950000>;
-		constant-charge-voltage-max-microvolt = <4400000>;
-	};
+&a6l_battery {
+	voltage-min-design-microvolt = <3400000>;
+	constant-charge-current-max-microamp = <2000000>;
+	constant-charge-voltage-max-microvolt = <4400000>;
+};
+
+&pm660_rradc {
+	status = "okay";
 };
 
 &pm660_fg {
 	status = "okay";
-	monitored-battery = <&a6l_battery>;
+	power-supplies = <&pm660_charger>;
 };
 
 &pm660_charger {

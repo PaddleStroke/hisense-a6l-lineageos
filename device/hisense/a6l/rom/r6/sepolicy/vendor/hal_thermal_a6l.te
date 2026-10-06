@@ -1,0 +1,9 @@
+# A6L thermal HAL (rom/r6/thermal): reads the tsens thermal zones (/sys/devices/virtual/thermal, platform label
+# sysfs_thermal) and the fuel-gauge temperature (/sys/class/power_supply/qcom-battery/temp, vendor genfs sysfs_batteryinfo).
+r_dir_file(hal_thermal_default, sysfs_thermal)
+r_dir_file(hal_thermal_default, sysfs_batteryinfo)
+# thermal-r5prep (29 Sep 2026): cooling devices (/sys/devices/virtual/thermal/cooling_deviceN, sysfs_thermal: covered above)
+# and the PM660 VADC thermistors over IIO: /sys/bus/iio/devices/iio:deviceN symlinks (generic sysfs) -> adc@3100
+# (sysfs_thermal, r6 genfs_contexts). Directory walk + symlink only, no generic sysfs file access.
+allow hal_thermal_default sysfs:dir r_dir_perms;
+allow hal_thermal_default sysfs:lnk_file read;

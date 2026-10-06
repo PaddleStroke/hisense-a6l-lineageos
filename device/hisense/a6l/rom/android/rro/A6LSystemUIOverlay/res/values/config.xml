@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hisense A6L (overlays-carrier-updater, 29 Sep 2026): charging-speed labels (SettingsLib resources, compiled into SystemUI
+     and Settings: both need the same values -> A6LSettingsOverlay carries a copy; tests/check-android-overlays.sh compares them).
+     Charging power = health HAL max_charging_current x max_charging_voltage (voltage_max of the USB supply, 5 V if the
+     qcom_smbx driver does not export it). SDP 0.5 A x 5 V = 2.5 W -> "slowly" (< 5 W, AOSP default kept); DCP 1.5 A x 5 V
+     = 7.5 W -> regular; QC2/QC3 HVDCP (kernel/power/smbx qcom_smbx-a6l-hvdcp, 9 V, ICL up to 2 A) -> fast. AOSP fast
+     threshold 7.5 W would call a plain 5 V/1.5 A DCP "fast"; 9 W keeps "fast" for >= 5 V/2 A and HVDCP. -->
+<resources>
+    <integer name="config_chargingSlowlyThreshold">5000000</integer>
+    <integer name="config_chargingFastThreshold">9000000</integer>
+    <integer name="config_chargingFastThreshold_v2">9000000</integer>
+</resources>

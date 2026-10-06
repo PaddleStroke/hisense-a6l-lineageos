@@ -1,0 +1,82 @@
+[
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/src/a6l_epdd.c",
+    "sha256": "407b38eadffdbf3cd37b5013191ee06b50e3372874f1efb1628a892738786e78"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/src/a6l_eink_mirror.c",
+    "sha256": "5d4334d11a1ffa4300b606993b56807280a453a206f64e6ec6d7b1ed4127de24"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/src/eink_logic.c",
+    "sha256": "3c107efb255c9aa9da0ef63b376b164405c5ae0b39830f6a00bb37111efa9a30"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/src/eink_logic.h",
+    "sha256": "7913e3f0ae77cdf11e901e4ed1d17b529c48fb43c476cd0ad2764e6ac3bd14bb"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/a6l_eink.rc",
+    "sha256": "91961ced5b6997f4d9044ee345f00cefcdcdd4d63d5eeffe4b9b50c6481b2a89"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/wifi/hal/a6l_wifi_hal.cpp",
+    "sha256": "c0631eecb4eb059252d9bb5caefa25e5603e6e11ec00e5c7ea1d40e8a5f92207"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/bin/a6l-radio.sh",
+    "sha256": "72ca18f0477df163c7be30d53e51355ccbcf81983b6d749661b531f59997d505"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/tests/test-a6l-radio-start.sh",
+    "sha256": "becc8887ab4edd4b15a7261c2b7e6ac7d439714eb4855805ff2256e5c3112afb"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/v2/init.a6l.wifibt.rc",
+    "sha256": "45468262d9e9b5a23681b0e5b0cfb3cd371613cd1baff3116aebc8f4c0f8627c"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/modules/bt.txt",
+    "sha256": "3b4c95135964d0ac62d5d75024b821b4c537c25333e040a4d6d43d67ed5f0a6b"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/modules/ipa.txt",
+    "sha256": "6665af995f79222efd024fad02ae45ad90ff0e0746e24d8f320bf254a4927de4"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/modules/radio.txt",
+    "sha256": "8728cc35eef3f0397501b68dc00d1e7b6b8d1cb2466f124b1ecfc28c08823692"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/audio/patches/0002-a6l-call-route-mute.patch",
+    "sha256": "2d7531b6fd9a9a1803e3e11d796bca269a4dd8bc40a448064715168fe368421d"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/audio/mixer_paths_a6l.xml",
+    "sha256": "bab58df92622359430ac8d32cdd7618c377201e9f58f3041e934b21d1548ac7c"
+  },
+  {
+    "path": "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/kvoice/q6voiced/a6l_q6voiced.c",
+    "sha256": "0b773e1b5ea340107abf116bb28dbbb8bd25468b67b930a639674f999efe7348"
+  },
+  {
+    "path": "/home/a6l/android/a6l-lineage24/hardware/interfaces/audio/aidl/default/Telephony.cpp",
+    "sha256": "feeaecc0d2b1362eb254b183fed2e39045e2710f8d1b7fa0e35dd274d2ccdf2f"
+  },
+  {
+    "path": "/home/a6l/android/a6l-lineage24/hardware/interfaces/audio/aidl/default/ModulePrimary.cpp",
+    "sha256": "38a3899c72fc1935299712bf0800c14ce8dc86e93330fd61e2af1257240bdf60"
+  },
+  {
+    "path": "/home/a6l/android/a6l-lineage24/frameworks/av/media/libaudiohal/impl/DeviceHalAidl.cpp",
+    "sha256": "fecd6e02380f7df1559bd578c7f50e8d545397c817ecbfb2af5dcbbbcac123f8"
+  },
+  {
+    "path": "/home/a6l/android/a6l-lineage24/hardware/interfaces/bluetooth/aidl/default/net_bluetooth_mgmt.cpp",
+    "sha256": "948a892532e3c59b325136751e3276d11d3eff10c9895b38b5bd97e7929dffcf"
+  },
+  {
+    "path": "/home/a6l/android/a6l-lineage24/external/drm_hwcomposer/drm/DrmPlane.cpp",
+    "sha256": "17cafae232c32f0f281e905a984b5f079d292ff6e1f4e80cdb93e6fc7f872075"
+  }
+]

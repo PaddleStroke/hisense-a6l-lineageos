@@ -1,0 +1,2 @@
+READ_BINARY offset=0 dummy_file_length=2
+returned_sw=9000 dummy_data=en

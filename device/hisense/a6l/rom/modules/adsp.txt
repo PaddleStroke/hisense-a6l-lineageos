@@ -20,3 +20,7 @@ qcom_q6v5.ko
 mdt_loader.ko
 qcom_pil_info.ko
 qcom_q6v5_pas.ko
+# 3. FRONT light + WAKE-UP proximity STK3338 (merge2, 25 Sep; proven attended stk T2: 0x67, PID 0x58, NEAR/FAR events).
+#    DT a6l-stk3338-v75 (reg 0x67, vdd pm660l L3 3.0 V, vio pm660 L13). Hysteresis: NEAR above 600, FAR below 300
+#    (stock 120/55 flapped under a lamp: lamp IR 95-150, covered ~5000, open ~38). Read by sensors.a6l (multihal).
+stk3338_a6l.ko ps_thd_high=600 ps_thd_low=300

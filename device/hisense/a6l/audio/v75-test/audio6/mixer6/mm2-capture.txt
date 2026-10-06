@@ -1,0 +1,3 @@
+# audio6: media capture on its own front end MultiMedia2 (pcmC0D1c, mono), as the ROM does (merge3 r3 HAL patch, capture_pcm=1)
+MultiMedia1 Mixer LPI_MI2S_TX_3|0
+MultiMedia2 Mixer LPI_MI2S_TX_3|1

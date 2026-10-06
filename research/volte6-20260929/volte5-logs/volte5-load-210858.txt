@@ -1,0 +1,234 @@
+A6L_VOLTE5_START mode=load Sun Nov 14 21:08:58 UTC 1971 modem=running ipa=bound log=/tmp/volte5-logs/volte5-load-210858.txt
+A6L_VOLTE5_STEP pdc load (volte4 script, gates inside)
+A6L_VOLTE4_START mode=load Sun Nov 14 21:09:03 UTC 1971 modem=running log=/tmp/volte4-logs/volte4-load-210903.txt
+A6L_VOLTE4_GATE rmtfs pid=2023 RAM mode ( /tmp/radio2/bin/rmtfs -o /tmp/rmtfs -v  )
+A6L_VOLTE4_GATE ram copy /tmp/rmtfs/modem_fs1 bytes=2097152
+
+A6L_VOLTE4_GATE ram copy /tmp/rmtfs/modem_fs2 bytes=2097152
+A6L_VOLTE4_GATES_PASS (write)
+A6L_VOLTE4_STEP load: pre-state
+A6L_VOLTE4_CMD qmicli -d qrtr://0 --pdc-list-configs=software
+  | Total configurations: 4
+  | Configuration 1:
+  | 	Description: ROW_Commercial
+  | 	Type:        software
+  | 	Size:        45828
+  | 	Status:      Active
+  | 	Version:     0x8030808
+  | 	ID:          7A:F5:2E:AA:D0:94:B6:61:7F:D1:63:CA:73:70:86:33:64:60:1F:22
+  | 
+  | Configuration 2:
+  | 	Description: VoLTE_OPNMKT_CT
+  | 	Type:        software
+  | 	Size:        69008
+  | 	Status:      Inactive
+  | 	Version:     0x80413E1
+  | 	ID:          83:ED:83:7E:B5:FB:5C:ED:4C:92:40:C6:39:00:67:B8:0A:91:2C:7A
+  | 
+  | Configuration 3:
+  | 	Description: VoLTE-CU
+  | 	Type:        software
+  | 	Size:        50116
+  | 	Status:      Inactive
+  | 	Version:     0x8041560
+  | 	ID:          F8:9B:25:12:50:F5:60:49:B2:E0:AC:CB:10:84:2D:57:1D:F3:81:92
+  | 
+  | Configuration 4:
+  | 	Description: Volte_OpenMkt-Commercial-CMCC
+  | 	Type:        software
+  | 	Size:        52772
+  | 	Status:      Inactive
+  | 	Version:     0x8032010
+  | 	ID:          8A:E9:D9:E3:DF:C2:B1:39:02:4B:C8:CA:E9:10:60:CA:BD:29:24:81
+  | 
+A6L_VOLTE4_QMICLI_RC 0 (1s)
+"
+"
+A6L_VOLTE4_CFG src=qmicli desc='ROW_Commercial' size=45828 status=Active version=0x8030808 id=7af52eaad094b6617fd163ca7370863364601f22
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE_OPNMKT_CT' size=69008 status=Inactive version=0x80413E1 id=83ed837eb5fb5ced4c9240c6390067b80a912c7a
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE-CU' size=50116 status=Inactive version=0x8041560 id=f89b251250f56049b2e0accb10842d571df38192
+A6L_VOLTE4_CFG src=qmicli desc='Volte_OpenMkt-Commercial-CMCC' size=52772 status=Inactive version=0x8032010 id=8ae9d9e3dfc2b139024bc8cae91060cabd292481
+  probe| A6L_VOLTE_IMS_SVC 33 IMSA(ims-application) absent
+  probe| A6L_VOLTE_PDC_ACTIVE type=HW none
+  probe| A6L_VOLTE_PDC_ACTIVE type=SW id=7af52eaad094b6617fd163ca7370863364601f22
+  probe| A6L_VOLTE_PDC_INFO type=SW id=7af52eaad094b6617fd163ca7370863364601f22 size=45828 version=0x08030808 desc='ROW_Commercial'
+  probe| A6L_VOLTE_PDC_LIST SW count=4
+  probe| A6L_VOLTE_PDC_INFO type=SW id=7af52eaad094b6617fd163ca7370863364601f22 size=45828 version=0x08030808 desc='ROW_Commercial'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=83ed837eb5fb5ced4c9240c6390067b80a912c7a size=69008 version=0x080413e1 desc='VoLTE_OPNMKT_CT'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=f89b251250f56049b2e0accb10842d571df38192 size=50116 version=0x08041560 desc='VoLTE-CU'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=8ae9d9e3dfc2b139024bc8cae91060cabd292481 size=52772 version=0x08032010 desc='Volte_OpenMkt-Commercial-CMCC'
+A6L_VOLTE4_STATE tag=pre-load qmicli_total=4 active='ROW_Commercial' active_id=7af52eaad094b6617fd163ca7370863364601f22 pending_id=none orange_id=not-loaded row_listed=1
+A6L_VOLTE4_EFS tag=pre-load ram/modem_fs1 sha256=4c6bcae641aff4b9
+A6L_VOLTE4_EFS tag=pre-load ram/modem_fs2 sha256=aac97d2795a7c6ce
+A6L_VOLTE4_EFS tag=pre-load real/modemst1 sha256=77bdccd50ad12f1d (read-only)
+A6L_VOLTE4_EFS tag=pre-load real/modemst2 sha256=aac97d2795a7c6ce (read-only)
+A6L_VOLTE4_STEP load: qmicli --pdc-load-config
+A6L_VOLTE4_CMD qmicli -d qrtr://0 --pdc-load-config=/tmp/volte5/pdc/mbn/France-Commercial-Orange.mbn
+  | Uploaded 0  of 50348
+  | Loading next chunk (49324 bytes remaining)
+  | Uploaded 1024  of 50348
+  | Loading next chunk (48300 bytes remaining)
+  | Uploaded 2048  of 50348
+  | Loading next chunk (47276 bytes remaining)
+  | Uploaded 3072  of 50348
+  | Loading next chunk (46252 bytes remaining)
+  | Uploaded 4096  of 50348
+  | Loading next chunk (45228 bytes remaining)
+  | Uploaded 5120  of 50348
+  | Loading next chunk (44204 bytes remaining)
+  | Uploaded 6144  of 50348
+  | Loading next chunk (43180 bytes remaining)
+  | Uploaded 7168  of 50348
+  | Loading next chunk (42156 bytes remaining)
+  | Uploaded 8192  of 50348
+  | Loading next chunk (41132 bytes remaining)
+  | Uploaded 9216  of 50348
+  | Loading next chunk (40108 bytes remaining)
+  | Uploaded 10240  of 50348
+  | Loading next chunk (39084 bytes remaining)
+  | Uploaded 11264  of 50348
+  | Loading next chunk (38060 bytes remaining)
+  | Uploaded 12288  of 50348
+  | Loading next chunk (37036 bytes remaining)
+  | Uploaded 13312  of 50348
+  | Loading next chunk (36012 bytes remaining)
+  | Uploaded 14336  of 50348
+  | Loading next chunk (34988 bytes remaining)
+  | Uploaded 15360  of 50348
+  | Loading next chunk (33964 bytes remaining)
+  | Uploaded 16384  of 50348
+  | Loading next chunk (32940 bytes remaining)
+  | Uploaded 17408  of 50348
+  | Loading next chunk (31916 bytes remaining)
+  | Uploaded 18432  of 50348
+  | Loading next chunk (30892 bytes remaining)
+  | Uploaded 19456  of 50348
+  | Loading next chunk (29868 bytes remaining)
+  | Uploaded 20480  of 50348
+  | Loading next chunk (28844 bytes remaining)
+  | Uploaded 21504  of 50348
+  | Loading next chunk (27820 bytes remaining)
+  | Uploaded 22528  of 50348
+  | Loading next chunk (26796 bytes remaining)
+  | Uploaded 23552  of 50348
+  | Loading next chunk (25772 bytes remaining)
+  | Uploaded 24576  of 50348
+  | Loading next chunk (24748 bytes remaining)
+  | Uploaded 25600  of 50348
+  | Loading next chunk (23724 bytes remaining)
+  | Uploaded 26624  of 50348
+  | Loading next chunk (22700 bytes remaining)
+  | Uploaded 27648  of 50348
+  | Loading next chunk (21676 bytes remaining)
+  | Uploaded 28672  of 50348
+  | Loading next chunk (20652 bytes remaining)
+  | Uploaded 29696  of 50348
+  | Loading next chunk (19628 bytes remaining)
+  | Uploaded 30720  of 50348
+  | Loading next chunk (18604 bytes remaining)
+  | Uploaded 31744  of 50348
+  | Loading next chunk (17580 bytes remaining)
+  | Uploaded 32768  of 50348
+  | Loading next chunk (16556 bytes remaining)
+  | Uploaded 33792  of 50348
+  | Loading next chunk (15532 bytes remaining)
+  | Uploaded 34816  of 50348
+  | Loading next chunk (14508 bytes remaining)
+  | Uploaded 35840  of 50348
+  | Loading next chunk (13484 bytes remaining)
+  | Uploaded 36864  of 50348
+  | Loading next chunk (12460 bytes remaining)
+  | Uploaded 37888  of 50348
+  | Loading next chunk (11436 bytes remaining)
+  | Uploaded 38912  of 50348
+  | Loading next chunk (10412 bytes remaining)
+  | Uploaded 39936  of 50348
+  | Loading next chunk (9388 bytes remaining)
+  | Uploaded 40960  of 50348
+  | Loading next chunk (8364 bytes remaining)
+  | Uploaded 41984  of 50348
+  | Loading next chunk (7340 bytes remaining)
+  | Uploaded 43008  of 50348
+  | Loading next chunk (6316 bytes remaining)
+  | Uploaded 44032  of 50348
+  | Loading next chunk (5292 bytes remaining)
+  | Uploaded 45056  of 50348
+  | Loading next chunk (4268 bytes remaining)
+  | Uploaded 46080  of 50348
+  | Loading next chunk (3244 bytes remaining)
+  | Uploaded 47104  of 50348
+  | Loading next chunk (2220 bytes remaining)
+  | Uploaded 48128  of 50348
+  | Loading next chunk (1196 bytes remaining)
+  | Uploaded 49152  of 50348
+  | Loading next chunk (172 bytes remaining)
+  | Uploaded 50176  of 50348
+  | Finished loading
+A6L_VOLTE4_QMICLI_RC 0 (1s)
+A6L_VOLTE4_CMD qmicli -d qrtr://0 --pdc-list-configs=software
+  | Total configurations: 5
+  | Configuration 1:
+  | 	Description: ROW_Commercial
+  | 	Type:        software
+  | 	Size:        45828
+  | 	Status:      Active
+  | 	Version:     0x8030808
+  | 	ID:          7A:F5:2E:AA:D0:94:B6:61:7F:D1:63:CA:73:70:86:33:64:60:1F:22
+  | 
+  | Configuration 2:
+  | 	Description: VoLTE_OPNMKT_CT
+  | 	Type:        software
+  | 	Size:        69008
+  | 	Status:      Inactive
+  | 	Version:     0x80413E1
+  | 	ID:          83:ED:83:7E:B5:FB:5C:ED:4C:92:40:C6:39:00:67:B8:0A:91:2C:7A
+  | 
+  | Configuration 3:
+  | 	Description: France-Commercial-Orange
+  | 	Type:        software
+  | 	Size:        50348
+  | 	Status:      Inactive
+  | 	Version:     0x8040B20
+  | 	ID:          96:5D:8D:76:6F:9A:C0:E6:98:CA:5D:44:33:39:5A:31:52:6D:2D:8D
+  | 
+  | Configuration 4:
+  | 	Description: VoLTE-CU
+  | 	Type:        software
+  | 	Size:        50116
+  | 	Status:      Inactive
+  | 	Version:     0x8041560
+  | 	ID:          F8:9B:25:12:50:F5:60:49:B2:E0:AC:CB:10:84:2D:57:1D:F3:81:92
+  | 
+  | Configuration 5:
+  | 	Description: Volte_OpenMkt-Commercial-CMCC
+  | 	Type:        software
+  | 	Size:        52772
+  | 	Status:      Inactive
+  | 	Version:     0x8032010
+  | 	ID:          8A:E9:D9:E3:DF:C2:B1:39:02:4B:C8:CA:E9:10:60:CA:BD:29:24:81
+  | 
+A6L_VOLTE4_QMICLI_RC 0 (1s)
+A6L_VOLTE4_CFG src=qmicli desc='ROW_Commercial' size=45828 status=Active version=0x8030808 id=7af52eaad094b6617fd163ca7370863364601f22
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE_OPNMKT_CT' size=69008 status=Inactive version=0x80413E1 id=83ed837eb5fb5ced4c9240c6390067b80a912c7a
+A6L_VOLTE4_CFG src=qmicli desc='France-Commercial-Orange' size=50348 status=Inactive version=0x8040B20 id=965d8d766f9ac0e698ca5d4433395a31526d2d8d
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE-CU' size=50116 status=Inactive version=0x8041560 id=f89b251250f56049b2e0accb10842d571df38192
+A6L_VOLTE4_CFG src=qmicli desc='Volte_OpenMkt-Commercial-CMCC' size=52772 status=Inactive version=0x8032010 id=8ae9d9e3dfc2b139024bc8cae91060cabd292481
+  probe| A6L_VOLTE_IMS_SVC 33 IMSA(ims-application) absent
+  probe| A6L_VOLTE_PDC_ACTIVE type=HW none
+  probe| A6L_VOLTE_PDC_ACTIVE type=SW id=7af52eaad094b6617fd163ca7370863364601f22
+  probe| A6L_VOLTE_PDC_INFO type=SW id=7af52eaad094b6617fd163ca7370863364601f22 size=45828 version=0x08030808 desc='ROW_Commercial'
+  probe| A6L_VOLTE_PDC_LIST SW count=5
+  probe| A6L_VOLTE_PDC_INFO type=SW id=7af52eaad094b6617fd163ca7370863364601f22 size=45828 version=0x08030808 desc='ROW_Commercial'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=83ed837eb5fb5ced4c9240c6390067b80a912c7a size=69008 version=0x080413e1 desc='VoLTE_OPNMKT_CT'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=965d8d766f9ac0e698ca5d4433395a31526d2d8d size=50348 version=0x08040b20 desc='France-Commercial-Orange'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=f89b251250f56049b2e0accb10842d571df38192 size=50116 version=0x08041560 desc='VoLTE-CU'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=8ae9d9e3dfc2b139024bc8cae91060cabd292481 size=52772 version=0x08032010 desc='Volte_OpenMkt-Commercial-CMCC'
+A6L_VOLTE4_STATE tag=post-load qmicli_total=5 active='ROW_Commercial' active_id=7af52eaad094b6617fd163ca7370863364601f22 pending_id=none orange_id=965d8d766f9ac0e698ca5d4433395a31526d2d8d row_listed=1
+A6L_VOLTE4_EFS tag=post-load ram/modem_fs1 sha256=4c6bcae641aff4b9
+A6L_VOLTE4_EFS tag=post-load ram/modem_fs2 sha256=99c412e3d7267224
+A6L_VOLTE4_EFS tag=post-load real/modemst1 sha256=77bdccd50ad12f1d (read-only)
+A6L_VOLTE4_EFS tag=post-load real/modemst2 sha256=aac97d2795a7c6ce (read-only)
+A6L_VOLTE4_LOAD_PASS id=965d8d766f9ac0e698ca5d4433395a31526d2d8d active_still='ROW_Commercial'
+A6L_VOLTE4_DONE mode=load result=OK log=/tmp/volte4-logs/volte4-load-210903.txt
+A6L_VOLTE5_PDC_load_OK LOAD_PASS id=965d8d766f9ac0e698ca5d4433395a31526d2d8d active_still='ROW_Commercial'
+A6L_VOLTE5_DONE mode=load result=OK log=/tmp/volte5-logs/volte5-load-210858.txt

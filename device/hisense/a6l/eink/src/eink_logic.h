@@ -14,24 +14,27 @@
 #define POL_FASTEST "fastest"	/* A2 black/white, ~10 frames (stock "fast" = 6/8) */
 #define POL_FAST    "fast"	/* DU-like, 23 frames */
 
-enum pol_kind { POL_NONE = 0, POL_SHOW, POL_REFRESH, POL_CLEAR_THEN_SHOW };
+enum pol_kind { POL_NONE = 0, POL_SHOW, POL_REFRESH, POL_CLEAN_SHOW };
 struct pol_action { enum pol_kind kind; const char *mode; };
 
 struct pol_cfg {
     int quiet_ms;		/* a discrete change is sent once the content is quiet this long (default 300) */
     int settle_ms;		/* after a burst: quiet this long -> one clean update (default 1000) */
     int min_gap_ms;		/* minimum gap between the end of one update and the next command (default 150) */
-    int clear_every;		/* every N clean updates: full clear flash first (0 = never; default 10) */
-    int max_per_min;		/* rate limit (default 60) */
+    int clear_every;		/* every N updates: force GC16 of the new page (0 = never; default 10) */
+    int max_per_min;		/* rate limit (default 120); one in-flight update still bounds drive rate */
     const char *active_mode;	/* burst waveform (default fastest = A2) */
+    int fixed_fast;		/* explicit fast/fastest: use that waveform for taps too, no GC16 settle */
     int reading;		/* 1 = reading mode: no bursts, REGAL partial updates, periodic forced GC16 */
     int reading_refresh_every;	/* reading: every N partial updates one forced GC16 "refresh" (default 8) */
     double reading_full_frac;	/* reading: a change bigger than this fraction of the tiles -> GC16 instead of REGAL (0.6) */
+    int stock;			/* 1 = stock-like: every change = one REGAL update of the latest capture, no quiet wait, no A2,
+				 * no GC16 settle; forced REGAL cleanup after clear_every updates, only once idle (settle_ms) */
 };
 struct pol_state {
     struct pol_cfg cfg;
     double last_change, win_t, done_t;
-    int consec, burst, fast_on_panel, clean_n, win_n, reading_n, primed;
+    int consec, burst, fast_on_panel, clean_n, win_n, reading_n, primed, fast_n;
 };
 void pol_default_cfg(struct pol_cfg *c);
 void pol_init(struct pol_state *s, const struct pol_cfg *c, double now);
@@ -48,8 +51,12 @@ int pol_in_burst(const struct pol_state *s);
  *   auto    = default policy (GC16 when still, A2 bursts while moving, one clean update when it settles)
  *   quality = GC16 only, once the content is still (no A2, no REGAL)
  *   partial = REGAL partial updates (stock "reading" 3), periodic GC16 refresh, GC16 on page turns
- *   fast    = like auto, bursts in the DU-like "fast" waveform, shorter quiet/settle
- *   fastest = like auto, A2 bursts, shortest quiet/settle
+ *   fast    = DU-like fast waveform for all changes, without automatic GC16 settle
+ *   fastest = A2 waveform for all changes, without automatic GC16 settle
+ *   stock   = what the stock firmware was filmed doing (eink-stock-analysis-20261006): REGAL for every change,
+ *             including while scrolling (latest frame each time the panel is free), never A2/GC16 in normal use
+ * Explicit fast modes honour periodic forced GC16 cleanup (clear_every counts their page updates).
+ * Manual full clears remain separate from this policy.
  * clear_every / max_per_min / min_gap_ms are kept. */
 int pol_apply_refresh_mode(struct pol_cfg *c, const char *name);
 
@@ -76,6 +83,37 @@ struct tmap {
 /* raw rear coordinates -> front coordinates (always clamped into the front picture); returns 0 when the touch was
  * outside the mirrored picture (the white letterbox bars) */
 int tmap_apply(const struct tmap *m, int rx, int ry, int *fx, int *fy);
-/* letterbox/crop geometry of a gw x gh front picture on a pw x ph panel (same arithmetic as the mirror's resampler) */
-void fit_geometry(int gw, int gh, int pw, int ph, int crop, int *ox, int *oy, int *dw, int *dh);
+enum fit_mode { FIT_LETTERBOX = 0, FIT_CROP = 1, FIT_STRETCH = 2 };
+/* Same geometry for pixels and rear touch. Stretch retains every control and fills the panel. */
+void fit_geometry(int gw, int gh, int pw, int ph, int fit, int *ox, int *oy, int *dw, int *dh);
 int tmap_parse_transform(struct tmap *m, const char *s);	/* "", "swap", "invx", "invy", combos "swap,invx" */
+
+/* ---------------- 4. KMS plane composition (drm capture source; r5 review round4 F41) ---------------- */
+/* The mirror rebuilds the front picture from the LCD CRTC's planes. It must apply what the compositor programs per plane
+ * (drm_hwcomposer DrmPlane: "rotation", "alpha", "pixel blend mode"), per the kernel's plane composition rules:
+ * the source rectangle is reflected, then rotated counter-clockwise, then scaled to the CRTC rectangle; blending is
+ *   None:     out = pa*fg + (1 - pa)*bg                 (pixel alpha ignored)
+ *   Premulti: out = pa*fg + (1 - pa*fg.alpha)*bg        (fg already multiplied by its alpha)
+ *   Coverage: out = pa*fg.alpha*fg + (1 - pa*fg.alpha)*bg
+ * with pa = plane alpha / 0xffff. Unknown rotation bits / blend modes are rejected (no plausible wrong picture). */
+#define PLANE_ROT_0 (1u << 0)
+#define PLANE_ROT_90 (1u << 1)
+#define PLANE_ROT_180 (1u << 2)
+#define PLANE_ROT_270 (1u << 3)
+#define PLANE_REFLECT_X (1u << 4)
+#define PLANE_REFLECT_Y (1u << 5)
+enum plane_blend { PLANE_BLEND_NONE = 2, PLANE_BLEND_PREMULTI = 0, PLANE_BLEND_COVERAGE = 1 };	/* DRM_MODE_BLEND_* ABI */
+struct plane_geo {
+    int cx, cy, cw, ch;		/* CRTC rectangle */
+    double sx, sy, sw, sh;	/* source rectangle (pixels, from 16.16) */
+    uint32_t rotation;		/* property value; default PLANE_ROT_0 */
+    uint32_t alpha16;		/* plane alpha 0..0xffff; default 0xffff */
+    int blend;			/* enum plane_blend; default PLANE_BLEND_PREMULTI */
+};
+struct plane_fb { const uint8_t *base; uint32_t pitch; int w, h; int bpp; int bgr; int has_alpha; };	/* bpp 4 = 8888, 2 = RGB565 */
+int plane_supported(const struct plane_geo *q);	/* 0 = rotation/blend understood */
+/* composite one plane over gray (gw x gh, luma); planes in ascending zpos order over a black background. -1 = unsupported */
+int plane_compose(uint8_t *gray, int gw, int gh, const struct plane_geo *q, const struct plane_fb *fb);
+
+/* A valid opaque 1:1 full-screen plane makes all lower z-order planes irrelevant. */
+int plane_opaque_fullscreen(const struct plane_geo *q, int fw, int fh, int gw, int gh);

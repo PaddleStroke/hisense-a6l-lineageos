@@ -11,3 +11,46 @@
 /dev/fastrpc-*            0664   system     system
 /sys/devices/platform/soc@0/*/iio:device*  sampling_frequency  0664 system system
 /sys/devices/platform/soc@0/*/iio:device*  buffer/enable       0664 system system
+# rom-v2 (agent merge): eink3 (epd_power, spidev) + hals (rfkill, uinput, IIO sysfs, backlight) + dualux/frontlight
+/sys/devices/platform/soc*/*.display-subsystem/*.dsi/*.dsi.0 epd_power   0660 system system
+/dev/spidev*              0660   system     system
+/dev/rfkill               0660   root       bluetooth
+/dev/uinput               0660   uhid       uhid
+/sys/devices/*iio:device* buffer/enable            0664 system system
+/sys/devices/*iio:device* buffer/length            0664 system system
+/sys/devices/*iio:device* sampling_frequency       0664 system system
+/sys/devices/*iio:device* trigger/current_trigger  0664 system system
+/sys/class/backlight/*    brightness                        0664 system system
+/sys/devices/platform/a6l-epd-frontlight/leds/epd-backlight brightness 0664 system system
+# r5 review fix F13 (28 Sep 2026): flash/torch LED = leds-qcom-flash "white:flash" (pm660l led-controller@d300, confirmed
+# attended 29 Sep). Event-driven: applied when the misc module group creates the LED (no early chown in init.qcom.rc).
+# Owner system, group camera (the camera provider / cameraserver torch path runs with group camera); never world-writable.
+# Matched through the subsystem path (/sys/class/<subsystem>/<name>), independent of the platform device path.
+/sys/class/leds/white:flash brightness        0664 system camera
+/sys/class/leds/white:flash flash_brightness  0664 system camera
+/sys/class/leds/white:flash flash_timeout     0664 system camera
+/sys/class/leds/white:flash flash_strobe      0664 system camera
+/sys/class/leds/white:flash max_brightness    0444 system camera
+# r5 review fix F49 (29 Sep 2026): vibrator = a6l_gpio_vib LED class device "vibrator" (QTI VibratorOL LedVibratorDevice
+# writes state/duration/activate; the service runs as user system). Applied when the misc group loads the module.
+/sys/class/leds/vibrator  activate            0664 system system
+/sys/class/leds/vibrator  duration            0664 system system
+/sys/class/leds/vibrator  state               0664 system system
+# senshal (26 Sep 2026): SMGR IIO buffers for sensors.a6l (multihal runs as uid system). The '/sys/devices/*iio:device*'
+# lines above use fnmatch FNM_PATHNAME, so '*' never crosses '/' and they do not match nested platform paths;
+# no_fnm_pathname lets '*' span the path, the attribute glob covers every scan element. a6l-modules.sh adsp chowns the
+# same files as a fallback.
+/sys/devices/*/iio:device* scan_elements/*_en  0664 system system no_fnm_pathname
+/sys/devices/*/iio:device* buffer/enable       0664 system system no_fnm_pathname
+/sys/devices/*/iio:device* buffer/length       0664 system system no_fnm_pathname
+/sys/devices/*/iio:device* buffer/watermark    0664 system system no_fnm_pathname
+# r5 review fix F3/F4 (29 Sep 2026): sensors.a6l enables the STK3338 PS interrupt only while proximity is active, so
+# stk3338_a6l.ko keeps PS running + wake-armed in suspend only then (otherwise full standby).
+/sys/devices/*/iio:device* events/in_proximity_thresh_*_en 0664 system system no_fnm_pathname
+
+# lc2 (29 Sep 2026): camera media graph for the libcamera camera provider (user cameraserver, group camera):
+# qcom-camss video nodes, the media controller, sensor/CSIPHY/CSID/ISPIF/VFE/VCM subdevs. SELinux: video_device
+# (camera/sepolicy/vendor/file_contexts for media + v4l-subdev).
+/dev/video*               0660   system     camera
+/dev/media*               0660   system     camera
+/dev/v4l-subdev*          0660   system     camera

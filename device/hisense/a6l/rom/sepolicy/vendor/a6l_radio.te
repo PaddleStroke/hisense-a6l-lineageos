@@ -1,0 +1,79 @@
+# /vendor/bin/a6l-radio.sh start|stop (service a6l_radio) and the modem companions it execs (vendor.rmtfs, vendor.tqftpserv,
+# vendor.diag_router run `a6l-radio.sh <x>` which execs the binary -> domain transition below). Folds in the never-compiled
+# hals/sepolicy/a6l_radio.te with the real rom-v2 paths.
+type a6l_radio_ctl, domain;
+init_daemon_domain(a6l_radio_ctl)
+allow a6l_radio_ctl vendor_shell_exec:file rx_file_perms;
+allow a6l_radio_ctl vendor_toolbox_exec:file rx_file_perms;
+allow a6l_radio_ctl kmsg_device:chr_file { write append getattr };
+allow a6l_radio_ctl self:capability { sys_module net_admin };
+allow a6l_radio_ctl vendor_kernel_modules:system module_load;
+r_dir_file(a6l_radio_ctl, vendor_kernel_modules)
+allow a6l_radio_ctl vendor_configs_file:dir r_dir_perms;
+allow a6l_radio_ctl vendor_configs_file:file r_file_perms;
+allow a6l_radio_ctl proc_modules:file r_file_perms;
+allow a6l_radio_ctl { sysfs sysfs_a6l_remoteproc sysfs_a6l_ipa sysfs_net }:dir r_dir_perms;
+allow a6l_radio_ctl { sysfs sysfs_a6l_remoteproc sysfs_a6l_ipa sysfs_net }:lnk_file read;
+allow a6l_radio_ctl { sysfs_a6l_remoteproc sysfs_a6l_ipa }:file rw_file_perms;
+allow a6l_radio_ctl { sysfs sysfs_net }:file r_file_perms;
+allow a6l_radio_ctl a6l_rmtfs_mem_device:chr_file getattr;
+# wlan0 MAC from /persist/wlan_mac.bin. NOTE: `ip link set` is /system/bin/ip = a system executable that a vendor domain
+# may not run (Treble neverallow): in enforcing the MAC step must move to a6l_macs (see release-prep doc 3.4).
+r_dir_file(a6l_radio_ctl, a6l_persist_file)
+get_prop(a6l_radio_ctl, vendor_a6l_prop)
+set_prop(a6l_radio_ctl, ctl_start_prop)
+set_prop(a6l_radio_ctl, ctl_stop_prop)
+domain_auto_trans(a6l_radio_ctl, a6l_rmtfs_exec, a6l_rmtfs)
+domain_auto_trans(a6l_radio_ctl, a6l_tqftpserv_exec, a6l_tqftpserv)
+domain_auto_trans(a6l_radio_ctl, a6l_diag_exec, a6l_diag)
+
+# rmtfs: modem EFS over QRTR, shared memory /dev/qcom_rmtfs_mem1, partitions modemst1/modemst2/fsg/fsc (-P)
+type a6l_rmtfs, domain;
+init_daemon_domain(a6l_rmtfs)
+allow a6l_rmtfs self:qipcrtr_socket create_socket_perms_no_ioctl;
+allow a6l_rmtfs a6l_rmtfs_mem_device:chr_file rw_file_perms;
+allow a6l_rmtfs a6l_modem_block_device:blk_file rw_file_perms;
+allow a6l_rmtfs block_device:dir r_dir_perms;
+allow a6l_rmtfs { sysfs sysfs_dt_firmware_android }:dir r_dir_perms;
+allow a6l_rmtfs { sysfs sysfs_dt_firmware_android }:file r_file_perms;
+allow a6l_rmtfs kmsg_device:chr_file { write append getattr };
+get_prop(a6l_rmtfs, vendor_a6l_prop)
+
+# tqftpserv: modem config/firmware over QRTR TFTP from /vendor/firmware, scratch in /data/vendor/tmp/tqftpserv
+type a6l_tqftpserv, domain;
+init_daemon_domain(a6l_tqftpserv)
+allow a6l_tqftpserv self:qipcrtr_socket create_socket_perms_no_ioctl;
+r_dir_file(a6l_tqftpserv, vendor_file)
+allow a6l_tqftpserv a6l_tqftpserv_data_file:dir create_dir_perms;
+allow a6l_tqftpserv a6l_tqftpserv_data_file:file create_file_perms;
+allow a6l_tqftpserv vendor_data_file:dir search;
+allow a6l_tqftpserv kmsg_device:chr_file { write append getattr };
+
+# diag-router: DIAG over QRTR (the modem starves without it)
+type a6l_diag, domain;
+init_daemon_domain(a6l_diag)
+allow a6l_diag self:qipcrtr_socket create_socket_perms_no_ioctl;
+allow a6l_diag self:unix_stream_socket create_stream_socket_perms;
+allow a6l_diag sysfs:dir r_dir_perms;
+allow a6l_diag sysfs:file r_file_perms;
+allow a6l_diag kmsg_device:chr_file { write append getattr };
+
+# a6l_macs: public BD address for hci0 (bt mode, service vendor.a6l-bt-addr); Wi-Fi MAC (to replace `ip link` above)
+type a6l_macs, domain;
+init_daemon_domain(a6l_macs)
+allow a6l_macs a6l_modem_block_device:blk_file r_file_perms;
+r_dir_file(a6l_macs, a6l_persist_file)
+allow a6l_macs self:udp_socket create_socket_perms;
+allowxperm a6l_macs self:udp_socket ioctl { SIOCGIFHWADDR SIOCSIFHWADDR SIOCGIFFLAGS SIOCSIFFLAGS };
+allow a6l_macs self:bluetooth_socket create_socket_perms_no_ioctl;
+allow a6l_macs self:capability { net_admin net_raw };
+allow a6l_macs { sysfs sysfs_net }:dir r_dir_perms;
+allow a6l_macs sysfs_net:file r_file_perms;
+allow a6l_macs kmsg_device:chr_file { write append getattr };
+
+# AOSP bluetooth-service.default in HCI_CHANNEL_USER mode (from hals/sepolicy/hal_bluetooth_default.te)
+allow hal_bluetooth_default self:bluetooth_socket create_socket_perms_no_ioctl;
+allow hal_bluetooth_default self:capability net_admin;
+allow hal_bluetooth_default a6l_rfkill_device:chr_file rw_file_perms;
+# r5 review fix F8 (28 Sep 2026): a6l-radio.sh start publishes vendor.a6l.radio.state (starting/up/failed:<reason>)
+set_prop(a6l_radio_ctl, vendor_a6l_prop)

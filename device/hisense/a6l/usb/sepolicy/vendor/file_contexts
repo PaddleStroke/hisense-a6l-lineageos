@@ -1,0 +1,2 @@
+# A6L USB gadget HAL (android-usb, 29 Sep 2026)
+/vendor/bin/hw/android\.hardware\.usb\.gadget-service\.a6l   u:object_r:hal_usb_gadget_default_exec:s0

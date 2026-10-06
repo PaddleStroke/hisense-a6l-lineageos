@@ -1,0 +1,51 @@
+--- a/drivers/media/i2c/hi846.c
++++ b/drivers/media/i2c/hi846.c
+@@ -1204,10 +1204,28 @@
+ 	return hi846_link_freqs[index];
+ }
+ 
++/* A6L attended capture: 2526 lines at LLP 3800 take 33.341 ms.
++ * Pixel-array timing rate, distinct from the CSI-2 transport rate.
++ * Other lane/clock/mode combinations retain their original control behaviour.
++ */
++#define HI846_A6L_TIMING_RATE 288000000ULL
++
++static bool hi846_a6l_verified_timing(struct hi846 *hi846)
++{
++	return hi846->nr_lanes == 2 && clk_get_rate(hi846->clock) == 24000000 &&
++	       hi846->cur_mode->width == 1632 &&
++	       hi846->cur_mode->height == 1224 &&
++	       hi846->cur_mode->llp == 3800 &&
++	       hi846->cur_mode->frame_len == 2526;
++}
++
+ static u64 hi846_calc_pixel_rate(struct hi846 *hi846)
+ {
+ 	u64 link_freq = hi846_get_link_freq(hi846);
+ 	u64 pixel_rate = link_freq * 2 * hi846->nr_lanes;
++
++	if (hi846_a6l_verified_timing(hi846))
++		return HI846_A6L_TIMING_RATE;
+ 
+ 	do_div(pixel_rate, HI846_RGB_DEPTH);
+ 
+@@ -1750,6 +1768,19 @@
+ 	mf->field = V4L2_FIELD_NONE;
+ 
+ 	__v4l2_ctrl_s_ctrl(hi846->link_freq, hi846_get_link_freq_index(hi846));
++	/* The initial 640-mode maximum silently clamps later-mode rates. */
++	if (hi846_a6l_verified_timing(hi846)) {
++		__v4l2_ctrl_modify_range(hi846->pixel_rate,
++				 HI846_A6L_TIMING_RATE, HI846_A6L_TIMING_RATE,
++				 1, HI846_A6L_TIMING_RATE);
++	} else {
++		/* Preserve the initial-mode range outside the verified mode. */
++		s64 legacy_max = div_u64(80000000ULL * 2 * hi846->nr_lanes,
++					 HI846_RGB_DEPTH);
++
++		__v4l2_ctrl_modify_range(hi846->pixel_rate, 0, legacy_max,
++				 1, legacy_max);
++	}
+ 	__v4l2_ctrl_s_ctrl_int64(hi846->pixel_rate,
+ 				 hi846_calc_pixel_rate(hi846));
+ 

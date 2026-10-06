@@ -1,0 +1,76 @@
+$ g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -pthread -fsanitize=address,undefined -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/include -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/tests /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/client.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/datacall.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/ims.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/ims_setup.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/imsdcm_service.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/log.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/message.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/multisim.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/qrtr_transport.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/rmnet.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/server.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/services.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/qmi/src/sms.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/tests/fake_modem.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/ims_review_tests.cc -o /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/review-tests
+
+$ /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/original/review-tests
+FAIL response raw error text
+PASS numeric rejection code preserved
+FAIL indication raw error text
+PASS numeric rejection code preserved
+PASS client starts
+PASS services present
+PASS failed IMSS bind reported
+FAIL failed IMSS bind prevents settings write
+FAIL failed IMSS bind stops setup
+PASS failed IMSA bind reported
+FAIL failed IMSA bind stops attach
+REVIEW_IMS pass=6 fail=5
+[218557.025] I review: server IMSS(18) inst 0 at 0:100
+[218557.026] I review: server IMSA(33) inst 0 at 0:101
+
+$ g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -pthread -fsanitize=address,undefined -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/include -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/client.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/datacall.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/ims.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/ims_setup.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/imsdcm_service.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/log.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/message.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/multisim.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/qrtr_transport.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/rmnet.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/server.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/services.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/sms.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests/fake_modem.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/ims_review_tests.cc -o /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/review-tests
+
+$ /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/review-tests
+PASS response raw error text
+PASS numeric rejection code preserved
+PASS indication raw error text
+PASS numeric rejection code preserved
+PASS client starts
+PASS services present
+PASS failed IMSS bind reported
+PASS failed IMSS bind prevents settings write
+PASS failed IMSS bind stops setup
+PASS failed IMSA bind reported
+PASS failed IMSA bind stops attach
+REVIEW_IMS pass=11 fail=0
+[218601.327] I review: server IMSS(18) inst 0 at 0:100
+[218601.327] I review: server IMSA(33) inst 0 at 0:101
+
+$ g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -pthread -fsanitize=address,undefined -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/include -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/client.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/datacall.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/ims.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/ims_setup.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/imsdcm_service.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/log.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/message.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/multisim.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/qrtr_transport.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/rmnet.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/server.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/services.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/sms.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests/fake_modem.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests/volte2_tests.cc -o /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/volte2-tests
+
+$ /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/volte2-tests
+a6l-volte2 tests: 291 passed, 0 failed
+
+$ g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -pthread -fsanitize=address,undefined -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/include -I/mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/client.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/datacall.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/ims.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/ims_setup.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/imsdcm_service.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/log.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/message.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/multisim.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/qrtr_transport.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/rmnet.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/server.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/services.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/qmi/src/sms.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests/fake_modem.cc /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/tests/volte5_tests.cc -o /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/volte5-tests
+
+$ /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/candidate/volte5-tests
+a6l-volte5 tests: 210 passed, 0 failed
+
+$ python3 /mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/kernel/camera/patches/camfix6_patch.py /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/camfix6
+PATCHED camss-vfe.h: struct vfe_device *a6l_vfe;
+PATCHED camss-vfe-4-8.c: static ktime_t a6l_f_t0[2];
+PATCHED camss-vfe-4-8.c: writel_relaxed(val7, vfe->base + VFE_0_BUS_BDG_QOS_CFG_7);
+PATCHED camss-vfe-4-8.c: if (a6l_fdump && a6l_f_logged[v] < a6l_fdump && ((s1 & (BIT(
+PATCHED camss-vfe-4-8.c: a6l_f_sof[v] = 0;
+PATCHED camss-vfe-4-8.c: /* A6L: stock msm_vfe47_axi_cfg_wm_reg writes the ADDR_CFG v
+PATCHED camss-vfe-4-8.c: /* camfix5 experiment: give WM0 a deeper UB (single RDI stre
+PATCHED camss-vfe-gen1.c: #include <linux/workqueue.h>
+PATCHED camss-vfe-gen1.c: extern int a6l_dbg; /* camss-vfe-4-8.c */
+PATCHED camss-vfe-gen1.c: output->a6l_mode = 0;
+PATCHED camss-vfe-gen1.c: vfe->ops_gen1->wm_frame_based(vfe, output->wm_idx[0], 1);
+PATCHED camss-vfe-gen1.c: dev_info(vfe->camss->dev, "A6L_WM4_STOP done %u copied %u\n"
+CAMFIX6_PATCH_PASS
+
+$ gcc -std=c11 -Wall -Wextra -Werror /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/camera-register-test.c -o /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/camera-register-test
+
+$ /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/camera-register-test
+WM=4 V6=128 BUFFER_CFG=0
+WM=4 V6=160 BUFFER_CFG=0
+WM=6 V6=128 BUFFER_CFG=2
+WM=6 V6=160 BUFFER_CFG=3
+REPRODUCED: burst3 is a no-op with sweep default WM=4; WM=6 exercises it.
+
+$ sh /mnt/c/Users/Pierre/Desktop/A6L/research/fresh-eye-20260928/work/stale-registration-test.sh
+  dcm| A6L_IMSDCM_IMSA REGISTERED (query)
+  dcm| A6L_IMSDCM_IMSA_IND reg status=not-registered
+  dcm| A6L_IMSDCM_IMSA GONE (service 33 withdrawn)
+A6L_VOLTE5_REG registered=1 after 0s
+REPRODUCED: a lost registration and withdrawn service still satisfy wait_reg

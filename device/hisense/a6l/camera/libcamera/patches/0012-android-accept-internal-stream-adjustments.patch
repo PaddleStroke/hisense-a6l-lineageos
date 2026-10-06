@@ -1,0 +1,51 @@
+From: A6L port maintainers
+Subject: [PATCH] android: accept internal stream allocation adjustments
+
+SimpleCameraConfiguration::validate() supplies a default bufferCount for
+HAL configurations, which start with zero. That returns Adjusted even when
+the requested size and pixel format are unchanged. The Android HAL rejects
+it, so Aperture cannot configure preview plus JPEG on the rear camera.
+
+Accept adjustment of internal allocation fields, while preserving stream
+count, orientation, image dimensions, pixel format and any requested color
+space. Keep Invalid and Android-visible adjustments rejected.
+
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -802,6 +802,13 @@
+ 		}
+ 	}
+ 
++	/* The pipeline may fill bufferCount/stride/frameSize without changing
++	 * the requested image. Preserve the Android-visible requirements so
++	 * those internal adjustments don't reject an otherwise usable stream.
++	 */
++	const std::vector<StreamConfiguration> requested(config->begin(), config->end());
++	const Orientation requestedOrientation = config->orientation;
++
+ 	switch (config->validate()) {
+ 	case CameraConfiguration::Valid:
+ 		break;
+@@ -811,7 +818,21 @@
+ 		for (const StreamConfiguration &cfg : *config)
+ 			LOG(HAL, Info) << " - " << cfg.toString();
+ 
+-		return -EINVAL;
++		if (config->size() != requested.size() ||
++		    config->orientation != requestedOrientation)
++			return -EINVAL;
++
++		for (size_t i = 0; i < requested.size(); ++i) {
++			const StreamConfiguration &before = requested[i];
++			const StreamConfiguration &after = config->at(i);
++			if (after.size != before.size ||
++			    after.pixelFormat != before.pixelFormat ||
++			    (before.colorSpace && after.colorSpace != before.colorSpace)) {
++				LOG(HAL, Error) << "Requested image configuration changed";
++				return -EINVAL;
++			}
++		}
++		break;
+ 	case CameraConfiguration::Invalid:
+ 		LOG(HAL, Info) << "Camera configuration invalid";
+ 		return -EINVAL;

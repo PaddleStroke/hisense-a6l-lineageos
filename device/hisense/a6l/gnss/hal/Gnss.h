@@ -30,12 +30,9 @@ class A6lGnssConfiguration : public BnGnssConfiguration {
     ndk::ScopedAStatus setGlonassPositioningProtocol(int) override { return ndk::ScopedAStatus::ok(); }
     ndk::ScopedAStatus setEmergencySuplPdn(bool) override { return ndk::ScopedAStatus::ok(); }
     ndk::ScopedAStatus setEsExtensionSec(int) override { return ndk::ScopedAStatus::ok(); }
+    // r5 F10: no modem-side satellite exclusion in our QMI LOC client -> a non-empty blocklist is refused
+    // (EX_UNSUPPORTED_OPERATION) and CAPABILITY_SATELLITE_BLOCKLIST is not advertised (a6l::kHalCapabilities).
     ndk::ScopedAStatus setBlocklist(const std::vector<BlocklistedSource>& blocklist) override;
-    bool isBlocklisted(int constellation, int svid) const;
-
-  private:
-    mutable std::mutex mMutex;
-    std::set<std::pair<int, int>> mBlocked;   // (constellation, svid); svid 0 = whole constellation
 };
 
 class A6lGnssDebug : public BnGnssDebug {

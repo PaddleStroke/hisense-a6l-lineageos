@@ -1,0 +1,127 @@
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "camera_device.h"
++#include "native_processed_source.h"
+ #include "libcamera/internal/a6l_stage_profile.h"
+ 
+ #include <algorithm>
+@@ -30,6 +31,8 @@
+ #include "system/graphics.h"
+ 
+ #include "libcamera/internal/formats.h"
++#include "libcamera/internal/camera.h"
++#include "libcamera/internal/pipeline_handler.h"
+ 
+ #include "camera_buffer.h"
+ #include "camera_hal_config.h"
+@@ -805,6 +808,59 @@
+ 		}
+ 	}
+ 
++	/* A6L pure processed outputs: keep the CPU ISP on a discovered native RAW10 identity
++	 * layout, then crop/scale into every Android destination. This also covers
++	 * CameraX video SurfaceTexture consumers which have no codec usage bit.
++	 * Selection is a source-processing policy, not a guessed video-mode tag.
++	 * The requested
++	 * Android sizes/formats/rotation and JPEG configuration stay unchanged.
++	 * The ordinary final validation below remains authoritative. */
++	if (!jpegStream && !utils::secure_getenv("LIBCAMERA_HAL_MULTI_STREAM") &&
++	    streamConfigs.size() == 1 &&
++	    streamConfigs[0].config.pixelFormat == formats::NV12 &&
++	    std::string_view(camera_->_d()->pipe()->name()) == "simple") {
++		Camera3StreamConfig &source = streamConfigs[0];
++		bool nv12Outputs = true;
++		bool outputOnly = true;
++		std::vector<Size> outputSizes;
++		for (const auto &item : source.streams) {
++			nv12Outputs &= capabilities_.toPixelFormat(item.stream->format) == formats::NV12;
++			outputOnly &= item.stream->stream_type == CAMERA3_STREAM_OUTPUT;
++			outputSizes.emplace_back(item.stream->width, item.stream->height);
++		}
++		const auto model = camera_->properties().get(properties::Model);
++		if (nv12Outputs && outputOnly && model) {
++			auto raw = camera_->generateConfiguration({ StreamRole::Raw });
++			if (raw && !raw->empty()) {
++				const auto native = a6lNativeProcessedSource(*model, raw->at(0).formats(),
++								       outputSizes);
++				if (native) {
++					/* Prove this backend accepts the exact processed image;
++					 * failed probes retain the previous generic selection. */
++					auto probe = camera_->generateConfiguration({ StreamRole::Viewfinder });
++					if (probe && probe->size() == 1) {
++						probe->orientation = config->orientation;
++						probe->at(0).size = *native;
++						probe->at(0).pixelFormat = source.config.pixelFormat;
++						probe->at(0).colorSpace = source.config.colorSpace;
++						const auto status = probe->validate();
++						if (status != CameraConfiguration::Invalid && probe->size() == 1 &&
++						    probe->orientation == config->orientation &&
++						    probe->at(0).size == *native &&
++						    probe->at(0).pixelFormat == source.config.pixelFormat &&
++						    (!source.config.colorSpace ||
++						     probe->at(0).colorSpace == source.config.colorSpace)) {
++							source.config.size = *native;
++							LOG(HAL, Info) << "A6L_NATIVE_PROCESSED_SOURCE camera=" << camera_->id()
++								       << " internal=" << *native
++								       << " destinations=" << source.streams.size();
++						}
++					}
++				}
++			}
++		}
++	}
++
+ 	/*
+ 	 * A6L's software ISP writes its configured packed stride. minigbm NV12
+ 	 * uses Venus row/scanline alignment, so produce into internal buffers
+--- /dev/null
++++ b/src/android/native_processed_source.h
+@@ -0,0 +1,45 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <optional>
++#include <string_view>
++#include <vector>
++
++#include "native_raw10_sizes.h"
++
++namespace libcamera {
++
++/* Only proven A6L full-field binned readout sizes. Do not choose the smaller
++ * 16:9 sensor readout merely because the encoder destination is 16:9. Each
++ * destination's aspect crop/scale remains the existing YUV postprocessor's job.
++ * Discovery still requires an actual discrete packed RAW10 identity layout. */
++inline std::optional<Size> a6lNativeProcessedSource(std::string_view model,
++                                               const StreamFormats &rawFormats,
++                                               const std::vector<Size> &outputs)
++{
++    Size preferred;
++    if (model == "imx576" || model == "imx576_a6l")
++        preferred = { 2872, 2156 };
++    else if (model == "s5k3t1")
++        preferred = { 2296, 1728 };
++    else if (model == "hi846")
++        preferred = { 1624, 1224 };
++    else
++        return std::nullopt;
++
++    if (outputs.empty())
++        return std::nullopt;
++    for (const Size &output : outputs) {
++        if (!output.width || !output.height || (output.width & 1) ||
++            (output.height & 1) || output.width > preferred.width ||
++            output.height > preferred.height)
++            return std::nullopt;
++    }
++
++    const auto candidates = a6lNativeRaw10Sizes(model, rawFormats);
++    if (std::find(candidates.begin(), candidates.end(), preferred) == candidates.end())
++        return std::nullopt;
++    return preferred;
++}
++
++} /* namespace libcamera */

@@ -1,0 +1,59 @@
+--- a/external/tinyalsa_new/src/pcm.c
++++ b/external/tinyalsa_new/src/pcm.c
+@@ -431,6 +431,7 @@
+  * */
+ int pcm_set_config(struct pcm *pcm, const struct pcm_config *config)
+ {
++    const int use_default_config = config == NULL;
+     if (pcm == NULL)
+         return -EFAULT;
+     else if (config == NULL) {
+@@ -484,7 +485,11 @@
+     /* get our refined hw_params */
+     pcm->config.period_size = param_get_int(&params, SNDRV_PCM_HW_PARAM_PERIOD_SIZE);
+     pcm->config.period_count = param_get_int(&params, SNDRV_PCM_HW_PARAM_PERIODS);
+-    pcm->buffer_size = config->period_count * config->period_size;
++    pcm->buffer_size = pcm->config.period_count * pcm->config.period_size;
++    if (use_default_config) {
++        pcm->config.start_threshold = pcm->buffer_size;
++        pcm->config.stop_threshold = pcm->buffer_size;
++    }
+ 
+     if (pcm->flags & PCM_MMAP) {
+         pcm->mmap_buffer = pcm->ops->mmap(pcm->data, NULL, pcm_frames_to_bytes(pcm, pcm->buffer_size),
+@@ -501,14 +506,14 @@
+     memset(&sparams, 0, sizeof(sparams));
+     sparams.tstamp_mode = SNDRV_PCM_TSTAMP_ENABLE;
+     sparams.period_step = 1;
+-    sparams.avail_min = config->period_size;
++    sparams.avail_min = pcm->config.period_size;
+ 
+     if (!config->start_threshold) {
+         if (pcm->flags & PCM_IN)
+             pcm->config.start_threshold = sparams.start_threshold = 1;
+         else
+             pcm->config.start_threshold = sparams.start_threshold =
+-                config->period_count * config->period_size / 2;
++                pcm->buffer_size / 2;
+     } else
+         sparams.start_threshold = config->start_threshold;
+ 
+@@ -516,15 +521,15 @@
+     if (!config->stop_threshold) {
+         if (pcm->flags & PCM_IN)
+             pcm->config.stop_threshold = sparams.stop_threshold =
+-                config->period_count * config->period_size * 10;
++                pcm->buffer_size * 10;
+         else
+             pcm->config.stop_threshold = sparams.stop_threshold =
+-                config->period_count * config->period_size;
++                pcm->buffer_size;
+     }
+     else
+         sparams.stop_threshold = config->stop_threshold;
+ 
+-    sparams.xfer_align = config->period_size / 2; /* needed for old kernels */
++    sparams.xfer_align = pcm->config.period_size / 2; /* needed for old kernels */
+     sparams.silence_size = config->silence_size;
+     sparams.silence_threshold = config->silence_threshold;
+ 

@@ -1,0 +1,4 @@
+A6L_AUDIO_ROUTE out=voice-headphones in=headset-mic
+PARTIAL_ROUTE_WRITE route_success=1 ADC2_MUX=ZERO applies=1 after_100_healthy_steps
+I card 0, speaker route present
+I route: out=voice-headphones in=headset-mic

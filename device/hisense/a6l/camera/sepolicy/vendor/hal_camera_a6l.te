@@ -1,0 +1,19 @@
+# A6L camera provider (android.hardware.camera.provider-service.a6l) + libcamera HAL (lc2, 29 Sep 2026).
+# From system/sepolicy hal_camera: video_device rw (/dev/video*; /dev/media* + /dev/v4l-subdev* labeled video_device here),
+# dmabuf_system_heap_device r, fd use from apps/surfaceflinger/allocator. vendor_file (libs, IPA module + .sign, tuning
+# yamls in /vendor/share/libcamera) and vendor_configs_file (/vendor/etc/libcamera/camera_hal.yaml) are readable by every
+# vendor domain. The IPA is signed -> loaded in-process: no IPA proxy exec (/vendor/libexec/libcamera is not installed).
+
+# libcamera DeviceEnumeratorSysfs: /sys/bus/media/devices/*, /sys/dev/char/<maj:min> (-> /sys/devices/.../video4linux),
+# entity/uevent files; A6lTorch: /sys/class/leds (sysfs_leds) -> white:flash, its DT node through device/of_node
+# (/sys/firmware/devicetree/base, generic sysfs). The flash LED node itself (sysfs_a6l_flash, rw) is granted in
+# rom/sepolicy/vendor/hal_extras.te together with its genfscon.
+allow hal_camera_default sysfs:dir r_dir_perms;
+allow hal_camera_default sysfs:file r_file_perms;
+allow hal_camera_default sysfs:lnk_file read;
+allow hal_camera_default sysfs_leds:dir r_dir_perms;
+allow hal_camera_default sysfs_leds:lnk_file read;
+
+# libcamera DmaBufAllocator (HAL-internal buffers, patch 0005): /dev/dma_heap/system (0444, opened O_RDONLY)
+allow hal_camera_default dmabuf_heap_device:dir r_dir_perms;
+allow hal_camera_default dmabuf_system_heap_device:chr_file r_file_perms;

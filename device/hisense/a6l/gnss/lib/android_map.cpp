@@ -6,6 +6,33 @@
 
 namespace a6l {
 
+namespace {
+constexpr double kAndroidConfidence = 0.68;
+bool validConfidence(bool has, uint8_t pct) { return has && pct >= 1 && pct <= 99; }
+// z such that erf(z / sqrt 2) = p (two-sided normal quantile), by bisection: monotonic, no library erfinv needed.
+double twoSidedZ(double p) {
+    double lo = 0, hi = 10;
+    for (int i = 0; i < 80; i++) {
+        double mid = (lo + hi) / 2;
+        (std::erf(mid / std::sqrt(2.0)) < p ? lo : hi) = mid;
+    }
+    return (lo + hi) / 2;
+}
+}  // namespace
+
+std::optional<double> horizontalAccuracy68(float unc, bool hasConfidence, uint8_t pct) {
+    if (!std::isfinite(unc) || unc <= 0) return std::nullopt;
+    if (!validConfidence(hasConfidence, pct)) return double(unc);
+    const double p = pct / 100.0;
+    return unc * std::sqrt(std::log(1 - kAndroidConfidence) / std::log(1 - p));
+}
+
+std::optional<double> verticalAccuracy68(float unc, bool hasConfidence, uint8_t pct) {
+    if (!std::isfinite(unc) || unc <= 0) return std::nullopt;
+    if (!validConfidence(hasConfidence, pct)) return double(unc);
+    return unc * twoSidedZ(kAndroidConfidence) / twoSidedZ(pct / 100.0);
+}
+
 AndroidLocation toAndroidLocation(const loc::Fix& f, int64_t fallbackUtcMs) {
     AndroidLocation l;
     if (f.hasLatLon) {
@@ -13,13 +40,12 @@ AndroidLocation toAndroidLocation(const loc::Fix& f, int64_t fallbackUtcMs) {
         l.latitudeDegrees = f.latitude;
         l.longitudeDegrees = f.longitude;
     }
-    // Android wants the WGS84 ellipsoid altitude; fall back to MSL only if that is all the modem gave.
-    if (f.hasAltEllipsoid && !f.altitudeAssumed) {
+    // GnssLocation.altitudeMeters is height above the WGS84 ellipsoid (QMI TLV 0x1A altitudeWrtEllipsoid).
+    // r5 review F22 (28 Sep 2026): an MSL-only report (TLV 0x1B) is a different datum and gnss-V7 has no MSL field,
+    // so HAS_ALTITUDE (and therefore vertical accuracy) is omitted rather than reporting MSL as ellipsoid height.
+    if (f.hasAltEllipsoid && !f.altitudeAssumed && std::isfinite(f.altEllipsoid)) {
         l.flags |= kHasAltitude;
         l.altitudeMeters = f.altEllipsoid;
-    } else if (f.hasAltMsl && !f.altitudeAssumed) {
-        l.flags |= kHasAltitude;
-        l.altitudeMeters = f.altMsl;
     }
     if (f.hasSpeed && std::isfinite(f.speedHorizontal) && f.speedHorizontal >= 0) {
         l.flags |= kHasSpeed;
@@ -31,13 +57,17 @@ AndroidLocation toAndroidLocation(const loc::Fix& f, int64_t fallbackUtcMs) {
         l.flags |= kHasBearing;
         l.bearingDegrees = b;
     }
-    if (f.hasHorUnc && f.horUncCircular > 0) {
+    // r5 round12 F66: normalized to 68% confidence (horizontal radial and vertical 1-D models differ)
+    if (auto h = f.hasHorUnc ? horizontalAccuracy68(f.horUncCircular, f.hasHorConfidence, f.horConfidence)
+                             : std::nullopt) {
         l.flags |= kHasHorizontalAccuracy;
-        l.horizontalAccuracyMeters = f.horUncCircular;
+        l.horizontalAccuracyMeters = *h;
     }
-    if (f.hasVertUnc && f.vertUnc > 0 && (l.flags & kHasAltitude)) {
+    if (auto v = f.hasVertUnc && (l.flags & kHasAltitude)
+                     ? verticalAccuracy68(f.vertUnc, f.hasVertConfidence, f.vertConfidence)
+                     : std::nullopt) {
         l.flags |= kHasVerticalAccuracy;
-        l.verticalAccuracyMeters = f.vertUnc;
+        l.verticalAccuracyMeters = *v;
     }
     if (f.hasSpeedUnc && f.speedUnc > 0 && (l.flags & kHasSpeed)) {
         l.flags |= kHasSpeedAccuracy;

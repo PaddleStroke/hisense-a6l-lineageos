@@ -3,7 +3,9 @@
 #include <a6lqmi/log.h>
 #include <a6lqmi/rmnet.h>
 
+#include <arpa/inet.h>
 #include <errno.h>
+#include <linux/if_addr.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <net/if.h>
@@ -11,6 +13,8 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <cstdlib>
 
 namespace a6l::rmnet {
 
@@ -120,6 +124,57 @@ std::vector<uint8_t> buildDelLink(uint32_t seq, const std::string& name) {
     m.attr(kIflaIfname, name.c_str(), name.size() + 1);
     m.finish();
     return m.b;
+}
+
+bool parseCidr(const std::string& cidr, int* family, std::vector<uint8_t>* addr, int* prefix) {
+    auto slash = cidr.find('/');
+    std::string a = cidr.substr(0, slash);
+    uint8_t b[16];
+    int fam = a.find(':') != std::string::npos ? AF_INET6 : AF_INET;
+    if (inet_pton(fam, a.c_str(), b) != 1) return false;
+    const int max = fam == AF_INET ? 32 : 128;
+    int p = max;
+    if (slash != std::string::npos) {
+        const std::string ps = cidr.substr(slash + 1);
+        if (ps.empty() || ps.size() > 3 || ps.find_first_not_of("0123456789") != std::string::npos) return false;
+        p = atoi(ps.c_str());
+        if (p < 1 || p > max) return false;
+    }
+    *family = fam;
+    addr->assign(b, b + (fam == AF_INET ? 4 : 16));
+    *prefix = p;
+    return true;
+}
+
+std::vector<uint8_t> buildNewAddr(uint32_t seq, int ifindex, int family, const std::vector<uint8_t>& addr,
+                                  int prefix, uint16_t nlFlags) {
+    Buf m;
+    m.put32(0);
+    m.put16(RTM_NEWADDR);
+    m.put16(nlFlags);
+    m.put32(seq);
+    m.put32(0);
+    // struct ifaddrmsg
+    m.b.push_back(static_cast<uint8_t>(family));
+    m.b.push_back(static_cast<uint8_t>(prefix));
+    m.b.push_back(family == AF_INET6 ? IFA_F_NODAD : 0);
+    m.b.push_back(0);  // RT_SCOPE_UNIVERSE
+    m.put32(static_cast<uint32_t>(ifindex));
+    m.attr(IFA_LOCAL, addr.data(), addr.size());
+    m.attr(IFA_ADDRESS, addr.data(), addr.size());
+    m.finish();
+    return m.b;
+}
+
+int addAddress(const std::string& name, const std::string& cidr) {
+    int fam = 0, prefix = 0;
+    std::vector<uint8_t> a;
+    if (!parseCidr(cidr, &fam, &a, &prefix)) return -EINVAL;
+    int idx = ifindex(name);
+    if (idx <= 0) return -ENODEV;
+    int r = talk(buildNewAddr(3, idx, fam, a, prefix, NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_REPLACE));
+    if (r) ALOGE_Q("rmnet: add address %s to %s: %s", cidr.c_str(), name.c_str(), strerror(-r));
+    return r;
 }
 
 int ifindex(const std::string& name) { return static_cast<int>(if_nametoindex(name.c_str())); }

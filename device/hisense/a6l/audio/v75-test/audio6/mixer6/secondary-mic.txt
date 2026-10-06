@@ -1,0 +1,8 @@
+# audio6 (informative): stock "adc3" (speaker-mic / factory-aux-mic): ADC3 Volume 8, ADC2 MUX INP3, DEC1 MUX ADC2
+# (the analog codec puts ADC3 on the serial TX2 line = digital "ADC2"). NOTE: the V74/V75 test DT has NO bias route for
+# AMIC3 (stock: AMIC3 <- MIC BIAS External); expect SILENT unless External1 is already on. ROM DT fix: audio6 doc.
+ADC2 MUX|INP3
+Digital DEC1 MUX|ADC2
+Digital CIC1 MUX|AMIC
+ADC3 Volume|8
+Digital TX1 Digital Volume|84

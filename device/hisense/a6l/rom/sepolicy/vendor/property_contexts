@@ -1,0 +1,7 @@
+# A6L ROM-level (release-prep 27 Sep 2026). Longer prefixes owned by area dirs win: persist.vendor.a6l.ril., ro.vendor.a6l.ril.,
+# vendor.a6l.voice. (radio/sepolicy).
+vendor.a6l.                 u:object_r:vendor_a6l_prop:s0
+persist.vendor.a6l.         u:object_r:vendor_a6l_prop:s0
+ro.vendor.a6l.              u:object_r:vendor_a6l_ro_prop:s0
+# Debug init owns the runtime-PM comparison; 0/1 only, existing ROM property type.
+persist.vendor.a6l.gpu.pm_hold u:object_r:vendor_a6l_prop:s0 exact enum 0 1

@@ -1,0 +1,12 @@
+[
+  {
+    "test": "build",
+    "exit_code": 0,
+    "stdout": ""
+  },
+  {
+    "test": "run",
+    "exit_code": 0,
+    "stdout": "F66 input_confidence_pct=39 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51\nF66 input_confidence_pct=50 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51\nF66 input_confidence_pct=68 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51\nF66 input_confidence_pct=95 Android_horizontal_m=10.0 Android_vertical_m=20.0 flags=51\nF66 absent_confidence Android_horizontal_m=10.0 Android_vertical_m=20.0\nF66 no_uncertainty_positive_control accuracy_flags_absent=1\nROUND12_ACCURACY_REPRODUCTION_PASS (defect present, not fixed)\n"
+  }
+]

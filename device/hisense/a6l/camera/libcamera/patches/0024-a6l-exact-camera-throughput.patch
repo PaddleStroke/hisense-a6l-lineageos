@@ -1,0 +1,468 @@
+--- /dev/null
++++ b/include/libcamera/internal/a6l_nv12_pair.h
+@@ -0,0 +1,95 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <stdint.h>
++
++#if defined(__aarch64__) && defined(__ARM_NEON) && !defined(A6L_NV12_FORCE_SCALAR)
++#include <arm_neon.h>
++#endif
++
++/*
++ * Convert two even-width BGR rows to full-range BT.601 NV12. The four
++ * chroma inputs are summed before the signed shift, matching the retained
++ * scalar converter exactly. Neither row padding nor a partial vector is read.
++ */
++static inline void a6l_bgr_pair_to_nv12(const uint8_t *p0, const uint8_t *p1,
++                                      uint8_t *y0, uint8_t *y1, uint8_t *uv,
++                                      unsigned int width)
++{
++        unsigned int x = 0;
++#if defined(__aarch64__) && defined(__ARM_NEON) && !defined(A6L_NV12_FORCE_SCALAR)
++        for (; width - x >= 16; x += 16) {
++                const uint8x16x3_t c0 = vld3q_u8(p0);
++                const uint8x16x3_t c1 = vld3q_u8(p1);
++                const uint8x16_t rows[2][3] = {
++                        { c0.val[0], c0.val[1], c0.val[2] },
++                        { c1.val[0], c1.val[1], c1.val[2] },
++                };
++                uint8_t *lumaRows[2] = { y0 + x, y1 + x };
++                for (unsigned int row = 0; row < 2; ++row) {
++                        uint16x8_t lo = vmull_u8(vget_low_u8(rows[row][2]), vdup_n_u8(77));
++                        lo = vmlal_u8(lo, vget_low_u8(rows[row][1]), vdup_n_u8(150));
++                        lo = vmlal_u8(lo, vget_low_u8(rows[row][0]), vdup_n_u8(29));
++                        uint16x8_t hi = vmull_u8(vget_high_u8(rows[row][2]), vdup_n_u8(77));
++                        hi = vmlal_u8(hi, vget_high_u8(rows[row][1]), vdup_n_u8(150));
++                        hi = vmlal_u8(hi, vget_high_u8(rows[row][0]), vdup_n_u8(29));
++                        /* Max sum 65280: round-to-nearest fits in uint16_t. */
++                        vst1q_u8(lumaRows[row], vcombine_u8(vrshrn_n_u16(lo, 8), vrshrn_n_u16(hi, 8)));
++                }
++                const uint16x8_t b = vaddq_u16(vpaddlq_u8(c0.val[0]), vpaddlq_u8(c1.val[0]));
++                const uint16x8_t g = vaddq_u16(vpaddlq_u8(c0.val[1]), vpaddlq_u8(c1.val[1]));
++                const uint16x8_t r = vaddq_u16(vpaddlq_u8(c0.val[2]), vpaddlq_u8(c1.val[2]));
++                const int32x4_t bs[2] = {
++                        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(b))),
++                        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(b))),
++                };
++                const int32x4_t gs[2] = {
++                        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(g))),
++                        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(g))),
++                };
++                const int32x4_t rs[2] = {
++                        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(r))),
++                        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(r))),
++                };
++                int16x4_t us[2], vs[2];
++                for (unsigned int half = 0; half < 2; ++half) {
++                        int32x4_t u = vmulq_n_s32(rs[half], -43);
++                        u = vmlaq_n_s32(u, gs[half], -85);
++                        u = vmlaq_n_s32(u, bs[half], 128);
++                        int32x4_t v = vmulq_n_s32(rs[half], 128);
++                        v = vmlaq_n_s32(v, gs[half], -107);
++                        v = vmlaq_n_s32(v, bs[half], -21);
++                        u = vaddq_s32(vshrq_n_s32(vaddq_s32(u, vdupq_n_s32(512)), 10), vdupq_n_s32(128));
++                        v = vaddq_s32(vshrq_n_s32(vaddq_s32(v, vdupq_n_s32(512)), 10), vdupq_n_s32(128));
++                        us[half] = vqmovn_s32(u);
++                        vs[half] = vqmovn_s32(v);
++                }
++                const uint8x8x2_t chroma = {{
++                        vqmovun_s16(vcombine_s16(us[0], us[1])),
++                        vqmovun_s16(vcombine_s16(vs[0], vs[1])),
++                }};
++                vst2_u8(uv + x, chroma);
++                p0 += 48;
++                p1 += 48;
++        }
++#endif
++        for (; x < width; x += 2) {
++                const int b0 = p0[0], g0 = p0[1], r0 = p0[2];
++                const int b1 = p0[3], g1 = p0[4], r1 = p0[5];
++                const int b2 = p1[0], g2 = p1[1], r2 = p1[2];
++                const int b3 = p1[3], g3 = p1[4], r3 = p1[5];
++                y0[x] = (77 * r0 + 150 * g0 + 29 * b0 + 128) >> 8;
++                y0[x + 1] = (77 * r1 + 150 * g1 + 29 * b1 + 128) >> 8;
++                y1[x] = (77 * r2 + 150 * g2 + 29 * b2 + 128) >> 8;
++                y1[x + 1] = (77 * r3 + 150 * g3 + 29 * b3 + 128) >> 8;
++                const int r = r0 + r1 + r2 + r3;
++                const int g = g0 + g1 + g2 + g3;
++                const int b = b0 + b1 + b2 + b3;
++                const int u = ((-43 * r - 85 * g + 128 * b + 512) >> 10) + 128;
++                const int v = ((128 * r - 107 * g - 21 * b + 512) >> 10) + 128;
++                uv[x] = u < 0 ? 0 : (u > 255 ? 255 : u);
++                uv[x + 1] = v < 0 ? 0 : (v > 255 ? 255 : v);
++                p0 += 6;
++                p1 += 6;
++        }
++}
+--- /dev/null
++++ b/include/libcamera/internal/a6l_raw10_bgr.h
+@@ -0,0 +1,100 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++#include <stdint.h>
++#if defined(__aarch64__) && defined(__ARM_NEON) && !defined(A6L_RAW10_FORCE_SCALAR)
++#include <arm_neon.h>
++
++/* Packed RAW10: keep the upper eight bits exactly as the scalar debayer. */
++static inline uint8x16_t a6l_raw10_high8(const uint8_t *p)
++{
++        const uint8x16x2_t packed = {{
++                vld1q_u8(p), vcombine_u8(vld1_u8(p + 12), vdup_n_u8(0))
++        }};
++        const uint8_t indices[16] = {0,1,2,3,5,6,7,8,10,11,12,13,15,20,21,22};
++        return vqtbl2q_u8(packed, vld1q_u8(indices));
++}
++static inline uint8x16_t a6l_raw10_left(uint8x16_t v, const uint8_t *p)
++{
++        return vextq_u8(vdupq_n_u8(p[-2]), v, 15);
++}
++static inline uint8x16_t a6l_raw10_right(uint8x16_t v, const uint8_t *p)
++{
++        return vextq_u8(v, vdupq_n_u8(p[20]), 1);
++}
++static inline uint8x16_t a6l_average2(uint8x16_t a, uint8x16_t b)
++{
++        return vhaddq_u8(a, b);
++}
++static inline uint8x16_t a6l_average4(uint8x16_t a, uint8x16_t b,
++                                    uint8x16_t c, uint8x16_t d)
++{
++        uint16x8_t lo = vaddq_u16(vaddl_u8(vget_low_u8(a), vget_low_u8(b)),
++                                 vaddl_u8(vget_low_u8(c), vget_low_u8(d)));
++        uint16x8_t hi = vaddq_u16(vaddl_u8(vget_high_u8(a), vget_high_u8(b)),
++                                 vaddl_u8(vget_high_u8(c), vget_high_u8(d)));
++        return vcombine_u8(vshrn_n_u16(lo, 2), vshrn_n_u16(hi, 2));
++}
++#endif
++
++/*
++ * Return the number of pixels converted, a multiple of sixteen. Caller keeps
++ * its original scalar tail. Phase: 0=BGBG, 1=GRGR, 2=GBGB, 3=RGRG.
++ * The input already has the scalar debayer's one-pixel horizontal border;
++ * the two extra loads access exactly its previous/next upper-byte samples.
++ */
++static inline unsigned int a6l_raw10_bgr_prefix(uint8_t *dst, const uint8_t *prev,
++                                               const uint8_t *curr, const uint8_t *next,
++                                               unsigned int width, unsigned int phase,
++                                               const uint8_t *blue, const uint8_t *green,
++                                               const uint8_t *red)
++{
++        unsigned int pixels = 0;
++#if defined(__aarch64__) && defined(__ARM_NEON) && !defined(A6L_RAW10_FORCE_SCALAR)
++        const uint8_t evenMask[16] = {255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0};
++        const uint8x16_t even = vld1q_u8(evenMask);
++        for (; width - pixels >= 16; pixels += 16) {
++                const uint8x16_t p = a6l_raw10_high8(prev);
++                const uint8x16_t c = a6l_raw10_high8(curr);
++                const uint8x16_t n = a6l_raw10_high8(next);
++                const uint8x16_t pl = a6l_raw10_left(p, prev), pr = a6l_raw10_right(p, prev);
++                const uint8x16_t cl = a6l_raw10_left(c, curr), cr = a6l_raw10_right(c, curr);
++                const uint8x16_t nl = a6l_raw10_left(n, next), nr = a6l_raw10_right(n, next);
++                const uint8x16_t vertical = a6l_average2(p, n);
++                const uint8x16_t horizontal = a6l_average2(cl, cr);
++                const uint8x16_t cross = a6l_average4(p, n, cl, cr);
++                const uint8x16_t diagonal = a6l_average4(pl, pr, nl, nr);
++                uint8x16_t bv, gv, rv;
++                if (phase == 0) {
++                        bv = vbslq_u8(even, c, horizontal);
++                        gv = vbslq_u8(even, cross, c);
++                        rv = vbslq_u8(even, diagonal, vertical);
++                } else if (phase == 1) {
++                        bv = vbslq_u8(even, vertical, diagonal);
++                        gv = vbslq_u8(even, c, cross);
++                        rv = vbslq_u8(even, horizontal, c);
++                } else if (phase == 2) {
++                        bv = vbslq_u8(even, horizontal, c);
++                        gv = vbslq_u8(even, c, cross);
++                        rv = vbslq_u8(even, vertical, diagonal);
++                } else {
++                        bv = vbslq_u8(even, diagonal, vertical);
++                        gv = vbslq_u8(even, cross, c);
++                        rv = vbslq_u8(even, c, horizontal);
++                }
++                uint8_t bs[16], gs[16], rs[16];
++                vst1q_u8(bs, bv); vst1q_u8(gs, gv); vst1q_u8(rs, rv);
++                /* Keep arbitrary gamma/AWB tables exact, with scalar gathers. */
++                for (unsigned int i = 0; i < 16; ++i) {
++                        dst[3 * i] = blue[bs[i]];
++                        dst[3 * i + 1] = green[gs[i]];
++                        dst[3 * i + 2] = red[rs[i]];
++                }
++                dst += 48;
++                prev += 20; curr += 20; next += 20;
++        }
++#else
++        (void)dst; (void)prev; (void)curr; (void)next; (void)width;
++        (void)phase; (void)blue; (void)green; (void)red;
++#endif
++        return pixels;
++}
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -27,6 +27,8 @@
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/a6l_quality_debug.h"
+ #include "libcamera/internal/a6l_stage_profile.h"
++#include "libcamera/internal/a6l_nv12_pair.h"
++#include "libcamera/internal/a6l_raw10_bgr.h"
+ #include "libcamera/internal/global_configuration.h"
+ #include "libcamera/internal/mapped_framebuffer.h"
+ 
+@@ -285,7 +287,14 @@
+ 	 * x - 2 to skip the 5th byte with least-significant bits for 4 pixels.
+ 	 * Same for last pixel (uses x + 2) and looking at the next column.
+ 	 */
+-	for (int x = 0; x < widthInBytes;) {
++	int x = 0;
++	if constexpr (!addAlphaByte && !ccmEnabled) {
++		const unsigned int pixels = a6l_raw10_bgr_prefix(dst, prev, curr, next,
++				window_.width, 0, blue_.data(), green_.data(), red_.data());
++		dst += pixels * 3;
++		x = pixels * 5 / 4;
++	}
++	for (; x < widthInBytes;) {
+ 		/* First pixel */
+ 		BGGR_BGR888(2, 1, 1)
+ 		/* Second pixel BGGR -> GBRG */
+@@ -306,7 +315,14 @@
+ 	const uint8_t *curr = src[1];
+ 	const uint8_t *next = src[2];
+ 
+-	for (int x = 0; x < widthInBytes;) {
++	int x = 0;
++	if constexpr (!addAlphaByte && !ccmEnabled) {
++		const unsigned int pixels = a6l_raw10_bgr_prefix(dst, prev, curr, next,
++				window_.width, 1, blue_.data(), green_.data(), red_.data());
++		dst += pixels * 3;
++		x = pixels * 5 / 4;
++	}
++	for (; x < widthInBytes;) {
+ 		/* First pixel */
+ 		GRBG_BGR888(2, 1, 1)
+ 		/* Second pixel GRBG -> RGGB */
+@@ -327,7 +343,14 @@
+ 	const uint8_t *curr = src[1];
+ 	const uint8_t *next = src[2];
+ 
+-	for (int x = 0; x < widthInBytes;) {
++	int x = 0;
++	if constexpr (!addAlphaByte && !ccmEnabled) {
++		const unsigned int pixels = a6l_raw10_bgr_prefix(dst, prev, curr, next,
++				window_.width, 2, blue_.data(), green_.data(), red_.data());
++		dst += pixels * 3;
++		x = pixels * 5 / 4;
++	}
++	for (; x < widthInBytes;) {
+ 		/* Even pixel */
+ 		GBRG_BGR888(2, 1, 1)
+ 		/* Odd pixel GBGR -> BGGR */
+@@ -348,7 +371,14 @@
+ 	const uint8_t *curr = src[1];
+ 	const uint8_t *next = src[2];
+ 
+-	for (int x = 0; x < widthInBytes;) {
++	int x = 0;
++	if constexpr (!addAlphaByte && !ccmEnabled) {
++		const unsigned int pixels = a6l_raw10_bgr_prefix(dst, prev, curr, next,
++				window_.width, 3, blue_.data(), green_.data(), red_.data());
++		dst += pixels * 3;
++		x = pixels * 5 / 4;
++	}
++	for (; x < widthInBytes;) {
+ 		/* Even pixel */
+ 		RGGB_BGR888(2, 1, 1)
+ 		/* Odd pixel RGGB -> GRBG */
+@@ -812,32 +842,8 @@
+ void DebayerCpuThread::pairToNV12(uint8_t *y0, uint8_t *&uv)
+ {
+ 	const unsigned int stride = debayer_->outputConfig_.stride;
+-	const unsigned int width = debayer_->window_.width;
+-	const uint8_t *p0 = rgbLines_[0].data();
+-	const uint8_t *p1 = rgbLines_[1].data();
+-	uint8_t *y1 = y0 + stride;
+-	auto luma = [](int r, int g, int b) {
+-		return static_cast<uint8_t>((77 * r + 150 * g + 29 * b + 128) >> 8);
+-	};
+-	auto clip = [](int v) {
+-		return static_cast<uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v));
+-	};
+-
+-	for (unsigned int x = 0; x < width; x += 2) {
+-		const int b0 = p0[0], g0 = p0[1], r0 = p0[2];
+-		const int b1 = p0[3], g1 = p0[4], r1 = p0[5];
+-		const int b2 = p1[0], g2 = p1[1], r2 = p1[2];
+-		const int b3 = p1[3], g3 = p1[4], r3 = p1[5];
+-		y0[x] = luma(r0, g0, b0);
+-		y0[x + 1] = luma(r1, g1, b1);
+-		y1[x] = luma(r2, g2, b2);
+-		y1[x + 1] = luma(r3, g3, b3);
+-		const int r = r0 + r1 + r2 + r3, g = g0 + g1 + g2 + g3, b = b0 + b1 + b2 + b3;
+-		uv[x] = clip(((-43 * r - 85 * g + 128 * b + 512) >> 10) + 128);
+-		uv[x + 1] = clip(((128 * r - 107 * g - 21 * b + 512) >> 10) + 128);
+-		p0 += 6;
+-		p1 += 6;
+-	}
++	a6l_bgr_pair_to_nv12(rgbLines_[0].data(), rgbLines_[1].data(),
++			     y0, y0 + stride, uv, debayer_->window_.width);
+ 	uv += stride;
+ }
+ 
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -165,7 +165,7 @@
+ 
+ 	static constexpr unsigned int kMinThreads = 1;
+ 	static constexpr unsigned int kMaxThreads = 8;
+-	static constexpr unsigned int kDefaultThreads = 2;
++	static constexpr unsigned int kDefaultThreads = 6;
+ 
+ 	unsigned int workPending_ LIBCAMERA_TSA_GUARDED_BY(workPendingMutex_);
+ 	Mutex workPendingMutex_;
+--- /dev/null
++++ b/subprojects/libyuv/include/libyuv/a6l_preview_cols.h
+@@ -0,0 +1,97 @@
++// Exact ARM interpolation for bounded downscaling ratios.
++#pragma once
++#if defined(__aarch64__)
++#include <arm_neon.h>
++#include <cstdint>
++#include <vector>
++
++#include "libyuv/scale_row.h"
++namespace a6l_preview {
++
++struct Group {
++    int base;
++    uint8_t indices[16];
++    uint16_t fractions[16];
++};
++struct Plan {
++    int width = -1, x = 0, dx = 0, processed = 0;
++    std::vector<Group> groups;
++    void prepare(int w, int start, int step, bool uv) {
++        if (width == w && x == start && dx == step) return;
++        width = w; x = start; dx = step; processed = 0; groups.clear();
++        const int count = uv ? 8 : 16;
++        const int64_t last = (static_cast<int64_t>(start) + (w - 1LL) * step) >> 16;
++        while (processed + count <= w) {
++            int64_t pos = static_cast<int64_t>(start) + static_cast<int64_t>(processed) * step;
++            int base = pos >> 16;
++            const int64_t end = (pos + (count - 1LL) * step) >> 16;
++            if ((uv ? base * 2 + 31 : base + 31) > (uv ? (last + 1) * 2 + 1 : last + 1) ||
++                (uv ? (end - base + 1) * 2 + 1 : end - base + 1) >= 32) break;
++            Group g{}; g.base = uv ? base * 2 : base;
++            for (int i = 0; i < count; ++i, pos += step) {
++                if (uv) {
++                    g.indices[2*i] = static_cast<uint8_t>(((pos >> 16) - base) * 2);
++                    g.indices[2*i+1] = g.indices[2*i] + 1;
++                    g.fractions[2*i] = g.fractions[2*i+1] = (pos >> 9) & 127;
++                } else {
++                    g.indices[i] = static_cast<uint8_t>((pos >> 16) - base);
++                    g.fractions[i] = pos & 65535;
++                }
++            }
++            groups.push_back(g); processed += count;
++        }
++    }
++};
++
++static inline uint8x8_t blendY(uint8x8_t a8, uint8x8_t b8, const uint16_t *frac) {
++    uint16x8_t a = vmovl_u8(a8);
++    int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(vmovl_u8(b8), a));
++    uint16x8_t f = vld1q_u16(frac);
++    int32x4_t lo = vmulq_s32(vmovl_s16(vget_low_s16(diff)), vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(f))));
++    int32x4_t hi = vmulq_s32(vmovl_s16(vget_high_s16(diff)), vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(f))));
++    int16x8_t delta = vcombine_s16(vrshrn_n_s32(lo, 16), vrshrn_n_s32(hi, 16));
++    return vmovn_u16(vaddq_u16(a, vreinterpretq_u16_s16(delta)));
++}
++
++static inline void scaleY(uint8_t *dst, const uint8_t *src, int width, int x, int dx) {
++    if (x < 0 || dx < 65536 || dx > 131072 || width < 16 || width > 32767 || static_cast<int64_t>(x) + (width - 1LL) * dx > INT32_MAX) {
++        libyuv::ScaleFilterCols_C(dst, src, width, x, dx); return;
++    }
++    static thread_local Plan plan;
++    plan.prepare(width, x, dx, false);
++    for (const auto &g : plan.groups) {
++        uint8x16x2_t table{{vld1q_u8(src + g.base), vld1q_u8(src + g.base + 16)}};
++        uint8x16_t indices = vld1q_u8(g.indices);
++        uint8x16_t a = vqtbl2q_u8(table, indices);
++        uint8x16_t b = vqtbl2q_u8(table, vaddq_u8(indices, vdupq_n_u8(1)));
++        vst1q_u8(dst, vcombine_u8(blendY(vget_low_u8(a), vget_low_u8(b), g.fractions),
++                                 blendY(vget_high_u8(a), vget_high_u8(b), g.fractions + 8)));
++        dst += 16;
++    }
++    if (plan.processed < width)
++        libyuv::ScaleFilterCols_C(dst, src, width - plan.processed, x + plan.processed * dx, dx);
++}
++
++static inline void scaleUV(uint8_t *dst, const uint8_t *src, int width, int x, int dx) {
++    if (x < 0 || dx < 65536 || dx > 131072 || width < 8 || width > 32767 || static_cast<int64_t>(x) + (width - 1LL) * dx > INT32_MAX) {
++        libyuv::ScaleUVFilterCols_C(dst, src, width, x, dx); return;
++    }
++    static thread_local Plan plan;
++    plan.prepare(width, x, dx, true);
++    for (const auto &g : plan.groups) {
++        uint8x16x2_t table{{vld1q_u8(src + g.base), vld1q_u8(src + g.base + 16)}};
++        uint8x16_t indices = vld1q_u8(g.indices);
++        uint8x16_t a8 = vqtbl2q_u8(table, indices);
++        uint8x16_t b8 = vqtbl2q_u8(table, vaddq_u8(indices, vdupq_n_u8(2)));
++        uint16x8_t fl = vld1q_u16(g.fractions), fh = vld1q_u16(g.fractions + 8);
++        uint16x8_t lo = vmlaq_u16(vmulq_u16(vmovl_u8(vget_low_u8(a8)), vsubq_u16(vdupq_n_u16(127), fl)), vmovl_u8(vget_low_u8(b8)), fl);
++        uint16x8_t hi = vmlaq_u16(vmulq_u16(vmovl_u8(vget_high_u8(a8)), vsubq_u16(vdupq_n_u16(127), fh)), vmovl_u8(vget_high_u8(b8)), fh);
++        vst1q_u8(dst, vcombine_u8(vshrn_n_u16(lo, 7), vshrn_n_u16(hi, 7)));
++        dst += 16;
++    }
++    if (plan.processed < width)
++        libyuv::ScaleUVFilterCols_C(dst, src, width - plan.processed, x + plan.processed * dx, dx);
++}
++
++} // namespace a6l_preview
++#endif
+--- a/subprojects/libyuv/source/scale.cc
++++ b/subprojects/libyuv/source/scale.cc
+@@ -17,6 +17,7 @@
+ #include "libyuv/planar_functions.h"  // For CopyPlane
+ #include "libyuv/row.h"
+ #include "libyuv/scale_row.h"
++#include "libyuv/a6l_preview_cols.h"
+ #include "libyuv/scale_uv.h"  // For UVScale
+ 
+ #ifdef __cplusplus
+@@ -1140,6 +1141,12 @@
+     }
+   }
+ #endif
++#if defined(__aarch64__)
++  if (TestCpuFlag(kCpuHasNEON) && src_width < 32768 &&
++      x >= 0 && dx >= 65536 && dx <= 131072) {
++    ScaleFilterCols = a6l_preview::scaleY;
++  }
++#endif
+   if (y > max_y) {
+     y = max_y;
+   }
+--- a/subprojects/libyuv/source/scale_uv.cc
++++ b/subprojects/libyuv/source/scale_uv.cc
+@@ -17,6 +17,7 @@
+ #include "libyuv/planar_functions.h"  // For CopyUV
+ #include "libyuv/row.h"
+ #include "libyuv/scale_row.h"
++#include "libyuv/a6l_preview_cols.h"
+ 
+ #ifdef __cplusplus
+ namespace libyuv {
+@@ -418,6 +419,12 @@
+     }
+   }
+ #endif
++#if defined(__aarch64__)
++  if (TestCpuFlag(kCpuHasNEON) && src_width < 32768 &&
++      x >= 0 && dx >= 65536 && dx <= 131072) {
++    ScaleUVFilterCols = a6l_preview::scaleUV;
++  }
++#endif
+   // TODO(fbarchard): Consider not allocating row buffer for kFilterLinear.
+   // Allocate a row of UV.
+   {

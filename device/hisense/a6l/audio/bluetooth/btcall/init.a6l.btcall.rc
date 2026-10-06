@@ -1,0 +1,9 @@
+# btcall (29 Sep 2026, docs/android-bt-audio-20260929.md): cellular call audio to a Bluetooth HFP headset through an
+# AudioFlinger software bridge. OFF by default: nothing happens unless persist.vendor.a6l.btcall.bridge=1 at boot.
+# The bridge policy (primary module + Telephony Rx/Tx) is bind-mounted over the product policy before the audio HAL
+# and audioserver start (class hal / core start at "boot"; persist properties are loaded at post-fs-data, before
+# early-boot). Both read /vendor/etc/audio_policy_configuration.xml, so both see the same policy.
+# Changing the property needs a reboot. Runtime pieces (read live): a6l-q6voiced (DSP routes, phone mic mute),
+# a6l-audio-route (codec silent while bridged), audio HAL patch 0004 (real PCMs for the Telephony streams).
+on early-boot && property:persist.vendor.a6l.btcall.bridge=1
+    mount none /vendor/etc/audio_policy_configuration_btcall.xml /vendor/etc/audio_policy_configuration.xml bind

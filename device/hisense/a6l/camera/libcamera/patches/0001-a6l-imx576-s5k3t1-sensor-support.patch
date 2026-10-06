@@ -1,0 +1,184 @@
+diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
+index 9457d62..743c708 100644
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -642,6 +642,26 @@ public:
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("imx477", CameraSensorHelperImx477)
+ 
++/*
++ * A6L: Sony IMX576. SMIA analogue gain: gain = 1024 / (1024 - code), code 0..960 (16x).
++ * Black level 64 at 10 bits (stock chromatix BLC 64).
++ */
++class CameraSensorHelperImx576 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperImx576()
++	{
++		blackLevel_ = 4096;
++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx576", CameraSensorHelperImx576)
++/* The A6L kernel driver is named imx576_a6l (entity "imx576_a6l <bus>-001a"). */
++class CameraSensorHelperImx576A6l : public CameraSensorHelperImx576
++{
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx576_a6l", CameraSensorHelperImx576A6l)
++
+ class CameraSensorHelperImx678 : public CameraSensorHelper
+ {
+ public:
+@@ -827,6 +847,21 @@ public:
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("ov13858", CameraSensorHelperOv13858)
+ 
++/*
++ * A6L: Samsung S5K3T1. Analogue gain: gain = code / 32, code 32..512 (1x..16x).
++ * Black level 64 at 10 bits.
++ */
++class CameraSensorHelperS5k3t1 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperS5k3t1()
++	{
++		blackLevel_ = 4096;
++		gain_ = AnalogueGainLinear{ 1, 0, 0, 32 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("s5k3t1", CameraSensorHelperS5k3t1)
++
+ class CameraSensorHelperVd55g1 : public CameraSensorHelper
+ {
+ public:
+diff --git a/src/ipa/simple/data/imx576_a6l.yaml b/src/ipa/simple/data/imx576_a6l.yaml
+new file mode 100755
+index 0000000..9a74446
+--- /dev/null
++++ b/src/ipa/simple/data/imx576_a6l.yaml
+@@ -0,0 +1,19 @@
++# SPDX-License-Identifier: CC0-1.0
++# Hisense A6L imx576_a6l tuning for the libcamera simple IPA (SoftISP). Phase 1 = uncalibrated:
++# black level from the CameraSensorHelper (64 @ 10 bit), grey-world AWB, AGC, gamma/contrast.
++# CCM is left disabled until measured (colour chart shot or stock chromatix decode, docs/libcamera-plan-20260929.md s.6).
++%YAML 1.1
++---
++version: 1
++algorithms:
++  - BlackLevel:
++  - Awb:
++  # - Ccm:
++  #     ccms:
++  #       - ct: 6500
++  #         ccm: [ 1, 0, 0,
++  #                0, 1, 0,
++  #                0, 0, 1 ]
++  - Adjust:
++  - Agc:
++...
+diff --git a/src/ipa/simple/data/meson.build b/src/ipa/simple/data/meson.build
+index 92795ee..f8d59c8 100644
+--- a/src/ipa/simple/data/meson.build
++++ b/src/ipa/simple/data/meson.build
+@@ -1,6 +1,8 @@
+ # SPDX-License-Identifier: CC0-1.0
+ 
+ conf_files = files([
++    'imx576_a6l.yaml',
++    's5k3t1.yaml',
+     'uncalibrated.yaml',
+ ])
+ 
+diff --git a/src/ipa/simple/data/s5k3t1.yaml b/src/ipa/simple/data/s5k3t1.yaml
+new file mode 100755
+index 0000000..29c6982
+--- /dev/null
++++ b/src/ipa/simple/data/s5k3t1.yaml
+@@ -0,0 +1,19 @@
++# SPDX-License-Identifier: CC0-1.0
++# Hisense A6L s5k3t1 tuning for the libcamera simple IPA (SoftISP). Phase 1 = uncalibrated:
++# black level from the CameraSensorHelper (64 @ 10 bit), grey-world AWB, AGC, gamma/contrast.
++# CCM is left disabled until measured (colour chart shot or stock chromatix decode, docs/libcamera-plan-20260929.md s.6).
++%YAML 1.1
++---
++version: 1
++algorithms:
++  - BlackLevel:
++  - Awb:
++  # - Ccm:
++  #     ccms:
++  #       - ct: 6500
++  #         ccm: [ 1, 0, 0,
++  #                0, 1, 0,
++  #                0, 0, 1 ]
++  - Adjust:
++  - Agc:
++...
+diff --git a/src/libcamera/sensor/camera_sensor_properties.cpp b/src/libcamera/sensor/camera_sensor_properties.cpp
+index 2804315..8c3e89f 100644
+--- a/src/libcamera/sensor/camera_sensor_properties.cpp
++++ b/src/libcamera/sensor/camera_sensor_properties.cpp
+@@ -319,6 +319,39 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
+ 				.hblankDelay = 2
+ 			},
+ 		} },
++		/* A6L: Sony IMX576 (Hisense A6L driver imx576_a6l, CCS-like 0x0600 test pattern menu). */
++		{ "imx576", {
++			.unitCellSize = { 900, 900 },
++			.testPatternModes = {
++				{ controls::draft::TestPatternModeOff, 0 },
++				{ controls::draft::TestPatternModeSolidColor, 1 },
++				{ controls::draft::TestPatternModeColorBars, 2 },
++				{ controls::draft::TestPatternModeColorBarsFadeToGray, 3 },
++				{ controls::draft::TestPatternModePn9, 4 },
++			},
++			.sensorDelays = {
++				.exposureDelay = 2,
++				.gainDelay = 2,
++				.vblankDelay = 2,
++				.hblankDelay = 2
++			},
++		} },
++		{ "imx576_a6l", {
++			.unitCellSize = { 900, 900 },
++			.testPatternModes = {
++				{ controls::draft::TestPatternModeOff, 0 },
++				{ controls::draft::TestPatternModeSolidColor, 1 },
++				{ controls::draft::TestPatternModeColorBars, 2 },
++				{ controls::draft::TestPatternModeColorBarsFadeToGray, 3 },
++				{ controls::draft::TestPatternModePn9, 4 },
++			},
++			.sensorDelays = {
++				.exposureDelay = 2,
++				.gainDelay = 2,
++				.vblankDelay = 2,
++				.hblankDelay = 2
++			},
++		} },
+ 		{ "imx708", {
+ 			.unitCellSize = { 1400, 1400 },
+ 			.testPatternModes = {
+@@ -503,6 +536,23 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
+ 			},
+ 			.sensorDelays = { },
+ 		} },
++		/* A6L: Samsung S5K3T1 (Hisense A6L front, 5184x3880 0.8 um, CCS-like test pattern menu). */
++		{ "s5k3t1", {
++			.unitCellSize = { 800, 800 },
++			.testPatternModes = {
++				{ controls::draft::TestPatternModeOff, 0 },
++				{ controls::draft::TestPatternModeSolidColor, 1 },
++				{ controls::draft::TestPatternModeColorBars, 2 },
++				{ controls::draft::TestPatternModeColorBarsFadeToGray, 3 },
++				{ controls::draft::TestPatternModePn9, 4 },
++			},
++			.sensorDelays = {
++				.exposureDelay = 2,
++				.gainDelay = 2,
++				.vblankDelay = 2,
++				.hblankDelay = 2
++			},
++		} },
+ 		{ "vd55g1", {
+ 			.unitCellSize = { 2160, 2160 },
+ 			.testPatternModes = {

@@ -1,0 +1,2 @@
+radio/hal/ModemCore.h:138: int lastCallFailCause() const { return mLastCallFailCause; }
+radio/hal/ModemCore.h:230: int mLastCallFailCause = 16;  // NORMAL_CLEARING

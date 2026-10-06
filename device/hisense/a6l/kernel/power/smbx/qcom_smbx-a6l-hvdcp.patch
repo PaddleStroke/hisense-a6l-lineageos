@@ -1,0 +1,958 @@
+# A6L power28 (28 Sep 2026): HVDCP / Quick Charge 2.0+3.0 for the PM660 SMB2 (applies on top of qcom_smbx-a6l-fcc-jeita.patch).
+# Default hvdcp_enable=0 = register-identical to r4. Params: hvdcp_enable (0644), hvdcp_max_uv (<= 9 V), hvdcp_icl_ua (0644, <= 2 A),
+# hvdcp_status (ro). Details: docs/fastcharge-20260928.md. Host test: power/test/hvdcp/run-hvdcp-sim.sh.
+# power29 (29 Sep 2026): APSD poll window re-armed at every plug-in, DCP/OCP/FLOAT handled alike (OCP/FLOAT logged: D+/D-
+# disturbed, e.g. USB gadget pull-up), APSD changes logged, wait for QC_AUTH_DONE, hvdcp_rerun (0200) + hvdcp_regs (0444).
+# Details: docs/fastcharge2-20260929.md.
+# r5 bug hunt power (29 Sep 2026): (a) the abort path's USBIN suspend (adapter still > 6 V after FORCE_5V) is released at
+# the unplug (hv_susp; only when the driver itself set it: a suspend written by userspace, e.g. a6l-chg-guard, is never
+# taken over, and a userspace STATUS write hands the bit back to userspace), also after hvdcp_enable=0; before, the next
+# charger never charged until reboot. (b) the usb-plugin IRQ kicks the HVDCP work at the edge: a replug inside the 1.5 s
+# status-work delay / before the 2 s failed-state poll no longer carries the failed state (500 mA, no retry) to the next
+# cable. hvdcp_enable=0 and idle: no change (A6L_HVDCP_OFF_TRACE SAME). Sim scenarios 24-27 (power/test/hvdcp).
+--- a/drivers/power/supply/qcom_smbx.c
++++ b/drivers/power/supply/qcom_smbx.c
+@@ -9,17 +9,22 @@
+  */
+ 
+ #include <linux/bits.h>
++#include <linux/delay.h>
+ #include <linux/devm-helpers.h>
+ #include <linux/iio/consumer.h>
+ #include <linux/interrupt.h>
+ #include <linux/kernel.h>
+ #include <linux/minmax.h>
+ #include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/mutex.h>
+ #include <linux/platform_device.h>
+ #include <linux/pm_wakeirq.h>
+ #include <linux/of.h>
+ #include <linux/power_supply.h>
+ #include <linux/regmap.h>
++#include <linux/string.h>
++#include <linux/sysfs.h>
+ #include <linux/types.h>
+ #include <linux/workqueue.h>
+ 
+@@ -403,6 +408,93 @@
+ #define A6L_FCC_MAX_UA					2400000
+ #define A6L_FV_MAX_UV					4400000
+ 
++/*
++ * A6L HVDCP (28 Sep 2026): Quick Charge 2.0/3.0 on the PM660 SMB2, modelled on downstream msm-4.4 smb-lib.c
++ * (smblib_hvdcp_enable_vote_callback, smblib_dp_dm FORCE_5V/FORCE_9V + SINGLE_INCREMENT, smblib_set_adapter_allowance
++ * "PM660 only supports max. 9V") and smb-reg.h (USBIN_BASE 0x1300 = base + 0x300). Off by default (hvdcp_enable=0:
++ * the driver then behaves exactly as before, no HVDCP register is touched). With hvdcp_enable=1:
++ *  - USBIN_ADAPTER_ALLOW_CFG = 5V..9V (never 12 V), QC2 pulse max 9 V, QC3 pulse max = hvdcp_max_uv, HW autonomous
++ *    (INOV) mode off, HVDCP_EN + HVDCP_AUTH_ALG_EN on (APSD then reports QC_2P0/QC_3P0 with DCP);
++ *  - on a QC result the ICL is first limited to min(hvdcp_icl_ua, 1 A), the adapter is asked for hvdcp_max_uv
++ *    (QC2: CMD_HVDCP_2 FORCE_9V, QC3: 200 mV SINGLE_INCREMENT pulses), USBIN is read back through the rradc and must
++ *    reach [target - 600 mV, target + 600 mV] within 3 s, then the ICL becomes hvdcp_icl_ua;
++ *  - while at high voltage it is checked every second: USBIN > target + 600 mV (or > 9.6 V, or the USBIN OV status)
++ *    -> immediate abort, below the window 3 times in a row -> abort, USBIN current > ICL + 10 % + 100 mA twice ->
++ *    abort, charger reports battery too hot/cold/OV -> abort. Abort = back to 5 V (QC3: decrement pulses, then
++ *    FORCE_5V), ICL 500 mA, no retry until the cable is unplugged; if USBIN is still > 6 V 2 s later the USB input is
++ *    suspended. hvdcp_enable=0 at runtime, unbind and shutdown also return to 5 V. Unplug resets everything.
++ * State for the attended test: /sys/module/qcom_smbx/parameters/hvdcp_status.
++ *
++ * power29 (29 Sep 2026), after the attended QC1 test (stock Hisense 9 V charger reported as "DCP", driver stuck in
++ * "idle", no dmesg line): mainline reports DCP for DCP, OCP *and* FLOAT results, but the HVDCP work only accepted the
++ * DCP bit and, with the detection window armed only when hvdcp_enable was written, it never polled again after the
++ * plug-in. Now: the detection window is re-armed at every plug-in (APSD polled up to A6L_HV_PLUG_MS), every APSD
++ * status/result change is logged (A6L_HVDCP APSD ...), DCP/OCP/FLOAT are handled alike (OCP/FLOAT = the D+/D- lines did
++ * not look like a BC1.2 DCP, e.g. the USB gadget pull-up, logged as a warning), a QC result is waited for until
++ * QC_AUTH_DONE, hvdcp_rerun (write 1) re-runs APSD on a non-SDP/CDP cable at 5 V (the attended script calls it after
++ * disconnecting the USB gadget pull-up) and hvdcp_regs dumps the SMB2 USBIN/APSD/HVDCP registers (read-only).
++ */
++#define USBIN_INPUT_STATUS				0x306
++#define QC_CHANGE_STATUS				0x309
++#define QC_2P0_STATUS_MASK				GENMASK(2, 0)
++#define QC_PULSE_COUNT_STATUS_1				0x330	/* PM660: 16-bit pulse count */
++#define CMD_HVDCP_2					0x343
++#define FORCE_12V_BIT					BIT(5)
++#define FORCE_9V_BIT					BIT(4)
++#define FORCE_5V_BIT					BIT(3)
++#define SINGLE_DECREMENT_BIT				BIT(1)
++#define SINGLE_INCREMENT_BIT				BIT(0)
++#define HVDCP_PULSE_COUNT_MAX				0x35B
++#define HVDCP_PULSE_COUNT_MAX_QC2_MASK			GENMASK(7, 6)
++#define HVDCP_PULSE_COUNT_MAX_QC2_9V			(1 << 6)
++#define HVDCP_PULSE_COUNT_MAX_QC3_MASK			GENMASK(5, 0)
++#define USBIN_ADAPTER_ALLOW_CFG				0x360
++#define USBIN_ADAPTER_ALLOW_MASK			GENMASK(3, 0)
++#define USBIN_ADAPTER_ALLOW_5V_TO_9V			8
++#define USBIN_SOURCE_CHANGE_INTRPT_ENB			0x369	/* dump only */
++#define A6L_HV_APSD_DCP_CLASS				(DCP_CHARGER_BIT | OCP_CHARGER_BIT | FLOAT_CHARGER_BIT)
++#define A6L_HV_APSD_QC					(QC_2P0_BIT | QC_3P0_BIT)
++
++#define A6L_HV_5V_UV					5000000
++#define A6L_HV_MAX_UV					9000000		/* PM660 limit, 12 V never allowed */
++#define A6L_HV_MIN_UV					5600000
++#define A6L_HV_STEP_UV					200000		/* QC3 pulse */
++#define A6L_HV_WINDOW_UV				600000		/* 9 V -> 8.4 .. 9.6 V */
++#define A6L_HV_ABS_MAX_UV				9600000
++#define A6L_HV_LOW_OK_UV				6000000		/* "back at 5 V" */
++#define A6L_HV_ICL_MIN_UA				500000
++#define A6L_HV_ICL_MAX_UA				2000000		/* stock qcom,hvdcp-usb-icl-ua */
++#define A6L_HV_RAMP_ICL_UA				1000000		/* downstream: 1 A before a voltage request */
++#define A6L_HV_FAIL_ICL_UA				500000
++#define A6L_HV_PULSE_MS					100
++#define A6L_HV_POLL_MS					1000
++#define A6L_HV_FAST_MS					200
++#define A6L_HV_DETECT_MS				6000
++#define A6L_HV_PLUG_MS					10000		/* APSD poll window after each plug-in / rerun */
++#define A6L_HV_AUTH_MS					3000		/* extra wait for QC_AUTH_DONE after QC_CHARGER */
++#define A6L_HV_MAX_RERUNS				3		/* hvdcp_rerun per plug-in */
++#define A6L_HV_VERIFY_MS				3000
++
++enum a6l_hv_state {
++	A6L_HV_OFF = 0,		/* hvdcp_enable=0: nothing touched */
++	A6L_HV_IDLE,		/* enabled, waiting for a DCP */
++	A6L_HV_WAIT,		/* DCP seen, waiting for the QC result or the HVDCP check timeout */
++	A6L_HV_DCP,		/* plain DCP (or QC with target < 9 V on QC2): 5 V */
++	A6L_HV_VERIFY,		/* voltage requested, waiting for USBIN to reach the window */
++	A6L_HV_ACTIVE,		/* at high voltage, monitored */
++	A6L_HV_FAILED,		/* aborted, 5 V, no retry until unplug */
++};
++
++static const char * const a6l_hv_state_names[] = {
++	"off", "idle", "wait", "dcp-5v", "verify", "active", "failed",
++};
++
++static bool hvdcp_enable;
++static unsigned int hvdcp_max_uv = A6L_HV_MAX_UV;
++module_param(hvdcp_max_uv, uint, 0444);
++MODULE_PARM_DESC(hvdcp_max_uv, "A6L: QC target voltage in uV (5600000..9000000, QC3 in 200 mV steps; QC2 needs 9000000)");
++static unsigned int hvdcp_icl_ua = A6L_HV_ICL_MAX_UA;
++
+ struct smb_chip {
+ 	struct device *dev;
+ 	const char *name;
+@@ -418,6 +510,33 @@
+ 	struct iio_channel *usb_in_v_chan;
+ 
+ 	struct power_supply *chg_psy;
++
++	/* A6L HVDCP (hv_lock protects all hv_* fields) */
++	struct delayed_work hvdcp_work;
++	struct mutex hv_lock;
++	int hv_state;
++	int hv_qc;
++	int hv_pulses;
++	int hv_target_uv;
++	int hv_uv;
++	int hv_ua;
++	int hv_bad_v;
++	int hv_bad_i;
++	unsigned int hv_icl_ua;
++	unsigned int dcp_icl_ua;
++	bool hv_hw_on;
++	bool hv_apsd_stale;	/* HVDCP_EN switched on with a cable in: that APSD result had no QC detection */
++	bool hv_removing;
++	bool hv_plugged;	/* cable seen by the work (plug-in edge re-arms the APSD poll window) */
++	bool hv_rerun_req;	/* hvdcp_rerun written */
++	bool hv_susp;		/* USBIN suspend set by the abort path (was clear before): released at the unplug */
++	int hv_reruns;
++	int hv_apsd_log;	/* last logged APSD status << 8 | result, -1 = none */
++	unsigned int hv_apsd;
++	unsigned int hv_res;
++	unsigned long hv_deadline;
++	unsigned long hv_auth_deadline;
++	char hv_reason[64];
+ };
+ 
+ static enum power_supply_property smb_properties[] = {
+@@ -565,6 +684,645 @@
+ 			    val_raw);
+ }
+ 
++/* ---- A6L HVDCP ---------------------------------------------------------------------------------------------- */
++static DEFINE_MUTEX(a6l_hv_param_lock);
++static struct smb_chip *a6l_hv_chip;	/* single PM660 charger instance, for the runtime parameters */
++
++static void a6l_hv_kick(struct smb_chip *chip, unsigned int ms)
++{
++	if (!chip->hv_removing)
++		mod_delayed_work(system_wq, &chip->hvdcp_work, msecs_to_jiffies(ms));
++}
++
++static int a6l_hv_param_kick(void)
++{
++	mutex_lock(&a6l_hv_param_lock);
++	if (a6l_hv_chip)
++		a6l_hv_kick(a6l_hv_chip, 0);
++	mutex_unlock(&a6l_hv_param_lock);
++	return 0;
++}
++
++static int a6l_hv_enable_set(const char *val, const struct kernel_param *kp)
++{
++	int rc = param_set_bool(val, kp);
++
++	return rc ? rc : a6l_hv_param_kick();
++}
++
++static int a6l_hv_icl_set(const char *val, const struct kernel_param *kp)
++{
++	int rc = param_set_uint(val, kp);
++
++	if (rc)
++		return rc;
++	hvdcp_icl_ua = clamp_t(unsigned int, hvdcp_icl_ua, A6L_HV_ICL_MIN_UA, A6L_HV_ICL_MAX_UA);
++	return a6l_hv_param_kick();
++}
++
++static int a6l_hv_status_get(char *buf, const struct kernel_param *kp)
++{
++	struct smb_chip *chip;
++	int n;
++
++	mutex_lock(&a6l_hv_param_lock);
++	chip = a6l_hv_chip;
++	if (!chip) {
++		mutex_unlock(&a6l_hv_param_lock);
++		return sysfs_emit(buf, "state=nodev\n");
++	}
++	mutex_lock(&chip->hv_lock);
++	n = sysfs_emit(buf, "state=%s qc=%d pulses=%d target_uV=%d usbin_uV=%d usbin_uA=%d icl_uA=%u enable=%d apsd=0x%02x/0x%02x reruns=%d reason=%s\n",
++		       a6l_hv_state_names[chip->hv_state], chip->hv_qc, chip->hv_pulses, chip->hv_target_uv,
++		       chip->hv_uv, chip->hv_ua, chip->hv_icl_ua, hvdcp_enable, chip->hv_apsd, chip->hv_res,
++		       chip->hv_reruns, chip->hv_reason[0] ? chip->hv_reason : "-");
++	mutex_unlock(&chip->hv_lock);
++	mutex_unlock(&a6l_hv_param_lock);
++	return n;
++}
++
++static const struct kernel_param_ops a6l_hv_enable_ops = {
++	.set = a6l_hv_enable_set,
++	.get = param_get_bool,
++};
++module_param_cb(hvdcp_enable, &a6l_hv_enable_ops, &hvdcp_enable, 0644);
++MODULE_PARM_DESC(hvdcp_enable, "A6L: Quick Charge 2.0/3.0 (HVDCP) up to hvdcp_max_uv; 0 = off (default), writing 0 returns to 5 V");
++
++static const struct kernel_param_ops a6l_hv_icl_ops = {
++	.set = a6l_hv_icl_set,
++	.get = param_get_uint,
++};
++module_param_cb(hvdcp_icl_ua, &a6l_hv_icl_ops, &hvdcp_icl_ua, 0644);
++MODULE_PARM_DESC(hvdcp_icl_ua, "A6L: USB input current limit at high voltage in uA (500000..2000000 = stock)");
++
++static const struct kernel_param_ops a6l_hv_status_ops = {
++	.get = a6l_hv_status_get,
++};
++module_param_cb(hvdcp_status, &a6l_hv_status_ops, NULL, 0444);
++MODULE_PARM_DESC(hvdcp_status, "A6L: HVDCP state (read-only)");
++
++static int a6l_hv_rerun_set(const char *val, const struct kernel_param *kp)
++{
++	bool req;
++	int rc = kstrtobool(val, &req);
++
++	if (rc)
++		return rc;
++	if (!req)
++		return 0;
++	mutex_lock(&a6l_hv_param_lock);
++	if (a6l_hv_chip) {
++		mutex_lock(&a6l_hv_chip->hv_lock);
++		a6l_hv_chip->hv_rerun_req = true;
++		mutex_unlock(&a6l_hv_chip->hv_lock);
++		a6l_hv_kick(a6l_hv_chip, 0);
++	}
++	mutex_unlock(&a6l_hv_param_lock);
++	return 0;
++}
++
++static const struct kernel_param_ops a6l_hv_rerun_ops = {
++	.set = a6l_hv_rerun_set,
++};
++module_param_cb(hvdcp_rerun, &a6l_hv_rerun_ops, NULL, 0200);
++MODULE_PARM_DESC(hvdcp_rerun, "A6L: write 1 = re-run APSD (HVDCP detection) once; only with hvdcp_enable=1, at 5 V, on a non-SDP/CDP cable");
++
++/* read-only register dump for the attended logs (USBIN APSD/HVDCP/Type-C status + config, ICL, power path) */
++static const u16 a6l_hv_dump_regs[] = {
++	0x306, 0x307, 0x308, 0x309, 0x30B, 0x30C, 0x30D, 0x30E, 0x30F, 0x310, 0x330, 0x331, 0x340,
++	0x358, 0x35B, 0x360, 0x362, 0x363, 0x365, 0x366, 0x369, 0x370, 0x607, 0x60B, 0x006, 0x007,
++};
++
++static int a6l_hv_regs_get(char *buf, const struct kernel_param *kp)
++{
++	struct smb_chip *chip;
++	unsigned int v, i;
++	int n = 0;
++
++	mutex_lock(&a6l_hv_param_lock);
++	chip = a6l_hv_chip;
++	if (!chip) {
++		mutex_unlock(&a6l_hv_param_lock);
++		return sysfs_emit(buf, "nodev\n");
++	}
++	for (i = 0; i < ARRAY_SIZE(a6l_hv_dump_regs); i++) {
++		if (regmap_read(chip->regmap, chip->base + a6l_hv_dump_regs[i], &v) < 0)
++			n += sysfs_emit_at(buf, n, "%04x=?? ", chip->base + a6l_hv_dump_regs[i]);
++		else
++			n += sysfs_emit_at(buf, n, "%04x=%02x ", chip->base + a6l_hv_dump_regs[i], v & 0xff);
++	}
++	mutex_unlock(&a6l_hv_param_lock);
++	n += sysfs_emit_at(buf, n, "\n");
++	return n;
++}
++
++static const struct kernel_param_ops a6l_hv_regs_ops = {
++	.get = a6l_hv_regs_get,
++};
++module_param_cb(hvdcp_regs, &a6l_hv_regs_ops, NULL, 0444);
++MODULE_PARM_DESC(hvdcp_regs, "A6L: SMB2 USBIN/APSD/HVDCP register dump (read-only)");
++
++static int a6l_hv_target_uv(void)
++{
++	unsigned int t = clamp_t(unsigned int, hvdcp_max_uv, A6L_HV_MIN_UV, A6L_HV_MAX_UV);
++
++	return A6L_HV_5V_UV + (t - A6L_HV_5V_UV) / A6L_HV_STEP_UV * A6L_HV_STEP_UV;
++}
++
++static int a6l_hv_read_uv(struct smb_chip *chip, int *uv)
++{
++	int rc = iio_read_channel_processed(chip->usb_in_v_chan, uv);
++
++	if (rc < 0)
++		*uv = -1;
++	return rc;
++}
++
++static int a6l_hv_read_ua(struct smb_chip *chip, int *ua)
++{
++	int rc = iio_read_channel_processed(chip->usb_in_i_chan, ua);
++
++	if (rc < 0)
++		*ua = -1;
++	return rc;
++}
++
++static void a6l_hv_set_icl(struct smb_chip *chip, unsigned int ua)
++{
++	chip->hv_icl_ua = ua;
++	smb_set_current_limit(chip, ua);
++}
++
++static int a6l_hv_hw_config(struct smb_chip *chip, bool on)
++{
++	int rc;
++
++	if (on) {
++		rc = regmap_update_bits(chip->regmap, chip->base + USBIN_ADAPTER_ALLOW_CFG,
++					USBIN_ADAPTER_ALLOW_MASK, USBIN_ADAPTER_ALLOW_5V_TO_9V);
++		if (rc < 0)
++			return rc;
++		rc = regmap_update_bits(chip->regmap, chip->base + HVDCP_PULSE_COUNT_MAX,
++					HVDCP_PULSE_COUNT_MAX_QC2_MASK | HVDCP_PULSE_COUNT_MAX_QC3_MASK,
++					HVDCP_PULSE_COUNT_MAX_QC2_9V |
++					(a6l_hv_target_uv() - A6L_HV_5V_UV) / A6L_HV_STEP_UV);
++		if (rc < 0)
++			return rc;
++		rc = regmap_update_bits(chip->regmap, chip->base + USBIN_OPTIONS_1_CFG,
++					HVDCP_EN_BIT | HVDCP_AUTH_ALG_EN_CFG_BIT |
++					HVDCP_AUTONOMOUS_MODE_EN_CFG_BIT,
++					HVDCP_EN_BIT | HVDCP_AUTH_ALG_EN_CFG_BIT);
++	} else {
++		rc = regmap_update_bits(chip->regmap, chip->base + USBIN_OPTIONS_1_CFG,
++					HVDCP_EN_BIT | HVDCP_AUTH_ALG_EN_CFG_BIT |
++					HVDCP_AUTONOMOUS_MODE_EN_CFG_BIT, 0);
++	}
++	if (rc < 0)
++		return rc;
++	chip->hv_hw_on = on;
++	chip->hv_apsd_stale = on;
++	return 0;
++}
++
++/* cable present (USBIN plugin RT status; stays set while the input is suspended, unlike the power path) */
++static bool a6l_hv_present(struct smb_chip *chip)
++{
++	unsigned int rt = 0;
++
++	return !regmap_read(chip->regmap, chip->base + INT_RT_STS, &rt) && (rt & USBIN_PLUGIN_RT_STS_BIT);
++}
++
++/* back to 5 V; called with hv_lock held */
++static void a6l_hv_to_5v(struct smb_chip *chip, int next_state, unsigned int icl_ua, const char *reason)
++{
++	int i, uv = -1;
++
++	if (reason)
++		strscpy(chip->hv_reason, reason, sizeof(chip->hv_reason));
++	for (i = 0; chip->hv_qc == 3 && i < chip->hv_pulses; i++) {
++		regmap_write(chip->regmap, chip->base + CMD_HVDCP_2, SINGLE_DECREMENT_BIT);
++		msleep(A6L_HV_PULSE_MS);
++	}
++	chip->hv_pulses = 0;
++	regmap_write(chip->regmap, chip->base + CMD_HVDCP_2, FORCE_5V_BIT);
++	for (i = 0; i < 20; i++) {
++		msleep(100);
++		if (a6l_hv_read_uv(chip, &uv) >= 0 && uv < A6L_HV_LOW_OK_UV)
++			break;
++	}
++	chip->hv_uv = uv;
++	a6l_hv_set_icl(chip, icl_ua);
++	if (uv >= A6L_HV_LOW_OK_UV) {
++		unsigned int cmd = 0;
++
++		/* r5 bug hunt power: remember that WE suspended the input (not userspace) so the unplug can release it */
++		if (regmap_read(chip->regmap, chip->base + USBIN_CMD_IL, &cmd) >= 0 && !(cmd & USBIN_SUSPEND_BIT) &&
++		    regmap_update_bits(chip->regmap, chip->base + USBIN_CMD_IL, USBIN_SUSPEND_BIT, USBIN_SUSPEND_BIT) >= 0)
++			chip->hv_susp = true;
++		dev_err(chip->dev, "A6L_HVDCP still %d uV after FORCE_5V -> USB input SUSPENDED (%s)\n",
++			uv, chip->hv_reason);
++		next_state = A6L_HV_FAILED;
++	}
++	dev_warn(chip->dev, "A6L_HVDCP back to 5V: %s (usbin %d uV, ICL %u uA, state %s)\n",
++		 chip->hv_reason, uv, icl_ua, a6l_hv_state_names[next_state]);
++	chip->hv_state = next_state;
++	power_supply_changed(chip->chg_psy);
++}
++
++static void a6l_hv_abort(struct smb_chip *chip, const char *why, int val)
++{
++	char r[64];
++
++	snprintf(r, sizeof(r), "%s %d", why, val);
++	dev_err(chip->dev, "A6L_HVDCP ABORT %s (state %s, QC%d)\n", r, a6l_hv_state_names[chip->hv_state], chip->hv_qc);
++	a6l_hv_to_5v(chip, A6L_HV_FAILED, A6L_HV_FAIL_ICL_UA, r);
++}
++
++static void a6l_hv_reset(struct smb_chip *chip, int state)
++{
++	chip->hv_state = state;
++	chip->hv_qc = 0;
++	chip->hv_pulses = 0;
++	chip->hv_bad_v = 0;
++	chip->hv_bad_i = 0;
++	chip->hv_reason[0] = '\0';
++}
++
++/* r5 bug hunt power: the input suspend set by the abort path lasts until the unplug only (hv_lock held) */
++static void a6l_hv_release_susp(struct smb_chip *chip)
++{
++	if (!chip->hv_susp)
++		return;
++	if (regmap_update_bits(chip->regmap, chip->base + USBIN_CMD_IL, USBIN_SUSPEND_BIT, 0) < 0) {
++		dev_err(chip->dev, "A6L_HVDCP unplugged: releasing the USB input suspend failed, retrying\n");
++		return;
++	}
++	chip->hv_susp = false;
++	dev_info(chip->dev, "A6L_HVDCP unplugged: USB input suspend (set by the abort) released\n");
++}
++
++/* anything for the HVDCP work to do on a plug/unplug event (hvdcp_enable=0 and idle: nothing, r4-identical) */
++static bool a6l_hv_wants_events(struct smb_chip *chip)
++{
++	return hvdcp_enable || READ_ONCE(chip->hv_state) != A6L_HV_OFF || READ_ONCE(chip->hv_susp);
++}
++
++static const char *a6l_hv_apsd_name(unsigned int res)
++{
++	if (res & QC_3P0_BIT)
++		return "QC3";
++	if (res & QC_2P0_BIT)
++		return "QC2";
++	if (res & DCP_CHARGER_BIT)
++		return "DCP";
++	if (res & CDP_CHARGER_BIT)
++		return "CDP";
++	if (res & SDP_CHARGER_BIT)
++		return "SDP";
++	if (res & OCP_CHARGER_BIT)
++		return "OCP";
++	if (res & FLOAT_CHARGER_BIT)
++		return "FLOAT";
++	return "none";
++}
++
++/* read APSD status + result into hv_apsd/hv_res, log every change (called with hv_lock held) */
++static void a6l_hv_read_apsd(struct smb_chip *chip, unsigned int *apsd, unsigned int *res)
++{
++	unsigned int opt1 = 0;
++
++	*apsd = 0;
++	*res = 0;
++	regmap_read(chip->regmap, chip->base + APSD_STATUS, apsd);
++	regmap_read(chip->regmap, chip->base + APSD_RESULT_STATUS, res);
++	*apsd &= 0xff;
++	*res &= APSD_RESULT_STATUS_MASK;
++	chip->hv_apsd = *apsd;
++	chip->hv_res = *res;
++	if (chip->hv_apsd_log == (int)(*apsd << 8 | *res))
++		return;
++	chip->hv_apsd_log = *apsd << 8 | *res;
++	regmap_read(chip->regmap, chip->base + USBIN_OPTIONS_1_CFG, &opt1);
++	dev_info(chip->dev, "A6L_HVDCP APSD status 0x%02x result 0x%02x (%s%s%s%s) opt1 0x%02x state %s\n",
++		 *apsd, *res, a6l_hv_apsd_name(*res), (*apsd & QC_CHARGER_BIT) ? " qc_charger" : "",
++		 (*apsd & QC_AUTH_DONE_STATUS_BIT) ? " auth_done" : "",
++		 (*apsd & HVDCP_CHECK_TIMEOUT_BIT) ? " hvdcp_timeout" : "", opt1 & 0xff,
++		 a6l_hv_state_names[chip->hv_state]);
++}
++
++static void a6l_hv_start_raise(struct smb_chip *chip)
++{
++	int target = a6l_hv_target_uv(), n, uv;
++
++	chip->hv_target_uv = target;
++	a6l_hv_set_icl(chip, min_t(unsigned int, hvdcp_icl_ua, A6L_HV_RAMP_ICL_UA));
++	if (chip->hv_qc == 2) {
++		if (target < A6L_HV_MAX_UV) {
++			snprintf(chip->hv_reason, sizeof(chip->hv_reason), "QC2 needs 9V target");
++			chip->hv_state = A6L_HV_DCP;
++			a6l_hv_set_icl(chip, chip->dcp_icl_ua);
++			return;
++		}
++		regmap_write(chip->regmap, chip->base + CMD_HVDCP_2, FORCE_9V_BIT);
++	} else {
++		for (n = (target - A6L_HV_5V_UV) / A6L_HV_STEP_UV; chip->hv_pulses < n;) {
++			if (!hvdcp_enable || chip->hv_removing)
++				break;
++			regmap_write(chip->regmap, chip->base + CMD_HVDCP_2, SINGLE_INCREMENT_BIT);
++			chip->hv_pulses++;
++			msleep(A6L_HV_PULSE_MS);
++			if (a6l_hv_read_uv(chip, &uv) >= 0 && uv > target + A6L_HV_WINDOW_UV) {
++				a6l_hv_abort(chip, "QC3 overshoot uV", uv);
++				return;
++			}
++		}
++	}
++	dev_info(chip->dev, "A6L_HVDCP QC%d: requested %d uV (%d pulses), ICL %u uA\n",
++		 chip->hv_qc, target, chip->hv_pulses, chip->hv_icl_ua);
++	chip->hv_state = A6L_HV_VERIFY;
++	chip->hv_deadline = jiffies + msecs_to_jiffies(A6L_HV_VERIFY_MS);
++}
++
++static void a6l_hvdcp_work(struct work_struct *work)
++{
++	struct smb_chip *chip = container_of(work, struct smb_chip, hvdcp_work.work);
++	unsigned int apsd = 0, res = 0, rt = 0, st2 = 0, icl_raw = 0;
++	int uv = -1, ua = -1, next = 0;
++
++	mutex_lock(&chip->hv_lock);
++	if (chip->hv_removing)
++		goto out;
++
++	/* runtime disable: back to 5 V, HVDCP detection off */
++	if (!hvdcp_enable) {
++		if (chip->hv_state == A6L_HV_VERIFY || chip->hv_state == A6L_HV_ACTIVE ||
++		    (chip->hv_state != A6L_HV_OFF && a6l_hv_read_uv(chip, &uv) >= 0 && uv >= A6L_HV_LOW_OK_UV))
++			a6l_hv_to_5v(chip, A6L_HV_OFF, chip->dcp_icl_ua ? chip->dcp_icl_ua : SDP_CURRENT_UA,
++				     "hvdcp_enable=0");
++		if (chip->hv_hw_on)
++			a6l_hv_hw_config(chip, false);
++		a6l_hv_reset(chip, A6L_HV_OFF);
++		if (chip->hv_susp && !a6l_hv_present(chip))
++			a6l_hv_release_susp(chip);
++		if (chip->hv_susp)
++			next = 2000;	/* watch for the unplug */
++		goto out;
++	}
++
++	if (!chip->hv_hw_on) {
++		if (a6l_hv_hw_config(chip, true) < 0) {
++			dev_err(chip->dev, "A6L_HVDCP HW config failed\n");
++			goto out;
++		}
++		a6l_hv_reset(chip, A6L_HV_IDLE);
++		chip->hv_deadline = jiffies + msecs_to_jiffies(A6L_HV_DETECT_MS);
++	}
++
++	if (!a6l_hv_present(chip)) {
++		if (chip->hv_state != A6L_HV_IDLE && chip->hv_state != A6L_HV_OFF)
++			dev_info(chip->dev, "A6L_HVDCP unplugged (state %s) -> idle\n",
++				 a6l_hv_state_names[chip->hv_state]);
++		a6l_hv_reset(chip, A6L_HV_IDLE);
++		a6l_hv_release_susp(chip);
++		if (chip->hv_susp)
++			next = 2000;	/* release failed: retry */
++		chip->hv_apsd_stale = false;	/* the next plug-in runs APSD with HVDCP_EN on */
++		chip->hv_plugged = false;
++		chip->hv_rerun_req = false;
++		chip->hv_reruns = 0;
++		chip->hv_apsd_log = -1;
++		chip->hv_uv = 0;
++		chip->hv_ua = 0;
++		goto out;	/* the usb-plugin IRQ restarts us */
++	}
++	if (!chip->hv_plugged) {
++		/* plug-in edge (or first run with a cable in): poll APSD for the whole detection window */
++		chip->hv_plugged = true;
++		if (chip->hv_state == A6L_HV_IDLE || chip->hv_state == A6L_HV_OFF) {
++			chip->hv_deadline = jiffies + msecs_to_jiffies(A6L_HV_PLUG_MS);
++			dev_info(chip->dev, "A6L_HVDCP cable in, polling APSD for %d ms\n", A6L_HV_PLUG_MS);
++		}
++	}
++
++	a6l_hv_read_uv(chip, &uv);
++	a6l_hv_read_ua(chip, &ua);
++	chip->hv_uv = uv;
++	chip->hv_ua = ua;
++	regmap_read(chip->regmap, chip->base + INT_RT_STS, &rt);
++
++	/* absolute limits, any state */
++	if (chip->hv_state != A6L_HV_FAILED && (uv > A6L_HV_ABS_MAX_UV || (rt & USBIN_OV_RT_STS_BIT))) {
++		a6l_hv_abort(chip, rt & USBIN_OV_RT_STS_BIT ? "USBIN OV status, uV" : "USBIN > 9.6 V, uV", uv);
++		next = 2000;
++		goto out;
++	}
++
++	/* hvdcp_rerun: one new APSD run at 5 V on a non-SDP/CDP cable (the operator removed the USB pull-up first) */
++	if (chip->hv_rerun_req) {
++		chip->hv_rerun_req = false;
++		a6l_hv_read_apsd(chip, &apsd, &res);
++		if (chip->hv_state != A6L_HV_IDLE && chip->hv_state != A6L_HV_DCP) {
++			dev_info(chip->dev, "A6L_HVDCP rerun refused: state %s\n", a6l_hv_state_names[chip->hv_state]);
++		} else if (res & (SDP_CHARGER_BIT | CDP_CHARGER_BIT)) {
++			dev_info(chip->dev, "A6L_HVDCP rerun refused: %s (USB host, never re-run)\n", a6l_hv_apsd_name(res));
++		} else if (uv >= A6L_HV_LOW_OK_UV) {
++			dev_info(chip->dev, "A6L_HVDCP rerun refused: usbin %d uV\n", uv);
++		} else if (chip->hv_reruns >= A6L_HV_MAX_RERUNS) {
++			dev_info(chip->dev, "A6L_HVDCP rerun refused: %d reruns on this plug-in\n", chip->hv_reruns);
++		} else {
++			chip->hv_reruns++;
++			a6l_hv_reset(chip, A6L_HV_IDLE);
++			chip->hv_apsd_stale = false;
++			if (chip->dcp_icl_ua)
++				a6l_hv_set_icl(chip, min_t(unsigned int, chip->dcp_icl_ua, A6L_HV_RAMP_ICL_UA));
++			regmap_update_bits(chip->regmap, chip->base + CMD_APSD, APSD_RERUN_BIT, APSD_RERUN_BIT);
++			chip->hv_deadline = jiffies + msecs_to_jiffies(A6L_HV_PLUG_MS);
++			dev_info(chip->dev, "A6L_HVDCP APSD rerun #%d requested (was 0x%02x/0x%02x %s)\n",
++				 chip->hv_reruns, apsd, res, a6l_hv_apsd_name(res));
++			next = 500;
++			goto out;
++		}
++	}
++
++	switch (chip->hv_state) {
++	case A6L_HV_OFF:
++	case A6L_HV_IDLE:
++		a6l_hv_read_apsd(chip, &apsd, &res);
++		chip->hv_state = A6L_HV_IDLE;
++		if (!(apsd & APSD_DTC_STATUS_DONE_BIT) || !res) {
++			/* APSD still running (or re-running): poll within the window armed at plug-in / rerun */
++			if (time_before(jiffies, chip->hv_deadline))
++				next = A6L_HV_FAST_MS;
++			break;
++		}
++		if (res & (SDP_CHARGER_BIT | CDP_CHARGER_BIT))
++			break;		/* USB host: nothing to do at 5 V */
++		if (!(res & (A6L_HV_APSD_DCP_CLASS | A6L_HV_APSD_QC))) {
++			if (time_before(jiffies, chip->hv_deadline))
++				next = A6L_HV_FAST_MS;
++			break;
++		}
++		if (!(res & (DCP_CHARGER_BIT | A6L_HV_APSD_QC)))
++			dev_warn(chip->dev, "A6L_HVDCP APSD result 0x%02x = %s, not a BC1.2 DCP: D+/D- disturbed (USB pull-up?), no HVDCP handshake; hvdcp_rerun after removing it\n",
++				 res, a6l_hv_apsd_name(res));
++		if (chip->hv_apsd_stale && !(res & (QC_2P0_BIT | QC_3P0_BIT))) {
++			/* HVDCP_EN came on after this DCP was detected: one new APSD run (DCP only, never SDP/CDP) */
++			dev_info(chip->dev, "A6L_HVDCP DCP detected before HVDCP was enabled: re-running APSD\n");
++			chip->hv_apsd_stale = false;
++			regmap_update_bits(chip->regmap, chip->base + CMD_APSD, APSD_RERUN_BIT, APSD_RERUN_BIT);
++			chip->hv_deadline = jiffies + msecs_to_jiffies(A6L_HV_PLUG_MS);
++			next = 1500;
++			break;
++		}
++		chip->hv_apsd_stale = false;
++		if (!chip->dcp_icl_ua)
++			chip->dcp_icl_ua = chip->batt_info->constant_charge_current_max_ua;
++		a6l_hv_set_icl(chip, min_t(unsigned int, chip->dcp_icl_ua, A6L_HV_RAMP_ICL_UA));
++		chip->hv_state = A6L_HV_WAIT;
++		chip->hv_deadline = jiffies + msecs_to_jiffies(A6L_HV_DETECT_MS);
++		chip->hv_auth_deadline = 0;
++		next = A6L_HV_FAST_MS;
++		break;
++	case A6L_HV_WAIT:
++		a6l_hv_read_apsd(chip, &apsd, &res);
++		chip->hv_qc = (res & QC_3P0_BIT) ? 3 : (res & QC_2P0_BIT) ? 2 : 0;
++		/* HVDCP seen (QC_CHARGER) but the QC2/QC3 authentication not finished yet: wait for QC_AUTH_DONE */
++		if (chip->hv_qc && (apsd & QC_CHARGER_BIT) && !(apsd & QC_AUTH_DONE_STATUS_BIT)) {
++			if (!chip->hv_auth_deadline)
++				chip->hv_auth_deadline = jiffies + msecs_to_jiffies(A6L_HV_AUTH_MS);
++			if (time_before(jiffies, chip->hv_auth_deadline)) {
++				next = A6L_HV_FAST_MS;
++				break;
++			}
++			dev_warn(chip->dev, "A6L_HVDCP QC%d without QC_AUTH_DONE after %d ms, using the APSD result\n",
++				 chip->hv_qc, A6L_HV_AUTH_MS);
++		}
++		if (!chip->hv_qc && (apsd & QC_CHARGER_BIT) && !(apsd & QC_AUTH_DONE_STATUS_BIT)) {
++			if (!chip->hv_auth_deadline)
++				chip->hv_auth_deadline = jiffies + msecs_to_jiffies(A6L_HV_AUTH_MS);
++			if (time_before(jiffies, chip->hv_auth_deadline)) {
++				next = A6L_HV_FAST_MS;
++				break;
++			}
++		}
++		if (chip->hv_qc) {
++			dev_info(chip->dev, "A6L_HVDCP QC%d detected (APSD 0x%02x/0x%02x, usbin %d uV)\n",
++				 chip->hv_qc, apsd, res, uv);
++			a6l_hv_start_raise(chip);
++			next = A6L_HV_FAST_MS;
++			break;
++		}
++		if (uv >= A6L_HV_LOW_OK_UV) {
++			a6l_hv_abort(chip, "high USBIN without a QC result, uV", uv);
++			next = 2000;
++			break;
++		}
++		if ((apsd & HVDCP_CHECK_TIMEOUT_BIT) || time_after(jiffies, chip->hv_deadline)) {
++			dev_info(chip->dev, "A6L_HVDCP plain DCP (APSD 0x%02x/0x%02x), 5 V, ICL %u uA\n",
++				 apsd, res, chip->dcp_icl_ua);
++			chip->hv_state = A6L_HV_DCP;
++			a6l_hv_set_icl(chip, chip->dcp_icl_ua);
++			next = 2000;
++			break;
++		}
++		next = A6L_HV_FAST_MS;
++		break;
++	case A6L_HV_DCP:
++	case A6L_HV_FAILED:
++		if (uv >= A6L_HV_LOW_OK_UV && chip->hv_state == A6L_HV_DCP)
++			a6l_hv_abort(chip, "unexpected high USBIN at 5 V, uV", uv);
++		else if (uv >= A6L_HV_LOW_OK_UV && regmap_read(chip->regmap, chip->base + USBIN_CMD_IL, &st2) >= 0 &&
++			 !(st2 & USBIN_SUSPEND_BIT))
++			a6l_hv_to_5v(chip, A6L_HV_FAILED, A6L_HV_FAIL_ICL_UA, NULL);
++		next = 2000;	/* watch for unplug and the adapter */
++		break;
++	case A6L_HV_VERIFY:
++		if (uv >= chip->hv_target_uv - A6L_HV_WINDOW_UV && uv <= chip->hv_target_uv + A6L_HV_WINDOW_UV) {
++			a6l_hv_set_icl(chip, hvdcp_icl_ua);
++			chip->hv_state = A6L_HV_ACTIVE;
++			chip->hv_bad_v = 0;
++			chip->hv_bad_i = 0;
++			dev_info(chip->dev, "A6L_HVDCP ACTIVE QC%d usbin %d uV, ICL %u uA\n",
++				 chip->hv_qc, uv, chip->hv_icl_ua);
++			power_supply_changed(chip->chg_psy);
++			next = A6L_HV_POLL_MS;
++		} else if (uv > chip->hv_target_uv + A6L_HV_WINDOW_UV) {
++			a6l_hv_abort(chip, "overvoltage after request, uV", uv);
++			next = 2000;
++		} else if (time_after(jiffies, chip->hv_deadline)) {
++			a6l_hv_abort(chip, "adapter did not reach the window, uV", uv);
++			next = 2000;
++		} else {
++			next = A6L_HV_FAST_MS;
++		}
++		break;
++	case A6L_HV_ACTIVE:
++		next = A6L_HV_POLL_MS;
++		regmap_read(chip->regmap, chip->base + BATTERY_CHARGER_STATUS_2, &st2);
++		if (uv > chip->hv_target_uv + A6L_HV_WINDOW_UV) {
++			a6l_hv_abort(chip, "overvoltage, uV", uv);
++			break;
++		}
++		chip->hv_bad_v = uv < chip->hv_target_uv - A6L_HV_WINDOW_UV ? chip->hv_bad_v + 1 : 0;
++		if (chip->hv_bad_v >= 3) {
++			a6l_hv_abort(chip, "undervoltage 3x, uV", uv);
++			break;
++		}
++		chip->hv_bad_i = ua > (int)(chip->hv_icl_ua + chip->hv_icl_ua / 10 + 100000) ? chip->hv_bad_i + 1 : 0;
++		if (chip->hv_bad_i >= 2) {
++			a6l_hv_abort(chip, "overcurrent 2x, uA", ua);
++			break;
++		}
++		if (st2 & (CHARGER_ERROR_STATUS_BAT_OV_BIT | BAT_TEMP_STATUS_TOO_HOT_BIT | BAT_TEMP_STATUS_TOO_COLD_BIT)) {
++			a6l_hv_abort(chip, "charger status 2 =", st2);
++			break;
++		}
++		/* keep the ICL at or below hvdcp_icl_ua (runtime changes, or someone else raised it) */
++		regmap_read(chip->regmap, chip->base + USBIN_CURRENT_LIMIT_CFG, &icl_raw);
++		if (icl_raw * CURRENT_SCALE_FACTOR > hvdcp_icl_ua || chip->hv_icl_ua != hvdcp_icl_ua)
++			a6l_hv_set_icl(chip, hvdcp_icl_ua);
++		break;
++	}
++out:
++	if (next && !chip->hv_removing)
++		mod_delayed_work(system_wq, &chip->hvdcp_work, msecs_to_jiffies(next));
++	mutex_unlock(&chip->hv_lock);
++}
++
++static bool a6l_hv_owns_icl(struct smb_chip *chip)
++{
++	return chip->hv_state == A6L_HV_VERIFY || chip->hv_state == A6L_HV_ACTIVE ||
++	       chip->hv_state == A6L_HV_FAILED;
++}
++
++/* unbind / shutdown: return a QC adapter to 5 V */
++static void a6l_hv_teardown(struct smb_chip *chip)
++{
++	mutex_lock(&a6l_hv_param_lock);
++	if (a6l_hv_chip == chip)
++		a6l_hv_chip = NULL;
++	mutex_unlock(&a6l_hv_param_lock);
++	mutex_lock(&chip->hv_lock);
++	chip->hv_removing = true;
++	mutex_unlock(&chip->hv_lock);
++	cancel_delayed_work_sync(&chip->hvdcp_work);
++	mutex_lock(&chip->hv_lock);
++	if (chip->hv_state != A6L_HV_OFF || chip->hv_hw_on) {
++		regmap_write(chip->regmap, chip->base + CMD_HVDCP_2, FORCE_5V_BIT);
++		regmap_update_bits(chip->regmap, chip->base + USBIN_OPTIONS_1_CFG,
++				   HVDCP_EN_BIT | HVDCP_AUTH_ALG_EN_CFG_BIT |
++				   HVDCP_AUTONOMOUS_MODE_EN_CFG_BIT, 0);
++		dev_info(chip->dev, "A6L_HVDCP teardown: FORCE_5V\n");
++	}
++	mutex_unlock(&chip->hv_lock);
++}
++
++static void a6l_hv_teardown_action(void *data)
++{
++	a6l_hv_teardown(data);
++}
++/* ---- end A6L HVDCP ------------------------------------------------------------------------------------------ */
++
+ static void smb_status_change_work(struct work_struct *work)
+ {
+ 	unsigned int charger_type, current_ua;
+@@ -575,8 +1333,11 @@
+ 	chip = container_of(work, struct smb_chip, status_change_work.work);
+ 
+ 	smb_get_prop_usb_online(chip, &usb_online);
+-	if (!usb_online)
++	if (!usb_online) {
++		if (a6l_hv_wants_events(chip))
++			a6l_hv_kick(chip, 0);	/* A6L: unplug resets the HVDCP state */
+ 		return;
++	}
+ 
+ 	for (count = 0; count < 3; count++) {
+ 		dev_dbg(chip->dev, "get charger type retry %d\n", count);
+@@ -606,6 +1367,10 @@
+ 		break;
+ 	case POWER_SUPPLY_USB_TYPE_DCP:
+ 		current_ua = chip->batt_info->constant_charge_current_max_ua;
++		chip->dcp_icl_ua = current_ua;
++		/* A6L: until the HVDCP result is known, stay at <= 1 A (a QC adapter may go to 9 V) */
++		if (hvdcp_enable)
++			current_ua = min_t(unsigned int, current_ua, A6L_HV_RAMP_ICL_UA);
+ 		break;
+ 	case POWER_SUPPLY_USB_TYPE_SDP:
+ 	default:
+@@ -613,8 +1378,14 @@
+ 		break;
+ 	}
+ 
+-	smb_set_current_limit(chip, current_ua);
++	mutex_lock(&chip->hv_lock);
++	if (!a6l_hv_owns_icl(chip))	/* A6L: at high voltage the HVDCP work owns the ICL */
++		smb_set_current_limit(chip, current_ua);
++	chip->hv_plugged = false;	/* A6L: every plug-in event re-arms the HVDCP APSD poll window */
++	mutex_unlock(&chip->hv_lock);
+ 	power_supply_changed(chip->chg_psy);
++	if (a6l_hv_wants_events(chip))
++		a6l_hv_kick(chip, 0);
+ }
+ 
+ static int smb_get_iio_chan(struct smb_chip *chip, struct iio_channel *chan,
+@@ -714,11 +1485,34 @@
+ 	struct smb_chip *chip = power_supply_get_drvdata(psy);
+ 
+ 	switch (psp) {
+-	case POWER_SUPPLY_PROP_STATUS:
+-		return regmap_update_bits(chip->regmap, chip->base + USBIN_CMD_IL,
+-					  USBIN_SUSPEND_BIT, !val->intval);
+-	case POWER_SUPPLY_PROP_CURRENT_MAX:
+-		return smb_set_current_limit(chip, val->intval);
++	case POWER_SUPPLY_PROP_STATUS: {
++		int rc;
++
++		/* A6L: a userspace suspend/resume write takes the suspend bit over (the unplug no longer releases it) */
++		mutex_lock(&chip->hv_lock);
++		rc = regmap_update_bits(chip->regmap, chip->base + USBIN_CMD_IL,
++					USBIN_SUSPEND_BIT, !val->intval);
++		if (!rc)
++			chip->hv_susp = false;
++		mutex_unlock(&chip->hv_lock);
++		return rc;
++	}
++	case POWER_SUPPLY_PROP_CURRENT_MAX: {
++		unsigned int ua = val->intval;
++		int rc;
++
++		/* A6L: while QC is up, userspace can lower the ICL but not raise it above hvdcp_icl_ua */
++		mutex_lock(&chip->hv_lock);
++		if (chip->hv_state == A6L_HV_VERIFY || chip->hv_state == A6L_HV_ACTIVE)
++			ua = min_t(unsigned int, ua, hvdcp_icl_ua);
++		else if (chip->hv_state == A6L_HV_FAILED)
++			ua = min_t(unsigned int, ua, A6L_HV_FAIL_ICL_UA);
++		rc = smb_set_current_limit(chip, ua);
++		if (!rc && chip->hv_state == A6L_HV_ACTIVE)
++			chip->hv_icl_ua = hvdcp_icl_ua;	/* keep the work from raising it back */
++		mutex_unlock(&chip->hv_lock);
++		return rc;
++	}
+ 	default:
+ 		dev_err(chip->dev, "No setter for property: %d\n", psp);
+ 		return -EINVAL;
+@@ -759,6 +1553,10 @@
+ 	struct smb_chip *chip = data;
+ 
+ 	power_supply_changed(chip->chg_psy);
++	/* A6L (r5 bug hunt power): see the unplug at once; the status work below runs 1.5 s later and a replug inside that
++	 * window (or before the failed-state poll) left the failed state / its input suspend on the next cable */
++	if (a6l_hv_wants_events(chip))
++		a6l_hv_kick(chip, 0);
+ 
+ 	schedule_delayed_work(&chip->status_change_work,
+ 			      msecs_to_jiffies(1500));
+@@ -1012,6 +1810,17 @@
+ 		return dev_err_probe(chip->dev, rc,
+ 				     "Failed to init status change work\n");
+ 
++	/* A6L HVDCP: work + teardown (the teardown action runs first on unbind: cancels the work, FORCE_5V) */
++	mutex_init(&chip->hv_lock);
++	chip->hv_state = A6L_HV_OFF;
++	chip->hv_apsd_log = -1;
++	rc = devm_delayed_work_autocancel(chip->dev, &chip->hvdcp_work, a6l_hvdcp_work);
++	if (rc)
++		return dev_err_probe(chip->dev, rc, "Failed to init hvdcp work\n");
++	rc = devm_add_action_or_reset(chip->dev, a6l_hv_teardown_action, chip);
++	if (rc)
++		return rc;
++
+ 	if (chip->batt_info->voltage_max_design_uv <= 0 ||
+ 	    chip->batt_info->voltage_max_design_uv > A6L_FV_MAX_UV) {
+ 		dev_warn(chip->dev, "A6L: float %d uV clamped to %d uV\n",
+@@ -1073,6 +1882,19 @@
+ 		 fcc_max_ua, chip->batt_info->voltage_max_design_uv,
+ 		 jeita_hard ? "on" : "off");
+ 
++	/* A6L HVDCP: only touched when hvdcp_enable=1 */
++	hvdcp_icl_ua = clamp_t(unsigned int, hvdcp_icl_ua, A6L_HV_ICL_MIN_UA, A6L_HV_ICL_MAX_UA);
++	if (hvdcp_enable) {
++		rc = a6l_hv_hw_config(chip, true);
++		if (rc < 0)
++			return dev_err_probe(chip->dev, rc, "Couldn't enable HVDCP\n");
++	}
++	dev_info(chip->dev, "A6L: HVDCP %s (max %d uV, ICL %u uA, 5-9 V adapter window)\n",
++		 hvdcp_enable ? "on" : "off", a6l_hv_target_uv(), hvdcp_icl_ua);
++	mutex_lock(&a6l_hv_param_lock);
++	a6l_hv_chip = chip;
++	mutex_unlock(&a6l_hv_param_lock);
++
+ 	/* Initialise charger state */
+ 	schedule_delayed_work(&chip->status_change_work, 0);
+ 
+@@ -1086,8 +1908,17 @@
+ };
+ MODULE_DEVICE_TABLE(of, smb_match_id_table);
+ 
++static void smb_shutdown(struct platform_device *pdev)
++{
++	struct smb_chip *chip = platform_get_drvdata(pdev);
++
++	if (chip)
++		a6l_hv_teardown(chip);	/* A6L: never leave a QC adapter at 9 V */
++}
++
+ static struct platform_driver qcom_spmi_smb = {
+ 	.probe = smb_probe,
++	.shutdown = smb_shutdown,
+ 	.driver = {
+ 		.name = "qcom-smbx-charger",
+ 		.of_match_table = smb_match_id_table,

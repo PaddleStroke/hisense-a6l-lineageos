@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hisense A6L (overlays-carrier-updater, 29 Sep 2026): runtime resource overlay for com.android.wifi.resources. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.lineageos.a6l.overlay.wifi">
+    <overlay android:targetPackage="com.android.wifi.resources" android:isStatic="true" android:priority="100" />
+    <application android:hasCode="false" />
+</manifest>

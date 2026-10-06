@@ -1,0 +1,2 @@
+# A6L out-of-tree dm-default-key (ACK CONFIG_DM_DEFAULT_KEY), r5 kernel only (needs BLK_INLINE_ENCRYPTION), see ../README.md
+obj-m += dm-default-key.o

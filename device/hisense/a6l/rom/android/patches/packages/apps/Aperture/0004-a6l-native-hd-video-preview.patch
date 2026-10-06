@@ -1,0 +1,44 @@
+--- a/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
++++ b/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
+@@ -45,6 +45,7 @@
+ import androidx.camera.core.MirrorMode
+ import androidx.camera.core.resolutionselector.AspectRatioStrategy
+ import androidx.camera.core.resolutionselector.ResolutionSelector
++import androidx.camera.core.resolutionselector.ResolutionStrategy
+ import androidx.camera.extensions.ExtensionMode
+ import androidx.camera.video.Quality
+ import androidx.camera.video.QualitySelector
+@@ -1489,6 +1490,33 @@
+             }) not supported by camera ${cameraConfiguration.camera.cameraId}"
+         }
+ 
++        // Match native HD video geometry so the shared viewport does not crop
++        // two columns solely because a 4:3 preview differs from the sensor ratio.
++        // Photo/QR and other devices retain CameraController's default selector.
++        if (Build.DEVICE.equals("a6l", ignoreCase = true)) {
++            viewModel.cameraController.previewResolutionSelector =
++                if (cameraConfiguration is CameraConfiguration.Video
++                    && cameraConfiguration.videoQuality == Quality.HD
++                ) {
++                    ResolutionSelector.Builder()
++                        .setAspectRatioStrategy(
++                            AspectRatioStrategy(
++                                AspectRatio.RATIO_16_9,
++                                AspectRatioStrategy.FALLBACK_RULE_NONE,
++                            )
++                        )
++                        .setResolutionStrategy(
++                            ResolutionStrategy(
++                                android.util.Size(1280, 720),
++                                ResolutionStrategy.FALLBACK_RULE_NONE,
++                            )
++                        )
++                        .build()
++                } else {
++                    null
++                }
++        }
++
+         // Initialize the use case we want and set its properties
+         val cameraUseCases = when (cameraConfiguration) {
+             is CameraConfiguration.Photo -> {

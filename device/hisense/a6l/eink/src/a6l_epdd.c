@@ -28,11 +28,13 @@
  *   --wait-drm S   keep retrying DRM/lease for S seconds at start (default 0)
  *   --socket NAME | --listen PATH | --fifo PATH | --script F | --show F   (command sources)
  *   --idle-off S (0 = never; default 0)  --no-startup-clear  --wakelock (default on with --socket/--listen)
- *   v2/v3 options: --mode --clear-every --temp --rot180 --no-dither --hold --dry --power --xon-line --lead --tail
+ *   v2/v3 options: --mode --clear-every --temp --rot180 --no-dither --dither fs|ordered|none --hold --dry --power --xon-line --lead --tail
  *                  --save-mode --mode-file
  *   commands: show <file> [mode] | frame <w> <h> [mode] + w*h bytes | clear [full|stock|init|gc] | refresh | mode <m> |
  *             sleep <s> | status | power off | ping | quit | frametest <p5 file> [mode] (test: a PGM through the frame path)
- *             modes: quality|picture|reading|partial|fast|fastest|a2|auto|N
+ *             modes: quality|picture|reading|partial|fast|fastest|a2|auto|N;
+ *             frame ... clean = legacy forced mode-2 redraw;
+ *             frame W H MODE force = stock-style ghost refresh retaining MODE, without white/INIT.
  */
 #define _GNU_SOURCE
 #include <dirent.h>
@@ -59,6 +61,9 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <drm_fourcc.h>
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
 #ifdef A6L_ANDROID_LOG
 #include <android/log.h>
 #endif
@@ -83,23 +88,30 @@ static int (*tc_decide)(struct buf *, void *, int, int, int, int);
 static uint8_t (*tc_update)(struct buf *, void *);
 static void *handle;
 static uint8_t *last_img;	/* v2: last picture in library layout, for "refresh" */
+static int last_mode = 2; /* Preserve the requested waveform across stock-style force clears. */
 static int have_last;
 #define H_INIT_FLAG(h) ((volatile uint32_t *)((uint8_t *)(h) + 0x270))	/* 1 = next update uses the INIT waveform */
 #define H_CALLS(h) ((volatile uint32_t *)((uint8_t *)(h) + 0x274))	/* ModeDecision_MirrorMode call counter */
 static struct buf ring[RING], img;
 static uint32_t *frames[MAXF];
-static int mode = 2, temp_fallback = 25, rot180, dither = 1, lead = 10, tail = 20, xon_line = -1, dry, updates;
+static int mode = 2, temp_fallback = 25, rot180, dither = 2 /* ordered: position-stable, see eink-stock-analysis-20261006 */, lead = 10, tail = 20, xon_line = -1, dry, updates;
 static const char *dry_prefix, *power_path;
 static char power_buf[512];
 
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
+#ifdef A6L_ANDROID_LOG
+/* Match Java elapsedRealtime across suspend; scheduling still uses now(). */
+static double boot_now(void) { struct timespec t; if (clock_gettime(CLOCK_BOOTTIME, &t)) return now(); return t.tv_sec + t.tv_nsec / 1e9; }
+#endif
 static void logline(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 #include <stdarg.h>
 static void logline(const char *fmt, ...) {
     char b[1024]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
     printf("[%.3f] A6L_EPDD %s\n", now(), b); fflush(stdout);
 #ifdef A6L_ANDROID_LOG
-    __android_log_write(strstr(b, "FAIL") ? ANDROID_LOG_ERROR : strstr(b, "WARN") ? ANDROID_LOG_WARN : ANDROID_LOG_INFO, "a6l_epdd", b);
+    char stamped[sizeof b + 128];
+    snprintf(stamped, sizeof stamped, "boot_ms=%.3f mono_ms=%.3f %s", boot_now() * 1000, now() * 1000, b);
+    __android_log_write(strstr(b, "FAIL") ? ANDROID_LOG_ERROR : strstr(b, "WARN") ? ANDROID_LOG_WARN : ANDROID_LOG_INFO, "a6l_epdd", stamped);
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
@@ -112,18 +124,48 @@ static int tok(FILE *f) {	/* PNM header integer, skipping comments */
     while ((c = fgetc(f)) != EOF) { if (c == '#') { while ((c = fgetc(f)) != EOF && c != '\n') {} continue; } if (c >= '0' && c <= '9') { v = v * 10 + c - '0'; got = 1; } else if (got) break; }
     return got ? v : -1;
 }
+/* Anchored in logical input coordinates. No diffusion, frame state or RNG. */
+static const uint8_t bayer8[8][8] = {
+    { 0,48,12,60, 3,51,15,63}, {32,16,44,28,35,19,47,31},
+    { 8,56, 4,52,11,59, 7,55}, {40,24,36,20,43,27,39,23},
+    { 2,50,14,62, 1,49,13,61}, {34,18,46,30,33,17,45,29},
+    {10,58, 6,54, 9,57, 5,53}, {42,26,38,22,41,25,37,21}
+};
+static const char *dither_name(int value) {
+    return value == 2 ? "ordered" : value == 1 ? "fs" : "none";
+}
+static int dither_parse(const char *name) {
+    if (!strcmp(name,"fs")) return 1;
+    if (!strcmp(name,"ordered")) return 2;
+    if (!strcmp(name,"none")) return 0;
+    return -1;
+}
+static int ordered16(int value, unsigned x, unsigned y) {
+    int g = value < 0 ? 0 : value > 255 ? 255 : value;
+    int level = g / 17, remainder = g % 17;
+    /* Midpoint thresholds: mean bias <= 17/128 gray units over an 8x8 cell. */
+    if (128 * remainder > 17 * (2 * bayer8[y & 7][x & 7] + 1)) level++;
+    return level * 17;
+}
+static double input_dither_ms, input_pack_ms;
 static void img_from_grey(int16_t *g, int w, int h) {	/* g: w*h greys (0..255), consumed (dither works in place) */
-    if (dither) for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {	/* Floyd-Steinberg to the panel's 16 levels (r145: 16 visible bands) */
+    double t0 = now();
+    if (dither == 1) for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {	/* Floyd-Steinberg to the panel's 16 levels (r145: 16 visible bands) */
         int old = g[y * w + x], q = (old < 0 ? 0 : old > 255 ? 255 : old); q = (q + 8) / 17 * 17; int e = old - q; g[y * w + x] = (int16_t)q;
+        if (!e) continue; /* Exact diffusion by zero changes no neighbour. */
         if (x + 1 < w) g[y * w + x + 1] += (int16_t)(e * 7 / 16);
         if (y + 1 < h) { if (x > 0) g[(y + 1) * w + x - 1] += (int16_t)(e * 3 / 16); g[(y + 1) * w + x] += (int16_t)(e * 5 / 16); if (x + 1 < w) g[(y + 1) * w + x + 1] += (int16_t)(e / 16); }
     }
+    else if (dither == 2) for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
+        g[y * w + x] = (int16_t)ordered16(g[y * w + x], (unsigned)x, (unsigned)y);
+    input_dither_ms = (now() - t0) * 1000; t0 = now();
     for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
         int v0 = g[y * w + x]; uint8_t v = (uint8_t)(v0 < 0 ? 0 : v0 > 255 ? 255 : v0);
         int xx = rot180 ? w - 1 - x : x, yy = rot180 ? h - 1 - y : y;
         if (w == IW) img_set(IW - 1 - xx, yy, v);	/* landscape as seen: library X is mirrored (r135) */
         else img_set(yy, xx, v);			/* portrait, camera on top: library(X,Y) = image(row X, col Y) */
     }
+    input_pack_ms = (now() - t0) * 1000;
 }
 static int size_ok(int w, int h) { return (w == IW && h == IH) || (w == IH && h == IW); }
 static int load_pnm(const char *path) {
@@ -140,11 +182,166 @@ static int load_pnm(const char *path) {
     free(g);
     free(row); fclose(f); return 0;
 }
+/* Explicit one-slot diagnostic. No file IO unless armed through the existing
+ * authenticated daemon socket; snapshots are private and files never overwrite. */
+#ifndef A6L_TRACE_DIR
+#define A6L_TRACE_DIR "/data/vendor/epd"
+#endif
+enum { TRACE_OFF, TRACE_ARMED, TRACE_CAPTURED, TRACE_DONE };
+static struct {
+    int state, w, h, mode, force, update, frames, decision, temperature, drive_attempted;
+    uint8_t *input, *post;
+    char token[33], command[128];
+    double input_ms, post_ms;
+} exact_trace;
+static int trace_getprop(const char *key, char *value, size_t size) {
+#ifdef A6L_TRACE_TEST
+    return test_trace_getprop(key,value,size);
+#elif defined(__ANDROID__)
+    char buffer[PROP_VALUE_MAX] = {0};
+    int n=__system_property_get(key,buffer);
+    snprintf(value,size,"%s",buffer); return n;
+#else
+    (void)key; if (size) value[0]=0; return 0;
+#endif
+}
+static int trace_debug_build(void) {
+#if defined(__ANDROID__) || defined(A6L_TRACE_TEST)
+    /* This retained userdebug ROM deliberately disables adb root/debuggable.
+     * The readonly build type is the native gate; shell arming requires the existing permissive development policy. */
+    char value[16]; trace_getprop("ro.build.type",value,sizeof value);
+    return !strcmp(value,"userdebug") || !strcmp(value,"eng");
+#else
+    return 1; /* Explicit host socket/test hook, never used in Android builds. */
+#endif
+}
+static double trace_boot_ms(void) {
+    struct timespec t;
+    if (clock_gettime(CLOCK_BOOTTIME, &t)) clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000.0 + t.tv_nsec / 1e6;
+}
+static int trace_arm(const char *token) {
+    size_t n = strlen(token);
+    if (!trace_debug_build() || exact_trace.state != TRACE_OFF || !n || n > 32) return -1;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)token[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-')) return -1;
+    }
+    uint8_t *input = malloc(IW * IH), *post = malloc(IW * IH);
+    if (!input || !post) { free(input); free(post); return -1; }
+    memset(&exact_trace, 0, sizeof exact_trace);
+    exact_trace.input = input; exact_trace.post = post;
+    memcpy(exact_trace.token, token, n+1);
+    exact_trace.state = TRACE_ARMED;
+    LOG("exact trace %s: armed for one fully received frame", token);
+    return 0;
+}
+static int trace_cancel(void) {
+    if (exact_trace.state != TRACE_ARMED) return -1;
+    free(exact_trace.input); free(exact_trace.post);
+    memset(&exact_trace, 0, sizeof exact_trace);
+    return 0;
+}
+static void trace_poll(void) {
+    if (exact_trace.state == TRACE_CAPTURED || exact_trace.state == TRACE_DONE || !trace_debug_build()) return;
+    char token[96]; static char last[96];
+    trace_getprop("vendor.a6l.eink.trace_once",token,sizeof token);
+    if (!strcmp(token,last)) return;
+    snprintf(last,sizeof last,"%s",token);
+    if (!token[0]) return; /* Empty means disabled, not an implicit cancel. */
+    if (!strcmp(token,"cancel")) { if (exact_trace.state == TRACE_ARMED) trace_cancel(); return; }
+    if (trace_arm(token)) LOG("exact trace: arming refused (invalid token, occupied slot, or allocation failure)");
+}
+static void trace_capture(const uint8_t *payload, int w, int h, int m,
+                          int force, const char *command) {
+    if (exact_trace.state != TRACE_ARMED) return;
+    if (!((w == IW && h == IH) || (w == IH && h == IW))) return;
+    memcpy(exact_trace.input, payload, (size_t)w * h);
+    exact_trace.w = w; exact_trace.h = h; exact_trace.mode = m;
+    exact_trace.force = force; exact_trace.update = updates + 1;
+    snprintf(exact_trace.command, sizeof exact_trace.command, "%s", command);
+    for (size_t i=0; exact_trace.command[i]; i++)
+        if ((unsigned char)exact_trace.command[i] < 32 ||
+            (unsigned char)exact_trace.command[i] > 126) exact_trace.command[i] = '?';
+    exact_trace.input_ms = trace_boot_ms();
+    exact_trace.state = TRACE_CAPTURED;
+}
+/* Inverse of img_from_grey/img_set: restore the original logical orientation.
+ * This is the actual packed image, before stock ModeDecision may modify it. */
+static void trace_post(void) {
+    if (exact_trace.state != TRACE_CAPTURED) return;
+    int w=exact_trace.w, h=exact_trace.h;
+    const uint8_t *packed = img.data;
+    for (int y=0; y<h; y++) for (int x=0; x<w; x++) {
+        int xx=rot180 ? w-1-x : x, yy=rot180 ? h-1-y : y;
+        size_t index = w == IW ? (size_t)yy * IW + IW-1-xx
+                              : (size_t)xx * IW + yy;
+        exact_trace.post[(size_t)y*w+x] = packed[4*index];
+    }
+    exact_trace.post_ms = trace_boot_ms();
+}
+static int trace_write_all(int fd, const void *data, size_t bytes) {
+    const uint8_t *p=data;
+    while (bytes) {
+        ssize_t n=write(fd, p, bytes);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return -1;
+        p+=n; bytes-=(size_t)n;
+    }
+    return 0;
+}
+static void trace_finish(int rc, const char *reply, int physical_attempted) {
+    if (exact_trace.state != TRACE_CAPTURED) return;
+    double completed_ms=trace_boot_ms(), write_start=now();
+    const char *names[]={"trace-input.pgm", "trace-post.pgm", "trace-meta.txt"};
+    int fds[]={-1,-1,-1}, created[]={0,0,0}, ok=exact_trace.post_ms > 0;
+    char paths[3][sizeof(A6L_TRACE_DIR)+40];
+    for (int i=0; i<3; i++) {
+        snprintf(paths[i], sizeof paths[i], "%s/%s", A6L_TRACE_DIR, names[i]);
+        if (!ok) continue;
+        fds[i]=open(paths[i], O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+        if (fds[i] < 0) ok=0; else created[i]=1;
+    }
+    char header[64]; int hn=snprintf(header,sizeof header,"P5\n%d %d\n255\n",exact_trace.w,exact_trace.h);
+    size_t bytes=(size_t)exact_trace.w*exact_trace.h;
+    if (ok && (trace_write_all(fds[0],header,(size_t)hn) ||
+               trace_write_all(fds[0],exact_trace.input,bytes) ||
+               trace_write_all(fds[1],header,(size_t)hn) ||
+               trace_write_all(fds[1],exact_trace.post,bytes))) ok=0;
+    char metadata[2048];
+    int mn=snprintf(metadata,sizeof metadata,
+        "version=1\ntoken=%s\ncommand=%s\nwidth=%d\nheight=%d\nmode=%d\nforce=%d\n"
+        "update=%d\nframes=%d\ndecision=%d\ntemperature_c=%d\nrot180=%d\ndither=%d\n"
+        "input_boot_ms=%.3f\npost_boot_ms=%.3f\ncompleted_boot_ms=%.3f\n"
+        "physical_attempted=%d\nupdate_rc=%d\nphysical_ok=%d\nreply_generated=%s\n"
+        "mirror_reply_observed=unknown_use_matching_update_log\n"
+        "post_stage=after_dither_pack_before_stock_mode_decision\n"
+        "write_ms=%.3f\ndump_complete=1\n",
+        exact_trace.token,exact_trace.command,exact_trace.w,exact_trace.h,
+        exact_trace.mode,exact_trace.force,exact_trace.update,exact_trace.frames,
+        exact_trace.decision,exact_trace.temperature,rot180,dither,
+        exact_trace.input_ms,exact_trace.post_ms,completed_ms,physical_attempted,
+        rc,physical_attempted && !rc,reply,(now()-write_start)*1000);
+    if (ok && (mn < 0 || (size_t)mn >= sizeof metadata || trace_write_all(fds[2],metadata,(size_t)mn))) ok=0;
+    for (int i=0; i<3; i++) if (fds[i]>=0 && close(fds[i])) ok=0;
+    if (!ok) for (int i=0; i<3; i++) if (created[i]) unlink(paths[i]);
+    LOG("exact trace %s: %s update=%d physical=%d rc=%d write=%.0f ms",
+        exact_trace.token,ok ? "saved" : "dump failed (no overwrite)",
+        exact_trace.update,physical_attempted,rc,(now()-write_start)*1000);
+    free(exact_trace.input); free(exact_trace.post);
+    exact_trace.input=exact_trace.post=NULL;
+    exact_trace.state=TRACE_DONE; /* One attempt per process, including IO failure. */
+}
+
 static int load_grey(const uint8_t *px, int w, int h) {	/* v4 "frame" command */
+    double t0 = now();
     if (!size_ok(w, h)) { LOG("FAIL frame %dx%d: need 1440x720 or 720x1440", w, h); return -1; }
     int16_t *g = malloc((size_t)w * h * sizeof *g); if (!g) return -1;
     for (size_t i = 0; i < (size_t)w * h; i++) g[i] = px[i];
-    img_from_grey(g, w, h); free(g); return 0;
+    img_from_grey(g, w, h); free(g);
+    LOG("input %dx%d prepared in %.0f ms: dither %.0f ms, pack %.0f ms", w, h, (now() - t0) * 1000, input_dither_ms, input_pack_ms);
+    return 0;
 }
 
 /* ---------------- hardware helpers ---------------- */
@@ -161,7 +358,14 @@ static int temperature(void) {
     if (d) closedir(d);
     return temp_fallback;
 }
+#ifdef A6L_EPDD_HOSTTEST	/* tests/test_epdd_drive.c: fake rail switch and page flips (no DRM, no sysfs) */
+static int a6l_test_power(int on);
+static int a6l_test_flip(uint32_t id);
+#endif
 static int power(int on) {
+#ifdef A6L_EPDD_HOSTTEST
+    return a6l_test_power(on);
+#endif
     if (dry) return 0;
     if (!power_path) { LOG("WARN no epd_power attribute: rails not switched"); return -1; }
     int f = open(power_path, O_WRONLY | O_CLOEXEC); if (f < 0) { LOG("FAIL open %s: %s", power_path, strerror(errno)); return -1; }
@@ -282,10 +486,20 @@ static int mkfb(struct fb *f) {
 static int lost_errno(int e) { return e == EACCES || e == ENOENT || e == EPERM || e == ENODEV || e == EINVAL; }
 static void on_flip(int f, unsigned seq, unsigned s, unsigned us, void *d) { (void)f; (void)s; (void)us; (void)d; if (flips && seq > last_seq + 1) gaps += seq - last_seq - 1; last_seq = seq; flips++; pending = 0; }
 static int flip(uint32_t id) {
+#ifdef A6L_EPDD_HOSTTEST
+    return a6l_test_flip(id);
+#endif
     drmEventContext ev = {.version = 2, .page_flip_handler = on_flip};
+    /* r5 bug hunt eink-display E1: a flip whose event missed the 1 s wait is still queued in the kernel. Its late event
+     * must not be taken for the completion of this flip (it would return one vblank early, and the next flip would fail
+     * with EBUSY, for ever). Wait for it first; if it still does not come, ask for a DRM reset (drm_lost: run_update
+     * closes the fd, which discards the stale event, and re-acquires the lease). */
+    while (pending) { struct pollfd p = {.fd = dfd, .events = POLLIN};
+        if (poll(&p, 1, 1000) <= 0) { LOG("FAIL page flip of an earlier update still not completed: resetting DRM"); drm_lost = 1; return -1; }
+        drmHandleEvent(dfd, &ev); }
     if (drmModePageFlip(dfd, crtc, id, DRM_MODE_PAGE_FLIP_EVENT, 0)) { int e = errno; LOG("FAIL pageflip: %s", strerror(e)); if (lost_errno(e)) drm_lost = 1; return -1; }
     pending = 1;
-    while (pending) { struct pollfd p = {.fd = dfd, .events = POLLIN}; if (poll(&p, 1, 1000) <= 0) { LOG("FAIL vblank timeout"); return -1; } drmHandleEvent(dfd, &ev); }
+    while (pending) { struct pollfd p = {.fd = dfd, .events = POLLIN}; if (poll(&p, 1, 1000) <= 0) { LOG("FAIL vblank timeout (flip still pending)"); return -1; } drmHandleEvent(dfd, &ev); }
     return 0;
 }
 /* v3: saved connector + mode (binary: magic, connector id, drmModeModeInfo) */
@@ -485,27 +699,47 @@ static void write_a6lepd(int n) {	/* --dry -: RLE lines on stdout (A6L_EINK_RLE 
     if (f) { fclose(f); LOG("wrote %s (%d frames)", p, n); } else fflush(stdout);
 }
 static double last_update_t; static int last_ms, fails_total, lib_only;
+/* r5 review fix F35: panel_unknown = the picture on the panel is not the one the library state assumes (a failed or
+ * partial update, a rail failure). The library already advanced its differential state, so the next picture is only
+ * drawn after a full recovery clear (white GC16 + INIT waveform, clear_kind("full")); rails_off_fail counts failed
+ * rail switch-offs (reported by "status"). Only the error handling changed: rail values/sequencing are untouched. */
+static int panel_unknown, rails_off_fail;
 static int drive(int n) {	/* scan out the n frames of the current update; rails only around the drive (v2) */
+    double tcold = now();
     if (!started) { if (drm_start()) return -1; started = 1; }	/* modeset with the real strobe pattern, as a6l_epd_play did */
+    double cold_ms = (now() - tcold) * 1000;
     unsigned g0 = gaps; int rc = 0; double t1 = now();
-    if (power(1)) LOG("WARN rails not switched on");
+    if (power(1)) {	/* F35: no waveform scanout without the rails; switch off whatever may have come up */
+        LOG("FAIL rails not switched on: update %d not driven", updates);
+        if (power(0)) { rails_off_fail++; LOG("FAIL rails not switched off after the failed switch-on"); }
+        last_ms = (int)((now() - t1) * 1000);
+        return -1;
+    }
+    double rails_on_ms = (now() - t1) * 1000, tp = now();
     for (int i = 0; i < lead && !rc; i++) rc = flip(idle.id);
+    double lead_ms = (now() - tp) * 1000; tp = now();
     unsigned gd = gaps;
     for (int k = 0; k < n && !rc; k++) { struct fb *f = (k & 1) ? &fb2 : &fa; memcpy(f->map, frames[k], FRAME); rc = flip(f->id); }
+    double wave_ms = (now() - tp) * 1000; tp = now();
     gd = gaps - gd;
     for (int i = 0; i < tail && !rc; i++) rc = flip(idle.id);
-    power(0);
+    double tail_ms = (now() - tp) * 1000; tp = now();
+    if (power(0) && power(0)) {	/* F35: every exit switches the rails off; a failure (after one retry) is an error */
+        rails_off_fail++; LOG("FAIL rails not switched off after update %d", updates); rc = -1;
+    }
     last_ms = (int)((now() - t1) * 1000);
+    LOG("update %d stages mono_ms=%.3f cold=%.0f rails_on=%.0f lead=%.0f waveform=%.0f tail=%.0f rails_off=%.0f", updates, now() * 1000, cold_ms, rails_on_ms, lead_ms, wave_ms, tail_ms, (now() - tp) * 1000);
     LOG("update %d shown in %d ms: %s, missed vblanks during drive=%u (total %u)", updates, last_ms, rc ? "FAILED" : "ok", gd, gaps - g0);
     return rc;
 }
 static int run_update(int force, int m, const char *what) {
-    int t = temperature(); double t0 = now();
+    double tt = now(); int t = temperature(); double t0 = now();
+    LOG("temperature stage mono_ms=%.3f read=%.0f ms value=%dC", t0 * 1000, (t0 - tt) * 1000, t);
     int nf = tc_decide(&img, handle, t, t, force, m), n = 0; uint8_t more = 1;
     while (more && n < MAXF) { struct buf *b = &ring[n % RING]; more = tc_update(b, handle);
         if (!frames[n] && !(frames[n] = malloc(FRAME))) { LOG("FAIL out of memory"); return -1; }
         memcpy(frames[n], b->data, FRAME); n++; }
-    updates++; LOG("update %d (%s): mode=%d force=%d temp=%dC decision=%d frames=%d generated in %.0f ms", updates, what, m, force, t, nf, n, (now() - t0) * 1000);
+    updates++; if (exact_trace.state == TRACE_CAPTURED && exact_trace.update == updates) { exact_trace.frames=n; exact_trace.decision=nf; exact_trace.temperature=t; } LOG("update %d (%s): mode=%d force=%d temp=%dC decision=%d frames=%d generated in %.0f ms", updates, what, m, force, t, nf, n, (now() - t0) * 1000);
     if (dry) { write_a6lepd(n); return 0; }
     if (lib_only) return 0;
     if (!idle_pattern) { if (!(idle_pattern = malloc(FRAME))) return -1; for (unsigned i = 0; i < FRAME / 4; i++) idle_pattern[i] = frames[0][i] & 0xffffff00u; }
@@ -514,12 +748,13 @@ static int run_update(int force, int m, const char *what) {
     for (int attempt = 0; attempt < 2 && rc; attempt++) {
         if (dfd < 0 && drm_open()) break;
         if (idle.map && !started) memcpy(idle.map, idle_pattern, FRAME);
+        if (exact_trace.state == TRACE_CAPTURED && exact_trace.update == updates) exact_trace.drive_attempted=1;
         rc = drive(n);
         if (rc && drm_lost) { LOG("WARN DRM access lost (lease revoked / composer restarted?): re-acquiring and driving again"); drm_close(); }
         else break;
     }
     wakelock(0);
-    last_update_t = now(); if (rc) fails_total++;
+    last_update_t = now(); if (rc) { fails_total++; panel_unknown = 1; }
     return rc;
 }
 /* v2 clears. Library facts (disassembly of the stock libtcon_eink.so, 23 Sep):
@@ -536,17 +771,30 @@ static int clear_init(const char *what) {
     return rc;
 }
 static int clear_white_gc(const char *what) { img_fill(0xff); return run_update(1, 2, what); }
-static int clear_kind(const char *k) {
+static int clear_kind2(const char *k) {
     if (!k || !*k || !strcmp(k, "full")) { int rc = clear_white_gc("clear-white"); return rc ? rc : clear_init("clear-init"); }
     if (!strcmp(k, "stock")) { int rc = clear_init("clear-init"); return rc ? rc : clear_white_gc("clear-white"); }
     if (!strcmp(k, "init")) return clear_init("clear-init");
     if (!strcmp(k, "gc")) return clear_white_gc("clear-gc");
     LOG("unknown clear kind '%s'", k); return -1;
 }
+static int clear_kind(const char *k) {	/* F35: a successful INIT-based clear re-establishes a known (white) panel */
+    int rc = clear_kind2(k);
+    if (!rc && (!k || strcmp(k, "gc"))) { if (panel_unknown) LOG("panel state known again (clear %s)", k && *k ? k : "full"); panel_unknown = 0; }
+    return rc;
+}
+/* F35: before drawing a picture on a panel in unknown state, run the full recovery clear; -1 = still unknown */
+static int recover(void) {
+    if (!panel_unknown || dry) return 0;
+    LOG("panel state unknown after a failed update: full recovery clear before the next picture");
+    if (clear_kind("full")) { LOG("FAIL recovery clear failed: panel state still unknown"); return -1; }
+    return 0;
+}
 static int clear_full(void) { return clear_kind("full"); }
 static int refresh(void) {	/* stock epd_force_clear: forced GC16 redraw of the current picture */
+    if (recover()) return -1;
     if (!have_last) return clear_white_gc("refresh-white");
-    memcpy(img.data, last_img, RGBA); return run_update(1, 2, "refresh");
+    memcpy(img.data, last_img, RGBA); return run_update(1, last_mode, "refresh");
 }
 /* Mode map (v2): 2 = GC16 full (39 frames), 0/3/4/5 = REGAL 16-grey partial (39), 1 = fast partial fewer greys (23),
  * >5 = A2 black/white (10). 0 = the library's own content analysis. Switching mode costs one transition update. */
@@ -558,10 +806,11 @@ static int mode_by_name(const char *n, int def) {
 }
 static int clear_every, since_clear;
 static int show_loaded(int m, const char *what) {
-    memcpy(last_img, img.data, RGBA); have_last = 1; return run_update(0, m, what);
+    memcpy(last_img, img.data, RGBA); have_last = 1; last_mode = m; return run_update(0, m, what);
 }
 static int show(const char *path, int m) {
     if (clear_every > 0 && ++since_clear >= clear_every) { since_clear = 0; clear_full(); }
+    if (recover()) return -1;
     if (load_pnm(path)) return -1; return show_loaded(m, path);
 }
 
@@ -572,12 +821,24 @@ static double t_boot;
 /* returns 0/-1; reply gets "OK ..." or "ERR ..." (without newline). For "frame", *need = bytes of pixels to read first. */
 static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_t rn);
 static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_t rn) {
-    char path[512], mname[32] = ""; int m, rc = 0, w = 0, h = 0;
+    char path[512], mname[32] = "", flag[16] = ""; int m, rc = 0, w = 0, h = 0;
+    if (!strncmp(line, "trace arm ", 10)) { rc=trace_arm(line+10); snprintf(reply,rn,"%s trace arm",rc ? "ERR" : "OK"); return rc; }
+    if (!strcmp(line, "trace cancel")) { rc=trace_cancel(); snprintf(reply,rn,"%s trace cancel",rc ? "ERR" : "OK"); return rc; }
+    if (!strcmp(line, "trace status")) { snprintf(reply,rn,"OK trace state=%d token=%s",exact_trace.state,exact_trace.token); return 0; }
+    if (!strncmp(line, "dither ", 7)) {
+        int selected = dither_parse(line + 7);
+        if (selected < 0) { snprintf(reply,rn,"ERR dither requires fs|ordered|none"); return -1; }
+        /* Single-threaded command dispatch: no current image/history rewrite.
+         * Only future load_grey/load_pnm conversion uses the selected algorithm. */
+        dither = selected;
+        snprintf(reply,rn,"OK dither=%s next-frame-only",dither_name(dither));
+        return 0;
+    }
     if (!strcmp(line, "ping")) { snprintf(reply, rn, "OK pong"); return 0; }
     if (!strcmp(line, "quit")) { stop = 1; snprintf(reply, rn, "OK quitting"); return 0; }
     if (!strcmp(line, "status")) {
         char st[200]; bringup_status(st, sizeof st);
-        snprintf(reply, rn, "OK updates=%d fails=%d last_ms=%d crtc=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f bringup=%s", updates, fails_total, last_ms,
+        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d crtc=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms,
                  started ? "on" : "off", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot, st[0] ? st : "-");
         return 0;
     }
@@ -587,25 +848,38 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     else if (!strncmp(line, "clear ", 6)) rc = clear_kind(line + 6);
     else if (!strcmp(line, "refresh")) rc = refresh();
     else if (!strncmp(line, "sleep ", 6)) { sleep((unsigned)atoi(line + 6)); rc = 0; }
-    else if (sscanf(line, "frame %d %d %31s", &w, &h, mname) >= 2) {
+    else if (sscanf(line, "frame %d %d %31s %15s", &w, &h, mname, flag) >= 2) {
         if (!payload) { snprintf(reply, rn, "ERR frame needs a pixel payload (socket only)"); return -1; }
-        m = mode_by_name(mname, mode);
+        if (flag[0] && strcmp(flag, "force")) { snprintf(reply, rn, "ERR unknown frame flag"); return -1; }
+        int clean = !strcmp(mname, "clean") || !strcmp(flag, "force");
+        m = !strcmp(mname, "clean") ? 2 : mode_by_name(mname, mode);
         if (clear_every > 0 && ++since_clear >= clear_every) { since_clear = 0; clear_full(); }
-        rc = load_grey(payload, w, h); if (!rc) rc = show_loaded(m, "frame");
+        rc = recover();
+        trace_poll();
+        if (!rc && size_ok(w,h)) trace_capture(payload,w,h,m,clean,line);
+        if (!rc) rc = load_grey(payload, w, h);
+        if (!rc) trace_post();
+        if (!rc && clean) {
+            /* Stock ghost clearing forces GC16 on the actual page. Reserve
+             * INIT/white sequences for startup, manual clear and recovery. */
+            memcpy(last_img, img.data, RGBA); have_last = 1; last_mode = m;
+            rc = run_update(1, m, "frame-clean");
+        } else if (!rc) rc = show_loaded(m, "frame");
     }
-    else if (sscanf(line, "frametest %511s %31s", path, mname) >= 1) {	/* test hook: a P5 file through the "frame" path */
+    else if (sscanf(line, "frametest %511s %31s %15s", path, mname, flag) >= 1) {	/* test hook: a P5 file through the "frame" path */
         FILE *f = fopen(path, "rb"); char mg[3] = {0}; int ok = f && fread(mg, 1, 2, f) == 2 && mg[0] == 'P' && mg[1] == '5';
         int fw = ok ? tok(f) : -1, fh = ok ? tok(f) : -1, mx = ok ? tok(f) : -1; uint8_t *px = NULL;
         ok = ok && mx == 255 && size_ok(fw, fh) && (px = malloc((size_t)fw * fh)) && fread(px, 1, (size_t)fw * fh, f) == (size_t)fw * fh;
         if (f) fclose(f);
         if (!ok) { free(px); snprintf(reply, rn, "ERR frametest %s: need P5 720x1440/1440x720", path); return -1; }
-        char hdr[64]; snprintf(hdr, sizeof hdr, "frame %d %d %s", fw, fh, mname[0] ? mname : "");
+        char hdr[96]; snprintf(hdr, sizeof hdr, "frame %d %d %s%s%s", fw, fh, mname[0] ? mname : "", flag[0] ? " " : "", flag);
         rc = exec_cmd(hdr, px, reply, rn); free(px); return rc;
     }
     else if (sscanf(line, "show %511s %31s", path, mname) >= 1) { m = mode_by_name(mname, mode); rc = show(path, m); }
     else { LOG("unknown command '%s'", line); snprintf(reply, rn, "ERR unknown command"); return -1; }
     if (rc) snprintf(reply, rn, "ERR update failed (see log)");
     else snprintf(reply, rn, "OK shown in %d ms (update %d)", last_ms, updates);
+    trace_finish(rc,reply,exact_trace.drive_attempted);
     return rc;
 }
 static void commands(FILE *q) {	/* script / FIFO: same commands, replies only logged */
@@ -639,7 +913,13 @@ static void client_input(struct client *c) {
         if (sscanf(c->buf, "frame %d %d", &w, &h) == 2) {
             if (!size_ok(w, h)) { client_reply(c, "ERR frame size must be 720x1440 or 1440x720"); client_drop(c); return; }
             snprintf(c->hdr, sizeof c->hdr, "%s", c->buf); c->need = (size_t)w * h;
-        } else if (c->buf[0] && c->buf[0] != '#') { char reply[512]; exec_cmd(c->buf, NULL, reply, sizeof reply); client_reply(c, reply); }
+        } else if (c->buf[0] && c->buf[0] != '#') {
+            char reply[512];
+            if (!strncmp(c->buf,"dither ",7) && memchr(c->buf,0,used-1))
+                snprintf(reply,sizeof reply,"ERR embedded NUL in dither command");
+            else exec_cmd(c->buf, NULL, reply, sizeof reply);
+            client_reply(c, reply);
+        }
         memmove(c->buf, c->buf + used, c->len - used); c->len -= used;
     }
 }
@@ -649,6 +929,7 @@ static void serve(int lfd) {
     while (!stop) {
         struct pollfd p[MAXCL + 1]; int n = 0; p[n++] = (struct pollfd){lfd, POLLIN, 0};
         for (int i = 0; i < MAXCL; i++) if (cl[i].fd >= 0) p[n++] = (struct pollfd){cl[i].fd, POLLIN, 0};
+        trace_poll();
         int r = poll(p, (nfds_t)n, 1000);
         if (r < 0 && errno != EINTR) { LOG("FAIL poll: %s", strerror(errno)); break; }
         if (idle_off_s > 0 && started && last_update_t && now() - last_update_t > idle_off_s) crtc_off("idle");
@@ -690,7 +971,12 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--waveform-cache") && v) wcache = argv[++i];
         else if (!strcmp(a, "--lib") && v) lib = argv[++i];
         else if (!strcmp(a, "--mode") && v) mode = mode_by_name(argv[++i], 2); else if (!strcmp(a, "--clear-every") && v) clear_every = atoi(argv[++i]); else if (!strcmp(a, "--temp") && v) temp_fallback = atoi(argv[++i]);
-        else if (!strcmp(a, "--rot180")) rot180 = 1; else if (!strcmp(a, "--no-dither")) dither = 0; else if (!strcmp(a, "--show") && v && nshow < 32) shows[nshow++] = argv[++i];
+        else if (!strcmp(a, "--rot180")) rot180 = 1; else if (!strcmp(a, "--no-dither")) dither = 0;
+        else if (!strcmp(a, "--dither")) {
+            int selected = v ? dither_parse(v) : -1;
+            if (selected < 0) { fprintf(stderr,"--dither requires fs|ordered|none\n"); return 2; }
+            dither = selected; i++;
+        } else if (!strcmp(a, "--show") && v && nshow < 32) shows[nshow++] = argv[++i];
         else if (!strcmp(a, "--hold") && v) hold = atoi(argv[++i]); else if (!strcmp(a, "--fifo") && v) fifo = argv[++i]; else if (!strcmp(a, "--script") && v) script = argv[++i];
         else if (!strcmp(a, "--dry") && v) { dry = 1; dry_prefix = argv[++i]; } else if (!strcmp(a, "--power") && v) power_path = argv[++i];
         else if (!strcmp(a, "--xon-line") && v) xon_line = atoi(argv[++i]); else if (!strcmp(a, "--lead") && v) lead = atoi(argv[++i]);

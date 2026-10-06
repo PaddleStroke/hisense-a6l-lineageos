@@ -1,0 +1,55 @@
+// Hisense A6L Wi-Fi vendor HAL + wpa_supplicant driver-command lib (r5 review fix F5, docs/wifi-hal-20260929.md)
+
+// Loaded by android.hardware.wifi-service through /vendor/etc/wifi/vendor_hals/a6l_wifi_vendor_hal.xml.
+cc_library_shared {
+    name: "libwifi-hal-a6l",
+    vendor: true,
+    compile_multilib: "first",
+    srcs: ["a6l_wifi_hal.cpp"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    header_libs: ["wifi_legacy_headers"],
+    shared_libs: [
+        "libcutils",
+        "liblog",
+        "libnl",
+    ],
+    required: ["a6l_wifi_vendor_hal.xml"],
+}
+
+prebuilt_etc {
+    name: "a6l_wifi_vendor_hal.xml",
+    vendor: true,
+    src: "a6l_wifi_vendor_hal.xml",
+    sub_dir: "wifi/vendor_hals",
+}
+
+// BOARD_WPA_SUPPLICANT_PRIVATE_LIB (wifi/BoardConfig-wifi.mk). Same cflags as wpa_supplicant itself, so the
+// driver_nl80211 structures match the binary it is linked into.
+cc_library_static {
+    name: "lib_driver_cmd_a6l",
+    vendor: true,
+    srcs: ["driver_cmd_a6l.c"],
+    shared_libs: [
+        "libc",
+        "libcutils",
+        "liblog",
+    ],
+    header_libs: ["libcutils_headers"],
+    cflags: [
+        "-DCONFIG_ANDROID_LOG",
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-parameter",
+    ],
+    include_dirs: [
+        "external/libnl/include",
+        "external/wpa_supplicant_8/src",
+        "external/wpa_supplicant_8/src/common",
+        "external/wpa_supplicant_8/src/drivers",
+        "external/wpa_supplicant_8/src/l2_packet",
+        "external/wpa_supplicant_8/src/utils",
+        "external/wpa_supplicant_8/src/wps",
+        "external/wpa_supplicant_8/wpa_supplicant",
+    ],
+    defaults: ["wpa_supplicant_cflags_default"],
+}

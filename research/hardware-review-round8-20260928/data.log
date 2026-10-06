@@ -1,0 +1,4 @@
+F59 connected_reconfig=1 settings_queries_after_event=0 cached_IP=10.0.0.5/30 cached_DNS=8.8.8.8 cached_MTU=1430
+F59 fresh_query_positive_control IP=10.0.0.9 DNS=9.9.9.9 MTU=1280
+F60 disconnect_during_settings consumed=1 setup_success=1 cached_calls=1 loss_callbacks=0
+F60 post_setup_disconnect_positive_control loss_callbacks=1

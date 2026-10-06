@@ -1,0 +1,442 @@
+# A6L handoff for Claude — 5 October 2026 evening
+
+**LATEST: The bounded GPU restoration diagnostic is built, audited and staged
+for the morning in `rom-r7c-gpu-trace-20261005`. It has NOT been flashed or tested.
+The phone was left asleep at the user's request; the native guard was released
+and USB disappeared. Overnight stability is unknown. The installed resume-order
+candidate FAILED with the same opcode/ringbuffer fault. Read the final ready
+section and `gpu-restoration-test-20261006.md` before using earlier instructions.**
+
+Read this first, then `docs/pm-diagnostics-20261005.md`. User requests continuity
+because Codex usage is almost exhausted. This is the same authorized ongoing
+port/fix/flash task. Do not ask again for flash permission. Ask only for physical
+actions needed when the phone cannot be controlled remotely.
+
+## Current installation and authoritative status
+
+Morning diagnostic payload: vendor
+`eea474c336d85abdac7bf9001ec7db8b977ba4a458ee83acaa1ccc3f2a93ceb2`
+(186793984 bytes), module
+`25e060bbc81f3ed7b0004ca878d152dced2329c3aed0f953692f4ea04ac5acb6`.
+Laptop kit `/home/pierrelouis/A6L-usb-20260915/rom-r7c-gpu-trace-20261005`.
+Its full KIT checksums, Stage verification and offline updater dry-run passed.
+Only vendor differs from the installed kit; the updater checks live identity
+and skips unchanged boot/system/DTBO. No phone checks or writes ran tonight.
+
+After preserving overnight evidence and obtaining recovery tomorrow, the
+checksummed helpers are in this new kit's `extra/`:
+
+1. `python3 extra/start-gpu-trace-flash.py` starts the attended hash-only update.
+2. `python3 extra/flash-progress-gpu-trace.py` reports progress; after completion,
+   `python3 extra/check-gpu-trace-install.py` must pass before booting.
+3. Copy `extra/check-runtime-gpu-trace.py` to the laptop's
+   `/tmp/check-runtime-gpu-trace.py`, then use
+   `python3 extra/boot-gpu-trace-comparison.py`. This depends on the retained,
+   previously reviewed `/tmp/prepare-quiet-wfi-test.py`,
+   `/tmp/verify-release-quiet-wfi.py`, `/tmp/restart-host-collector.py` and selected
+   harness. If those are missing, restore their reviewed originals; do not
+   improvise or reuse stale boot receipts.
+4. Ask for a fresh main rear video → save → Home, then run
+   `python3 extra/run-prefix-gpu-trace.py 42` exactly once on that prepared boot.
+   Let the 120-second observation complete and preserve all evidence before
+   any further boot. See the morning procedure for interpretation and limits.
+
+**Installed image: GPU resume-order vendor update, readback verified and then
+physically tested; it did not fix the crash. Latest phone state: Android was
+put to sleep, framework Dozing observed and native guard released. The new
+diagnostic kit is staged separately and NOT installed.** Original installation
+capture `20261005T190602Z`, workerexit0,
+services restored, vendor235d2545… matches, protected invariants unchanged.
+Boot/system/DTBO were skipped. See the local install receipt and final update
+below. Tomorrow's planned vendor-only diagnostic flash is a different payload.
+
+- Live state: `firmware/extracted/pm-logging-20261005/status.json` and
+  `firmware/extracted/rom-r7c-20261004/status.json`.
+- Candidate audit/staging/install receipts:
+  `firmware/extracted/pm-logging-20261005/gpu-resume-vendor-candidate/`.
+- Laptop kit: `/home/pierrelouis/A6L-usb-20260915/rom-r7c-gpu-resume-20261005`.
+- WSL kit: `/home/a6l/rom-v2/kit-r7c-gpu-resume-20261005/rom-v2`.
+- Candidate boot unchanged:
+  `d1ecec46e10d1bf072f3ac91192e1b01cefe7d4354d4eaa4877a8fa84e75c33f`.
+- Candidate vendor:
+  `235d2545e04e1c41ae7cafcc5132cd620d186977fcbcef0c2bf148ed433ff4ec`,186789888bytes.
+- Candidate mounted `msm.ko`:
+  `34d552eb967164bd4dc4a91c691829e667001572c7dc2e92e8fbb1d23e4e1d9d`.
+- System unchanged:
+  `a696ad3d41888696841c6289bb487d2e3a2d2cd7574314dc927f65d1ee7f7dd7`.
+- DTBO unchanged:
+  `6925112258af276ad2d16757df054bbc6e98148b5273f0a214e7d8ddd5044e7e`.
+- ROM remains r7c, kernel `7.2.3-a6l-probe+`; this is a narrow trial, no new full ROM.
+- Previous vendor (rollback kit `rom-r7c-pm-prefix-20261005`):
+  `66f127be0a8a2a305ced8b9f1e299010e2a911853dcdc3048cae3961ddffe4cf`.
+
+User explicitly rejects accumulating development-ROM backups. Use updater
+`--backup-policy hash-only`, skip identical partitions, reuse kits/hardlinks.
+Keep existing stock Android9 backup; do not create another full disk/ROM backup.
+
+## What finally localized the crash
+
+After fresh main rear video, boot `fe1ee196-3529-4d31-b8c4-c76ff492fdbf`:
+
+1. Prefix40 nonce `20261005T181335Z-prefix40`:40suspend/34resume callbacks,
+   includes display/DSI/DPU, exact paired wrappers return0. Stable120.171s,
+   59same-boot checks, no connection gaps.
+2. Prefix42 nonce `20261005T181631Z-prefix42`: identical first40 callback
+   identities, adds null PHY41 and actual Adreno42.42/36 wrappers return0,
+   returned snapshots durable before inhibitor release. eMMC/USB suspend excluded.
+3. GPU suspend/resume returns0; suspend exits5730.750673. About17.54s later,
+   host kernel logger captures drain timeout, CP opcode error, GPU fault and
+   hangcheck recovery, offending SystemUI RenderThread. Phone-disk tail stopped
+   before this fault. USB initially disappeared, then phone returned on new boot
+   `ac419bcc-0cb8-43f9-92b3-1616abf2513d`. No terminal reset/panic stack captured.
+
+Evidence:
+- `gpu-prefix42-physical-result.json` in pm-logging directory.
+- `laptop-logs/awake-20261005T181335Z/kmsg.decoded.txt`:
+  at5748.294056 ring0 rptr/wptr60/9 timeout;
+  at5748.294585 possible opcode2;
+  fence2440/status800001C1;5749.294600 hangcheck recover.
+- `laptop-logs/pm-20261005T181335Z-prefix40/` and
+  `laptop-logs/pm-20261005T181631Z-prefix42/`.
+- New-boot retained retrieval `laptop-logs/android-capture-20261005T181913Z/`:
+  6993657bytes, no errors, CRC-valid old rings. Pstore empty.
+
+This implicates GPU transition independently of storage/USB suspend. It does
+NOT prove a particular worker actually ran inside the power-restoration window.
+Zero callback returns do not establish sustained stability. wptr9 resembles
+CP_ME_INIT payload length, but no ring bytes prove that interpretation.
+
+## GPU candidate: scope, validation, rebuild trap
+
+Source review finds adreno_system_resume starts nonfreezable submission workers
+BEFORE pm_runtime_force_resume. GPU mutex/runtime-get does not close this forced
+PM window; runtime-get error is ignored elsewhere. Candidate calls force-resume
+first, returns its error unchanged, then restarts scheduler only on success.
+One function changes; failed restoration leaves queues parked. Trial fix only.
+The old ordering also exists upstream; do not call this a known upstream fix.
+
+Frozen directories inside pm-logging-20261005:
+- `adreno-resume-order-review-20261005/` — source/race audit.
+- `adreno-resume-order-candidate-20261005/` — patch, actual-function fixture,
+  strict and ASan/UBSan740assertions each, root independently replayed.
+- `adreno-resume-order-module-build-20261005/` — frozen module/build receipt,
+  manifest SHA256 `45e987a0464b2c05452fdd6a21f75c475c96f5b54ac7881024706e35dff89852`.
+- `gpu-resume-module-root-review.json` — independent ELF/ABI review.
+
+759import CRCs/vermagic unchanged;127parent modules checked; of1985functions
+only adreno_system_resume differs. Compilation is isolated module-only; accepted
+kernel output and canonical source were preserved/restored. No kernel Image or
+system rebuild requested. A single4.3GiB isolated working cache exists.
+
+CRITICAL: Installed old GPU module42e8e5d8… contained two October2 patches whose
+canonical sources were later restored! Rebuilding canonical sources alone would
+drop shipped fixes. Builder explicitly replays exact
+`firmware/extracted/gpu-recovery-candidate-20261002-170137/recover-before-retire.patch`
+and `a5xx-hlsq-cleanup.patch` plus this candidate. Fresh baseline matches every
+installed ELF section except build ID. Preserve these patches for future builds.
+
+First vendor build accidentally reused cached old module; content audit caught
+it before any flash. Corrected build explicitly staged only msm.ko at
+`/home/a6l/android/a6l-lineage24/device/hisense/a6l/rom/prebuilt/vendor/lib/modules/msm.ko`.
+It now contains candidate34d552…; other modules unchanged. Future generic pipeline
+staging may overwrite it with old payload. Promote explicit module/source input
+only AFTER physical acceptance, and preserve older GPU patches. New vendor audit
+passes: msm.ko plus three timestamp-only property files changed,1059unchanged,
+no files added/deleted. See `image-audit.json`.
+
+## Installation and exact next comparison
+
+Workspace PowerShell, SSH configuration `tools/a6l-laptop-ssh.conf`:
+
+```powershell
+ssh.exe -F tools/a6l-laptop-ssh.conf a6l-laptop 'python3 /tmp/flash-progress-gpu-resume.py'
+```
+
+Flash start helper `/tmp/start-gpu-resume-flash.py` runs pinned checks/dry-run,
+then launches updater detached with hash-only policy. **Do not start twice**:
+first inspect kit `logs/flash-current.json`, log and newest capture/session/report.
+Completion requires session worker_exit0, services_restoredtrue, noerror,
+report readback_verified/invariants_unchanged, onlyvendor written, boot/system/
+DTBO skipped, vendor readback equals235d2545…. Flash progress helper is read-only.
+
+After complete readback, save local install receipt before reboot. Recovery→
+Android uses explicitly targeted `adb -s HLTE730T-PROBE shell 'echo b > /proc/sysrq-trigger'`.
+The updated GPU is loaded only on the new Android boot. Restore adb root, wait
+for completion and run `/tmp/check-runtime-gpu.py` with the NEW laptop kit path:
+it checks installed boot, full vendor prefix, mounted module, logger/config pins,
+prefix parameter-1, PM testnone, quietconsole1 and healthy logs.
+
+Next physical test must use a **fresh prepared boot**; old ready files are stale:
+
+1. `prepare-quiet-wfi-test.py` with OLD `rom-r7c-pm-prefix-20261005` kit path
+   is intentionally used for existing harness/log whitelist. No --adopt option
+   on a clean boot. It saves48original idle controls, disables40non-WFI states,
+   quietconsole1, holds owned native guard and prepares tracing/recorder.
+2. `verify-release-quiet-wfi.py` requires exact preparation path; it proves four
+   fresh CRC rings and correct trace ownership before releasing native guard.
+3. Write oldkit `logs/pm-prefix-comparison-current.json` with readytrue, NEW boot
+   ID and **gpu_module_sha25634d552…**. Preserve preparation/trace proof.
+4. Start host collector using `/tmp/restart-host-collector.py` and oldkit path.
+   Keep it through120s after return; it finally captured the missing fault.
+5. Ask user fresh10s main rear video→Stop/save→Home, LCDawake. Then explicitly
+   `/tmp/run-prefix-selected.py 42` ONLY. Controller module pin now reads ready
+   file; stale old boot or module refuses before GO. Actual callback order can
+   change between boots: inspect identities before interpreting ordinal42.
+6. Run read-only `/tmp/observe-prefix-return.py` with that exact returned receipt
+   (inspect its argument schema); sustained120s same-boot observation is separate
+   from callback return proof. If USB drops, restart collector if it ended and
+   evidence permits. USB loss alone is unavailable evidence, NOT proven reboot.
+7. If stable, test ordinary fresh video→Home→Power lock20s→wake and another minute
+   responsive, with same logging. Only this can clear the user's real failure.
+
+If candidate fails, STOP widening callback groups: captured GPU fault already
+localized transition. Add bounded worker/force-runtime/job/ring-init tracing
+to distinguish race from bad postcollapse CP initialization/stale state. Keep
+source/kernel/module provenance and surviving host tail. Do not mix eink/encoder
+changes or claim a cause from proximity to the last disk log.
+
+Before user recovery, ac419boot had native diagnostic guard retained, PMnone,
+prefix-1, NOT fresh WFI-prepared. Recovery reboot clears temporary guards/idle
+controls; never reuse its old ready/guard receipts on new Android boot.
+
+## Other fixes, findings and outstanding work
+
+- Quiet debug console fixed measured wake delay:7.2seconds→submillisecond console
+  resume and attended instantaneous wake. Do not restore verbose console.
+- USB legacy parent lost QSCRATCH configuration; restoration physically passes
+  two attended real sleep cycles. Does not solve post-video GPU crash. Deeper
+  CPU idle remains unvalidated; current isolation uses WFI-only.
+- Camera fence-FD ownership repair shipped in oldvendor66f127…; actual FD fixture
+ 1667checks. It did not clear crash. New GPU vendor retains it unchanged.
+- User accepts all three camera previews and recording/save/playback with audible
+  video sound. Optical washed-out colors remain; calibration/stock comparison
+  pending. Native previews ~30fps. Video software bottleneck persists: r7c9.295fps;
+  Camera-only direct-YUV signed APK trial16.463fps, saved406distinct frames, AAC
+  continuous. Current /data/app trial survives vendor-only flash. No r7d exists.
+- Actual DT Venus disabled. Hardware encoder offline modeled candidate exists,
+  not physically activated. See `video-encoder-audit-20261004/README.md` and live
+  status. Need firmware/ABI/actual C2 lifecycle/hardware acceptance, not just an
+  offline ioctl replay. Encoder/thermal warnings do not establish electrical short.
+- Audio video recording now audible per user; separate voice WAV/playback and
+  two-way modem call audio still need confirmation. Modem data already works;
+  SIM moved between phones, ask availability before modem retest.
+- E-ink labels black and top row visible per user; notification moving artifacts
+  persist. White bars fixed. Faster behavior accepted as improved, not stock parity.
+  Avoid intrusive repeated sharpening; fastest has less flashing with tolerable
+  ghosting. Dualux watchdog candidate remains offline/uninstalled. See latest
+  eink agent evidence rather than promise15/30/60fps panel performance.
+
+## Practical safety/continuity
+
+- Android serial1e529013; recoveryHLTE730T-PROBE. Always explicit `adb -s`.
+  Daily phone3c99e8/HLTE730T may also be attached: never touch it.
+- Recovery entry: unplug USB→Power untiloff→Power+VolDown→reconnect. Charging-mode
+  trap can produce backlit black/noadb and wipe ramoops; unplug before forced reset.
+- Preserve logs before another Android boot. Userdata/metadata prev rings and host
+  rings are useful; pstore/retention failed across tested warm and recovery resets.
+  Do not claim a reliable surviving RAM logger. No safe raw persistent scratch
+  backend has been established. Do not repurpose RTC/IMEM registers.
+- Repo `C:/Users/Pierre/Desktop/A6L`; WSL Ubuntu-24.04/root; SSH laptop192.168.1.22
+  configured key/pinned host. Build `/home/a6l/android/a6l-lineage24`.
+- Avoid pkill patterns matching your own command; use unique relay/task names.
+  Recovery output has linker warning lines; tools already handle markers.
+- Do not rerun old record-prefix-zero/delayed-restart generators: they overwrite
+  current status with obsolete boot/preparation. Preserve chronology and receipts.
+
+## Final installation/runtime update
+
+Pending at initial write. Codex will append verified result here, and update
+status.json and candidate install receipt before any next test.
+
+
+2026-10-05T19:06:57.173379+00:00 — **Flash running**: PID2688441, laptop log `/home/pierrelouis/A6L-usb-20260915/rom-r7c-gpu-resume-20261005/logs/flash-20261005T190601Z.log`. Local `gpu-resume-vendor-candidate/flash-current.json` saved. Do not launch updater again or disconnect until worker/report completion.
+
+
+
+2026-10-05T19:08:51.709404+00:00 — **Installation complete and verified. Phone deliberately remains in recovery.** Only vendor written/readback235d2545…; boot/system/DTBO skipped, protected invariants unchanged, workerexit0/servicesrestored. Hash-only, no development-image snapshots. Local candidate `install-receipt.json` is authoritative. New GPU has not yet been loaded into Android; runtime and physical acceptance pending. Next: boot Android and follow the fresh preparation/runtime steps above.
+
+
+2026-10-05T19:11:29.040966+00:00 — User requested testing now; GPU update already installed, boot requested via reviewed `/tmp/boot-gpu-resume-comparison.py`. Runtime/fresh preparation in progress. Do not flash again.
+
+2026-10-05T19:13:19.783983+00:00 — **Supersedes recovery state above: Android runtime verified and fresh comparison ready.** Boot `4b82534d-3b5a-435f-8493-b4bd79928eaf`; full vendor, boot and mounted GPU pins pass.40non-WFI states disabled for isolation, quietconsole1, four fresh rings proved before inhibitor release. Preparation `/home/pierrelouis/A6L-usb-20260915/rom-r7c-pm-prefix-20261005/logs/quiet-wfi-20261005T191227Z`. Host collector active; PMnone/prefix-1. Awaiting fresh10s main rear video→save→Home, then explicit prefix42 and120s observation; no physical acceptance yet. Local candidate gpu-runtime-current.json/gpu-comparison-current.json and status.json saved.
+
+
+## GPU candidate physical comparison FAILED — supersedes earlier ready/recovery states
+
+User confirmed spontaneous reboot after fresh main rear video and candidate
+prefix42 (`20261005T191411Z-prefix42`). Mounted module34d552… was verified before
+GO.42/36 callbacks return0; returned proof/durable snapshots pass, but120second
+stability fails.17same-boot samples then loss; observation49.248s correctly
+classified unavailable until user report and new boot confirmed restart.
+
+Host CRC-valid kernel ring again captures the same failure signature:
+suspendexit204.040381, drain timeout242.378048 rptr/wptr60/9, CP opcode error
+possibleopcode1, GPU fault ring0/fenced4b/status800001C1, hangcheck recovery
+243.378589, SystemUI RenderThread offending. Thus restore-before-scheduler
+ordering alone does NOT fix the observed fault. Fault about38.34s after return;
+longer delay is not evidence of improvement. No terminal reset stack captured.
+
+New boot `a89a93c7-4526-4a08-81b6-235938a2c610`; adbroot regained. Retained
+capture `android-capture-20261005T191641Z` saves5762999bytes, no errors, sameboot.
+Phone is in Android with an owned native partial inhibitor retained to protect
+diagnostics, PMnone/prefix-1. Current boot has NOT been freshly WFI-prepared.
+Do NOT reuse old ready files or release the guard for another test unchanged.
+
+Local `gpu-resume-vendor-candidate/physical-trial-result.json` and
+`gpu-trial-restart-current.json` are authoritative. Host trace under
+`laptop-logs/awake-20261005T191249Z/`; trial/private callback receipts under
+`laptop-logs/pm-20261005T191411Z-prefix42/`; retained capture copied locally.
+
+Next: direct source audit/bounded instrumentation of A5xx postcollapse CP/ring
+initialization and actual worker/power ordering. The recurring wptr9 and opcode
+fault motivates inspecting initialization, but packet bytes/register state are
+still needed; do not declare bad CP_ME_INIT proven. No further blind driver
+prefix sweep, unchanged trial, or automatic real sleep test. Candidate module
+remains installed, physical acceptance failed; retain oldvendor66f127… kit for
+deliberate rollback if needed. Other e-ink/encoder/audio candidates remain out.
+
+
+### Latest phone state: user requested overnight sleep
+
+Supersedes retained-guard state above. On boota89a93c7, explicit user request
+fulfilled: stay_on_while_plugged_in=0, inputKEYCODE_SLEEP223; framework reported
+Dozing, then owned native partial guard released (`held=false, refCount=0`).
+USB subsequently absent. No restart requested. Full kernel sleep and overnight
+stability are unverified; USB loss alone is not evidence of another crash.
+Leave phone alone tonight. Next session ask its physical state/wake behavior,
+reconnect if needed, preserve logs before any forced restart. Restore fresh
+diagnostic preparation deliberately before another test; old ready files stale.
+Local `gpu-resume-vendor-candidate/night-sleep-receipt.json` and status saved.
+
+
+### Overnight diagnostic preparation authorized
+
+User requested instrumentation now and physical test tomorrow morning. Phone
+must remain asleep tonight; no wake/flash. Existing GPU agent is preparing
+`firmware/extracted/pm-logging-20261005/gpu-restore-trace-20261005/`: default-off,
+bounded one-shot restore/first-submit/initialization/ring evidence, starting from
+exact installed34d552… including October2 shipped patches. Reuse isolated build
+cache; preserve accepted output and canonical source/mtime. Root reviews source,
+safe powered-MMIO placement, log budgets and ABI before vendor-only packaging.
+Not yet built/packaged at this note. Look for WIP README and later build receipts.
+Recurring hardware rptr60 versuswptr9 motivates ring/CPinit measurement, not a
+proven pointer-reset bug. Capture forcePM/runtime status, actual init return,
+first job and existing safe powered registers/ring words. No speculative reset,
+sleep fix or encoder/e-ink patch mixed into this diagnostic. Status updated.
+
+
+### GPU restoration diagnostic module review complete; packaging running
+
+Frozen manifest `2f2cf8de52fa21f3beb9f152d53d0326d0305715fb04ebcc6e3c57e3766251e5`; module `25e060bbc81f3ed7b0004ca878d152dced2329c3aed0f953692f4ea04ac5acb6`. Baseline matches installed34d552 byte-for-byte;759import records/CRCs unchanged (section ordering changes harmlessly),127parent ABI checks pass, no exports/new imports. Root verifies all61pins and strict/sanitizer replay, exact production-statement undo comparison, bounded source/control/MMIO review. One consumed capture perboot,96generic+12fault lines,120s active. Existing source, accepted kernel output and shippedpatches preserved. No physical diagnosis/fix yet.
+
+
+### GPU restoration diagnostic ready for morning
+
+Frozen manifest `2f2cf8de52fa21f3beb9f152d53d0326d0305715fb04ebcc6e3c57e3766251e5`; module `25e060bbc81f3ed7b0004ca878d152dced2329c3aed0f953692f4ea04ac5acb6`. Baseline matches installed34d552 byte-for-byte;759import records/CRCs unchanged (section ordering changes harmlessly),127parent ABI checks pass, no exports/new imports. Root verifies all61pins and strict/sanitizer replay, exact production-statement undo comparison, bounded source/control/MMIO review. One consumed capture perboot,96generic+12fault lines,120s active. Existing source, accepted kernel output and shippedpatches preserved. No physical diagnosis/fix yet.
+Vendor audit SHA `eea474c336d85abdac7bf9001ec7db8b977ba4a458ee83acaa1ccc3f2a93ceb2`, 186793984bytes; onlymsm.ko plus allowedtimestamp props changed. Kit `/home/pierrelouis/A6L-usb-20260915/rom-r7c-gpu-trace-20261005` staged/verified; **NOT flashed**. Phone left untouched after userrequested sleep. Boot/system/DTBO reused; hash-only updater. See `gpu-restoration-test-20261006.md`; pinned helpers/controller in kitextra and workspace.
+Android prebuilt inputmsm restored to34d552 after temporary packaging staging; its timestamp intentionally refreshed so nextvendorbuild restages baseline. Android cachedvendorimage is diagnostic; use explicit kit/payloadpins forfuturebuild. Isolatedmodulecache currentlycontains diagnosticrawc351…; frozenbuildhelper requires reviewedbaseline-cache provenance forreplay, do not rerunblindly.
+
+
+## 6 Oct morning (Claude) — trace flashed; first armed run partially lost to a staging bug
+
+- Overnight: NO crash. Recovery capture `laptop-logs/recovery-20261006T054602Z` (CRC-valid): boot a89a93c7
+  did repeated real s2idle cycles, then clean user shutdown 07:38 local. Repeated buddy-watchdog
+  "hard LOCKUP cpu5/cpu6" warnings during s2idle with deep idle enabled — noted, separate issue.
+- Recovery note: fresh V74 recovery has NO mmcblk until `/sdhci-msm.ko` is insmodded (updater does it);
+  `capture-pm-recovery-20261005.py` needs that first. PowerShell 5.1 mangles nested quotes; `adb shell`
+  in a piped `bash -s` eats stdin — use `</dev/null`.
+- Trace vendor flashed/readback verified (`gpu-trace-vendor-candidate/install-receipt.json`); boot/system/DTBO skipped.
+- `adb reboot` from Android -> backlit black, no USB at all (hung restart / early boot, never reached
+  userspace). User forced recovery; recovery->sysrq-b path works. Avoid `adb reboot` from Android.
+- Preparation must run right after boot: after ~35 min the a6l_pm trace buffer is full (2 MB) and the
+  watcher grep takes >5 s, failing prepare's 3 s phases.txt check (and truncating phases.txt).
+- Armed run `20261006T064418Z-prefix42` on boot 9590b652: arm consumed, 42/36 return 0, trace active,
+  BUT `observe-prefix-return.py` was never staged into kit `extra/` -> controller FileNotFoundError ->
+  finally disarmed ~5 s after return, before the first post-resume submit. Only 11 software-state lines.
+  They show force/runtime resume ret0, needs_init=1, scheduler restarted after. Fault reproduced
+  30.5 s after suspend exit, identical signature (rptr/wptr 60/9 then 5C/9, opcode 0x1, status 800001C1,
+  SystemUI RenderThread). Init/ring/MMIO samples NOT captured. See `gpu-trace-vendor-candidate/physical-trial-1-result.json`.
+- Fix before the next (new-boot) attempt: copy reviewed `/tmp/observe-prefix-return.py`
+  (sha256 6f63e649…) next to the kit's `extra/run-prefix-gpu-trace.py`. No module/vendor change needed.
+
+### 6 Oct — second armed run (boot 14340858): MECHANISM CAPTURED
+
+Observer staged; run `20261006T065200Z-prefix42`, 71 trace lines in host ring
+`laptop-logs/awake-20261006T064745Z/kmsg.claude-decoded.txt`; restart confirmed (new boot 072ad7ce).
+Before hw_init the CP still holds pre-suspend state: CP_RB_RPTR=CP_RB_WPTR=0x1177, CP_PFP_ME_CNTL=0
+(not halted). RB programming resets RPTR to 0 but WPTR stays 0x1177; clearing ME halt makes the CP
+replay STALE ring contents from 0 and it stops at 0x60 before CP_ME_INIT (correct packet at ring[0..8])
+is even written. WPTR flush=9 < RPTR 0x60 -> drain timeout, hw_init -22, driver dispatches anyway,
+recover repeats (stale WPTR 0x2e), hangcheck, restart. So rptr/wptr 60/9 is explained.
+Fix candidate: restore CP power-on state at start of a5xx_hw_init (RBBM soft reset as a5xx_recover, or
+halt + zero WPTR) and refuse dispatch on hw_init failure. Open: why GX is not collapsed / why only after
+video. See `gpu-trace-vendor-candidate/physical-trial-2-result.json`.
+
+### 6 Oct — CP-reset fix flashed; controlled post-video GPU test PASSES
+
+Fix: `docs/gpu-cp-reset-fix-20261006.md`, module 2bddfcdb…, vendor 53bfa611…, kit `rom-r7c-gpu-fix-20261006`
+(vendor-only hash-only flash, readback verified). On boot da4fd400 after fresh video, prefix42 with trace:
+`A6L stale CP rptr/wptr 1aa/1aa before hw_init, soft reset -> 0/0`; CP_ME_INIT consumed (rptr=wptr=9), hw_init 0,
+submits normal, 0 faults, 120 s same-boot observation passed. Result:
+`gpu-fix-vendor-candidate/controlled-test-result.json`. Real video->lock->wake test is next. Prebuilt msm.ko in
+the Android tree is still 34d552 — promote 2bddfcdb (with all patches) only after physical acceptance.
+
+### 6 Oct ~09:32 — real-use crash with the fix installed (not yet explained)
+
+User: real video->lock->wake PASSED once with the fix (deep idle restored). Later, a power-menu "Power off" at
+09:18:33 (clean shutdown,userrequested), a normal boot ~09:21, several videos (s5k3t1 + imx576), Power at 09:32:01,
+screen off 09:32:02.7, and both disk rings stop at 09:32:04.85 (kmsg ~619 s) with no fault, no suspend entry
+logged and no panic. The disk logger flushes ~1 s, so the tail was not captured. The phone then showed backlit
+black (warm-reset/early-boot hang, same as `adb reboot` this morning). The host collector had died at 07:30
+when USB dropped in the first real sleep (it does not reconnect). Capture: `laptop-logs/recovery-20261006T073540Z`.
+Why GX keeps CP state: `drivers/pmdomain/core.c` `a6l_keep_boot_domains()` skips genpd sync_state
+("A6L genpd preserving boot provider gpu_gx/gpu_cx"), so boot-on domains are never powered off.
+The original user symptom in status.json was also "reboot about 5 s after Power"; the GPU-fault path was seen
+tens of seconds after a prefix return. The two may be distinct.
+
+### 6 Oct ~08:00-08:12Z — layer localization after the CP fix
+
+- Wakelock held (no system suspend), several videos, screen off 2 min: OK.
+- Releasing it after videos -> real s2idle at 893 s -> crash (host tail ends "Freezing user space processes").
+- After videos: pm_test **devices** stage `20261006T080220Z-devices` PASSED + 120 s same-boot.
+- After videos: pm_test **platform** stage `20261006T081114Z-platform` -> no RESULT, phone dead within 16 s, backlit black.
+  (Yesterday platform passed without video.) => remaining crash is in late/noirq suspend (or their resume) after video.
+- The ordinary prefix instrumentation covers only the devices phase (by design). Next: diff genpd/clk/regulator
+  summaries fresh vs after-video to find what video leaves on, then targeted platform-stage trials.
+- Laptop helpers: /tmp/claude-collector-supervisor-20261006.py (reconnecting host collector),
+  /tmp/claude-stage-observe-20261006.py <devices|platform>. pgrep -f matches its own command: use /proc scan.
+- Agents: encoder report firmware/extracted/venus-encoder-20261006/README.md (stock max 1080p30; Venus only
+  DT-disabled; CX voltage not raised for Venus clocks; camera ISP 1440x1078 is the real limit). Camera colour agent
+  writing firmware/extracted/camera-quality-20261006/.
+
+### 6 Oct ~08:30-08:55Z — trigger isolated to camera RECORDING (late/noirq), instrumentation kernel commissioned
+
+Platform-stage matrix on fix build (boot c678eb03 unless noted), each followed by 120 s same-boot observation:
+fresh (no camera) PASS (control, also via audio test boot) | Recorder 20 s audio PASS | `screenrecord` 20 s
+(c2.android.avc.encoder, no camera) PASS (harness post-copy error only) | camera preview main+front PASS |
+90 s 8-core load, SoC 56-59 C PASS | camera VIDEO recording (boot e9474547) CRASH within 16 s.
+Static diff after-preview vs after-video (genpd/clk/regulator/icc/rpm): camera state identical; only GPU OPP varies.
+Unbinding camss to test crashed by itself: upstream bug, camss_genpd_cleanup() calls dev_pm_domain_detach(NULL)
+when SDM660 has no whole-block genpd (genpd_num == vfepd_num). Remove-path only, not the sleep bug; trivial guard fix.
+Note: no cpufreq driver active (CPUs at fixed frequency). debugfs not mounted by default (mount -t debugfs).
+Commissioned agent: late/noirq prefix kernel -> firmware/extracted/pm-logging-20261005/pm-late-noirq-prefix-20261006/.
+Camera: Stage A CCM trial via bind mounts (/home/pierrelouis/A6L-usb-20260915/camera-tuning-trial-20261006/trial.py)
+— user: less washed out, stock still better (contrast/brightness/sharpness). Stage B IPA (contrast patch 0030) built and
+signed, reproduction byte-identical: firmware/extracted/camera-ipa-stageB-20261006/. Not yet packaged.
+Other agent outputs: venus-encoder-20261006/, camera-quality-20261006/, boot-hang-fixes-20261006/ (in progress).
+
+### 6 Oct ~13:50 local — COMBINED vendor installed (current state)
+
+- Boot: late/noirq diagnostic kernel `7bb0aa81…` (inert unless armed; normal kernel was `d1ecec46…`).
+- Vendor `e7e95d11…` (kit `/home/pierrelouis/A6L-usb-20260915/rom-r7c-combined-20261006`, receipts in
+  `firmware/extracted/pm-logging-20261005/combined-vendor-20261006/`):
+  GPU CP-reset fix msm.ko `2bddfcdb…` now PROMOTED into the Android-tree prebuilt (was 34d552; previous copy kept in the
+  receipt dir) — includes default-off restore_trace; camera Stage B (IPA `024ccd91…` with patch 0030 + stock TL84 CCMs +
+  contrast 1.2 for imx576/s5k3t1/hi846); e-ink patches 0001-0003 (stock REGAL mode, ordered dither default, 100 ms capture);
+  `init.qcom.rc` early-init `write /sys/power/pm_async 0` (docs/sleep-async-workaround-20261006.md).
+- Runtime boot 1c28f7cb verified (check-runtime-combined.py asserts pm_async=0). Set persist.sys.a6l.eink.refresh=stock.
+- Dualux app (system_ext) not rebuilt: its UI lacks the "stock" entry until the next system build.
+- Source changes (uncommitted) in workspace AND /home/a6l/android/a6l-lineage24: eink patches, camera prebuilts,
+  init.qcom.rc. Agents running: pm-async race root cause -> firmware/extracted/pm-async-race-20261006/.
+- Reboot hang: runtime `echo warm > /sys/kernel/reboot/mode` + adb reboot still hung (backlit black) -> boot-hang
+  agent's theory incomplete; still open.

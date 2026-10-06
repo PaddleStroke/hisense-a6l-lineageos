@@ -1,0 +1,39 @@
+# Installed only by debug/bootlog.mk in userdebug/eng images.
+# Root DAC access is necessary: devcoredump data is 0600. The coredump service
+# only reads existing dumps. The separate PM trial below controls GPU runtime
+# power policy; neither grants extra access to adb shell.
+on post-fs-data
+    # The normal vendor post-fs-data action has already waited for display modules.
+    # Evaluate the persisted value here, after system init's load_persist_props:
+    # event+property actions are selected before post-fs-data commands execute.
+    # This single root command touches only this GPU's runtime-PM control file.
+    exec u:r:su:s0 root root -- /system/bin/sh -c "case ${persist.vendor.a6l.gpu.pm_hold:-1} in 1) echo on > /sys/devices/platform/soc@0/5000000.gpu/power/control ;; 0) echo auto > /sys/devices/platform/soc@0/5000000.gpu/power/control ;; esac"
+    exec_start a6l_gpu_pm_status
+    start a6l_gpu_coredump
+
+# Property-only triggers run after boot's initial property check, then whenever
+# the value changes. The display readiness gate avoids writes before probe.
+# 0 restores normal runtime PM for an attended A/B comparison; this is no reset.
+on property:persist.vendor.a6l.gpu.pm_hold=1 && property:vendor.a6l.display=done
+    write /sys/devices/platform/soc@0/5000000.gpu/power/control on
+    exec_start a6l_gpu_pm_status
+
+on property:persist.vendor.a6l.gpu.pm_hold=0 && property:vendor.a6l.display=done
+    write /sys/devices/platform/soc@0/5000000.gpu/power/control auto
+    exec_start a6l_gpu_pm_status
+
+# One short line per applied action, with passive runtime-PM accounting only.
+# No MMIO/debugfs reads, waits, polling, or writes to persistent diagnostic files.
+service a6l_gpu_pm_status /system/bin/sh -c "echo A6L_GPU_PM control=$$(cat /sys/devices/platform/soc@0/5000000.gpu/power/control) status=$$(cat /sys/devices/platform/soc@0/5000000.gpu/power/runtime_status) active_ms=$$(cat /sys/devices/platform/soc@0/5000000.gpu/power/runtime_active_time) suspended_ms=$$(cat /sys/devices/platform/soc@0/5000000.gpu/power/runtime_suspended_time) > /dev/kmsg"
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:su:s0
+
+service a6l_gpu_coredump /vendor/bin/a6l-gpu-coredump.sh
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:su:s0

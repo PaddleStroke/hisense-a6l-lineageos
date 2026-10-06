@@ -52,7 +52,16 @@ try:
         except ValueError:
             continue
         raise AssertionError('guard accepted ' + bad)
-    g.programs = {tuple(L.PARTITIONS['boot'])}; assert g.check(L.program_xml(*L.PARTITIONS['boot'])) == 'program'
+    g.programs = {tuple(L.PARTITIONS['boot'])}
+    try:
+        g.check(L.program_xml(*L.PARTITIONS['boot'])); raise AssertionError('guard accepted a program without a fixed plan')
+    except ValueError:
+        pass
+    g.set_plan({tuple(L.PARTITIONS['boot'])}); assert g.check(L.program_xml(*L.PARTITIONS['boot'])) == 'program'
+    try:
+        g2 = w.Guard(); g2.set_plan({tuple(L.PARTITIONS['vbmeta'])}); raise AssertionError('plan accepted vbmeta')
+    except ValueError:
+        pass
     sys.argv = ['edl.py', 'getstorageinfo', '--loader=' + str(kit / 'programmer.elf'), '--memory=eMMC', '--vid=05c6', '--pid=9008']
     spec = importlib.util.spec_from_file_location('edl', kit / 'edl/edl.py'); edl = importlib.util.module_from_spec(spec); spec.loader.exec_module(edl)
     assert edl.main(edl.args).imported is True

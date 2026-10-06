@@ -1,0 +1,15 @@
+--- a/sound/soc/qcom/qdsp6/q6adm.c	2026-09-25 13:57:27.148731933 +0200
++++ b/sound/soc/qcom/qdsp6/q6adm.c	2026-09-25 13:57:27.150139645 +0200
+@@ -349,6 +349,12 @@
+ 	open->flags = ADM_LEGACY_DEVICE_SESSION;
+ 	open->mode_of_operation = path;
+ 	open->endpoint_id_1 = afe_port;
++	/*
++	 * A6L (misc2, 25 Sep 2026): stock msm-4.4 adm_open() always sends endpoint_id_2 = 0xFFFF ("no second endpoint /
++	 * EC reference"). Upstream leaves it 0 (kzalloc) = AFE port 0x0000 (PRIMARY_I2S_RX), which the SDM660 ADSP may
++	 * take as the voice-processor Tx reference of a LIVE_REC COPP. Suspect for "capture returns no data".
++	 */
++	open->endpoint_id_2 = 0xFFFF;
+ 	open->topology_id = topology;
+ 	open->dev_num_channel = channel_mode & 0x00FF;
+ 	open->bit_width = bit_width;

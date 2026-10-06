@@ -1,0 +1,88 @@
+Hisense A6L r5 review round4 fix F37 (28 Sep 2026) for the AOSP AIDL example audio HAL (ModulePrimary's Telephony):
+  - TelecomConfig.voiceVolume (DeviceHalAidl::setVoiceVolume, Android's in-call volume) is applied to the modem call
+    downlink through a6l-q6voiced ("volume <0..1>" -> kernel "VoiceMMode1 RX Volume Step", CVP
+    VSS_IVOLUME_CMD_SET_STEP, kernel patch kvoice/a6l-q6voice-rx-volume-v75.patch) BEFORE it is cached; a failure is
+    returned (EX_ILLEGAL_STATE, EX_UNSUPPORTED_OPERATION when the kernel lacks the control) and the old value kept.
+Applied in hardware/interfaces by tools/rom-v2-pipeline.sh (audio/patches/*.patch).
+
+diff -ru a/audio/aidl/default/Telephony.cpp b/audio/aidl/default/Telephony.cpp
+--- a/audio/aidl/default/Telephony.cpp	2026-09-28 15:11:27.366522839 +0200
++++ b/audio/aidl/default/Telephony.cpp	2026-09-28 15:12:34.296441123 +0200
+@@ -22,6 +22,18 @@
+ 
+ #include "core-impl/Telephony.h"
+ 
++#include <errno.h>
++#include <poll.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++
++#include <cmath>
++#include <string>
++
+ using aidl::android::hardware::audio::common::isValidAudioMode;
+ using aidl::android::media::audio::common::AudioMode;
+ using aidl::android::media::audio::common::Boolean;
+@@ -29,6 +41,41 @@
+ 
+ namespace aidl::android::hardware::audio::core {
+ 
++// A6L-F37-BEGIN (host-tested by device/hisense/a6l/audio/tests/test-telephony-volume.sh)
++// Hisense A6L r5 review round4 F37 (28 Sep 2026): Android's in-call volume (TelecomConfig.voiceVolume, from
++// DeviceHalAidl::setVoiceVolume) is applied to the modem call downlink in the ADSP: a6l-q6voiced request
++// "volume <0..1>" -> kernel control "VoiceMMode1 RX Volume Step" (CVP VSS_IVOLUME_CMD_SET_STEP, kept and restored at
++// every call start). Reply "OK volume=<step>" or "ERR <errno> <text>". Returns 0 or a positive errno.
++static int a6lQ6voicedVolume(float volume, std::string* reply, const char* path = "/dev/socket/a6l_q6voiced") {
++    if (!(volume >= 0.0f && volume <= 1.0f)) return EINVAL;
++    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
++    if (fd < 0) return errno;
++    sockaddr_un sa{};
++    sa.sun_family = AF_UNIX;
++    strncpy(sa.sun_path, path, sizeof(sa.sun_path) - 1);
++    char cmd[40];
++    const int len = snprintf(cmd, sizeof(cmd), "volume %.4f\n", static_cast<double>(volume));
++    int err = 0;
++    if (connect(fd, reinterpret_cast<sockaddr*>(&sa), sizeof(sa)) < 0 || write(fd, cmd, len) != len) {
++        err = errno ? errno : EIO;
++    } else {
++        pollfd p{fd, POLLIN, 0};
++        char buf[128] = {};
++        ssize_t n = poll(&p, 1, 4000) > 0 ? read(fd, buf, sizeof(buf) - 1) : -1;
++        if (n <= 0) {
++            err = ETIMEDOUT;
++        } else {
++            *reply = std::string(buf, static_cast<size_t>(n));
++            if (reply->rfind("OK volume=", 0) == 0) err = 0;
++            else if (reply->rfind("ERR ", 0) == 0) err = atoi(reply->c_str() + 4) > 0 ? atoi(reply->c_str() + 4) : EPROTO;
++            else err = EPROTO;
++        }
++    }
++    close(fd);
++    return err;
++}
++// A6L-F37-END
++
+ Telephony::Telephony() {
+     mTelecomConfig.voiceVolume = Float{TelecomConfig::VOICE_VOLUME_MAX};
+     mTelecomConfig.ttyMode = TelecomConfig::TtyMode::OFF;
+@@ -65,6 +112,16 @@
+         return ndk::ScopedAStatus::fromExceptionCode(EX_ILLEGAL_ARGUMENT);
+     }
+     if (in_config.voiceVolume.has_value()) {
++        // A6L F37: apply before caching; a failure is reported, the previous (applied) value is kept
++        std::string reply;
++        const int err = a6lQ6voicedVolume(in_config.voiceVolume.value().value, &reply);
++        if (err != 0) {
++            LOG(ERROR) << __func__ << ": A6L voice volume " << in_config.voiceVolume.value().value
++                       << " not applied: " << strerror(err) << " '" << reply << "'";
++            return ndk::ScopedAStatus::fromExceptionCode(err == ENOENT ? EX_UNSUPPORTED_OPERATION
++                                                                       : EX_ILLEGAL_STATE);
++        }
++        LOG(INFO) << __func__ << ": A6L voice volume " << in_config.voiceVolume.value().value << " -> " << reply;
+         mTelecomConfig.voiceVolume = in_config.voiceVolume;
+     }
+     if (in_config.ttyMode != TelecomConfig::TtyMode::UNSPECIFIED) {

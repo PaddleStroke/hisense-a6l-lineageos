@@ -26,7 +26,7 @@ public class DisplayTile extends TileService {
         boolean running = Dualux.daemonRunning(), eink = Dualux.isEink();
         t.setState(!running ? Tile.STATE_UNAVAILABLE : eink ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         t.setLabel(getString(R.string.tile_display));
-        t.setSubtitle(getString(eink ? R.string.screen_eink : R.string.screen_lcd));
+        t.setSubtitle(getString(!running ? R.string.tile_unavailable : eink ? R.string.screen_eink : R.string.screen_lcd));
         t.updateTile();
     }
 }

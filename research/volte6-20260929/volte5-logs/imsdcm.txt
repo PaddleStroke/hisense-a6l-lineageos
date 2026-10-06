@@ -1,0 +1,19 @@
+A6L_IMSDCM_PUBLISHED service=770 idl=1.15 instance_word=0x1 mux=9 profile=modem
+A6L_IMSDCM_REQ LINK_ADDR port=9099 family=v6 addr=fe80::64c1:f4b5:70f5:aae6 -> ok
+A6L_IMSDCM_REQ from=0:114 0x002e REGISTER_APP_STATE app=1 instance=0 -> ok (stock behaviour) type=0 txn=2 msg=0x002e [10]01 [11]00000000
+A6L_IMSDCM_REQ from=0:114 0x0034 SERVICE_ENABLE_STATUS rcs_mask=0x0 -> ok (stock behaviour) type=0 txn=3 msg=0x0034 [01]0000000000000000
+A6L_IMSDCM_IMSS PRESENT after 0 s (mode=enable)
+A6L_IMSDCM_IMSS bind sub=0: ok
+A6L_IMSDCM_IMSS get ims_service_enabled=1 volte=1 vt=0 wifi=0
+A6L_IMSDCM_IMSS enable: already on (no write)
+A6L_IMSDCM_IMSS RESULT ims_service_enabled=1 wrote=no
+A6L_IMSDCM_IMSA PRESENT (service 33 published) after 0 s
+A6L_IMSDCM_IMSA bind sub=0: ok
+A6L_IMSDCM_IMSA register indications: ok
+A6L_IMSDCM_IMSA reg status=not-registered err=0
+A6L_IMSDCM_IMSA services voice=- sms=- vt=- ut=unavailable
+A6L_IMSDCM_REQ from=0:114 0x0033 SUB_DESTROY_INSTANCE instance=1 -> ok (stock behaviour) type=0 txn=4 msg=0x0033 [01]01000000
+A6L_IMSDCM_IMSA_IND services voice=- sms=- vt=- ut=unavailable
+A6L_IMSDCM_IMSA_IND services voice=- sms=- vt=- ut=unavailable
+A6L_IMSDCM_IMSA_IND services voice=- sms=- vt=- ut=available/wwan
+A6L_IMSDCM_IMSA_POLL t=645s reg status=not-registered err=0 | services voice=- sms=- vt=- ut=available/wwan

@@ -1,7 +1,8 @@
 # A6L GNSS (agent gnss, 24 Sep 2026): inherit from lineage_gsi_a6l.mk (or rom/variant) to ship the QMI LOC GNSS HAL.
 PRODUCT_PACKAGES += \
     android.hardware.gnss-service.a6l \
-    a6l_gnss_test
+    a6l_gnss_test \
+    a6l_timekeep   # r5 bug hunt round2 R1: wall clock across reboots (read-only PM660 RTC)
 
 # Tells apps/Play services that the device has a GPS receiver (LocationManager uses the HAL either way).
 PRODUCT_COPY_FILES += \

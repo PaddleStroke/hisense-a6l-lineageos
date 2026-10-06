@@ -1,0 +1,463 @@
+--- /dev/null
++++ b/include/libcamera/internal/a6l_quality_debug.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/* Opt-in bounded A6L camera diagnostics; never changes image controls. */
++#pragma once
++#include <chrono>
++#include <cstdlib>
++#include <cstring>
++#include <stdint.h>
++namespace libcamera {
++inline bool a6lQualityDebug(uint32_t frame)
++{
++	static const bool enabled = [] {
++		const char *value = std::getenv("LIBCAMERA_A6L_QUALITY_DIAGNOSTICS");
++		return value && std::strcmp(value, "1") == 0;
++	}();
++	return enabled && frame < 240;
++}
++inline uint64_t a6lQualityMonotonicNs()
++{
++	return std::chrono::duration_cast<std::chrono::nanoseconds>(
++		std::chrono::steady_clock::now().time_since_epoch()).count();
++}
++} /* namespace libcamera */
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -16,6 +16,7 @@
+ #include <libcamera/base/shared_fd.h>
+ 
+ #include <libcamera/control_ids.h>
++#include "libcamera/internal/a6l_quality_debug.h"
+ #include <libcamera/controls.h>
+ 
+ #include <libcamera/ipa/ipa_interface.h>
+@@ -322,6 +323,34 @@
+ 	ControlList metadata(controls::controls);
+ 	for (const auto &algo : algorithms())
+ 		algo->process(context_, frame, frameContext, stats_, metadata);
++	if (a6lQualityDebug(frame)) {
++		uint64_t count = 0, weighted = 0;
++		for (unsigned i = 0; i < stats_->yHistogram.size(); ++i) {
++			count += stats_->yHistogram[i];
++			weighted += uint64_t(stats_->yHistogram[i]) * (i * 4 + 2);
++		}
++		const double meanGreen = count ? double(stats_->sum_.g()) / count : 0;
++		const double correctedGreen = std::max(meanGreen - context_.activeState.blc.level, 4.0);
++		const double sharp = stats_->sharpnessCount ?
++			double(stats_->sharpness) / stats_->sharpnessCount / (correctedGreen * correctedGreen) : -1;
++		LOG(IPASoft, Info) << "A6L_QUALITY_STATS frame=" << frame
++			<< " mono_ns=" << a6lQualityMonotonicNs() << " valid=" << stats_->valid
++			<< " control_association=delayed-ring/request-sequence"
++			<< " input_exp_lines=" << sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>()
++			<< " input_gain_code=" << again
++			<< " exposure_us=" << metadata.get(controls::ExposureTime).value_or(0)
++			<< " output_exp_lines=" << frameContext.sensor.exposure
++			<< " output_gain=" << frameContext.sensor.gain
++			<< " ev=" << frameContext.exposureValue
++			<< " ae_state=" << metadata.get(controls::AeState).value_or(-1)
++			<< " raw_mean8=" << (count ? double(weighted) / count : 0)
++			<< " raw_top_bin_fraction=" << (count ? double(stats_->yHistogram.back()) / count : 0)
++			<< " black8=" << unsigned(context_.activeState.blc.level)
++			<< " awb_r=" << frameContext.gains.r() << " awb_b=" << frameContext.gains.b()
++			<< " gamma=" << frameContext.gamma << " contrast=" << frameContext.contrast.value_or(1)
++			<< " af_dac_command=" << context_.activeState.af.dac << " sharp_global_norm=" << sharp
++			<< " af_state=" << metadata.get(controls::AfState).value_or(-1);
++	}
+ 	metadataReady.emit(frame, metadata);
+ 
+ 	/* Sanity check */
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -8,6 +8,8 @@
+ #pragma once
+ 
+ #include "algorithm.h"
++
++#include <libcamera/control_ids.h>
+ 
+ namespace libcamera {
+ 
+@@ -31,6 +33,7 @@
+ 
+ private:
+ 	float exposureValue_ = 0.0f;
++	int32_t aeState_ = controls::AeStateSearching;
+ 	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
+ };
+ 
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -38,6 +38,7 @@
+ 		   [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+ 	exposureValue_ = 0.0f;
++	aeState_ = controls::AeStateSearching;
+ 	return 0;
+ }
+ 
+@@ -45,8 +46,12 @@
+ 		      [[maybe_unused]] uint32_t frame, IPAFrameContext &frameContext,
+ 		      const ControlList &request)
+ {
+-	if (auto ev = request.get(controls::ExposureValue); ev && std::isfinite(*ev))
+-		exposureValue_ = std::clamp(*ev, -1.0f, 1.0f);
++	if (auto ev = request.get(controls::ExposureValue); ev && std::isfinite(*ev)) {
++		const float boundedEv = std::clamp(*ev, -1.0f, 1.0f);
++		if (boundedEv != exposureValue_)
++			aeState_ = controls::AeStateSearching;
++		exposureValue_ = boundedEv;
++	}
+ 	frameContext.exposureValue = exposureValue_;
+ }
+ 
+@@ -125,6 +130,7 @@
+ 	metadata.set(controls::ExposureTime, exposureTime.get<std::micro>());
+ 	metadata.set(controls::AnalogueGain, frameContext.sensor.gain);
+ 	metadata.set(controls::ExposureValue, frameContext.exposureValue);
++	metadata.set(controls::AeState, aeState_);
+ 
+ 	if (!context.activeState.agc.valid) {
+ 		/*
+@@ -157,13 +163,15 @@
+ 		sum += stats->yHistogram[i] * value;
+ 	}
+ 	if (!samples || black >= 255) {
+-		metadata.set(controls::AeState, controls::AeStateSearching);
++		aeState_ = controls::AeStateSearching;
++		metadata.set(controls::AeState, aeState_);
+ 		return;
+ 	}
+ 	double mean = sum / samples / (255.0 - black);
+ 	double target = kLinearTarget * std::exp2(frameContext.exposureValue);
+-	metadata.set(controls::AeState, std::abs(target - mean) <= target * kRelativeTolerance
+-		     ? controls::AeStateConverged : controls::AeStateSearching);
++	aeState_ = std::abs(target - mean) <= target * kRelativeTolerance
++		 ? controls::AeStateConverged : controls::AeStateSearching;
++	metadata.set(controls::AeState, aeState_);
+ 	updateExposure(context, frameContext, mean);
+ }
+ 
+--- /dev/null
++++ b/src/android/jpeg/jpeg_blob.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/* Hisense A6L: validate and write the framework-visible JPEG BLOB footer. */
++#pragma once
++
++#include <string.h>
++#include <hardware/camera3.h>
++#include <libcamera/base/span.h>
++
++inline bool writeJpegBlobFooter(libcamera::Span<uint8_t> destination,
++			       size_t capacity, size_t encodedSize)
++{
++	if (capacity < sizeof(camera3_jpeg_blob) || capacity > destination.size() ||
++	    encodedSize > capacity - sizeof(camera3_jpeg_blob))
++		return false;
++
++	camera3_jpeg_blob blob{};
++	blob.jpeg_blob_id = CAMERA3_JPEG_BLOB_ID;
++	blob.jpeg_size = encodedSize;
++	/* The logical BLOB end may be unaligned. */
++	memcpy(destination.data() + capacity - sizeof(blob), &blob, sizeof(blob));
++	return true;
++}
+--- a/src/android/jpeg/encoder_libjpeg.cpp
++++ b/src/android/jpeg/encoder_libjpeg.cpp
+@@ -8,6 +8,7 @@
+ #include "encoder_libjpeg.h"
+ 
+ #include <fcntl.h>
++#include <limits>
+ #include <iomanip>
+ #include <iostream>
+ #include <sstream>
+@@ -31,6 +32,44 @@
+ LOG_DECLARE_CATEGORY(JPEG)
+ 
+ namespace {
++
++
++/* Keep JPEG writes inside the caller's span. If it fills, finish into a fixed
++ * scratch sink so no C++ stack unwinding/longjmp or gralloc reallocation is
++ * needed; the caller receives -ENOSPC and must discard the failed result. */
++struct BoundedJpegDestination {
++	jpeg_destination_mgr manager{};
++	Span<uint8_t> output;
++	JOCTET scratch[1024];
++	bool overflow = false;
++	bool exhausted = false;
++
++	static void init(j_compress_ptr compressor)
++	{
++		auto *destination = reinterpret_cast<BoundedJpegDestination *>(compressor->dest);
++		destination->manager.next_output_byte = destination->output.data();
++		destination->manager.free_in_buffer = destination->output.size();
++		destination->overflow = false;
++		destination->exhausted = false;
++	}
++
++	static boolean full(j_compress_ptr compressor)
++	{
++		auto *destination = reinterpret_cast<BoundedJpegDestination *>(compressor->dest);
++		destination->overflow |= destination->exhausted;
++		destination->exhausted = true;
++		destination->manager.next_output_byte = destination->scratch;
++		destination->manager.free_in_buffer = sizeof(destination->scratch);
++		return TRUE;
++	}
++
++	static void finish(j_compress_ptr compressor)
++	{
++		auto *destination = reinterpret_cast<BoundedJpegDestination *>(compressor->dest);
++		if (destination->exhausted && destination->manager.free_in_buffer != sizeof(destination->scratch))
++			destination->overflow = true;
++	}
++};
+ 
+ struct JPEGPixelFormatInfo {
+ 	J_COLOR_SPACE colorSpace;
+@@ -192,7 +231,12 @@
+ 		return frame.error();
+ 	}
+ 
+-	return encode(frame.planes(), buffer->dstBuffer->plane(0),
++	const Span<uint8_t> destination = buffer->dstBuffer->plane(0);
++	const size_t capacity = buffer->dstBuffer->jpegBufferSize(destination.size());
++	if (capacity < sizeof(camera3_jpeg_blob) || capacity > destination.size())
++		return -EINVAL;
++
++	return encode(frame.planes(), destination.first(capacity - sizeof(camera3_jpeg_blob)),
+ 		      exifData, quality);
+ }
+ 
+@@ -200,20 +244,16 @@
+ 			   Span<uint8_t> dest, Span<const uint8_t> exifData,
+ 			   unsigned int quality)
+ {
+-	unsigned char *destination = dest.data();
+-	unsigned long size = dest.size();
+-
++	if (dest.empty() || dest.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
++		return -EINVAL;
++
++	BoundedJpegDestination destination;
++	destination.output = dest;
++	destination.manager.init_destination = BoundedJpegDestination::init;
++	destination.manager.empty_output_buffer = BoundedJpegDestination::full;
++	destination.manager.term_destination = BoundedJpegDestination::finish;
++	compress_.dest = &destination.manager;
+ 	jpeg_set_quality(&compress_, quality, TRUE);
+-
+-	/*
+-	 * The jpeg_mem_dest will reallocate if the required size is not
+-	 * sufficient. That means the output won't be written to the correct
+-	 * buffers.
+-	 *
+-	 * \todo Implement our own custom memory destination to prevent
+-	 * reallocation and prefer failure with correct reporting.
+-	 */
+-	jpeg_mem_dest(&compress_, &destination, &size);
+ 
+ 	jpeg_start_compress(&compress_, TRUE);
+ 
+@@ -235,5 +275,9 @@
+ 
+ 	jpeg_finish_compress(&compress_);
+ 
+-	return size;
+-}
++	const bool overflow = destination.overflow;
++	const size_t size = destination.exhausted ? dest.size() :
++			    dest.size() - destination.manager.free_in_buffer;
++	compress_.dest = nullptr;
++	return overflow ? -ENOSPC : static_cast<int>(size);
++}
+--- a/src/android/jpeg/post_processor_jpeg.cpp
++++ b/src/android/jpeg/post_processor_jpeg.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "post_processor_jpeg.h"
++#include "jpeg_blob.h"
++
+ 
+ #include <chrono>
+ 
+@@ -203,20 +205,25 @@
+ 	const uint8_t quality = ret ? *entry.data.u8 : 95;
+ 	resultMetadata->addEntry(ANDROID_JPEG_QUALITY, quality);
+ 
++	const size_t capacity = destination->jpegBufferSize(cameraDevice_->maxJpegBufferSize());
++	if (capacity < sizeof(camera3_jpeg_blob) || capacity > destination->plane(0).size()) {
++		LOG(JPEG, Error) << "Invalid JPEG blob capacity " << capacity;
++		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		return;
++	}
++
+ 	int jpeg_size = encoder_->encode(streamBuffer, exif.data(), quality);
+-	if (jpeg_size < 0) {
++	if (jpeg_size < 0 || static_cast<size_t>(jpeg_size) > capacity - sizeof(camera3_jpeg_blob)) {
+ 		LOG(JPEG, Error) << "Failed to encode stream image";
+ 		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
+ 		return;
+ 	}
+ 
+-	/* Fill in the JPEG blob header. */
+-	uint8_t *resultPtr = destination->plane(0).data()
+-			   + destination->jpegBufferSize(cameraDevice_->maxJpegBufferSize())
+-			   - sizeof(struct camera3_jpeg_blob);
+-	auto *blob = reinterpret_cast<struct camera3_jpeg_blob *>(resultPtr);
+-	blob->jpeg_blob_id = CAMERA3_JPEG_BLOB_ID;
+-	blob->jpeg_size = jpeg_size;
++	if (!writeJpegBlobFooter(destination->plane(0), capacity, jpeg_size)) {
++		LOG(JPEG, Error) << "JPEG result exceeds blob capacity";
++		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		return;
++	}
+ 
+ 	/* Update the JPEG result Metadata. */
+ 	resultMetadata->addEntry(ANDROID_JPEG_SIZE, jpeg_size);
+--- a/src/android/mm/generic_camera_buffer.cpp
++++ b/src/android/mm/generic_camera_buffer.cpp
+@@ -100,6 +100,8 @@
+ 			    static_cast<uint32_t>(hnd->numFds) != hnd->num_planes +
+ 								(hnd->reserved_region_size > 0) ||
+ 			    hnd->num_planes != info.numPlanes() || hnd->format_modifier ||
++			    (blob && (!hnd->width || hnd->height != 1 ||
++				      hnd->width > hnd->sizes[0])) ||
+ 			    (blob ? hnd->format != r8 :
+ 			     hnd->format != pixelFormat.fourcc() ||
+ 			     hnd->width != size.width || hnd->height != size.height)) {
+@@ -123,10 +125,12 @@
+ 					return;
+ 				}
+ 				planeInfo_.push_back({ hnd->fds[i], hnd->strides[i],
+-						      hnd->offsets[i], hnd->sizes[i] });
++						      hnd->offsets[i], blob ? hnd->width : hnd->sizes[i] });
+ 			}
+ 			fd_ = hnd->fds[0];
+-			bufferLength_ = blob ? hnd->sizes[0] : lseek(fd_, 0, SEEK_END);
++			/* BLOB width is the framework-visible byte capacity. Allocation
++			 * padding is not part of the JPEG buffer/footer location. */
++			bufferLength_ = blob ? hnd->width : lseek(fd_, 0, SEEK_END);
+ 			LOG(HAL, Debug) << "Imported minigbm " << hnd->num_planes
+ 				       << " planes, stride " << hnd->strides[0]
+ 				       << ", metadata FD " << (hnd->reserved_region_size > 0);
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -25,6 +25,7 @@
+ #include "libcamera/internal/bayer_format.h"
+ #include "libcamera/internal/camera_manager.h"
+ #include "libcamera/internal/framebuffer.h"
++#include "libcamera/internal/a6l_quality_debug.h"
+ #include "libcamera/internal/global_configuration.h"
+ #include "libcamera/internal/mapped_framebuffer.h"
+ 
+@@ -1138,6 +1139,7 @@
+ 
+ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params)
+ {
++	const uint64_t qualityStart = a6lQualityDebug(frame) ? a6lQualityMonotonicNs() : 0;
+ 	bench_.startFrame();
+ 
+ 	std::vector<DmaSyncer> dmaSyncers;
+@@ -1200,6 +1202,13 @@
+ 
+ 	/* Measure before emitting signals */
+ 	bench_.finishFrame();
++	if (qualityStart)
++		LOG(Debayer, Info) << "A6L_QUALITY_ISP frame=" << frame
++			<< " mono_ns=" << a6lQualityMonotonicNs()
++			<< " elapsed_us=" << (a6lQualityMonotonicNs() - qualityStart) / 1000
++			<< " sensor_sequence=" << input->metadata().sequence
++			<< " sensor_timestamp_ns=" << input->metadata().timestamp
++			<< " output=" << window_.size() << " threads=" << threads_.size();
+ 
+ 	/*
+ 	 * Buffer ids are currently not used, so pass zeros as its parameter.
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -33,6 +33,7 @@
+ #include <libcamera/stream.h>
+ 
+ #include "libcamera/internal/camera.h"
++#include "libcamera/internal/a6l_quality_debug.h"
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/camera_lens.h"
+ #include "libcamera/internal/camera_manager.h"
+@@ -363,6 +364,7 @@
+ 	std::unique_ptr<SoftwareIsp> swIsp_;
+ 	SimpleFrames frameInfo_;
+ 	int64_t frameDuration_ = 0;
++	uint32_t qualityFrame_ = 0;
+ 
+ private:
+ 	void tryPipeline(unsigned int code, const Size &size);
+@@ -950,6 +952,12 @@
+ 	}
+ 
+ 	if (request) {
++		if (a6lQualityDebug(request->sequence()))
++			LOG(SimplePipeline, Info) << "A6L_QUALITY_CAPTURE frame=" << request->sequence()
++				<< " mono_ns=" << a6lQualityMonotonicNs()
++				<< " sensor_sequence=" << buffer->metadata().sequence
++				<< " sensor_timestamp_ns=" << buffer->metadata().timestamp
++				<< " waiting_requests=" << conversionQueue_.size();
+ 		request->_d()->metadata().set(controls::SensorTimestamp,
+ 					      buffer->metadata().timestamp);
+ 		if (frameDuration_)
+@@ -1039,8 +1047,21 @@
+ 
+ void SimpleCameraData::ispStatsReady(uint32_t frame, uint32_t bufferId)
+ {
+-	swIsp_->processStats(frame, bufferId,
+-			     delayedCtrls_->get(frame));
++	qualityFrame_ = frame;
++	const ControlList associated = delayedCtrls_->get(frame);
++	if (a6lQualityDebug(frame) && frame % 4 == 0) {
++		const std::array<uint32_t, 2> ids{ V4L2_CID_EXPOSURE, V4L2_CID_ANALOGUE_GAIN };
++		const ControlList cached = sensor_->device()->getControls(ids);
++		LOG(SimplePipeline, Info) << "A6L_QUALITY_SENSOR frame=" << frame
++			<< " mono_ns=" << a6lQualityMonotonicNs() << " sensor=" << sensor_->id()
++			<< " frame_start_event=" << bool(frameStartEmitter_)
++			<< " driver_cached_exp_at_stats=" << (cached.contains(V4L2_CID_EXPOSURE) ? cached.get(V4L2_CID_EXPOSURE).get<int32_t>() : -1)
++			<< " driver_cached_gain_at_stats=" << (cached.contains(V4L2_CID_ANALOGUE_GAIN) ? cached.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>() : -1)
++			<< " delayed_exp=" << associated.get(V4L2_CID_EXPOSURE).get<int32_t>()
++			<< " delayed_gain=" << associated.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>()
++			<< " readback_is_not_frame_effective=1";
++	}
++	swIsp_->processStats(frame, bufferId, associated);
+ }
+ 
+ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata)
+@@ -1067,7 +1088,13 @@
+ 	 */
+ 	if (!frameStartEmitter_) {
+ 		ControlList ctrls(sensorControls);
+-		sensor_->setControls(&ctrls);
++		const int ret = sensor_->setControls(&ctrls);
++		if (a6lQualityDebug(qualityFrame_))
++			LOG(SimplePipeline, Info) << "A6L_QUALITY_WRITE frame=" << qualityFrame_
++				<< " mono_ns=" << a6lQualityMonotonicNs()
++				<< " unsynchronised=1 ret=" << ret
++				<< " requested_exp_lines=" << sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>()
++				<< " requested_gain_code=" << sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
+ 	}
+ }
+ 
+@@ -1079,7 +1106,11 @@
+ 		return;
+ 
+ 	const ControlValue &focus = lensControls.get(V4L2_CID_FOCUS_ABSOLUTE);
+-	lens->setFocusPosition(focus.get<int32_t>());
++	const int ret = lens->setFocusPosition(focus.get<int32_t>());
++	if (a6lQualityDebug(qualityFrame_))
++		LOG(SimplePipeline, Info) << "A6L_QUALITY_LENS frame=" << qualityFrame_
++			<< " mono_ns=" << a6lQualityMonotonicNs() << " dac=" << focus.get<int32_t>()
++			<< " command_ret=" << ret << " physical_position_unmeasured=1";
+ }
+ 
+ /* Retrieve all source pads connected to a sink pad through active routes. */

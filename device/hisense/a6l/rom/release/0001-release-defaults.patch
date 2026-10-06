@@ -1,0 +1,33 @@
+diff -ru a/device/hisense/a6l/a6l-software-graphics.mk b/device/hisense/a6l/a6l-software-graphics.mk
+--- a/device/hisense/a6l/a6l-software-graphics.mk	2026-09-27 09:54:33.278181157 +0000
++++ b/device/hisense/a6l/a6l-software-graphics.mk	2026-09-27 09:54:33.292181157 +0000
+@@ -15,5 +15,5 @@
+ 
+ PRODUCT_VENDOR_PROPERTIES += \
+     ro.hardware.gralloc=minigbm \
+-    ro.hardware.egl=angle \
++    ro.hardware.egl=mesa \
+     ro.hardware.vulkan=pastel
+diff -ru a/device/hisense/a6l/rom/rom.mk b/device/hisense/a6l/rom/rom.mk
+--- a/device/hisense/a6l/rom/rom.mk	2026-09-27 09:54:33.269181157 +0000
++++ b/device/hisense/a6l/rom/rom.mk	2026-09-27 09:54:33.292181157 +0000
+@@ -15,6 +15,8 @@
+ 
+ -include $(ROM_DIR)/rom-files.mk
+ 
++# release-prep 0001 (NOT applied by default): release = radio ON by default (user builds have no root to setprop it),
++# ADB off by default (Developer options), EGL = Mesa statically (vendor may not set persist.graphics.egl in enforcing).
+ # Graphics on the phone: msm DPU (card0) + Adreno 512 via Mesa freedreno (proven 21 Sep, V71 LineageOS-from-RAM run),
+ # selected at boot by a6l-modules.sh (persist.graphics.egl=mesa when renderD128 exists); ro.hardware.egl=angle remains
+ # the software fallback (and the QEMU test path).
+@@ -25,8 +27,8 @@
+     ro.surface_flinger.default_composition_pixel_format=5 \
+     service.sf.prime_shader_cache=false \
+     ro.vendor.a6l.rom=v2 \
+-    persist.vendor.a6l.radio=0 \
+-    persist.sys.usb.config=adb
++    persist.vendor.a6l.radio=1 \
++    persist.sys.usb.config=none
+ 
+ # GNSS (agent gnss, 24 Sep 2026): AIDL GNSS HAL over the modem's QMI LOC service + a6l_gnss_test (device/hisense/a6l/gnss,
+ # copied into the tree by tools/rom-v1-pipeline.sh). Idle until the radio is enabled (waits for the LOC service).

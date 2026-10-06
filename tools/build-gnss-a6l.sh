@@ -22,6 +22,14 @@ echo "== host tests (tsan)"
 g++ -std=c++17 -O1 -g -pthread -fsanitize=thread -Ilib test/host_test.cpp $SRC -o $W/host_tsan && setarch "$(uname -m)" -R $W/host_tsan > $W/tsan.log 2>&1   # -R: TSan cannot map with WSL high-entropy ASLR
 grep -q "WARNING: ThreadSanitizer" $W/tsan.log && { echo TSAN_RACE; grep -A12 "WARNING: ThreadSanitizer" $W/tsan.log | head -40; fail=1; }
 tail -1 $W/tsan.log; grep -q "A6L_GNSS_HOST_TESTS PASS" $W/tsan.log || { echo TSAN_NOT_RUN; fail=1; }
+echo "== round12 + bug hunt round2 (asan+ubsan, bughunt2 also tsan)"
+g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -pthread -fsanitize=address,undefined -Ilib test/round12_test.cpp $SRC -o $W/r12 && $W/r12 | tail -1 || fail=1
+g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -pthread -fsanitize=address,undefined -Ilib test/bughunt2_test.cpp $SRC -o $W/bh2 && timeout 120 $W/bh2 | tail -1 || fail=1
+g++ -std=c++17 -O1 -g -pthread -fsanitize=thread -Ilib test/bughunt2_test.cpp $SRC -o $W/bh2t && timeout 120 setarch "$(uname -m)" -R $W/bh2t > $W/bh2t.log 2>&1
+grep -q "WARNING: ThreadSanitizer" $W/bh2t.log && { echo TSAN_RACE_BH2; fail=1; }; grep -q "A6L_GNSS_BUGHUNT2_TESTS PASS" $W/bh2t.log || { echo BH2_TSAN_FAIL; fail=1; }
+echo "== RTC offset keeper (a6l_timekeep, bug hunt round2 R1)"
+bash timekeep/run-timekeep-tests.sh | tail -1; [ ${PIPESTATUS[0]} = 0 ] || fail=1
+$NDK/aarch64-linux-android34-clang++ -std=c++17 -O2 -Wall -Wextra -Werror timekeep/a6l_timekeep.cpp -llog -o /dev/null || fail=1
 echo "== CLI replay"
 g++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread -Ilib tools/a6l_gnss_test.cpp $SRC -o $W/a6l_gnss_test_host || fail=1
 python3 test/make_replay.py $W/synth.log

@@ -1,0 +1,13 @@
+# /vendor/bin/a6l-chg-guard.sh (power/rom/init.a6l-power.rc; only with persist.vendor.a6l.charger=1): reads the fuel
+# gauge/charger power_supply nodes and writes the charge-enable/current limits (software JEITA).
+type a6l_chg_guard, domain;
+init_daemon_domain(a6l_chg_guard)
+allow a6l_chg_guard vendor_shell_exec:file rx_file_perms;
+allow a6l_chg_guard vendor_toolbox_exec:file rx_file_perms;
+allow a6l_chg_guard kmsg_device:chr_file { write append getattr };
+allow a6l_chg_guard { sysfs sysfs_a6l_power_supply sysfs_batteryinfo }:dir r_dir_perms;
+allow a6l_chg_guard { sysfs sysfs_a6l_power_supply sysfs_batteryinfo }:lnk_file read;
+allow a6l_chg_guard { sysfs_a6l_power_supply sysfs_batteryinfo }:file rw_file_perms;
+get_prop(a6l_chg_guard, vendor_a6l_prop)
+# r5 review fix F2 (28 Sep 2026): the guard publishes vendor.a6l.chg.state (zone/desired/applied[/err])
+set_prop(a6l_chg_guard, vendor_a6l_prop)

@@ -1,0 +1,10 @@
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -413,6 +413,7 @@
+ 
+     <!-- Intentionally empty so we can override -->
+     <style name="BaseIcon.Workspace" parent="BaseIcon.Workspace.Shadows">
++        <item name="android:textColor">?attr/workspaceTextColor</item>
+     </style>
+ 
+     <!-- Theme for the popup container -->

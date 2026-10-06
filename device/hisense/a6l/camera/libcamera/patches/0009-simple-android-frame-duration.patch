@@ -1,0 +1,71 @@
+From: A6L port maintainers
+Subject: [PATCH] simple: report fixed sensor timing to Android
+
+The simple IPA does not vary sensor blanking. Report the current mode timing
+from PIXEL_RATE/HBLANK/VBLANK, with a fixed supported duration, so the Android
+HAL can enumerate streams without inventing frame rates.
+
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -360,6 +360,7 @@
+ 	std::unique_ptr<Converter> converter_;
+ 	std::unique_ptr<SoftwareIsp> swIsp_;
+ 	SimpleFrames frameInfo_;
++	int64_t frameDuration_ = 0;
+ 
+ private:
+ 	void tryPipeline(unsigned int code, const Size &size);
+@@ -939,9 +940,12 @@
+ 		}
+ 	}
+ 
+-	if (request)
++	if (request) {
+ 		request->_d()->metadata().set(controls::SensorTimestamp,
+ 					      buffer->metadata().timestamp);
++		if (frameDuration_)
++			request->_d()->metadata().set(controls::FrameDuration, frameDuration_);
++	}
+ 
+ 	/*
+ 	 * Queue the captured and the request buffer to the converter or Software
+@@ -1523,6 +1527,39 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
++	/*
++	 * The simple IPA does not control VBLANK. Publish the actual fixed
++	 * sensor timing, rather than a range of frame rates we cannot apply.
++	 * Android requires this after configure() to enumerate camera streams.
++	 * Re-read controls after setting the sensor mode: blanking is mode-specific.
++	 */
++	if (data->swIsp_) {
++		static constexpr uint32_t timingIds[] = {
++			V4L2_CID_PIXEL_RATE, V4L2_CID_HBLANK, V4L2_CID_VBLANK,
++		};
++		ControlList timing = data->sensor_->getControls(timingIds);
++		if (!timing.contains(V4L2_CID_PIXEL_RATE) ||
++		    !timing.contains(V4L2_CID_HBLANK) ||
++		    !timing.contains(V4L2_CID_VBLANK))
++			return -EINVAL;
++		const int64_t pixelRate = timing.get(V4L2_CID_PIXEL_RATE).get<int64_t>();
++		const int64_t lineLength = format.size.width +
++			timing.get(V4L2_CID_HBLANK).get<int32_t>();
++		const int64_t frameLength = format.size.height +
++			timing.get(V4L2_CID_VBLANK).get<int32_t>();
++		if (pixelRate <= 0 || lineLength <= 0 || frameLength <= 0)
++			return -EINVAL;
++		data->frameDuration_ = (lineLength * frameLength * 1000000 +
++					 pixelRate - 1) / pixelRate;
++		ControlInfoMap::Map controls;
++		for (const auto &entry : data->controlInfo_)
++			controls.insert(entry);
++		const int64_t duration = data->frameDuration_;
++		controls.insert_or_assign(&controls::FrameDurationLimits,
++			ControlInfo(duration, duration, duration));
++		data->controlInfo_ = ControlInfoMap(std::move(controls), controls::controls);
++	}
++
+ 	/* Configure the video node, taking into account any Bayer pattern change. */
+ 	V4L2PixelFormat videoFormat;
+ 	if (format.code == pipeConfig->code) {

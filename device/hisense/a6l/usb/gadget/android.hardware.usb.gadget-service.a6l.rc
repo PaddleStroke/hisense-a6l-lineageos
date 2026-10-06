@@ -1,0 +1,11 @@
+# Hisense A6L USB gadget AIDL HAL (android-usb, 29 Sep 2026). The gadget skeleton + FunctionFS mounts come from
+# /vendor/etc/init/hw/init.a6l.usb.rc (early-boot); not started inside the RAM-container launcher (configfs is the
+# recovery's there).
+service vendor.usb-gadget-hal-a6l /vendor/bin/hw/android.hardware.usb.gadget-service.a6l
+    class hal
+    user system
+    group system shell mtp
+    disabled
+
+on boot && property:vendor.a6l.usb.managed=1
+    enable vendor.usb-gadget-hal-a6l

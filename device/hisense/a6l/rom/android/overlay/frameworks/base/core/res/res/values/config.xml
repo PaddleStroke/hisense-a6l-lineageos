@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hisense A6L framework overlay (overlays-carrier-updater, 29 Sep 2026; docs/android-overlays-carrier-updater-20260929.md).
+     Static overlay (DEVICE_PACKAGE_OVERLAYS -> framework-res auto-generated vendor RRO, PRODUCT_ENFORCE_RRO_TARGETS=*).
+     Scope: navigation, display cutout, device idle, doze/AOD, misc. NOT here (other owners, do not duplicate a key):
+       - auto-brightness curve (stock curve, set by overlays-carrier-updater there), VoLTE/VT/WFC availability, notification LED, power_profile.xml (3800 mAh):
+         rom/r6/overlay (completeness audit, active once rom/r6/apply-r6.sh runs)
+       - config_useDevInputEventForAudioJack: audio/overlay;  config_enableUdcSysfsUsbStateUpdate: usb/overlay
+       - Wi-Fi 5 GHz / SoftAP: rro/A6LWifiOverlay (com.android.wifi.resources, an APEX: static overlays do not reach it)
+       - fast/slow charging thresholds: rro/A6LSystemUIOverlay + rro/A6LSettingsOverlay (SettingsLib resources) -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- Navigation: the A6L has no capacitive/hardware navigation keys (front: LCD only; stock ran the on-screen navbar,
+         no qemu.hw.mainkeys). AOSP default is false and neither the GSI overlays nor Lineage set it. The default mode
+         stays 3-button (config_navBarInteractionMode 0); gestural is selectable in Settings (NavigationBarModeGestural
+         is in the r5 image). Lineage config_deviceHardwareKeys keeps its default 64 (volume keys only). -->
+    <bool name="config_showNavigationBar">true</bool>
+
+    <!-- Display cutout: the stock A6L reports a centred top notch (captures/20260914-105716-cf2497c2/display.txt:
+         "cutout DisplayCutout{insets=Rect(0, 75 - 0, 0) boundingRect=Rect(420, 0 - 660, 75)}" on the 1080x2340 panel).
+         So the front LCD is NOT cutout-free: path in PIXELS (no @dp: independent of ro.sf.lcd_density), origin =
+         top centre, i.e. x 540-120 .. 540+120, y 0..75 = the stock bounding rect exactly. The real drop shape is
+         unknown; the rectangle only makes the cutout slightly larger than the glass hole (safe for content). -->
+    <string translatable="false" name="config_mainBuiltInDisplayCutout">M -120,0 L 120,0 L 120,75 L -120,75 Z</string>
+    <string translatable="false" name="config_mainBuiltInDisplayCutoutRectApproximation">M -120,0 L 120,0 L 120,75 L -120,75 Z</string>
+
+    <!-- Device idle (Doze / App Standby deep idle): AOSP default false = no Doze at all on a real phone. Enabled.
+         The motion sensor is not used: sensors.a6l declares no significant-motion sensor (docs/senshal-20260926.md),
+         so deep idle is entered on screen-off + unplugged without the motion gate (re-evaluate once one exists). -->
+    <bool name="config_enableAutoPowerModes">true</bool>
+    <bool name="config_autoPowerModeUseMotionSensor">false</bool>
+
+    <!-- Ambient display: LCD with a PWM/WLED backlight, no low-power panel mode: no always-on display, no doze
+         component (defaults, stated explicitly so a later overlay does not turn AOD on by accident). -->
+    <bool name="config_dozeAlwaysOnDisplayAvailable">false</bool>
+    <bool name="config_dozePulsePickup">false</bool>
+    <bool name="config_supportDoubleTapWake">false</bool>
+
+    <!-- Brightness slider range = STOCK A6L values (Hisense framework-res: minimum 1, maximum 255, default 77, dim 1, doze 17;
+         AOSP 10/255/102/10/1). Integer 0..255 scale (the *Float variants stay -2 = derived from these); the Lineage lights
+         HAL scales 0..255 to the WLED's 4095 steps. Auto-brightness curve: rom/r6/overlay (stock curve). -->
+    <integer name="config_screenBrightnessSettingMinimum">1</integer>
+    <integer name="config_screenBrightnessSettingMaximum">255</integer>
+    <integer name="config_screenBrightnessSettingDefault">77</integer>
+    <integer name="config_screenBrightnessDim">1</integer>
+    <integer name="config_screenBrightnessDoze">17</integer>
+    <!-- Hotspot: Lineage sets net.tethering.noprovisioning=true; no carrier provisioning app. Tethering interface
+         regexes stay the module defaults (wlan\d/softap\d, rndis\d/usb\d, ncm\d, bt-pan) = what the Wi-Fi HAL and
+         the USB gadget HAL create; config_mobile_hotspot_provision_app stays empty (AOSP default). -->
+
+    <!-- Screen: 1080x2340 at ~397 dpi physical (stock DisplayDeviceInfo "397.565 x 393.615 dpi"). The logical density
+         is ro.sf.lcd_density=400 in rom/rom.mk (stock used 480); physical size comes from the DSI panel mode. -->
+</resources>

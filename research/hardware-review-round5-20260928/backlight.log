@@ -1,0 +1,2 @@
+F50 first_unblank_failed=1 subsequent_healthy_iterations=100 write_attempts_total=1 bl_power=4 retry_state=0
+F50 retained_retry_control bl_power=0

@@ -1,0 +1,7 @@
+# audio6: stock mixer_paths.xml "headset-mic" -> "adc2" + ADC2 Volume 6 override: ADC2 MUX INP2, DEC1 MUX ADC2.
+# Bias: DT audio-routing AMIC2 <- MIC BIAS External2 (stock: MIC BIAS External2, micbias2 ext cap, hs-micbias external).
+ADC2 MUX|INP2
+Digital DEC1 MUX|ADC2
+Digital CIC1 MUX|AMIC
+ADC2 Volume|6
+Digital TX1 Digital Volume|84

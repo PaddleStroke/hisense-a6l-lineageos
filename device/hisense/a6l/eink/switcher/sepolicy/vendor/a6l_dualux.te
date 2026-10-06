@@ -30,3 +30,13 @@ allow hal_graphics_composer_default sysfs_a6l_dualux:file rw_file_perms;
 # the A6LDisplaySwitcher app (android:sharedUserId=android.uid.system -> system_app) reads the state; it WRITES only
 # the system-owned a6l_dualux_ctl_prop (sepolicy/system_ext)
 get_prop(system_app, vendor_dualux_prop)
+
+# r5 bug hunt eink-display E5: /sys/class/leds/* are symlinks labelled sysfs_leds (system/sepolicy genfs_contexts
+# "/class/leds"); following /sys/class/leds/epd-backlight needs lnk_file read (as hal_light has). Without it, enforcing
+# denies the lookup: find_frontlight() sees no max_brightness and the e-ink frontlight never works.
+allow a6l_dualux sysfs_leds:lnk_file read;
+
+# Mirror acknowledges a sequence-tagged first frame after epdd reports OK.
+get_prop(a6l_dualux, vendor_eink_prop)
+get_prop(a6l_eink_mirror, vendor_dualux_prop)
+get_prop(a6l_eink_mirror, a6l_eink_animation_prop)

@@ -417,6 +417,19 @@ static ssize_t bringup_status_show(struct device *dev, struct device_attribute *
 }
 static DEVICE_ATTR_RO(bringup_status);
 
+/*
+ * r5 bug hunt round2 kernel-drivers (29 Sep 2026): the driver core creates these after a successful probe and removes
+ * them before .remove. They used to be device_create_file()d before mipi_dsi_attach() and were left behind when the
+ * attach failed (drvdata cleared, ctx devm-freed: reading epd_power = NULL dereference; the next probe then hit
+ * "sysfs: cannot create duplicate filename").
+ */
+static struct attribute *a6l_epd_dsi_attrs[] = {
+	&dev_attr_epd_power.attr,
+	&dev_attr_bringup_status.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(a6l_epd_dsi);
+
 static const struct drm_display_mode a6l_epd_dsi_mode = {
 	.clock = 40046,
 	.hdisplay = 384, .hsync_start = 384 + 126, .hsync_end = 384 + 126 + 6, .htotal = 384 + 126 + 6 + 125,
@@ -483,8 +496,6 @@ static int a6l_epd_dsi_probe(struct mipi_dsi_device *dsi)
 	if (!eot)
 		dsi->mode_flags |= MIPI_DSI_MODE_NO_EOT_PACKET;
 	ctx->panel.prepare_prev_first = true;	/* stock lp11-init: DSI host up before the reset pulse */
-	device_create_file(dev, &dev_attr_epd_power);
-	device_create_file(dev, &dev_attr_bringup_status);
 	drm_panel_add(&ctx->panel);
 	ret = mipi_dsi_attach(dsi);
 	if (ret) {
@@ -500,8 +511,6 @@ static void a6l_epd_dsi_remove(struct mipi_dsi_device *dsi)
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
-	device_remove_file(&dsi->dev, &dev_attr_bringup_status);
-	device_remove_file(&dsi->dev, &dev_attr_epd_power);
 }
 
 static const struct of_device_id a6l_epd_dsi_of_match[] = {
@@ -514,7 +523,8 @@ MODULE_DEVICE_TABLE(of, a6l_epd_dsi_of_match);
 static struct mipi_dsi_driver a6l_epd_dsi_driver = {
 	.probe = a6l_epd_dsi_probe,
 	.remove = a6l_epd_dsi_remove,
-	.driver = { .name = "panel-a6l-epd-dsi", .of_match_table = a6l_epd_dsi_of_match },
+	.driver = { .name = "panel-a6l-epd-dsi", .of_match_table = a6l_epd_dsi_of_match,
+		    .dev_groups = a6l_epd_dsi_groups },
 };
 module_mipi_dsi_driver(a6l_epd_dsi_driver);
 

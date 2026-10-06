@@ -1,0 +1,43 @@
+--- a/device/hisense/a6l/radio/qmi/src/ims.cc
++++ b/device/hisense/a6l/radio/qmi/src/ims.cc
+@@ -208,9 +208,8 @@
+     if (auto* v = m.get(tErr); v && v->size() >= 2) s.errorCode = Reader(*v).u16();
+     s.status = tu32(m, tSt);
+     if (auto* v = m.get(tTxt); v && !v->empty()) {
+-        Reader r(*v);
+-        std::string t = r.str8();
+-        if (r.good()) s.errorText = t;
++        // Top-level string TLV: its length is the TLV length, with no inner prefix.
++        s.errorText.assign(v->begin(), v->end());
+     }
+     s.tech = tu32(m, tTech);
+     return s;
+--- a/device/hisense/a6l/radio/qmi/src/ims_setup.cc
++++ b/device/hisense/a6l/radio/qmi/src/ims_setup.cc
+@@ -35,6 +35,7 @@
+         auto r = imss::bindSubscription(c, *sub);
+         o.bound = r.ok();
+         rep("A6L_IMSDCM_IMSS bind sub=" + std::to_string(*sub) + ": " + r.describe());
++        if (!o.bound) return o;  // Do not use an unbound/default subscription after a failed bind.
+     }
+     auto r = imss::getServiceEnableConfig(c, &o.before);
+     o.readOk = r.ok();
+@@ -67,6 +68,7 @@
+         auto r = imsa::bindSubscription(c, *sub);
+         o.bound = r.ok();
+         rep("A6L_IMSDCM_IMSA bind sub=" + std::to_string(*sub) + ": " + r.describe());
++        if (!o.bound) return o;  // Do not use an unbound/default subscription after a failed bind.
+     }
+     auto r = imsa::registerIndications(c);
+     o.indOk = r.ok();
+--- a/device/hisense/a6l/radio/tests/volte2_tests.cc
++++ b/device/hisense/a6l/radio/tests/volte2_tests.cc
+@@ -105,7 +105,7 @@
+     ri.u8(0x01, 0);
+     ri.u16(0x10, 403);
+     ri.u32(0x11, imsa::kNotRegistered);
+-    ri.str8(0x12, "Forbidden");
++    ri.raw(0x12, {'F', 'o', 'r', 'b', 'i', 'd', 'd', 'e', 'n'}); // top-level QMI string
+     auto rsi = imsa::parseRegStatus(ri);
+     EXPECT(!rsi.registered());
+     EXPECT(rsi.errorCode && *rsi.errorCode == 403);

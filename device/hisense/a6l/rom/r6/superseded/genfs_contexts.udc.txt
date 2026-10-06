@@ -1,0 +1,5 @@
+# r6 (completeness audit, 29 Sep 2026): UDC sysfs node of the dwc3 controller (sdm630.dtsi usb@a8f8800 > usb@a800000).
+# Platform labels only the /class/udc symlink dir (plat_sepolicy_genfs_202604); UsbDeviceManager's gadget monitor
+# (config_enableUdcSysfsUsbStateUpdate, r6 overlay) reads <udc>/state through it -> the device node needs sysfs_udc.
+# Path to confirm on the phone: readlink -f /sys/class/udc/a800000.usb
+genfscon sysfs /devices/platform/soc@0/a8f8800.usb/a800000.usb/udc u:object_r:sysfs_udc:s0

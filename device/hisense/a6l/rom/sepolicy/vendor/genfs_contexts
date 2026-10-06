@@ -1,0 +1,26 @@
+# A6L ROM-level sysfs labels (release-prep, 27 Sep 2026). ALL PATHS UNVERIFIED (mainline 7.2 device names from the V75 DT):
+# first install (permissive) -> `ls -lZd <path>` and `readlink -f /sys/class/{remoteproc,drm,power_supply}/*` -> fix here.
+# A wrong path only leaves the node as generic `sysfs` (denials in enforcing, harmless while permissive).
+genfscon sysfs /devices/platform/soc@0/15700000.remoteproc                u:object_r:sysfs_a6l_remoteproc:s0
+genfscon sysfs /devices/platform/soc@0/4080000.remoteproc                 u:object_r:sysfs_a6l_remoteproc:s0
+genfscon sysfs /devices/platform/soc@0/14780000.ipa                       u:object_r:sysfs_a6l_ipa:s0
+genfscon sysfs /devices/platform/soc@0/c900000.display-subsystem          u:object_r:sysfs_a6l_drm:s0
+# r5 bug hunt power (29 Sep 2026): the SPMI child devices are named "<spmi>:pmic@N:<node>" under spmi-0/0-0N (phone
+# evidence: readlink .../spmi-0/0-03/800f000.spmi:pmic@3:leds@d800/backlight, dmesg "800f000.spmi:pmic@0:battery@4000"),
+# not "0-00:pmic@0:charger" / "0-02:pmic@2:fuel-gauge" (the FG is pm660 battery@4000 on SID 0): the old lines matched
+# nothing. Label = sysfs_batteryinfo, the type AOSP expects on everything the health HAL reads
+# (system/sepolicy/private/hal_health.te; charger_type.te: the off-mode charger (charger_vendor), recovery and fastbootd
+# read only sysfs_batteryinfo, so a private type left charger mode without battery data in enforcing).
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmic@0:charger@1000 u:object_r:sysfs_batteryinfo:s0
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmic@0:battery@4000 u:object_r:sysfs_batteryinfo:s0
+genfscon sysfs /devices/virtual/power_supply                               u:object_r:sysfs_batteryinfo:s0
+# r5 review fix F13 (28 Sep 2026): PM660L flash LED (led-controller@d300 -> leds/white:flash). UNVERIFIED path: confirm with
+# `readlink -f /sys/class/leds/white:flash` + `ls -lZ` on the first permissive install (DAC comes from ueventd.rc either way).
+# r5 bug hunt power (29 Sep 2026): same SPMI naming fix as the power_supply lines above ("800f000.spmi:pmic@3:...").
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-03/800f000.spmi:pmic@3:led-controller@d300 u:object_r:sysfs_a6l_flash:s0
+# r5 review fix F49 (29 Sep 2026): a6l_gpio_vib (DT node /a6l-vibrator -> platform device a6l-vibrator -> leds/vibrator).
+# UNVERIFIED path: confirm with `readlink -f /sys/class/leds/vibrator` + `ls -lZ` on the first permissive install.
+genfscon sysfs /devices/platform/a6l-vibrator                              u:object_r:sysfs_a6l_vibrator:s0
+# fastcharge-rom (29 Sep 2026): qcom_smbx parameters (a6l-chg-guard writes hvdcp_enable / hvdcp_rerun). Created when the module
+# loads (charger group). Confirm with `ls -lZ /sys/module/qcom_smbx/parameters` on the first permissive install.
+genfscon sysfs /module/qcom_smbx/parameters                                u:object_r:sysfs_a6l_chg_param:s0

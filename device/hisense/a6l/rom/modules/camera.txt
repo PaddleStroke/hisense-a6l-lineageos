@@ -1,0 +1,26 @@
+# merge2 (25 Sep 2026): camera3 stack, EXPERIMENTAL, loaded by a6l-modules.sh misc only with persist.vendor.a6l.camera=1.
+# cameras: camss (camfix + camfix2 cumulative), CCI, IMX576 / S5K3T1 / Hi-846 (4-lane default) / GT9769 VCM.
+# merge r4 (28 Sep): qcom-camss = camfix5 cumulative (f9ce7705: camfix1-4 + WM ping/pong MAX regs + CGC override +
+# VFE clock >= 404 MHz like stock, a6l_vfe_min). Defaults a6l_wm=3 a6l_wmmax=1 a6l_cgc=1 a6l_vfe_min=404000000. Still gated
+# (attended camera6 MODE=clkloop pending: frame 0 only / TIMEOUT on frame 1 before camfix5).
+# Probe only (chip-ID proven 25 Sep); nothing streams without a camera HAL (none in rom-v2).
+# camera-rom (29 Sep 2026): qcom-camss = rom1 (stock CSIPHY clocks: RAW capture PROVEN t35 for imx576 + s5k3t1 with the
+# attended test recovery, same module order, same DT: the ROM dtso a6l-camera-v75 == the a6l_cam_ovl.ko runtime overlay).
+# Still no camera HAL: a6l_camcap RAW capture only (docs/camera-rom-20260929.md).
+# hi846 merge (29 Sep 2026): hi846.ko = mainline + s_ctrl fix (hi846-set-ctrl-fix.patch, no 4-lane patch); ROM DT hi846 on
+# 2 lanes (stock). Attended t38 PASS: 1632x1224/1280x720/640x480 bars + live (docs/hi846-20260929.md round 3).
+i2c-qcom-cci.ko
+mc.ko
+videodev.ko
+v4l2-async.ko
+v4l2-fwnode.ko
+videobuf2-common.ko
+videobuf2-memops.ko
+videobuf2-dma-sg.ko
+videobuf2-v4l2.ko
+qcom-camss.ko
+v4l2-cci.ko
+imx576_a6l.ko
+s5k3t1.ko
+hi846.ko
+gt9769.ko

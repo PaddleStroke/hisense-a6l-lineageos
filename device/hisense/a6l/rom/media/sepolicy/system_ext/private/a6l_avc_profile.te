@@ -1,0 +1,6 @@
+# Place in the device's system_ext sepolicy source directory.
+system_internal_prop(a6l_avc_debug_prop)
+get_prop(mediaswcodec, a6l_avc_debug_prop)
+userdebug_or_eng(`
+    set_prop(shell, a6l_avc_debug_prop)
+')

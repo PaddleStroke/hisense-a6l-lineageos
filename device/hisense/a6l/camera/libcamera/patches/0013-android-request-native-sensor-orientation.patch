@@ -1,0 +1,56 @@
+From: A6L port maintainers
+Subject: [PATCH] android: request sensor-native buffer orientation
+
+Android applies SENSOR_ORIENTATION to native sensor buffers. The HAL starts
+an empty configuration with Rotate0, but the simple pipeline adjusts that
+orientation to the sensor mounting rotation when it cannot transpose pixels.
+The strict Adjusted guard then rejects rear/front sensors mounted at 90/270.
+
+Request the native orientation by inverting the metadata correction already
+computed by initialize(). Keep rejection of unexpected orientation changes,
+stream count changes, and Android-visible image adjustments. Log each guard
+separately so a future failure identifies the field.
+
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -550,6 +550,21 @@
+ 	}
+ 
+ 	/*
++	 * Android expects sensor-native buffers and applies SENSOR_ORIENTATION
++	 * itself. initialize() converted the libcamera mounting rotation to
++	 * Android's clockwise correction; invert it here to request native
++	 * orientation instead of the libcamera default (Rotate0). Otherwise a
++	 * rotated sensor adjusts the orientation and fails the validation below.
++	 */
++	bool validRotation;
++	config->orientation = orientationFromRotation((360 - orientation_) % 360,
++						     &validRotation);
++	if (!validRotation) {
++		LOG(HAL, Error) << "Invalid sensor orientation " << orientation_;
++		return -EINVAL;
++	}
++
++	/*
+ 	 * Clear and remove any existing configuration from previous calls, and
+ 	 * ensure the required entries are available without further
+ 	 * reallocation.
+@@ -818,9 +833,16 @@
+ 		for (const StreamConfiguration &cfg : *config)
+ 			LOG(HAL, Info) << " - " << cfg.toString();
+ 
+-		if (config->size() != requested.size() ||
+-		    config->orientation != requestedOrientation)
++		if (config->size() != requested.size()) {
++			LOG(HAL, Error) << "Stream count changed from " << requested.size()
++					<< " to " << config->size();
+ 			return -EINVAL;
++		}
++		if (config->orientation != requestedOrientation) {
++			LOG(HAL, Error) << "Requested orientation changed from "
++					<< requestedOrientation << " to " << config->orientation;
++			return -EINVAL;
++		}
+ 
+ 		for (size_t i = 0; i < requested.size(); ++i) {
+ 			const StreamConfiguration &before = requested[i];

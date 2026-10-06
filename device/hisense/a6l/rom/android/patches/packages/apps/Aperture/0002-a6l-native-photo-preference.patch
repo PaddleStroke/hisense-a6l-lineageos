@@ -1,0 +1,59 @@
+--- a/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
++++ b/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
+@@ -132,6 +132,7 @@
+ import org.lineageos.aperture.ui.views.LevelerView
+ import org.lineageos.aperture.ui.views.PreviewBlurView
+ import org.lineageos.aperture.ui.views.VerticalSlider
++import org.lineageos.aperture.utils.NativePhotoPolicy
+ import org.lineageos.aperture.utils.ExifUtils
+ import org.lineageos.aperture.utils.GoogleLensUtils
+ import org.lineageos.aperture.utils.PermissionsManager
+@@ -1534,6 +1535,19 @@
+                                 ResolutionSelector.PREFER_CAPTURE_RATE_OVER_HIGHER_RESOLUTION
+                             }
+                         )
++                        .setResolutionFilter { sizes, _ ->
++                            NativePhotoPolicy.prioritize(
++                                Build.DEVICE,
++                                cameraConfiguration.camera.cameraId,
++                                !cameraConfiguration.enableHighResolution
++                                        && cameraConfiguration.photoOutputFormat == PhotoOutputFormat.JPEG
++                                        && cameraConfiguration.photoAspectRatio == AspectRatio.RATIO_4_3
++                                        && cameraConfiguration.extensionMode == ExtensionMode.NONE,
++                                sizes,
++                                { it.width },
++                                { it.height },
++                            )
++                        }
+                         .build()
+ 
+                 CameraController.IMAGE_CAPTURE
+--- /dev/null
++++ b/app/src/main/java/org/lineageos/aperture/utils/NativePhotoPolicy.kt
+@@ -0,0 +1,26 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++package org.lineageos.aperture.utils
++
++/** Prefer an already-advertised native JPEG while retaining CameraX fallbacks. */
++object NativePhotoPolicy {
++    fun <T> prioritize(
++        device: String?,
++        cameraId: String?,
++        standardJpeg: Boolean,
++        supported: List<T>,
++        width: (T) -> Int,
++        height: (T) -> Int,
++    ): List<T> {
++        if (device?.equals("a6l", ignoreCase = true) != true || !standardJpeg) return supported
++        val native = when (cameraId) {
++            "0" -> 2872 to 2156
++            "1" -> 2296 to 1728
++            "2" -> 1624 to 1224
++            else -> return supported
++        }
++        val isNative: (T) -> Boolean = { width(it) == native.first && height(it) == native.second }
++        val preferred = supported.filter(isNative)
++        if (preferred.isEmpty()) return supported
++        return preferred + supported.filterNot(isNative)
++    }
++}

@@ -1,0 +1,50 @@
+# HAL domains (types from system/sepolicy/vendor) - A6L-specific needs (release-prep 27 Sep 2026)
+
+# sensors multihal + sensors.a6l sub-HAL: SMGR accel/gyro/mag + STK3338 via IIO buffers, mag bias in /data/vendor/sensors
+allow hal_sensors_default iio_device:chr_file rw_file_perms;
+allow hal_sensors_default { sysfs sysfs_a6l_iio }:dir r_dir_perms;
+allow hal_sensors_default { sysfs sysfs_a6l_iio }:lnk_file read;
+allow hal_sensors_default { sysfs sysfs_a6l_iio }:file rw_file_perms;
+allow hal_sensors_default a6l_sensors_data_file:dir create_dir_perms;
+allow hal_sensors_default a6l_sensors_data_file:file create_file_perms;
+get_prop(hal_sensors_default, vendor_a6l_prop)
+
+# lights (LCD WLED backlight, epd-backlight frontlight, flash LED)
+allow hal_light_default { sysfs sysfs_leds sysfs_a6l_dualux }:dir r_dir_perms;
+allow hal_light_default { sysfs sysfs_leds sysfs_a6l_dualux }:lnk_file read;
+allow hal_light_default { sysfs_leds sysfs_a6l_dualux }:file rw_file_perms;
+
+# QTI VibratorOL: input force-feedback on a6l_gpio_vib
+allow hal_vibrator_default input_device:dir r_dir_perms;
+allow hal_vibrator_default input_device:chr_file rw_file_perms;
+# r5 review fix F49 (29 Sep 2026): VibratorOL LedVibratorDevice = /sys/class/leds/vibrator/{state,duration,activate}
+# (a6l_gpio_vib LED class device; realpath of device/driver). Generic sysfs/sysfs_leds only for the class symlinks.
+allow hal_vibrator_default { sysfs sysfs_leds sysfs_a6l_vibrator }:dir r_dir_perms;
+allow hal_vibrator_default { sysfs sysfs_leds sysfs_a6l_vibrator }:lnk_file read;
+allow hal_vibrator_default sysfs_a6l_vibrator:file rw_file_perms;
+
+# health (example): battery/charger power_supply
+r_dir_file(hal_health_default, sysfs_a6l_power_supply)
+
+# audio HAL (AIDL example APEX): capture pcm selection ro.vendor.a6l.audio.capture_pcm
+get_prop(hal_audio_default, vendor_a6l_ro_prop)
+
+# GNSS: NO network for the HAL. net_domain(hal_gnss_default) violates system/sepolicy/private/hal_neverallows.te (HALs may
+# not open sockets): XTRA/PSDS must be downloaded by the framework (IGnssPsds -> GnssPsdsDownloader in system_server,
+# config_psds_servers / gps_debug.conf LONGTERM_PSDS_SERVER_*) and injected via injectPsdsData (release-prep doc 3.4).
+
+# e-ink: waveform copy on /persist (stock partition, context= mount)
+r_dir_file(a6l_epdd, a6l_persist_file)
+# r5 review fix F13 (28 Sep 2026): torch/flash for the eventual camera provider torch path (DAC system:camera 0664 from
+# vendor-etc/ueventd.rc); a6l-modules.sh misc only lists the LED.
+allow hal_camera_default sysfs_a6l_flash:dir r_dir_perms;
+allow hal_camera_default sysfs_a6l_flash:file rw_file_perms;
+# lc2 (29 Sep 2026): A6lTorch follows white:flash/device/of_node to read led-max-microamp (camera/provider)
+allow hal_camera_default sysfs_a6l_flash:lnk_file read;
+allow a6l_modules sysfs_a6l_flash:dir r_dir_perms;
+allow a6l_modules sysfs_a6l_flash:file r_file_perms;
+
+# r5 review fix F5 (29 Sep 2026): libwifi-hal-a6l (dlopen()ed by android.hardware.wifi-service) waits for
+# vendor.a6l.wlan.state=ready (a6l-radio.sh, after the persist MAC write) and reads persist.vendor.a6l.radio.
+# nl80211 (netlink_generic_socket), SIOCETHTOOL and sysfs reads are already granted to hal_wifi by system/sepolicy.
+get_prop(hal_wifi_default, vendor_a6l_prop)

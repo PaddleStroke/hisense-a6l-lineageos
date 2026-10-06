@@ -1,0 +1,218 @@
+A6L r5 review fix F37 (28 Sep 2026): in-call (downlink) volume of the q6voice VoiceMMode1 path.
+VSS_IVOLUME_CMD_SET_STEP (0x000112C2, direction RX=1) on the full-control CVP session, as downstream msm voice.c
+voice_send_vol_step_cmd() ("Voice Rx Gain"); ALSA control "VoiceMMode1 RX Volume Step" 0..15 (put returns the DSP
+error and stores the step only when accepted), step kept per path and re-applied (non-fatal) at every path start.
+Driven by a6l-q6voiced "volume <0..1>" from the audio HAL Telephony voiceVolume (audio/patches/0003).
+Applies after a6l-q6voice-tx-mute-v75.patch (series kernel/rom-v2/series). Built W=1 against out-a6l-phone-v67.
+
+diff -ru a/sound/soc/qcom/qdsp6/q6cvp.c b/sound/soc/qcom/qdsp6/q6cvp.c
+--- a/sound/soc/qcom/qdsp6/q6cvp.c	2026-09-28 15:07:31.823652993 +0200
++++ b/sound/soc/qcom/qdsp6/q6cvp.c	2026-09-28 15:08:02.007838572 +0200
+@@ -55,6 +55,12 @@
+ #define VSS_IVOLUME_CMD_MUTE_V2				0x0001138B
+ #define VSS_IVOLUME_DIRECTION_TX			0
+ #define VSS_IVOLUME_DIRECTION_RX			1
++/*
++ * A6L r5 (F37 in-call volume): downstream msm voice.c voice_send_vol_step_cmd() ("Voice Rx Gain") sends
++ * VSS_IVOLUME_CMD_SET_STEP on the CVP handle with direction RX; the step indexes the vocproc volume table of the
++ * device calibration (stock HAL: Android voice volume 0..1 -> step 0..5).
++ */
++#define VSS_IVOLUME_CMD_SET_STEP			0x000112C2
+ 
+ #define VSS_NUM_CHANNELS_MAX 8
+ 
+@@ -182,6 +188,13 @@
+ 	u16 ramp_duration_ms;
+ } __packed;
+ 
++struct vss_ivolume_cmd_set_step_cmd {
++	struct apr_hdr hdr;
++	u16 direction;
++	u32 value;
++	u16 ramp_duration_ms;
++} __packed;
++
+ struct q6voice_session *q6cvp_session_create(enum q6voice_path_type path,
+ 					     u16 tx_port, u16 rx_port,
+ 					     u32 tx_topo, u32 rx_topo)
+@@ -335,6 +348,20 @@
+ }
+ EXPORT_SYMBOL_GPL(q6cvp_set_mute);
+ 
++int q6cvp_set_rx_vol_step(struct q6voice_session *cvp, u32 step, u16 ramp_ms)
++{
++	struct vss_ivolume_cmd_set_step_cmd cmd;
++
++	cmd.hdr.pkt_size = sizeof(cmd);
++	cmd.hdr.opcode = VSS_IVOLUME_CMD_SET_STEP;
++	cmd.direction = VSS_IVOLUME_DIRECTION_RX;
++	cmd.value = step;
++	cmd.ramp_duration_ms = ramp_ms;
++
++	return q6voice_common_send(cvp, &cmd.hdr);
++}
++EXPORT_SYMBOL_GPL(q6cvp_set_rx_vol_step);
++
+ static int q6cvp_probe(struct apr_device *adev)
+ {
+ 	return q6voice_common_probe(adev, Q6VOICE_SERVICE_CVP);
+diff -ru a/sound/soc/qcom/qdsp6/q6cvp.h b/sound/soc/qcom/qdsp6/q6cvp.h
+--- a/sound/soc/qcom/qdsp6/q6cvp.h	2026-09-28 15:07:31.825098585 +0200
++++ b/sound/soc/qcom/qdsp6/q6cvp.h	2026-09-28 15:08:02.007975879 +0200
+@@ -18,5 +18,7 @@
+ int q6cvp_enable(struct q6voice_session *cvp, bool enable);
+ /* A6L r5 (F6): VSS_IVOLUME_CMD_MUTE_V2 on the vocproc (tx: uplink) */
+ int q6cvp_set_mute(struct q6voice_session *cvp, bool tx, bool mute, u16 ramp_ms);
++/* A6L r5 (F37): VSS_IVOLUME_CMD_SET_STEP, direction RX (downlink volume step of the vocproc) */
++int q6cvp_set_rx_vol_step(struct q6voice_session *cvp, u32 step, u16 ramp_ms);
+ 
+ #endif /*_Q6_CVP_H */
+diff -ru a/sound/soc/qcom/qdsp6/q6voice-dai.c b/sound/soc/qcom/qdsp6/q6voice-dai.c
+--- a/sound/soc/qcom/qdsp6/q6voice-dai.c	2026-09-28 15:07:31.828797142 +0200
++++ b/sound/soc/qcom/qdsp6/q6voice-dai.c	2026-09-28 15:08:02.008605392 +0200
+@@ -263,7 +263,48 @@
+ 	return was != mute;
+ }
+ 
++/*
++ * A6L r5 (F37): "VoiceMMode1 RX Volume Step" (0..15; the in-call volume of the downlink, VSS_IVOLUME_CMD_SET_STEP on the
++ * vocproc). Reads 0 until set. A failed DSP command is returned to userspace (-EIO/-ETIMEDOUT) and not stored.
++ */
++static int q6voice_get_rx_vol_kctrl(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	struct q6voice *v = snd_soc_component_get_drvdata(c);
++	enum q6voice_path_type path = q6voice_get_path(mc->reg);
++	int step;
++
++	if (path >= Q6VOICE_PATH_COUNT)
++		return -EINVAL;
++	step = q6voice_get_rx_vol_step(v, path);
++	ucontrol->value.integer.value[0] = step < 0 ? 0 : step;
++	return 0;
++}
++
++static int q6voice_put_rx_vol_kctrl(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	struct q6voice *v = snd_soc_component_get_drvdata(c);
++	enum q6voice_path_type path = q6voice_get_path(mc->reg);
++	long step = ucontrol->value.integer.value[0];
++	int was, ret;
++
++	if (path >= Q6VOICE_PATH_COUNT || step < 0 || step > Q6VOICE_RX_VOL_STEP_MAX)
++		return -EINVAL;
++	was = q6voice_get_rx_vol_step(v, path);
++	ret = q6voice_set_rx_vol_step(v, path, (int)step);
++	if (ret)
++		return ret;
++	return was != step;
++}
++
+ static const struct snd_kcontrol_new q6voice_kcontrols[] = {
++	SOC_SINGLE_EXT("VoiceMMode1 RX Volume Step", VOICEMMODE1, 0, Q6VOICE_RX_VOL_STEP_MAX, 0,
++		       q6voice_get_rx_vol_kctrl, q6voice_put_rx_vol_kctrl),
+ 	SOC_SINGLE_EXT("VoiceMMode1 TX Mute", VOICEMMODE1, 0, 1, 0,
+ 		       q6voice_get_tx_mute_kctrl, q6voice_put_tx_mute_kctrl),
+ 	SOC_SINGLE_EXT("VoiceMMode1 TX Topology", VOICEMMODE1, 1, S32_MAX, 0,
+diff -ru a/sound/soc/qcom/qdsp6/q6voice.c b/sound/soc/qcom/qdsp6/q6voice.c
+--- a/sound/soc/qcom/qdsp6/q6voice.c	2026-09-28 15:07:31.826240930 +0200
++++ b/sound/soc/qcom/qdsp6/q6voice.c	2026-09-28 15:08:16.197687365 +0200
+@@ -38,6 +38,8 @@
+ 	u32 tx_topo, rx_topo;
+ 	/* A6L r5 (F6): uplink mute requested by userspace; kept across calls, applied at every start */
+ 	bool tx_mute;
++	/* A6L r5 (F37): downlink volume step accepted from userspace (-1 = never set: DSP default); applied at start */
++	int rx_vol_step;
+ 	/* Serialize access to voice path session */
+ 	struct mutex lock;
+ 	struct q6voice_path_runtime *runtime;
+@@ -166,6 +168,16 @@
+ 		goto attach_err;
+ 	}
+ 
++	/*
++	 * A6L r5 (F37): restore the requested downlink volume step on the new vocproc (a route change or DSP recovery
++	 * recreates the session). Not fatal: the call proceeds at the DSP default level and the error is logged.
++	 */
++	if (p->rx_vol_step >= 0) {
++		int vret = q6cvp_set_rx_vol_step(cvp, p->rx_vol_step, 0);
++
++		dev_info(dev, "A6L_Q6VOICE path %d rx volume step %d restore: %d\n", p->type, p->rx_vol_step, vret);
++	}
++
+ 	ret = q6mvm_start(mvm, true);
+ 	if (ret) {
+ 		dev_err(dev, "failed to start voice: %d\n", ret);
+@@ -320,6 +332,46 @@
+ }
+ EXPORT_SYMBOL_GPL(q6voice_get_tx_mute);
+ 
++/*
++ * A6L r5 (F37): downlink (RX) volume step. While the path runs it is applied at once (20 ms ramp, stock
++ * DEFAULT_VOLUME_RAMP_DURATION_MS) and only stored when the DSP accepted it; otherwise it is stored and applied by the
++ * next q6voice_path_start().
++ */
++int q6voice_set_rx_vol_step(struct q6voice *v, enum q6voice_path_type path, int step)
++{
++	struct q6voice_path *p;
++	struct q6voice_session *cvp;
++	int ret = 0;
++
++	if (path >= Q6VOICE_PATH_COUNT || step < 0 || step > Q6VOICE_RX_VOL_STEP_MAX)
++		return -EINVAL;
++	p = &v->paths[path];
++	mutex_lock(&p->lock);
++	if (p->runtime && p->runtime->started == 3) {
++		cvp = p->runtime->sessions[Q6VOICE_SERVICE_CVP];
++		ret = cvp ? q6cvp_set_rx_vol_step(cvp, step, 20) : -ENODEV;
++		dev_info(v->dev, "A6L_Q6VOICE path %d rx volume step %d (live): %d\n", path, step, ret);
++	}
++	if (!ret)
++		p->rx_vol_step = step;
++	mutex_unlock(&p->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(q6voice_set_rx_vol_step);
++
++int q6voice_get_rx_vol_step(struct q6voice *v, enum q6voice_path_type path)
++{
++	int step;
++
++	if (path >= Q6VOICE_PATH_COUNT)
++		return -1;
++	mutex_lock(&v->paths[path].lock);
++	step = v->paths[path].rx_vol_step;
++	mutex_unlock(&v->paths[path].lock);
++	return step;
++}
++EXPORT_SYMBOL_GPL(q6voice_get_rx_vol_step);
++
+ static void q6voice_free(void *data)
+ {
+ 	struct q6voice *v = data;
+@@ -363,6 +415,7 @@
+ 		p->type = path;
+ 		p->tx_topo = VSS_IVOCPROC_TOPOLOGY_ID_NONE;
+ 		p->rx_topo = VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT;
++		p->rx_vol_step = -1;	/* A6L r5 (F37): DSP default until userspace sets a step */
+ 		mutex_init(&p->lock);
+ 	}
+ 
+diff -ru a/sound/soc/qcom/qdsp6/q6voice.h b/sound/soc/qcom/qdsp6/q6voice.h
+--- a/sound/soc/qcom/qdsp6/q6voice.h	2026-09-28 15:07:31.827332975 +0200
++++ b/sound/soc/qcom/qdsp6/q6voice.h	2026-09-28 15:08:02.008532916 +0200
+@@ -39,4 +39,9 @@
+ int q6voice_set_tx_mute(struct q6voice *v, enum q6voice_path_type path, bool mute);
+ bool q6voice_get_tx_mute(struct q6voice *v, enum q6voice_path_type path);
+ 
++/* A6L r5 (F37): downlink volume step 0..Q6VOICE_RX_VOL_STEP_MAX (VSS_IVOLUME_CMD_SET_STEP); get: -1 = never set */
++#define Q6VOICE_RX_VOL_STEP_MAX	15
++int q6voice_set_rx_vol_step(struct q6voice *v, enum q6voice_path_type path, int step);
++int q6voice_get_rx_vol_step(struct q6voice *v, enum q6voice_path_type path);
++
+ #endif /*_Q6_VOICE_H */

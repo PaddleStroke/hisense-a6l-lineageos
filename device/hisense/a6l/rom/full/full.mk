@@ -24,7 +24,8 @@ PRODUCT_PACKAGES += \
     android.hardware.power-service.example \
     android.hardware.thermal-service.example
 $(call soong_config_set,wpa_supplicant,platform_version,$(PLATFORM_VERSION))
-$(call soong_config_set,wpa_supplicant,nl80211_driver,CONFIG_DRIVER_NL80211_QCA)
+# r5 review fix F5: vendor Wi-Fi HAL + plain nl80211 supplicant (no QCA vendor commands), wifi/wifi-hal.mk
+$(call inherit-product, device/hisense/a6l/wifi/wifi-hal.mk)
 
 PRODUCT_COPY_FILES += \
     device/hisense/a6l/rom/variant/init.a6l.wifibt.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.wifibt.rc \

@@ -3,6 +3,7 @@
 #include "loc_v02.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace a6l {
 namespace loc {
@@ -25,6 +26,35 @@ const char* sessionStatusName(uint32_t s) {
     }
 }
 
+const char* qmiErrorName(int e) {
+    switch (e) {
+        case 0x00: return "NONE";
+        case 0x01: return "MALFORMED_MSG";
+        case 0x02: return "NO_MEMORY";
+        case 0x03: return "INTERNAL";
+        case 0x04: return "ABORTED";
+        case 0x05: return "CLIENT_IDS_EXHAUSTED";
+        case 0x0E: return "CALL_FAILED";
+        case 0x10: return "NOT_PROVISIONED";
+        case 0x11: return "MISSING_ARG";
+        case 0x13: return "ARG_TOO_LONG";
+        case 0x16: return "INVALID_TX_ID";
+        case 0x17: return "DEVICE_IN_USE";
+        case 0x1A: return "NO_EFFECT";
+        case 0x29: return "INFO_UNAVAILABLE";
+        case 0x30: return "INVALID_ARG";
+        case 0x3A: return "DEVICE_NOT_READY";
+        case 0x47: return "INVALID_SERVICE_TYPE";
+        case 0x52: return "INVALID_OPERATION";
+        case 0x5A: return "INCOMPATIBLE_STATE";
+        case 0x5E: return "NOT_SUPPORTED";
+        case 0xffff: return "UNKNOWN(no error code)";
+        default: return e < 0 ? "TRANSPORT/TIMEOUT" : "OTHER";
+    }
+}
+
+bool qmiErrorIsLayout(int e) { return e == 0x01 || e == 0x11 || e == 0x13 || e == 0x30; }
+
 static Message req(uint16_t id) {
     Message m;
     m.type = qmi::kRequest;
@@ -44,10 +74,11 @@ Message makeSetNmeaTypes(uint32_t mask) { return req(kSetNmeaTypes).add(0x01, Wr
 
 Message makeSetEngineLock(uint32_t lock) { return req(kSetEngineLock).add(0x01, Writer().u32(lock)); }
 
-Message makeStart(uint8_t sessionId, uint32_t minIntervalMs, bool intermediate, uint32_t accuracyLevel) {
+Message makeStart(uint8_t sessionId, uint32_t minIntervalMs, bool intermediate, uint32_t accuracyLevel,
+                  uint32_t recurrence) {
     Message m = req(kStart);
     m.add(0x01, Writer().u8(sessionId));
-    m.add(0x10, Writer().u32(1));                          // fixRecurrence: periodic
+    m.add(0x10, Writer().u32(recurrence));                 // fixRecurrence: 1 periodic, 2 single (r5 round6 F53)
     m.add(0x11, Writer().u32(accuracyLevel));              // horizontalAccuracyLevel
     m.add(0x12, Writer().u32(intermediate ? 1 : 2));       // intermediateReportState
     m.add(0x13, Writer().u32(minIntervalMs));              // minInterval (ms)
@@ -168,7 +199,10 @@ bool parsePosition(const Message& m, Fix* f) {
     if (!m.getU32(0x01, &f->status)) return false;
     m.getU8(0x02, &f->sessionId);
     double lat, lon;
-    if (m.getF64(0x10, &lat) && m.getF64(0x11, &lon)) {
+    // r5 bug hunt round2 G4 (29 Sep 2026): only finite, in-range coordinates make a fix (NaN/91 deg would reach the
+    // framework as HAS_LAT_LONG and the NMEA synthesis converts them to int)
+    if (m.getF64(0x10, &lat) && m.getF64(0x11, &lon) && std::isfinite(lat) && std::isfinite(lon) && lat >= -90.0 &&
+        lat <= 90.0 && lon >= -180.0 && lon <= 180.0) {
         f->hasLatLon = true;
         f->latitude = lat;
         f->longitude = lon;
@@ -179,6 +213,8 @@ bool parsePosition(const Message& m, Fix* f) {
     f->hasAltEllipsoid = m.getF32(0x1A, &f->altEllipsoid);
     f->hasAltMsl = m.getF32(0x1B, &f->altMsl);
     f->hasVertUnc = m.getF32(0x1C, &f->vertUnc);
+    f->hasHorConfidence = m.getU8(0x16, &f->horConfidence);    // r5 round12 F66
+    f->hasVertConfidence = m.getU8(0x1D, &f->vertConfidence);
     f->hasSpeedVertical = m.getF32(0x1F, &f->speedVertical);
     f->hasHeading = m.getF32(0x20, &f->heading);
     f->hasHeadingUnc = m.getF32(0x21, &f->headingUnc);
@@ -304,6 +340,8 @@ Message makePositionInd(const Fix& f) {
     if (f.hasAltEllipsoid) m.add(0x1A, Writer().f32(f.altEllipsoid));
     if (f.hasAltMsl) m.add(0x1B, Writer().f32(f.altMsl));
     if (f.hasVertUnc) m.add(0x1C, Writer().f32(f.vertUnc));
+    if (f.hasHorConfidence) m.add(0x16, Writer().u8(f.horConfidence));
+    if (f.hasVertConfidence) m.add(0x1D, Writer().u8(f.vertConfidence));
     if (f.hasHeading) m.add(0x20, Writer().f32(f.heading));
     if (f.hasTech) m.add(0x23, Writer().u32(f.techMask));
     if (f.hasDop) m.add(0x24, Writer().f32(f.pdop).f32(f.hdop).f32(f.vdop));

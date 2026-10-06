@@ -80,6 +80,27 @@ static void test_power_key(void) {
     CHECK(o.set_screen < 0 && !o.power_up, "latched: not grabbed at down -> nothing at up");
 }
 
+/* r5 pass2 F20: fail-open power key */
+static void test_power_failopen(void) {
+    double t = 10; struct dx_out o;
+    reset(DX_EINK, 1); S.no_inject = 1;
+    CHECK(!dx_power_grabbed(&S) && dx_front_touch_grabbed(&S), "no uinput: power key not grabbed in e-ink mode");
+    o = press(1, 150, &t); CHECK(o.set_screen < 0 && !o.power_down && !o.power_up, "no uinput: short press left to Android");
+    o = press(1, 1500, &t); CHECK(!o.power_down && !o.power_up, "no uinput: long press left to Android (no injection)");
+    S.no_inject = 0; CHECK(dx_power_grabbed(&S), "uinput back: grabbed again");
+    reset(DX_EINK, 1); S.pw_not_held = 1;	/* grab wanted but EVIOCGRAB failed: Android sees the press */
+    o = press(1, 150, &t); CHECK(o.set_screen < 0 && S.screen == DX_EINK, "grab not held: short press not acted on");
+    o = press(1, 1500, &t); CHECK(!o.power_down && !o.power_up, "grab not held: no duplicate long press");
+    reset(DX_EINK, 1); dx_power_key(&S, 1, 0); o = dx_tick(&S, 0.6); CHECK(o.power_down && S.pw_injected, "long press injected");
+    o = dx_power_cancel(&S); CHECK(o.power_up && o.set_screen < 0 && !S.pw_down && !S.pw_injected, "cancel balances the injected down, no switch");
+    o = dx_power_key(&S, 0, 0.9); CHECK(!o.power_up && o.set_screen < 0, "late release after cancel: nothing");
+    o = dx_tick(&S, 5); CHECK(!o.power_down, "no re-injection after cancel");
+    reset(DX_EINK, 1); dx_power_key(&S, 1, 0); o = dx_power_cancel(&S); CHECK(!o.power_up && o.set_screen < 0 && !S.pw_down, "cancel short press: nothing emitted");
+    o = dx_power_cancel(&S); CHECK(!o.power_up, "cancel when idle: nothing");
+    reset(DX_LCD, 1); dx_eink_key(&S, 1, 0); o = dx_eink_cancel(&S); CHECK(!S.ek_down && o.set_screen < 0 && !o.clear, "e-ink key cancel: no action");
+    o = dx_tick(&S, 2); CHECK(!o.clear, "no long press after cancel");
+}
+
 static void test_requests(void) {
     struct dx_out o;
     reset(DX_LCD, 1); o = dx_request(&S, "toggle"); dx_apply(&S, &o); CHECK(S.screen == DX_EINK && !o.wake, "toggle -> e-ink");
@@ -116,7 +137,16 @@ static void test_brightness(void) {
 }
 
 int main(void) {
-    test_eink_key(); test_power_key(); test_requests(); test_brightness();
+    test_eink_key(); test_power_key(); test_power_failopen(); test_requests(); test_brightness();
+    struct dx_fl_cfg f;
+    reset(DX_EINK, 1); dx_fl_default(&f); S.appearance_hold = 1;
+    CHECK(dx_lcd_blank(&S) && !dx_mirror_on(&S) && dx_frontlight_level(&S, &f, 4095, 4095, 0, 255) == 0, "prepare: both lights held, mirror paused");
+    S.appearance_hold = 2;
+    CHECK(dx_lcd_blank(&S) && dx_mirror_on(&S) && dx_frontlight_level(&S, &f, 4095, 4095, 0, 255) == 0, "prepared rear: mirror enabled, lights held until first frame");
+    S.appearance_hold = 0;
+    CHECK(dx_frontlight_level(&S, &f, 4095, 4095, 0, 255) == 255, "ready rear: normal frontlight");
+    reset(DX_LCD, 1); S.appearance_hold = 1;
+    CHECK(dx_lcd_blank(&S) && !dx_mirror_on(&S), "LCD preparation keeps LCD blank");
     printf("%d/%d checks passed\n", checks - fails, checks);
     printf(fails ? "TESTS_FAIL\n" : "TESTS_PASS\n");
     return fails != 0;

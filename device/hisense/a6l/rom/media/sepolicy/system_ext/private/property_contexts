@@ -1,0 +1,2 @@
+# Device system_ext property contexts, never vendor property contexts.
+media.a6l.avc.profile u:object_r:a6l_avc_debug_prop:s0 exact bool

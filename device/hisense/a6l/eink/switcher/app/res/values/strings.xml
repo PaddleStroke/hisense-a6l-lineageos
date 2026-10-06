@@ -2,10 +2,9 @@
 <resources>
     <string name="app_name">E-ink display</string>
     <string name="settings_title">E-ink display</string>
-    <string name="settings_summary">Rear screen, refresh mode, anti-ghosting, frontlight</string>
     <string name="tile_display">E-ink / LCD</string>
     <string name="tile_refresh">E-ink refresh</string>
-    <string name="tile_clear">Clear e-ink</string>
+    <string name="tile_clear">Reduce e-ink ghosting</string>
     <string name="tile_frontlight">Frontlight</string>
     <string name="screen_eink">E-ink</string>
     <string name="screen_lcd">LCD</string>
@@ -14,15 +13,29 @@
     <string name="switch_to_lcd">Switch to the LCD</string>
     <string name="daemon_missing">Switcher service not running (vendor.a6l_dualux)</string>
     <string name="sec_refresh">Refresh mode</string>
+    <string name="sec_appearance">E-ink appearance</string>
+    <string name="sec_wallpaper">E-ink wallpaper</string>
+    <string name="wallpaper_white">Plain white</string>
+    <string name="wallpaper_lcd">Use LCD wallpaper</string>
+    <string name="settings_unavailable">Unable to update e-ink settings</string>
+    <string name="clear_interval">Ghosting refresh interval</string>
+    <string name="contrast_title">Text contrast</string>
+    <string name="fl_limit">Frontlight limit</string>
+    <string name="fl_linear">Linear brightness</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_lcd">Follow LCD theme</string>
+    <string name="theme_help">Use a separate theme on the rear screen. Your LCD dark-mode preference and schedule are kept. Apps with their own theme may need an app-specific setting.</string>
+    <string name="mode_stock">Stock-like — grey partial updates, no flashing (as the original firmware)</string>
     <string name="mode_auto">Auto — sharp when still, fast while scrolling</string>
     <string name="mode_quality">Quality — full refresh only (slow, no ghosting)</string>
     <string name="mode_partial">Reading — partial refresh, no flashing</string>
     <string name="mode_fast">Fast</string>
     <string name="mode_fastest">Fastest — black and white while moving</string>
     <string name="sec_clear">Anti-ghosting</string>
-    <string name="clear_now">Clear the e-ink now</string>
-    <string name="clear_every">Full clear every %1$d page updates</string>
-    <string name="clear_never">Never clear automatically</string>
+    <string name="clear_now">Refresh the current page</string>
+    <string name="clear_every">Refresh to reduce ghosting every %1$d page updates</string>
+    <string name="clear_never">No periodic ghosting refresh</string>
     <string name="contrast">Text contrast boost: %1$d%%</string>
     <string name="contrast_off">Text contrast boost: off</string>
     <string name="sec_frontlight">Frontlight</string>
@@ -36,4 +49,16 @@
     <string name="sec_other">Other</string>
     <string name="mirror_in_lcd">Also show the LCD content on the e-ink while using the LCD</string>
     <string name="per_screen">Remember brightness and screen timeout per screen</string>
+    <!-- short refresh mode names (Quick Settings subtitle) -->
+    <string name="short_stock">Stock</string>
+    <string name="short_auto">Auto</string>
+    <string name="short_quality">Quality</string>
+    <string name="short_partial">Reading</string>
+    <string name="short_fast">Fast</string>
+    <string name="short_fastest">Fastest</string>
+    <string name="tile_unavailable">Unavailable</string>
+    <string name="screen_now">Now: %1$s (%2$s)</string>
+    <string name="fl_tile_on">On, up to %1$d%%</string>
+    <string name="fl_tile_off">Off</string>
+    <string name="fl_help">The frontlight lights the e-ink only while it is the active screen. Its level follows the normal brightness slider; it has a single white LED (no warmth setting).</string>
 </resources>

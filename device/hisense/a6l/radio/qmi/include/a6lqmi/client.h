@@ -31,6 +31,7 @@ enum Service : uint32_t {
     kSvcUim = 0x0B,
     kSvcPbm = 0x0C,
     kSvcLoc = 0x10,
+    kSvcImss = 0x12,  // volte5: IMS settings (modem)
     kSvcWda = 0x1A,
     kSvcImsa = 0x21,
     kSvcDpm = 0x2F,
@@ -75,6 +76,7 @@ class Transport {
     virtual bool open() = 0;
     virtual void close() = 0;
     virtual uint32_t localNode() const = 0;
+    virtual uint32_t localPort() const { return 0; }  // volte2: for NEW_SERVER (AP-hosted services)
     // Control port of the name service (local node, kPortCtrl).
     virtual Addr nameService() const { return Addr{localNode(), kPortCtrl}; }
     virtual bool send(const Addr& to, const std::vector<uint8_t>& data) = 0;
@@ -103,9 +105,14 @@ class Client {
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
 
-    // Opens the transport, starts the reader thread and looks up `services`.
+    // Opens the transport, starts the reader thread and looks up `services`. On a client whose transport
+    // failed (failed() == true) it closes the old transport and reopens (r5 review F16). Never call start()/stop()
+    // from an indication or service callback (they would join the calling thread).
     bool start(const std::vector<uint32_t>& services);
     void stop();
+    // r5 F16: the reader got a fatal transport error. Pending requests were failed (TransportError), every known
+    // service was reported down and forgotten; new requests fail fast until start() reopens the transport.
+    bool failed() const { return mFailed; }
 
     // Blocks until all `services` have a server (or timeout). Returns the missing ones.
     std::vector<uint32_t> waitForServices(const std::vector<uint32_t>& services, int timeoutMs);
@@ -139,10 +146,12 @@ class Client {
     void handleData(const Addr& from, const std::vector<uint8_t>& data);
     bool addrFor(uint32_t svc, Addr* out) const;
     void post(Event e);
+    void failTransport();
 
     std::unique_ptr<Transport> mT;
     std::string mTag;
     std::atomic<bool> mRunning{false};
+    std::atomic<bool> mFailed{false};
     std::thread mReader, mDispatcher;
     bool mPreferRemote = true;
 

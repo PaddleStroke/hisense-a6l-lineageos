@@ -1,0 +1,18 @@
+# Hisense A6L (agent volte2, 25 Sep 2026): IMS data connection manager (QMI IMSDCM 770 server, replaces
+# stock imsdatadaemon) for modem-centric VoLTE. OFF by default until the attended test proves IMS
+# registration on Orange FR: setprop persist.vendor.a6l.ril.volte 1 (needs the modem enabled too).
+# volte5 (28 Sep 2026): --imsa = IMSA/IMSS bind + IMS service enable (persist.vendor.a6l.ril.imsdcm_imss) + IMSA watch
+service vendor.a6l-imsdcm /vendor/bin/a6l-imsdcm --imsa
+    class main
+    user radio
+    group radio
+    disabled
+    oneshot
+
+# merge r4 (28 Sep 2026): trigger fixed - the ROM's radio switch is persist.vendor.a6l.radio (persist.vendor.a6l.radio.enable
+# is set by nothing; found by release-prep, docs/release-prep-20260927.md).
+on property:persist.vendor.a6l.ril.volte=1 && property:persist.vendor.a6l.radio=1
+    start vendor.a6l-imsdcm
+
+on property:persist.vendor.a6l.ril.volte=0
+    stop vendor.a6l-imsdcm

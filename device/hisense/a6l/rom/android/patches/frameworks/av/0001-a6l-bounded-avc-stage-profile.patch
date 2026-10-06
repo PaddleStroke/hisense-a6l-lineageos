@@ -1,0 +1,254 @@
+--- a/frameworks/av/media/codec2/components/avc/C2SoftAvcEnc.cpp
++++ b/frameworks/av/media/codec2/components/avc/C2SoftAvcEnc.cpp
+@@ -21,6 +21,8 @@
+ #include <utils/misc.h>
+ 
+ #include <algorithm>
++#include <cutils/properties.h>
++#include "A6lAvcProfile.h"
+ 
+ #include <media/hardware/VideoAPI.h>
+ #include <media/stagefright/MediaDefs.h>
+@@ -42,6 +44,27 @@
+ namespace android {
+ 
+ namespace {
++
++static int64_t a6lProfileClock() { return systemTime(SYSTEM_TIME_MONOTONIC); }
++static bool a6lProfileEnabled() {
++    char board[PROPERTY_VALUE_MAX], debug[PROPERTY_VALUE_MAX], requested[PROPERTY_VALUE_MAX];
++    property_get("ro.product.vendor.device", board, "");
++    property_get("ro.debuggable", debug, "0");
++    property_get("media.a6l.avc.profile", requested, "0");
++    return A6lAvcProfile::gate(board, debug, requested);
++}
++static void a6lProfileLog(const A6lAvcProfileRecord &r) {
++    ALOGI("A6L_AVC_STAGE frame=%" PRIu64 " pts_us=%" PRId64
++          " entry_ns=%" PRId64 " wall_ns=%" PRId64 " map_ns=%" PRId64 " output_ns=%" PRId64
++          " prepare_ns=%" PRId64 " encode_ns=%" PRId64
++          " attempts=%u input=%d output=%d bytes=%u result=%d layout=%d planes=%u/%u"
++          " size=%ux%u crop=%ux%u row=%d,%d,%d,%d col=%d,%d,%d,%d",
++          r.frame, r.ptsUs, r.entryNs, r.wallNs, r.stageNs[0], r.stageNs[1], r.stageNs[2],
++          r.stageNs[3], r.calls, r.inputPresent, r.outputPresent, r.outputBytes,
++          r.result, r.layoutType, r.numPlanes, r.rootPlanes, r.width, r.height, r.cropWidth, r.cropHeight,
++          r.rowInc[0], r.rowInc[1], r.rowInc[2], r.rowInc[3],
++          r.colInc[0], r.colInc[1], r.colInc[2], r.colInc[3]);
++}
+ 
+ constexpr char COMPONENT_NAME[] = "c2.android.avc.encoder";
+ constexpr uint32_t kMinOutBufferSize = 524288;
+@@ -659,6 +682,8 @@
+ }
+ 
+ void  C2SoftAvcEnc::initEncParams() {
++    mA6lProfileEnabled = a6lProfileEnabled();
++    mA6lProfileCalls = 0;
+     mCodecCtx = nullptr;
+     mMemRecords = nullptr;
+     mNumMemRecords = DEFAULT_MEM_REC_CNT;
+@@ -1695,6 +1720,10 @@
+     IV_STATUS_T status;
+     nsecs_t timeDelay = 0;
+     uint64_t workIndex = work->input.ordinal.frameIndex.peekull();
++    A6lAvcProfile profile(mA6lProfileEnabled, mA6lProfileCalls, workIndex,
++                          work->input.ordinal.timestamp.peekll(),
++                          a6lProfileClock, a6lProfileLog);
++    profile.record.result = -1; // incomplete/error return until normal end
+ 
+     // Initialize encoder if not already initialized
+     if (mCodecCtx == nullptr) {
+@@ -1813,8 +1842,11 @@
+     std::shared_ptr<C2Buffer> inputBuffer;
+     if (!work->input.buffers.empty()) {
+         inputBuffer = work->input.buffers[0];
+-        view = std::make_shared<C2GraphicView>(
+-                inputBuffer->data().graphicBlocks().front().map().get());
++        {
++            A6lAvcProfile::Stage stage(profile, 0);
++            view = std::make_shared<C2GraphicView>(
++                    inputBuffer->data().graphicBlocks().front().map().get());
++        }
+         if (view->error() != C2_OK) {
+             ALOGE("graphic view map err = %d", view->error());
+             work->workletsProcessed = 1u;
+@@ -1823,11 +1855,21 @@
+         //(b/232396154)
+         //workaround for incorrect crop size in view when using surface mode
+         view->setCrop_be(C2Rect(mSize->width, mSize->height));
++        if (profile.sampled()) {
++            const auto &layout = view->layout();
++            profile.record.inputPresent = true;
++            profile.noteLayout(layout);
++            profile.record.width = view->width();
++            profile.record.height = view->height();
++            profile.record.cropWidth = view->crop().width;
++            profile.record.cropHeight = view->crop().height;
++        }
+     }
+ 
+     do {
+         if (mSawInputEOS && work->input.buffers.empty()) break;
+         if (!mOutBlock) {
++            A6lAvcProfile::Stage stage(profile, 1);
+             C2MemoryUsage usage = {C2MemoryUsage::CPU_READ,
+                                    C2MemoryUsage::CPU_WRITE};
+             // TODO: error handling, proper usage, etc.
+@@ -1840,7 +1882,10 @@
+                 return;
+             }
+         }
+-        C2WriteView wView = mOutBlock->map().get();
++        C2WriteView wView = [&]() {
++            A6lAvcProfile::Stage stage(profile, 1);
++            return mOutBlock->map().get();
++        }();
+         if (wView.error() != C2_OK) {
+             ALOGE("write view map err = %d", wView.error());
+             work->result = wView.error();
+@@ -1848,8 +1893,11 @@
+             return;
+         }
+ 
+-        error = setEncodeArgs(
+-                ps_encode_ip, ps_encode_op, view.get(), wView.base(), wView.capacity(), workIndex);
++        {
++            A6lAvcProfile::Stage stage(profile, 2);
++            error = setEncodeArgs(
++                    ps_encode_ip, ps_encode_op, view.get(), wView.base(), wView.capacity(), workIndex);
++        }
+         if (error != C2_OK) {
+             ALOGE("setEncodeArgs failed : %d", error);
+             mSignalledError = true;
+@@ -1866,7 +1914,11 @@
+          * to start of current decode() */
+         mTimeStart = systemTime();
+         timeDelay = mTimeStart - mTimeEnd;
+-        status = ive_api_function(mCodecCtx, &s_video_encode_ip, &s_video_encode_op);
++        {
++            A6lAvcProfile::Stage stage(profile, 3);
++            if (profile.sampled()) ++profile.record.calls;
++            status = ive_api_function(mCodecCtx, &s_video_encode_ip, &s_video_encode_op);
++        }
+ 
+         if (IV_SUCCESS != status) {
+             if ((ps_encode_op->u4_error_code & 0xFF) == IH264E_BITSTREAM_BUFFER_OVERFLOW) {
+@@ -1908,6 +1960,10 @@
+         }
+     }
+ 
++    if (profile.sampled()) {
++        profile.record.outputPresent = ps_encode_op->output_present;
++        profile.record.outputBytes = ps_encode_op->s_out_buf.u4_bytes;
++    }
+     if (ps_encode_op->output_present) {
+         if (!ps_encode_op->s_out_buf.u4_bytes) {
+             ALOGE("Error: Output present but bytes generated is zero");
+@@ -1923,6 +1979,7 @@
+     if (mSawInputEOS) {
+         drainInternal(DRAIN_COMPONENT_WITH_EOS, pool, work);
+     }
++    if (profile.sampled()) profile.record.result = work->result;
+ }
+ 
+ c2_status_t C2SoftAvcEnc::drainInternal(
+--- a/frameworks/av/media/codec2/components/avc/C2SoftAvcEnc.h
++++ b/frameworks/av/media/codec2/components/avc/C2SoftAvcEnc.h
+@@ -153,6 +153,8 @@
+ 
+     std::shared_ptr<IntfImpl> mIntf;
+ 
++    bool mA6lProfileEnabled = false;
++    uint32_t mA6lProfileCalls = 0;
+     int32_t mStride;
+ 
+     nsecs_t mTimeStart = 0;   // Time at the start of decode()
+--- /dev/null
++++ b/frameworks/av/media/codec2/components/avc/A6lAvcProfile.h
+@@ -0,0 +1,87 @@
++// SPDX-License-Identifier: Apache-2.0
++#pragma once
++
++#include <array>
++#include <cstdint>
++#include <cstring>
++
++namespace android {
++
++// A bounded diagnostic only. No pixels, native handles or addresses are retained.
++struct A6lAvcProfileRecord {
++    uint64_t frame = 0;
++    int64_t ptsUs = 0;
++    int64_t entryNs = 0;
++    int64_t wallNs = 0;
++    std::array<int64_t, 4> stageNs{}; // map, output allocation/map, prepare, libavc
++    uint32_t calls = 0;
++    uint32_t width = 0, height = 0, cropWidth = 0, cropHeight = 0;
++    int32_t layoutType = -1;
++    uint32_t numPlanes = 0, rootPlanes = 0;
++    std::array<int32_t, 4> rowInc{}, colInc{};
++    int32_t result = 0;
++    uint32_t outputBytes = 0;
++    bool inputPresent = false, outputPresent = false;
++};
++
++class A6lAvcProfile {
++public:
++    using Clock = int64_t (*)();
++    using Sink = void (*)(const A6lAvcProfileRecord &);
++    static bool gate(const char *board, const char *debuggable, const char *requested) {
++        return !std::strcmp(board, "a6l") && !std::strcmp(debuggable, "1") &&
++               !std::strcmp(requested, "1");
++    }
++    A6lAvcProfile(bool enabled, uint32_t &count, uint64_t frame, int64_t ptsUs,
++                  Clock clock, Sink sink) : clock_(clock), sink_(sink) {
++        if (!enabled || count >= 128) return;
++        const uint32_t call = count++;
++        sampled_ = call < 4 || call % 8 == 0;
++        if (!sampled_) return;
++        record.frame = frame;
++        record.ptsUs = ptsUs;
++        start_ = clock_();
++        record.entryNs = start_;
++    }
++    ~A6lAvcProfile() {
++        if (!sampled_) return;
++        record.wallNs = clock_() - start_;
++        sink_(record);
++    }
++    A6lAvcProfile(const A6lAvcProfile &) = delete;
++    A6lAvcProfile &operator=(const A6lAvcProfile &) = delete;
++    bool sampled() const { return sampled_; }
++    template<class Layout> void noteLayout(const Layout &layout) {
++        if (!sampled_) return;
++        record.layoutType = static_cast<int32_t>(layout.type);
++        record.numPlanes = layout.numPlanes;
++        record.rootPlanes = layout.rootPlanes;
++        for (unsigned i = 0; i < layout.numPlanes && i < 4; ++i) {
++            record.rowInc[i] = layout.planes[i].rowInc;
++            record.colInc[i] = layout.planes[i].colInc;
++        }
++    }
++    class Stage {
++    public:
++        Stage(A6lAvcProfile &owner, unsigned stage) : owner_(owner), stage_(stage) {
++            if (owner_.sampled_) start_ = owner_.clock_();
++        }
++        ~Stage() {
++            if (owner_.sampled_) owner_.record.stageNs[stage_] += owner_.clock_() - start_;
++        }
++        Stage(const Stage &) = delete;
++        Stage &operator=(const Stage &) = delete;
++    private:
++        A6lAvcProfile &owner_;
++        unsigned stage_;
++        int64_t start_ = 0;
++    };
++    A6lAvcProfileRecord record;
++private:
++    Clock clock_;
++    Sink sink_;
++    bool sampled_ = false;
++    int64_t start_ = 0;
++};
++
++} // namespace android

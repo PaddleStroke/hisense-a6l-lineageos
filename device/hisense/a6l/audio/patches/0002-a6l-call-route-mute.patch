@@ -1,0 +1,262 @@
+Hisense A6L r5 review fixes F6/F7/F62 (28 Sep 2026) for the AOSP AIDL example audio HAL (ModulePrimary):
+  - publishes Android's call devices (Telephony Rx/Tx HW patches, or the legacy primary-output routing while
+    AudioMode is IN_CALL) in vendor.a6l.audio.call_out / call_in for a6l-audio-route and a6l-q6voiced
+    (speakerphone = TFA9894 via TERT_MI2S voice route; bt-sco reported but unsupported by the routing daemon),
+  - F62: publishes Android's ordinary playback/capture devices in every mode (vendor.a6l.audio.media_out, e.g.
+    speaker|earpiece|headset|headphone or "speaker,headset"; vendor.a6l.audio.media_in main|headset), which
+    a6l-audio-route applies when no modem call is active (VoIP speakerphone, capture from the built-in mic),
+  - setMicMute goes to a6l-q6voiced (kernel "VoiceMMode1 TX Mute"), the same state as IRadioVoice.setMute.
+Applied in hardware/interfaces by tools/rom-v2-pipeline.sh (audio/patches/*.patch).
+
+diff -ru a/audio/aidl/default/ModulePrimary.cpp b/audio/aidl/default/ModulePrimary.cpp
+--- a/audio/aidl/default/ModulePrimary.cpp	2026-09-28 18:38:43.783410448 +0200
++++ b/audio/aidl/default/ModulePrimary.cpp	2026-09-28 18:39:46.392160166 +0200
+@@ -16,9 +16,17 @@
+ 
+ #include <vector>
+ 
++#include <errno.h>
++#include <poll.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++
+ #define LOG_TAG "AHAL_ModulePrimary"
+ #include <Log.h>
+ #include <Utils.h>
++#include <android-base/properties.h>
+ 
+ #include "core-impl/Configuration.h"
+ #include "core-impl/ModulePrimary.h"
+@@ -33,7 +41,10 @@
+ using aidl::android::hardware::audio::common::SinkMetadata;
+ using aidl::android::hardware::audio::common::SourceMetadata;
+ using aidl::android::hardware::audio::core::StreamDescriptor;
++using aidl::android::media::audio::common::AudioDeviceDescription;
++using aidl::android::media::audio::common::AudioDeviceType;
+ using aidl::android::media::audio::common::AudioInputFlags;
++using aidl::android::media::audio::common::AudioMode;
+ using aidl::android::media::audio::common::AudioIoFlags;
+ using aidl::android::media::audio::common::AudioOffloadInfo;
+ using aidl::android::media::audio::common::AudioOutputFlags;
+@@ -45,6 +56,187 @@
+ 
+ namespace aidl::android::hardware::audio::core {
+ 
++// ---------------------------------------------------------------------------------------------------------------
++// Hisense A6L r5 review fixes (28 Sep 2026, docs/hardware-review-20260928.md F6/F7).
++namespace {
++
++// Android device -> the names a6l-audio-route / a6l-q6voiced understand ("" = none/unknown)
++std::string a6lOutName(const AudioDeviceDescription& d) {
++    if (d.connection == AudioDeviceDescription::CONNECTION_BT_SCO) return "bt-sco";
++    switch (d.type) {
++        case AudioDeviceType::OUT_SPEAKER: return "speaker";
++        case AudioDeviceType::OUT_SPEAKER_EARPIECE: return "earpiece";
++        case AudioDeviceType::OUT_HEADSET: return "headset";
++        case AudioDeviceType::OUT_HEADPHONE: return "headphone";
++        default: return "";
++    }
++}
++std::string a6lInName(const AudioDeviceDescription& d) {
++    if (d.connection == AudioDeviceDescription::CONNECTION_BT_SCO) return "bt-sco";
++    switch (d.type) {
++        case AudioDeviceType::IN_MICROPHONE:
++        case AudioDeviceType::IN_MICROPHONE_BACK: return "main";
++        case AudioDeviceType::IN_HEADSET: return "headset";
++        default: return "";
++    }
++}
++
++// a6l-q6voiced control socket (kvoice/q6voiced/a6l_q6voiced.c): one "mute 0|1" line, reply "OK mute=N" or
++// "ERR <errno> <text>". Returns 0 or a positive errno.
++int a6lQ6voicedMute(bool mute, std::string* reply) {
++    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
++    if (fd < 0) return errno;
++    sockaddr_un sa{};
++    sa.sun_family = AF_UNIX;
++    strncpy(sa.sun_path, "/dev/socket/a6l_q6voiced", sizeof(sa.sun_path) - 1);
++    const char* cmd = mute ? "mute 1\n" : "mute 0\n";
++    int err = 0;
++    if (connect(fd, reinterpret_cast<sockaddr*>(&sa), sizeof(sa)) < 0 || write(fd, cmd, 7) != 7) {
++        err = errno;
++    } else {
++        pollfd p{fd, POLLIN, 0};
++        char buf[128] = {};
++        ssize_t n = poll(&p, 1, 4000) > 0 ? read(fd, buf, sizeof(buf) - 1) : -1;
++        if (n <= 0) {
++            err = ETIMEDOUT;
++        } else {
++            *reply = std::string(buf, static_cast<size_t>(n));
++            if (reply->rfind("OK ", 0) != 0) err = reply->rfind("ERR ", 0) == 0 ? atoi(reply->c_str() + 4) : EPROTO;
++            if (err == 0 && reply->rfind("OK mute=", 0) != 0) err = EPROTO;
++        }
++    }
++    close(fd);
++    return err;
++}
++
++}  // namespace
++
++void ModulePrimary::a6lPublishCallRoute() {
++    auto& cfg = getConfig();
++    auto deviceOf = [&cfg](int32_t portConfigId) -> const AudioDeviceDescription* {
++        for (const auto& pc : cfg.portConfigs) {
++            if (pc.id != portConfigId) continue;
++            if (pc.ext.getTag() != AudioPortExt::device) return nullptr;
++            return &pc.ext.get<AudioPortExt::device>().device.type;
++        }
++        return nullptr;
++    };
++    auto isMix = [&cfg](int32_t portConfigId) {
++        for (const auto& pc : cfg.portConfigs)
++            if (pc.id == portConfigId) return pc.ext.getTag() == AudioPortExt::mix;
++        return false;
++    };
++    std::string out, in, legacyOut;
++    const bool inCall = mA6lMode == AudioMode::IN_CALL;
++    if (inCall) {
++        for (const auto& p : cfg.patches) {
++            bool telRx = false, mixSrc = !p.sourcePortConfigIds.empty();
++            for (int32_t s : p.sourcePortConfigIds) {
++                const auto* d = deviceOf(s);
++                if (d && d->type == AudioDeviceType::IN_TELEPHONY_RX) telRx = true;
++                if (!isMix(s)) mixSrc = false;
++            }
++            for (int32_t k : p.sinkPortConfigIds) {
++                const auto* d = deviceOf(k);
++                if (!d) continue;
++                // HW patch Telephony Rx -> device (telephony devices declared), or the legacy call routing of the
++                // primary output (policy setOutputDevices on the primary output while in call)
++                if (telRx && out.empty()) out = a6lOutName(*d);
++                if (mixSrc && legacyOut.empty()) legacyOut = a6lOutName(*d);
++                if (d->type == AudioDeviceType::OUT_TELEPHONY_TX)
++                    for (int32_t s : p.sourcePortConfigIds)
++                        if (const auto* sd = deviceOf(s); sd && in.empty()) in = a6lInName(*sd);
++            }
++        }
++        if (out.empty()) out = legacyOut;
++    }
++    // r5 review F62 (28 Sep 2026): Android's devices for ordinary playback/capture, published in EVERY mode (NORMAL,
++    // IN_COMMUNICATION/VoIP, ringtone, IN_CALL) for a6l-audio-route, which applies them whenever no modem call is
++    // active (a modem call keeps the call_out/call_in priority). Output: every device sink of a mix-sourced patch
++    // (comma-separated, e.g. "speaker,headset" for a duplicated ringtone/alarm). Input: the device source of a
++    // patch into a mix; with concurrent capture patches the most recently created one wins (Module appends new
++    // patches, an updated patch keeps its place). "" = no active patch (the daemon then uses the jack default).
++    std::string mediaOut, mediaIn;
++    for (const auto& p : cfg.patches) {
++        bool mixSrc = !p.sourcePortConfigIds.empty(), mixSink = !p.sinkPortConfigIds.empty();
++        for (int32_t s : p.sourcePortConfigIds)
++            if (!isMix(s)) mixSrc = false;
++        for (int32_t k : p.sinkPortConfigIds)
++            if (!isMix(k)) mixSink = false;
++        if (mixSrc) {
++            for (int32_t k : p.sinkPortConfigIds) {
++                const auto* d = deviceOf(k);
++                std::string n = d ? a6lOutName(*d) : "";
++                if (!n.empty() && ("," + mediaOut + ",").find("," + n + ",") == std::string::npos)
++                    mediaOut += (mediaOut.empty() ? "" : ",") + n;
++            }
++        }
++        if (mixSink) {
++            for (int32_t s : p.sourcePortConfigIds)
++                if (const auto* d = deviceOf(s)) {
++                    std::string n = a6lInName(*d);
++                    if (!n.empty()) mediaIn = n;
++                }
++        }
++    }
++    if (mediaOut != mA6lMediaOut) {
++        ::android::base::SetProperty("vendor.a6l.audio.media_out", mediaOut);
++        LOG(INFO) << __func__ << ": A6L output '" << mA6lMediaOut << "' -> '" << mediaOut << "'";
++        mA6lMediaOut = mediaOut;
++    }
++    if (mediaIn != mA6lMediaIn) {
++        ::android::base::SetProperty("vendor.a6l.audio.media_in", mediaIn);
++        LOG(INFO) << __func__ << ": A6L input '" << mA6lMediaIn << "' -> '" << mediaIn << "'";
++        mA6lMediaIn = mediaIn;
++    }
++    if (out != mA6lCallOut) {
++        ::android::base::SetProperty("vendor.a6l.audio.call_out", out);
++        LOG(INFO) << __func__ << ": A6L call output '" << mA6lCallOut << "' -> '" << out << "'";
++        mA6lCallOut = out;
++    }
++    if (in != mA6lCallIn) {
++        ::android::base::SetProperty("vendor.a6l.audio.call_in", in);
++        LOG(INFO) << __func__ << ": A6L call input '" << mA6lCallIn << "' -> '" << in << "'";
++        mA6lCallIn = in;
++    }
++}
++
++ndk::ScopedAStatus ModulePrimary::setAudioPatch(const AudioPatch& in_requested, AudioPatch* _aidl_return) {
++    auto status = Module::setAudioPatch(in_requested, _aidl_return);
++    if (status.isOk()) a6lPublishCallRoute();
++    return status;
++}
++
++ndk::ScopedAStatus ModulePrimary::resetAudioPatch(int32_t in_patchId) {
++    auto status = Module::resetAudioPatch(in_patchId);
++    if (status.isOk()) a6lPublishCallRoute();
++    return status;
++}
++
++ndk::ScopedAStatus ModulePrimary::updateAudioMode(AudioMode in_mode) {
++    auto status = Module::updateAudioMode(in_mode);
++    if (status.isOk()) {
++        mA6lMode = in_mode;
++        a6lPublishCallRoute();
++    }
++    return status;
++}
++
++// One mute state with IRadioVoice.setMute: the uplink of the modem voice call is muted in the ADSP (kernel control
++// "VoiceMMode1 TX Mute", applied live, restored at every call start). The HAL's own flag only changes when the
++// daemon applied it; failures are returned (ENOENT: kernel without the tx-mute patch).
++ndk::ScopedAStatus ModulePrimary::setMicMute(bool in_mute) {
++    std::string reply;
++    int err = a6lQ6voicedMute(in_mute, &reply);
++    if (err != 0) {
++        LOG(ERROR) << __func__ << ": A6L voice uplink mute " << in_mute << " failed: " << strerror(err) << " '"
++                   << reply << "'";
++        return ndk::ScopedAStatus::fromExceptionCode(err == ENOENT ? EX_UNSUPPORTED_OPERATION : EX_ILLEGAL_STATE);
++    }
++    LOG(INFO) << __func__ << ": A6L voice uplink mute " << in_mute;
++    return Module::setMicMute(in_mute);
++}
++
+ ndk::ScopedAStatus ModulePrimary::getTelephony(std::shared_ptr<ITelephony>* _aidl_return) {
+     if (!mTelephony) {
+         mTelephony = ndk::SharedRefBase::make<Telephony>();
+diff -ru a/audio/aidl/default/include/core-impl/ModulePrimary.h b/audio/aidl/default/include/core-impl/ModulePrimary.h
+--- a/audio/aidl/default/include/core-impl/ModulePrimary.h	2026-09-28 18:38:43.784873596 +0200
++++ b/audio/aidl/default/include/core-impl/ModulePrimary.h	2026-09-28 18:39:46.396219614 +0200
+@@ -29,6 +29,15 @@
+             const ::aidl::android::media::audio::common::AudioPortConfig& in_config,
+             ::aidl::android::media::audio::common::FlushFromFrameSupport* _aidl_return) override;
+ 
++    // Hisense A6L (r5 review F6/F7): Android's call devices are published for the routing daemons
++    // (vendor.a6l.audio.call_out / call_in; F62: media_out / media_in in every mode) and the mic mute is applied on the modem voice uplink
++    // through a6l-q6voiced (the same state as IRadioVoice.setMute).
++    ndk::ScopedAStatus setAudioPatch(const AudioPatch& in_requested,
++                                     AudioPatch* _aidl_return) override;
++    ndk::ScopedAStatus resetAudioPatch(int32_t in_patchId) override;
++    ndk::ScopedAStatus updateAudioMode(::aidl::android::media::audio::common::AudioMode in_mode) override;
++    ndk::ScopedAStatus setMicMute(bool in_mute) override;
++
+   protected:
+     ndk::ScopedAStatus getTelephony(std::shared_ptr<ITelephony>* _aidl_return) override;
+ 
+@@ -54,7 +63,12 @@
+             const ::aidl::android::media::audio::common::AudioPortConfig& portConfig) override;
+ 
+   private:
++    void a6lPublishCallRoute();
+     ChildInterface<ITelephony> mTelephony;
++    ::aidl::android::media::audio::common::AudioMode mA6lMode =
++            ::aidl::android::media::audio::common::AudioMode::NORMAL;
++    std::string mA6lCallOut, mA6lCallIn;
++    std::string mA6lMediaOut, mA6lMediaIn;   // r5 review F62: vendor.a6l.audio.media_out / media_in
+ };
+ 
+ }  // namespace aidl::android::hardware::audio::core

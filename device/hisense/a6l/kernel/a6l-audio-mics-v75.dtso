@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// audio6 (25 Sep 2026): microphone bias routing for the ROM V75 DT (applied after kvoice/dt/a6l-voice-speaker-onbase-v75).
+// The V74 base sound node routes AMIC1 <- MIC BIAS External1 (main mic) and AMIC2 <- MIC BIAS External2 (headset mic) but
+// has NO bias for AMIC3 (secondary mic, ADC3 = "ADC2 MUX" INP3). Stock sdm660-snd-card qcom,audio-routing:
+//   "AMIC1","MIC BIAS External", "AMIC2","MIC BIAS External2", "AMIC3","MIC BIAS External"   (External = External1)
+// This overlay rewrites the whole property (a property cannot be appended by an overlay): identical to the base list
+// plus "AMIC3","MIC BIAS External1". Widget names checked in sound/soc/codecs/msm8916-wcd-analog.c (7.2.3):
+// SND_SOC_DAPM_INPUT("AMIC3"), "MIC BIAS External1" supply. The base already has qcom,micbias1/2-ext-cap and
+// micbias-lvl 2600 (stock: micbias1/2 ext cap, hs-micbias external).
+/dts-v1/;
+/plugin/;
+
+&sound {
+    audio-routing = "PDM_RX1", "Digital PDM_RX1", "PDM_RX2", "Digital PDM_RX2", "PDM_RX3", "Digital PDM_RX3",
+                    "Digital LPASS_PDM_TX", "PDM_TX",
+                    "AMIC1", "MIC BIAS External1", "AMIC2", "MIC BIAS External2", "AMIC3", "MIC BIAS External1";
+};

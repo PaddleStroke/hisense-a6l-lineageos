@@ -1,0 +1,22 @@
+[
+  {
+    "test": "radio-build",
+    "exit_code": 0,
+    "stdout": ""
+  },
+  {
+    "test": "radio",
+    "exit_code": 0,
+    "stdout": "F17 startup ready=1 voice_attempts=1 sms_attempts=1 successes_after_fault_cleared=0/0\nF17 healthy_service_return_positive_control registrations_accepted=1/1\nF17 rejected_service_return retries_after_fault_cleared=0/0 ready=1\nF17 second_service_cycle_positive_control registrations_accepted=2/2\nF65 nitz=26/09/28,12:00:00+0,0\nF65 nitz=26/09/28,12:00:00+8,0\nF65 nitz=26/09/28,12:00:00+8,1\nROUND11_RADIO defect assertions passed=31 failed=0\n"
+  },
+  {
+    "test": "java-build",
+    "exit_code": 0,
+    "stdout": ""
+  },
+  {
+    "test": "java",
+    "exit_code": 0,
+    "stdout": "F65 Android parser: missing timezone accepted as offset_ms=0; missing DST accepted as dst_ms=0\nF65 omitted_DST_positive_control dst=null; known_fields_positive_control offset_ms=7200000 dst_ms=3600000; UTC_unchanged=1\n"
+  }
+]

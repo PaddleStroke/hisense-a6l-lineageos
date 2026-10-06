@@ -1,0 +1,600 @@
+--- /dev/null
++++ b/include/libcamera/internal/a6l_sensor_control_guard.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <cstdint>
++#include <optional>
++#include <linux/videodev2.h>
++#include <libcamera/controls.h>
++
++namespace libcamera {
++struct A6lSensorExposureGain { int32_t exposure, gain; };
++inline std::optional<A6lSensorExposureGain> a6lSensorExposureGain(const ControlList &controls)
++{
++	if (!controls.contains(V4L2_CID_EXPOSURE) || !controls.contains(V4L2_CID_ANALOGUE_GAIN))
++		return std::nullopt;
++	const ControlValue &exposure = controls.get(V4L2_CID_EXPOSURE);
++	const ControlValue &gain = controls.get(V4L2_CID_ANALOGUE_GAIN);
++	if (exposure.type() != ControlTypeInteger32 || exposure.isArray() ||
++	    gain.type() != ControlTypeInteger32 || gain.isArray())
++		return std::nullopt;
++	return A6lSensorExposureGain{ exposure.get<int32_t>(), gain.get<int32_t>() };
++}
++} /* namespace libcamera */
+--- a/include/libcamera/internal/raw10_fov.h
++++ b/include/libcamera/internal/raw10_fov.h
+@@ -2,6 +2,8 @@
+ #pragma once
+ 
+ #include <algorithm>
++#include <array>
++#include <cstring>
+ #include <cmath>
+ #include <cstddef>
+ #include <cstdint>
+@@ -44,6 +46,8 @@
+ 			return false;
+ 		crop_ = { ((iw - cw) / 2) & ~3u, ((ih - ch) / 2) & ~1u, cw, ch };
+ 		x_.resize(width_); y_.resize(height_);
++		for (auto &row : rowCache_)
++			row.resize(size_t(inputWidth_) * 5 / 4);
+ 		for (unsigned int x = 0; x < width_; ++x)
+ 			x_[x] = axis(crop_.x + (double(int64_t(x) - border) + 0.5) * cw / ow - 0.5, x & 1, iw);
+ 		for (unsigned int y = 0; y < height_; ++y)
+@@ -52,16 +56,18 @@
+ 		return true;
+ 	}
+ 
+-	bool process(std::span<const uint8_t> input, std::span<uint8_t> output) const
++	bool process(std::span<const uint8_t> input, std::span<uint8_t> output)
+ 	{
+ 		if (!valid_ || input.size() < uint64_t(inputStride_) * (inputHeight_ - 1) + uint64_t(inputWidth_) * 5 / 4 ||
+ 		    output.size() < uint64_t(stride_) * height_)
+ 			return false;
++		rowTags_.fill(std::numeric_limits<unsigned int>::max());
++		rowCopies_ = 0;
+ 		for (unsigned int y = 0; y < height_; ++y) {
+ 			uint8_t *dst = output.data() + size_t(y) * stride_;
+ 			const Sample &sy = y_[y];
+-			const uint8_t *row0 = input.data() + size_t(sy.low) * inputStride_;
+-			const uint8_t *row1 = input.data() + size_t(sy.high) * inputStride_;
++			const uint8_t *row0 = cachedRow(input, sy.low);
++			const uint8_t *row1 = cachedRow(input, sy.high);
+ 			for (unsigned int x = 0; x < width_; x += 4) {
+ 				uint8_t lowBits = 0;
+ 				for (unsigned int phase = 0; phase < 4; ++phase) {
+@@ -77,6 +83,22 @@
+ 			}
+ 		}
+ 		return true;
++	}
++
++	/* An exact mapping needs no pixel conversion; the existing debayer can
++	 * consume the source directly with its original stride and x=4 border. */
++	bool identity() const
++	{
++		return valid_ && width_ == inputWidth_ && height_ == inputHeight_ &&
++		       crop_.x == border && crop_.y == 0 &&
++		       crop_.width + 2 * border == inputWidth_ && crop_.height == inputHeight_;
++	}
++	unsigned int sourceRowCopies() const { return rowCopies_; }
++	size_t rowCacheBytes() const { return rowCache_[0].size() * rowCache_.size(); }
++
++	size_t inputBytesRequired() const
++	{
++		return valid_ ? size_t(inputStride_) * (inputHeight_ - 1) + size_t(inputWidth_) * 5 / 4 : 0;
+ 	}
+ 
+ 	unsigned int width() const { return width_; }
+@@ -102,6 +124,21 @@
+ 	}
+ 
+ private:
++	/* Adjacent samples on a Bayer lattice differ by two rows. Four slots
++	 * retain both neighbours of both parities without replacing a live
++	 * pointer. Each row is copied in a contiguous burst from mapped DMA
++	 * storage before the many small packed-pixel reads. Buffers are reused.
++	 * process() is serialized by the existing software-ISP worker. */
++	const uint8_t *cachedRow(std::span<const uint8_t> input, unsigned int row)
++	{
++		const unsigned int slot = row % rowCache_.size();
++		if (rowTags_[slot] != row) {
++			std::memcpy(rowCache_[slot].data(), input.data() + size_t(row) * inputStride_, rowCache_[slot].size());
++			rowTags_[slot] = row;
++			++rowCopies_;
++		}
++		return rowCache_[slot].data();
++	}
+ 	static Sample axis(double coordinate, unsigned int phase, unsigned int extent)
+ 	{
+ 		double index = (coordinate - phase) / 2;
+@@ -123,6 +160,9 @@
+ 	unsigned int width_ = 0, height_ = 0, stride_ = 0;
+ 	Crop crop_{};
+ 	std::vector<Sample> x_, y_;
++	std::array<std::vector<uint8_t>, 4> rowCache_;
++	std::array<unsigned int, 4> rowTags_{};
++	unsigned int rowCopies_ = 0;
+ };
+ 
+ } /* namespace libcamera */
+--- /dev/null
++++ b/include/libcamera/internal/software_isp/stats_ownership.h
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++#include <optional>
++#include <stdint.h>
++namespace libcamera {
++class FrameBuffer;
++/* Single shared statistics block: only its acknowledged consumer may retire
++ * the producer's ownership. Trusted stop joins/drains before clearAfterDrain().
++ * Stopped isolated instances cannot restart or reuse their shared block. */
++class StatsOwnership
++{
++public:
++ bool running() const { return running_; }
++ bool busy() const { return active_.has_value(); }
++ void start() { running_ = true; }
++ void halt() { running_ = false; }
++ void clearAfterDrain() { active_.reset(); }
++ bool begin(uint32_t frame, FrameBuffer *output) {
++  if (!running_ || active_) return false;
++  active_ = Job{frame, output, false}; return true;
++ }
++ bool matches(uint32_t frame) const {
++  return running_ && active_ && active_->frame == frame;
++ }
++ bool publish(uint32_t frame) {
++  if (!matches(frame) || active_->published) return false;
++  active_->published = true; return true;
++ }
++ bool acknowledge(uint32_t frame) {
++  if (!matches(frame) || !active_->published) return false;
++  active_.reset(); return true;
++ }
++ std::optional<uint32_t> fail(FrameBuffer *output) {
++  if (!running_ || !active_ || active_->output != output || active_->published) return std::nullopt;
++  uint32_t frame = active_->frame; active_.reset(); return frame;
++ }
++private:
++ struct Job { uint32_t frame; FrameBuffer *output; bool published; };
++ bool running_ = false;
++ std::optional<Job> active_;
++};
++} /* namespace libcamera */
+--- a/include/libcamera/internal/software_isp/software_isp.h
++++ b/include/libcamera/internal/software_isp/software_isp.h
+@@ -33,6 +33,7 @@
+ #include "libcamera/internal/pipeline_handler.h"
+ #include "libcamera/internal/shared_mem_object.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
++#include "libcamera/internal/software_isp/stats_ownership.h"
+ 
+ namespace libcamera {
+ 
+@@ -91,6 +92,8 @@
+ 
+ private:
+ 	void saveIspParams();
++	void processNext();
++	void statsConsumed(uint32_t frame, const ControlList &metadata);
+ 	void setSensorCtrls(const ControlList &sensorControls);
+ 	void statsReady(uint32_t frame, uint32_t bufferId);
+ 	void inputReady(FrameBuffer *input);
+@@ -101,8 +104,16 @@
+ 	DebayerParams debayerParams_;
+ 	DmaBufAllocator dmaHeap_;
+ 	bool ccmEnabled_;
++	bool isolatedStopped_ = false;
+ 
+ 	std::unique_ptr<ipa::soft::IPAProxySoft> ipa_;
++	struct PendingProcess {
++		uint32_t frame;
++		FrameBuffer *input;
++		FrameBuffer *output;
++	};
++	StatsOwnership statsOwnership_;
++	std::deque<PendingProcess> pendingProcessing_;
+ 	std::deque<FrameBuffer *> queuedInputBuffers_;
+ 	std::deque<FrameBuffer *> queuedOutputBuffers_;
+ };
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -17,6 +17,7 @@
+ 
+ #include <libcamera/control_ids.h>
+ #include "libcamera/internal/a6l_quality_debug.h"
++#include "libcamera/internal/a6l_sensor_control_guard.h"
+ #include <libcamera/controls.h>
+ 
+ #include <libcamera/ipa/ipa_interface.h>
+@@ -81,6 +82,7 @@
+ 	std::unique_ptr<CameraSensorHelper> camHelper_;
+ 	ControlInfoMap sensorInfoMap_;
+ 	ControlInfoMap lensInfoMap_;
++	unsigned int invalidSensorControls_ = 0;
+ 
+ 	/* Local parameter storage */
+ 	struct IPAContext context_;
+@@ -224,6 +226,7 @@
+ 	context_.configuration = {};
+ 	context_.activeState = {};
+ 	context_.frameContexts.clear();
++	invalidSensorControls_ = 0;
+ 
+ 	context_.configuration.agc.lineDuration =
+ 		context_.sensorInfo.minLineLength * 1.0s / context_.sensorInfo.pixelRate;
+@@ -313,11 +316,23 @@
+ 				 [[maybe_unused]] const uint32_t bufferId,
+ 				 const ControlList &sensorControls)
+ {
++	const auto sensor = a6lSensorExposureGain(sensorControls);
++	if (!sensor) {
++		/* A queued statistics callback can outlive valid delayed controls.
++		 * Finish its metadata dependency without inventing exposure/gain or
++		 * running algorithms/lens moves on unassociated sensor data. */
++		if (++invalidSensorControls_ <= 4)
++			LOG(IPASoft, Warning) << "Invalid statistics sensor controls for frame " << frame
++				<< " exposure_type=" << sensorControls.get(V4L2_CID_EXPOSURE).type()
++				<< " gain_type=" << sensorControls.get(V4L2_CID_ANALOGUE_GAIN).type();
++		metadataReady.emit(frame, ControlList(controls::controls));
++		return;
++	}
++
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 
+-	frameContext.sensor.exposure =
+-		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+-	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
++	frameContext.sensor.exposure = sensor->exposure;
++	int32_t again = sensor->gain;
+ 	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
+ 
+ 	ControlList metadata(controls::controls);
+@@ -336,7 +351,7 @@
+ 		LOG(IPASoft, Info) << "A6L_QUALITY_STATS frame=" << frame
+ 			<< " mono_ns=" << a6lQualityMonotonicNs() << " valid=" << stats_->valid
+ 			<< " control_association=delayed-ring/request-sequence"
+-			<< " input_exp_lines=" << sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>()
++			<< " input_exp_lines=" << sensor->exposure
+ 			<< " input_gain_code=" << again
+ 			<< " exposure_us=" << metadata.get(controls::ExposureTime).value_or(0)
+ 			<< " output_exp_lines=" << frameContext.sensor.exposure
+@@ -351,15 +366,6 @@
+ 			<< " af_dac_command=" << context_.activeState.af.dac << " sharp_global_norm=" << sharp
+ 			<< " af_state=" << metadata.get(controls::AfState).value_or(-1);
+ 	}
+-	metadataReady.emit(frame, metadata);
+-
+-	/* Sanity check */
+-	if (!sensorControls.contains(V4L2_CID_EXPOSURE) ||
+-	    !sensorControls.contains(V4L2_CID_ANALOGUE_GAIN)) {
+-		LOG(IPASoft, Error) << "Control(s) missing";
+-		return;
+-	}
+-
+ 	ControlList ctrls(sensorInfoMap_);
+ 
+ 	auto &againNew = frameContext.sensor.gain;
+@@ -379,6 +385,8 @@
+ 		af.moveEmitted = true;
+ 		af.moveFrame = frame;
+ 	}
++	/* Last operation: ACK ownership only after all stats/controls are used. */
++	metadataReady.emit(frame, metadata);
+ }
+ 
+ std::string IPASoftSimple::logPrefix() const
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -35,6 +35,7 @@
+ 
+ #include "libcamera/internal/camera.h"
+ #include "libcamera/internal/a6l_quality_debug.h"
++#include "libcamera/internal/a6l_sensor_control_guard.h"
+ #include "libcamera/internal/raw10_fov.h"
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/camera_lens.h"
+@@ -1051,16 +1052,18 @@
+ {
+ 	qualityFrame_ = frame;
+ 	const ControlList associated = delayedCtrls_->get(frame);
+-	if (a6lQualityDebug(frame) && frame % 4 == 0) {
++	const auto associatedSensor = a6lSensorExposureGain(associated);
++	if (a6lQualityDebug(frame) && frame % 4 == 0 && associatedSensor) {
+ 		const std::array<uint32_t, 2> ids{ V4L2_CID_EXPOSURE, V4L2_CID_ANALOGUE_GAIN };
+ 		const ControlList cached = sensor_->device()->getControls(ids);
++		const auto cachedSensor = a6lSensorExposureGain(cached);
+ 		LOG(SimplePipeline, Info) << "A6L_QUALITY_SENSOR frame=" << frame
+ 			<< " mono_ns=" << a6lQualityMonotonicNs() << " sensor=" << sensor_->id()
+ 			<< " frame_start_event=" << bool(frameStartEmitter_)
+-			<< " driver_cached_exp_at_stats=" << (cached.contains(V4L2_CID_EXPOSURE) ? cached.get(V4L2_CID_EXPOSURE).get<int32_t>() : -1)
+-			<< " driver_cached_gain_at_stats=" << (cached.contains(V4L2_CID_ANALOGUE_GAIN) ? cached.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>() : -1)
+-			<< " delayed_exp=" << associated.get(V4L2_CID_EXPOSURE).get<int32_t>()
+-			<< " delayed_gain=" << associated.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>()
++			<< " driver_cached_exp_at_stats=" << (cachedSensor ? cachedSensor->exposure : -1)
++			<< " driver_cached_gain_at_stats=" << (cachedSensor ? cachedSensor->gain : -1)
++			<< " delayed_exp=" << associatedSensor->exposure
++			<< " delayed_gain=" << associatedSensor->gain
+ 			<< " readback_is_not_frame_effective=1";
+ 	}
+ 	swIsp_->processStats(frame, bufferId, associated);
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -667,6 +667,7 @@
+ 	 * Reserve the existing packed-RAW interpolation border in the temporary.
+ 	 */
+ 	StreamConfiguration effectiveInput = inputCfg;
++	rawFovInputBytes_ = 0;
+ 	rawFovActive_ = outputCfgs.size() == 1 &&
+ 		outputCfgs[0].get().pixelFormat == formats::NV12 &&
+ 		inputConfig_.bpp == 10 && inputConfig_.patternSize == Size(4, 2);
+@@ -675,14 +676,21 @@
+ 		if (!rawFov_.configure(inputCfg.size.width, inputCfg.size.height,
+ 				      inputCfg.stride, size.width, size.height))
+ 			return -EINVAL;
+-		rawFovBuffer_.resize(rawFov_.bytes());
+-		effectiveInput.size = Size(rawFov_.width(), rawFov_.height());
+-		effectiveInput.stride = rawFov_.stride();
+-		effectiveInput.frameSize = rawFov_.bytes();
++		rawFovInputBytes_ = rawFov_.inputBytesRequired();
++		if (rawFov_.identity()) {
++			rawFovActive_ = false;
++			rawFovBuffer_.clear();
++		} else {
++			rawFovBuffer_.resize(rawFov_.bytes());
++			effectiveInput.size = Size(rawFov_.width(), rawFov_.height());
++			effectiveInput.stride = rawFov_.stride();
++			effectiveInput.frameSize = rawFov_.bytes();
++		}
+ 		const auto crop = rawFov_.crop();
+ 		LOG(Debayer, Info) << "A6L_FOV input=" << inputCfg.size
+ 			<< " crop=" << Rectangle(crop.x, crop.y, crop.width, crop.height)
+-			<< " output=" << size << " raw_temporary=" << effectiveInput.size;
++			<< " output=" << size << " raw_temporary=" << effectiveInput.size
++			<< " resample=" << rawFovActive_;
+ 	} else {
+ 		rawFovBuffer_.clear();
+ 	}
+@@ -1179,11 +1187,27 @@
+ 	metadata.sequence = input->metadata().sequence;
+ 	metadata.timestamp = input->metadata().timestamp;
+ 
++	/* All failures below precede stats publication and worker dispatch. */
++	auto fail = [&]() {
++		metadata.status = FrameMetadata::FrameError;
++		dmaSyncers.clear();
++		outputBufferReady.emit(output);
++		inputBufferReady.emit(input);
++	};
++
+ 	MappedFrameBuffer in(input, MappedFrameBuffer::MapFlag::Read);
+ 	MappedFrameBuffer out(output, MappedFrameBuffer::MapFlag::Write);
+ 	if (!in.isValid() || !out.isValid()) {
+ 		LOG(Debayer, Error) << "mmap-ing buffer(s) failed";
+-		metadata.status = FrameMetadata::FrameError;
++		fail();
++		return;
++	}
++
++	/* Identity bypass must retain the scaler's actual mapped-plane bounds
++	 * check. This requirement is reset for every non-FOV configuration. */
++	if (rawFovInputBytes_ && in.planes()[0].size() < rawFovInputBytes_) {
++		LOG(Debayer, Error) << "RAW10 FOV mapped input too small";
++		fail();
+ 		return;
+ 	}
+ 
+@@ -1192,13 +1216,15 @@
+ 		const uint64_t resampleStart = qualityStart ? a6lQualityMonotonicNs() : 0;
+ 		if (!rawFov_.process(std::span<const uint8_t>(rawInput, in.planes()[0].size()), rawFovBuffer_)) {
+ 			LOG(Debayer, Error) << "RAW10 FOV source/destination bounds invalid";
+-			metadata.status = FrameMetadata::FrameError;
++			fail();
+ 			return;
+ 		}
+ 		if (resampleStart)
+ 			LOG(Debayer, Info) << "A6L_QUALITY_RAW_RESAMPLE frame=" << frame
+ 				<< " elapsed_us=" << (a6lQualityMonotonicNs() - resampleStart) / 1000
+-				<< " raw_temporary_bytes=" << rawFov_.bytes();
++				<< " raw_temporary_bytes=" << rawFov_.bytes()
++				<< " source_row_copies=" << rawFov_.sourceRowCopies()
++				<< " source_row_cache_bytes=" << rawFov_.rowCacheBytes();
+ 		rawInput = rawFovBuffer_.data();
+ 	}
+ 	stats_->startFrame(frame);
+@@ -1217,7 +1243,7 @@
+ 			outUV = out.planes()[0].data() + lumaSize;
+ 		} else {
+ 			LOG(Debayer, Error) << "NV12 output buffer too small";
+-			metadata.status = FrameMetadata::FrameError;
++			fail();
+ 			return;
+ 		}
+ 	}
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -159,6 +159,7 @@
+ 	Raw10FovResampler rawFov_;
+ 	std::vector<uint8_t> rawFovBuffer_;
+ 	bool rawFovActive_ = false;
++	size_t rawFovInputBytes_ = 0;
+ 	std::unique_ptr<SwStatsCpu> stats_;
+ 	unsigned int xShift_; /* Offset of 0/1 applied to window_.x */
+ 
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -189,10 +189,7 @@
+ 	}
+ 
+ 	ipa_->setIspParams.connect(this, &SoftwareIsp::saveIspParams);
+-	ipa_->metadataReady.connect(this,
+-				    [this](uint32_t frame, const ControlList &metadata) {
+-					    metadataReady.emit(frame, metadata);
+-				    });
++	ipa_->metadataReady.connect(this, &SoftwareIsp::statsConsumed);
+ 	ipa_->setSensorControls.connect(this, &SoftwareIsp::setSensorCtrls);
+ 	ipa_->setLensControls.connect(this,
+ 				      [this](const ControlList &requestedLensControls) {
+@@ -240,7 +237,7 @@
+  */
+ bool SoftwareIsp::isValid() const
+ {
+-	return !!debayer_;
++	return !!debayer_ && !isolatedStopped_;
+ }
+ 
+ /**
+@@ -309,6 +306,8 @@
+ 			   const ipa::soft::IPAConfigInfo &configInfo)
+ {
+ 	ASSERT(ipa_ && debayer_);
++	if (isolatedStopped_)
++		return -EPIPE;
+ 
+ 	int ret = ipa_->configure(configInfo);
+ 	if (ret < 0)
+@@ -318,6 +317,9 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
++	LOG(SoftwareIsp, Info) << "A6L statistics ownership proxy="
++		<< (dynamic_cast<ipa::soft::IPAProxySoftIsolated *>(ipa_.get())
++		    ? "isolated" : "trusted-threaded");
+ 	LOG(SoftwareIsp, Info)
+ 		<< "Input " << inputCfg.size
+ 		<< "-" << BayerFormat::fromPixelFormat(inputCfg.pixelFormat)
+@@ -367,6 +369,12 @@
+ int SoftwareIsp::queueBuffers(uint32_t frame, FrameBuffer *input,
+ 			      const std::map<const Stream *, FrameBuffer *> &outputs)
+ {
++	if (!statsOwnership_.running())
++		return -EPIPE;
++	/* Pending jobs hold only existing buffer pointers, never pixel copies. */
++	if (pendingProcessing_.size() >= 64)
++		return -ENOBUFS;
++
+ 	/*
+ 	 * Validate the outputs as a sanity check: at least one output is
+ 	 * required, all outputs must reference a valid stream.
+@@ -399,14 +407,20 @@
+  */
+ int SoftwareIsp::start()
+ {
++	/* Remote stop is void and may have timed out. This instance cannot reuse
++	 * its block; a newly created SoftwareIsp owns a fresh shared block instead. */
++	if (isolatedStopped_)
++		return -EPIPE;
+ 	int ret = ipa_->start();
+ 	if (ret)
+ 		return ret;
+ 
+ 	ispWorkerThread_.start();
+ 
+-	return debayer_->invokeMethod(&Debayer::start,
+-				      ConnectionTypeBlocking);
++	ret = debayer_->invokeMethod(&Debayer::start, ConnectionTypeBlocking);
++	if (!ret)
++		statsOwnership_.start();
++	return ret;
+ }
+ 
+ /**
+@@ -417,6 +431,8 @@
+  */
+ void SoftwareIsp::stop()
+ {
++	/* No callback may start another producer while draining this session. */
++	statsOwnership_.halt();
+ 	debayer_->invokeMethod(&Debayer::stop,
+ 			       ConnectionTypeBlocking);
+ 
+@@ -425,7 +441,15 @@
+ 
+ 	Thread::current()->dispatchMessages(Message::Type::InvokeMessage, this);
+ 
++	if (dynamic_cast<ipa::soft::IPAProxySoftIsolated *>(ipa_.get()))
++		isolatedStopped_ = true;
+ 	ipa_->stop();
++	/* Threaded proxy stop joins and dispatches its callbacks; isolated stop
++	 * processes ordered IPC before its sync reply. Drain callbacks forwarded
++	 * to this object too, before any later session can reuse frame numbers. */
++	Thread::current()->dispatchMessages(Message::Type::InvokeMessage, this);
++	statsOwnership_.clearAfterDrain();
++	pendingProcessing_.clear();
+ 
+ 	for (auto buffer : queuedOutputBuffers_) {
+ 		buffer->_d()->cancel();
+@@ -448,9 +472,31 @@
+  */
+ void SoftwareIsp::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output)
+ {
+-	ipa_->computeParams(frame);
+-	debayer_->invokeMethod(&Debayer::process,
+-			       ConnectionTypeQueued, frame, input, output, debayerParams_);
++	pendingProcessing_.push_back({ frame, input, output });
++	processNext();
++}
++
++void SoftwareIsp::processNext()
++{
++	if (pendingProcessing_.empty() || !statsOwnership_.running() || statsOwnership_.busy())
++		return;
++	const PendingProcess job = pendingProcessing_.front();
++	if (!statsOwnership_.begin(job.frame, job.output))
++		return;
++	pendingProcessing_.pop_front();
++	ipa_->computeParams(job.frame);
++	debayer_->invokeMethod(&Debayer::process, ConnectionTypeQueued,
++			       job.frame, job.input, job.output, debayerParams_);
++}
++
++void SoftwareIsp::statsConsumed(uint32_t frame, const ControlList &metadata)
++{
++	/* Retire before emitting: a direct completion handler may restart and
++	 * reuse the frame number. This callback must not ACK that new job. */
++	if (!statsOwnership_.acknowledge(frame))
++		return;
++	metadataReady.emit(frame, metadata);
++	processNext();
+ }
+ 
+ void SoftwareIsp::saveIspParams()
+@@ -465,21 +511,31 @@
+ 
+ void SoftwareIsp::statsReady(uint32_t frame, uint32_t bufferId)
+ {
+-	ispStatsReady.emit(frame, bufferId);
++	if (statsOwnership_.publish(frame))
++		ispStatsReady.emit(frame, bufferId);
+ }
+ 
+ void SoftwareIsp::inputReady(FrameBuffer *input)
+ {
+-	ASSERT(queuedInputBuffers_.front() == input);
++	if (queuedInputBuffers_.empty() || queuedInputBuffers_.front() != input)
++		return;
+ 	queuedInputBuffers_.pop_front();
+ 	inputBufferReady.emit(input);
+ }
+ 
+ void SoftwareIsp::outputReady(FrameBuffer *output)
+ {
+-	ASSERT(queuedOutputBuffers_.front() == output);
++	if (queuedOutputBuffers_.empty() || queuedOutputBuffers_.front() != output)
++		return;
+ 	queuedOutputBuffers_.pop_front();
++	std::optional<uint32_t> failedFrame;
++	if (output->metadata().status != FrameMetadata::FrameSuccess)
++		failedFrame = statsOwnership_.fail(output);
++	if (failedFrame)
++		metadataReady.emit(*failedFrame, ControlList());
+ 	outputBufferReady.emit(output);
++	if (failedFrame)
++		processNext();
+ }
+ 
+ } /* namespace libcamera */

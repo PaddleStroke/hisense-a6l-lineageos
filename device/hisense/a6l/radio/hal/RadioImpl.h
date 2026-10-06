@@ -5,6 +5,7 @@
 #pragma once
 
 #include "ModemCore.h"
+#include "TelephonyFlows.h"
 #include "gen/RadioMessagingBase.h"
 #include "gen/RadioVoiceBase.h"
 
@@ -14,9 +15,12 @@
 #include <libminradio/network/RadioNetwork.h>
 #include <libminradio/sim/RadioSim.h>
 
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <mutex>
+#include <set>
 #include <thread>
 
 namespace android::hardware::radio::a6l {
@@ -43,12 +47,18 @@ class Executor {
 // ------------------------------------------------------------------ config
 class A6lRadioConfig : public minimal::RadioConfig {
   protected:
+    // ril3 (DSDS): one entry per physical slot, phone count / capability from ModemCore::slotCount()
     ::ndk::ScopedAStatus getSimSlotsStatus(int32_t serial) override;
+    ::ndk::ScopedAStatus getNumOfLiveModems(int32_t serial) override;
+    ::ndk::ScopedAStatus getPhoneCapability(int32_t serial) override;
+    ::ndk::ScopedAStatus setNumOfLiveModems(int32_t serial, int8_t numOfLiveModems) override;
+    ::ndk::ScopedAStatus setPreferredDataModem(int32_t serial, int8_t modemId) override;
 };
 
 // ------------------------------------------------------------------ modem
 class A6lRadioModem : public minimal::RadioModem, public ModemCore::Listener {
   public:
+    ModemCore& slotCore() { return ModemCore::get(mContext->getSlotIndex()); }
     explicit A6lRadioModem(std::shared_ptr<minimal::SlotContext> context);
 
   protected:
@@ -66,6 +76,7 @@ class A6lRadioModem : public minimal::RadioModem, public ModemCore::Listener {
 // ------------------------------------------------------------------ sim
 class A6lRadioSim : public minimal::RadioSim, public ModemCore::Listener {
   public:
+    ModemCore& slotCore() { return ModemCore::get(mContext->getSlotIndex()); }
     explicit A6lRadioSim(std::shared_ptr<minimal::SlotContext> context);
 
   protected:
@@ -87,17 +98,30 @@ class A6lRadioSim : public minimal::RadioSim, public ModemCore::Listener {
                                                int32_t serviceClass,
                                                const std::string& appId) override;
 
+    // r5 round5 F42: applied state only (disable not supported)
+    ::ndk::ScopedAStatus enableUiccApplications(int32_t serial, bool enable) override;
+    ::ndk::ScopedAStatus areUiccApplicationsEnabled(int32_t serial) override;
+    // r5 round5 F47: never the inherited SIM emulator (REQUEST_NOT_SUPPORTED until UIM APDU transport exists)
+    ::ndk::ScopedAStatus iccOpenLogicalChannel(int32_t serial, const std::string& aid, int32_t p2) override;
+    ::ndk::ScopedAStatus iccCloseLogicalChannelWithSessionInfo(
+            int32_t serial, const aidlr::sim::SessionInfo& sessionInfo) override;
+    ::ndk::ScopedAStatus iccTransmitApduBasicChannel(int32_t serial, const aidlr::sim::SimApdu& message) override;
+    ::ndk::ScopedAStatus iccTransmitApduLogicalChannel(int32_t serial, const aidlr::sim::SimApdu& message) override;
+
     void onModemReady() override;
     void onModemLost() override;
     void onSimChanged() override;
 
   private:
     ::a6l::qmi::uim::Session sessionFor(const std::string& aidHex);
+    // r5 round5 F44: effective PIN id of the app (PIN1/UPIN); nullopt with *err set when nothing may be sent
+    std::optional<uint8_t> pinIdOrError(const std::string& aid, aidlr::RadioError* err);
 };
 
 // ------------------------------------------------------------------ network
 class A6lRadioNetwork : public minimal::RadioNetwork, public ModemCore::Listener {
   public:
+    ModemCore& slotCore() { return ModemCore::get(mContext->getSlotIndex()); }
     using minimal::RadioNetwork::RadioNetwork;
 
   protected:
@@ -114,10 +138,13 @@ class A6lRadioNetwork : public minimal::RadioNetwork, public ModemCore::Listener
     ::ndk::ScopedAStatus getAllowedNetworkTypesBitmap(int32_t serial) override;
     ::ndk::ScopedAStatus setAllowedNetworkTypesBitmap(int32_t serial,
                                                       int32_t networkTypeBitmap) override;
+    // volte2: modem IMS registration (IMSA), deprecated in AIDL but still answered
+    ::ndk::ScopedAStatus getImsRegistrationState(int32_t serial) override;
 
     void onModemReady() override;
     void onModemLost() override;
     void onNetworkChanged() override;
+    void onImsChanged() override;
     void onSignalChanged() override;
     void onNitz(const std::string& nitz, int64_t receivedMs) override;
 
@@ -125,12 +152,13 @@ class A6lRadioNetwork : public minimal::RadioNetwork, public ModemCore::Listener
     aidlr::network::RegStateResult buildRegState(bool voice);
     aidlr::network::SignalStrength buildSignal(const ::a6l::qmi::nas::SignalInfo& s);
     aidlr::RadioTechnology currentRat();
-    int32_t mAllowedBitmap = 0;
+    std::atomic<int32_t> mAllowedBitmap{0};  // r5 round5 F45: applied subset, 0 = ask the modem
 };
 
 // ------------------------------------------------------------------ data
 class A6lRadioData : public minimal::RadioData, public ModemCore::Listener {
   public:
+    ModemCore& slotCore() { return ModemCore::get(mContext->getSlotIndex()); }
     using minimal::RadioData::RadioData;
 
   protected:
@@ -149,15 +177,21 @@ class A6lRadioData : public minimal::RadioData, public ModemCore::Listener {
             const std::optional<aidlr::data::DataProfileInfo>& dpInfo) override;
 
     void onModemLost() override;
-    void onDataCallLost(int cid) override;
+    void onDataCallLost(int cid, uint64_t generation) override;
+    void onDataCallReconfigured(int cid, uint64_t generation) override;  // r5 round8 F59
+    void onNetworkChanged() override;  // r5 F9: roaming transitions
 
   private:
     Executor mExec{"a6l-data"};
+    // r5 F9: cids set up with roamingAllowed=false (non-emergency): torn down if the serving network turns roaming
+    std::mutex mRoamLock;
+    std::set<int32_t> mNoRoamCids;
 };
 
 // ------------------------------------------------------------------ messaging
 class A6lRadioMessaging : public RadioMessagingBase, public ModemCore::Listener {
   public:
+    ModemCore& slotCore() { return ModemCore::get(mContext->getSlotIndex()); }
     using RadioMessagingBase::RadioMessagingBase;
 
   protected:
@@ -167,6 +201,8 @@ class A6lRadioMessaging : public RadioMessagingBase, public ModemCore::Listener 
     ::ndk::ScopedAStatus acknowledgeLastIncomingGsmSms(
             int32_t serial, bool success, aidlr::messaging::SmsAcknowledgeFailCause cause) override;
     ::ndk::ScopedAStatus getSmscAddress(int32_t serial) override;
+    // volte3: the framework sends SMS through sendImsSms once getImsRegistrationState says registered (volte2)
+    ::ndk::ScopedAStatus sendImsSms(int32_t serial, const aidlr::messaging::ImsSmsMessage& message) override;
     ::ndk::ScopedAStatus reportSmsMemoryStatus(int32_t serial, bool available) override;
     ::ndk::ScopedAStatus setGsmBroadcastActivation(int32_t serial, bool activate) override;
     ::ndk::ScopedAStatus setGsmBroadcastConfig(
@@ -175,15 +211,21 @@ class A6lRadioMessaging : public RadioMessagingBase, public ModemCore::Listener 
     ::ndk::ScopedAStatus getGsmBroadcastConfig(int32_t serial) override;
 
     void onNewSms(const std::vector<uint8_t>& pdu, bool statusReport) override;
+    void onNewBroadcastSms(const std::vector<uint8_t>& data) override;  // r5 deep F25
+    void onUpdatedResponseFunctions() override;  // r5 deep F27: re-deliver an SMS the old client never acked
 
   private:
-    void send(int32_t serial, const aidlr::messaging::GsmSmsMessage& message, bool more);
+    void send(int32_t serial, const aidlr::messaging::GsmSmsMessage& message, bool more, bool ims = false);
     Executor mExec{"a6l-sms"};
+    // r5 F12: last cell broadcast configuration the modem accepted (getGsmBroadcastConfig)
+    std::mutex mCbLock;
+    std::vector<aidlr::messaging::GsmBroadcastSmsConfigInfo> mCbConfig;
 };
 
 // ------------------------------------------------------------------ voice
 class A6lRadioVoice : public RadioVoiceBase, public ModemCore::Listener {
   public:
+    ModemCore& slotCore() { return ModemCore::get(mContext->getSlotIndex()); }
     using RadioVoiceBase::RadioVoiceBase;
 
   protected:
@@ -215,16 +257,31 @@ class A6lRadioVoice : public RadioVoiceBase, public ModemCore::Listener {
     ::ndk::ScopedAStatus setPreferredVoicePrivacy(int32_t serial, bool enable) override;
     ::ndk::ScopedAStatus isVoNrEnabled(int32_t serial) override;
     ::ndk::ScopedAStatus exitEmergencyCallbackMode(int32_t serial) override;
+    // telephony-flows (29 Sep 2026): USSD over QMI VOICE (flows::UssdSession decides Originate vs Answer)
+    ::ndk::ScopedAStatus sendUssd(int32_t serial, const std::string& ussd) override;
+    ::ndk::ScopedAStatus cancelPendingUssd(int32_t serial) override;
 
     void onModemLost() override;
     void onCallsChanged(bool incomingRinging) override;
+    void onUssd(const ::a6l::qmi::voice::ussd::Event& e) override;
+    // telephony-flows: the emergency number list depends on SIM presence and the serving MCC (flows::emergencyNumbers)
+    void onSimChanged() override;
+    void onNetworkChanged() override;
 
   private:
     std::optional<uint8_t> findCall(std::initializer_list<uint8_t> states);
-    bool mMute = false;
+    bool mMute = false;  // r5 F6: last state a6l-q6voiced applied (fallback for getMute)
     aidlr::voice::TtyMode mTty = aidlr::voice::TtyMode::OFF;
     bool mPrivacy = false;
     Executor mExec{"a6l-voice"};
+    // telephony-flows: a sync Originate USSD fallback may block up to 100 s, never on the call executor
+    Executor mUssdExec{"a6l-ussd"};
+    flows::UssdSession mUssd;
+    void reportUssd(const flows::UssdReport& r);
+    // last emergency number list sent (re-sent only when it changes, and always on a new client)
+    std::mutex mEccLock;
+    std::optional<std::vector<flows::EccEntry>> mEccSent;
+    void publishEmergencyNumbers(bool force);
 };
 
 }  // namespace android::hardware::radio::a6l

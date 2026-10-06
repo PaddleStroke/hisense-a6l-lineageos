@@ -63,6 +63,11 @@ enum EventMask : uint64_t {
     kEvFixSessionState = 0x00000100,
 };
 
+// QMI_LOC_START fixRecurrence (TLV 0x10, qmiLocFixRecurrenceEnumT / libqmi QmiLocFixRecurrenceType): periodic 1, single 2
+enum FixRecurrence : uint32_t { kRecurrencePeriodic = 1, kRecurrenceSingle = 2 };
+// QMI_LOC_EVENT_FIX_SESSION_STATE_IND sessionState (TLV 0x01): 1 started, 2 finished; optional sessionId TLV 0x10 (u8)
+enum FixSessionState : uint32_t { kSessionStarted = 1, kSessionFinished = 2 };
+
 enum OperationMode : uint32_t { kModeDefault = 1, kModeMsb = 2, kModeMsa = 3, kModeStandalone = 4, kModeCellId = 5 };
 enum EngineLock : uint32_t { kLockNone = 1, kLockMi = 2, kLockMt = 3, kLockAll = 4 };
 
@@ -79,6 +84,11 @@ enum SessionStatus : uint32_t {
     kStatusUserEnd = 4, kStatusBadParameter = 5, kStatusPhoneOffline = 6, kStatusEngineLocked = 7,
 };
 const char* sessionStatusName(uint32_t s);
+// QMI common error codes (qmi_idl / libqmi): 1 MALFORMED_MSG, 3 INTERNAL, 0x30 INVALID_ARG, 0x5E (94) NOT_SUPPORTED, ...
+const char* qmiErrorName(int e);
+// True for errors that mean "the modem could not parse / did not accept this message LAYOUT" (worth retrying with
+// another TLV layout). INTERNAL (3) and NOT_SUPPORTED (94) are NOT layout errors (misc2, 25 Sep 2026).
+bool qmiErrorIsLayout(int e);
 
 // SV system (qmiLocSvSystemEnumT_v02)
 enum SvSystem : uint32_t {
@@ -105,6 +115,12 @@ struct Fix {
     float altMsl = 0;
     bool hasVertUnc = false;
     float vertUnc = 0;
+    // r5 round12 F66: confidence (percent) of horUncCircular (TLV 0x16 horConfidence) and vertUnc (TLV 0x1D
+    // vertConfidence); android_map normalizes the uncertainties to Android's 68% accuracy convention.
+    bool hasHorConfidence = false;
+    uint8_t horConfidence = 0;
+    bool hasVertConfidence = false;
+    uint8_t vertConfidence = 0;
     bool hasSpeed = false;
     float speedHorizontal = 0;
     bool hasSpeedUnc = false;
@@ -149,7 +165,8 @@ qmi::Message makeSetOperationMode(uint32_t mode);
 qmi::Message makeSetNmeaTypes(uint32_t mask);
 qmi::Message makeSetEngineLock(uint32_t lock);
 // fixRecurrence 1 = periodic; accuracy 1 low / 2 medium / 3 high; intermediate 1 on / 2 off
-qmi::Message makeStart(uint8_t sessionId, uint32_t minIntervalMs, bool intermediate, uint32_t accuracyLevel = 3);
+qmi::Message makeStart(uint8_t sessionId, uint32_t minIntervalMs, bool intermediate, uint32_t accuracyLevel = 3,
+                       uint32_t recurrence = kRecurrencePeriodic);   // r5 round6 F53
 qmi::Message makeStop(uint8_t sessionId);
 qmi::Message makeInjectUtcTime(uint64_t utcMs, uint32_t uncMs);
 qmi::Message makeInjectPosition(double lat, double lon, float horUncMeters);

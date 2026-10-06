@@ -1,0 +1,41 @@
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -26,7 +26,10 @@
+  * scales this target by exactly powers of two without clipping the target. */
+ static constexpr double kLinearTarget = 0.4;
+ static constexpr double kRelativeTolerance = 0.08;
+-static constexpr float kExpMaxStep = 0.15;
++/* Keep the four-output settling cadence. Limit each decision to half of
++ * the logarithmic target error and at most a1.5x change (either direction).
++ * This avoids an absolute-luminance error limiting dark-scene changes to8%. */
++static constexpr double kMaxFactor = 1.5;
+ 
+ int Agc::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
+ {
+@@ -70,19 +73,17 @@
+ 	if (std::abs(error) <= target * kRelativeTolerance)
+ 		return;
+ 
+-	/*
+-	 * Compute a proportional correction factor. The sign of the error
+-	 * determines the direction: positive error means too dark (increase),
+-	 * negative means too bright (decrease).
+-	 */
+-	float step = std::clamp(static_cast<float>(error) * 0.2f,
+-				-kExpMaxStep, kExpMaxStep);
+-	float factor = 1.0f + step;
++	/* A RAW histogram bin floor prevents division by zero for a dark frame.
++	 * No new tone target, cadence or exposure/gain ceiling is introduced. */
++	const double floor = 1.0 / (255.0 - context.activeState.blc.level);
++	const double ratio = target / std::max(exposureMSV, floor);
++	const double factor = std::clamp(std::sqrt(ratio), 1.0 / kMaxFactor, kMaxFactor);
+ 
+ 	if (factor > 1.0f) {
+ 		/* Scene too dark: increase exposure first, then gain. */
+ 		if (exposure < context.configuration.agc.exposureMax) {
+-			int32_t next = static_cast<int32_t>(exposure * factor);
++			int32_t next = static_cast<int32_t>(std::min(
++				exposure * factor, double(context.configuration.agc.exposureMax)));
+ 			exposure = std::max(next, exposure + 1);
+ 		} else {
+ 			double next = again * factor;

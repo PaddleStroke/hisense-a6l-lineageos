@@ -1,0 +1,4 @@
+
+# One-slot nonpersistent debug trace; no socket/data permission changes.
+# No shell setter allow: core domains cannot set vendor properties.
+# Arming this debug trial requires the existing permissive development ROM.

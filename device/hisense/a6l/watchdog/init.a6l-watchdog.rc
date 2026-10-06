@@ -1,0 +1,17 @@
+# A6L APSS hardware watchdog (cpufreq-watchdog agent, 29 Sep 2026; completeness audit H64; docs/cpufreq-watchdog-20260929.md).
+# Kernel side: rom-v2 DT node watchdog@17817000 (a6l-watchdog-v75.dtso) + qcom-wdt.ko in the base module group
+# (a6l-modules.sh display, early-init) -> /dev/watchdog (qcom-wdt max timeout 32 s at the 32.764 kHz sleep clock).
+# watchdogd (AOSP system/core/watchdogd, already in the system image): WDIOC_SETTIMEOUT 30 s, pets every 10 s.
+# OPT-IN until the attended watchdog test (W1-W3) passed:  setprop persist.vendor.a6l.watchdog 1  then reboot.
+# Started only after boot_completed, so a boot-time stall is never turned into a reboot loop. There is deliberately NO
+# stop trigger: stopping watchdogd kills it without the magic close, the hardware stays armed and would bite 30 s later.
+# To disable: setprop persist.vendor.a6l.watchdog 0 and reboot. Note: init's shutdown sequence (reboot.cpp) starts the
+# service named "watchdogd" by itself on every shutdown/reboot, so a hung shutdown ends in a watchdog reset.
+service watchdogd /system/bin/watchdogd 10 20
+    disabled
+    user root
+    group root
+    seclabel u:r:watchdogd:s0
+
+on property:sys.boot_completed=1 && property:persist.vendor.a6l.watchdog=1
+    start watchdogd

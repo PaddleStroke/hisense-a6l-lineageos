@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: Apache-2.0
+// Hisense A6L android-side product config (overlays-carrier-updater, 29 Sep 2026; docs/android-overlays-carrier-updater-20260929.md).
+// Packages are listed in android.mk (inherited by rom/rom.mk). Global namespace (no soong_namespace), like device/hisense/a6l/Android.bp.
+
+// --- runtime resource overlays for packages a static DEVICE_PACKAGE_OVERLAYS entry cannot or should not reach
+runtime_resource_overlay {
+    name: "A6LWifiOverlay",
+    manifest: "rro/A6LWifiOverlay/AndroidManifest.xml",
+    resource_dirs: ["rro/A6LWifiOverlay/res"],
+    vendor: true,
+    sdk_version: "current",
+}
+
+runtime_resource_overlay {
+    name: "A6LCarrierConfigOverlay",
+    manifest: "rro/A6LCarrierConfigOverlay/AndroidManifest.xml",
+    resource_dirs: ["rro/A6LCarrierConfigOverlay/res"],
+    vendor: true,
+    sdk_version: "current",
+}
+
+runtime_resource_overlay {
+    name: "A6LSystemUIOverlay",
+    manifest: "rro/A6LSystemUIOverlay/AndroidManifest.xml",
+    resource_dirs: ["rro/A6LSystemUIOverlay/res"],
+    vendor: true,
+    sdk_version: "current",
+}
+
+runtime_resource_overlay {
+    name: "A6LSettingsOverlay",
+    manifest: "rro/A6LSettingsOverlay/AndroidManifest.xml",
+    resource_dirs: ["rro/A6LSettingsOverlay/res"],
+    vendor: true,
+    sdk_version: "current",
+}
+
+// --- APN list: NOT a module here. The Orange France IPv4v6 fix is a tree patch of vendor/apn/FR.xml
+// (patches/vendor/apn/0001-FR-Orange-World-IPV4V6.patch, applied by tools/rom-v2-pipeline.sh prep): a second module
+// installing /product/etc/apns-conf.xml would collide with Lineage's "apns-conf.xml" install rule in Kati (Soong emits
+// install rules for every module, `overrides` only drops it from the product list).

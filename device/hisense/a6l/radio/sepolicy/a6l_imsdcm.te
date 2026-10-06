@@ -1,0 +1,7 @@
+# Hisense A6L (agent volte2, 25 Sep 2026): a6l-imsdcm hosts QMI service 770 (IMSDCM) on a QRTR socket
+# and talks WDS (IMS PDN) + IMSA over QRTR. No netdev/routing (modem-centric IMS).
+type a6l_imsdcm, domain;
+type a6l_imsdcm_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_imsdcm)
+allow a6l_imsdcm self:qipcrtr_socket create_socket_perms_no_ioctl;
+get_prop(a6l_imsdcm, vendor_a6l_ril_prop)

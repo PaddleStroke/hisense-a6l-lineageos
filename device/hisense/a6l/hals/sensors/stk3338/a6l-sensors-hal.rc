@@ -1,0 +1,4 @@
+# sensors.a6l (agent senshal, 26 Sep 2026): persisted magnetometer hard-iron bias (/data/vendor/sensors/mag_bias),
+# written by the sensors multihal (uid system).
+on post-fs-data
+    mkdir /data/vendor/sensors 0770 system system

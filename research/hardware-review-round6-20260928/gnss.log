@@ -1,0 +1,3 @@
+STOP_REJECTED engine_running=0 fake_receiver_running=1 stop_requests=1 after_recovery_and_second_stop
+END_AFTER_REJECTED_STOP no_cleanup_stop=1
+SESSION_END_IND listener_ended=1 engine_running=1 restart_requests=0

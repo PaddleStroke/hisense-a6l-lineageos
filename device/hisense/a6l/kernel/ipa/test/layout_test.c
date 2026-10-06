@@ -18,6 +18,8 @@ static inline u32 ioread32(void *p){ return shared_mem_val; }
 #define IPA_NUM_PIPES (20)
 struct ipa { u32 version, smem_size, smem_restr_bytes; u32 *smem_uc_loaded; void *mmio; struct ipa_partition layout[MEM_END+1]; };
 static u8 fake_mmio[0x50000];
+static bool rt_apps_entry = true;
+#define A6L_MODEM_RT_END(sz) ((sz) / 4 - 1 > 6 ? 6 : (sz) / 4 - 1)
 #define FT4_EP0_OFF (2 + 3 * 0)
 #define FT4_EP4_OFF (2 + 3 * 1)
 #define RT4_EP0_OFF (2 + 3 * 2)
@@ -86,8 +88,8 @@ static int ipa_partition_mem(struct ipa *ipa)
 
 	ipa_partition_put(ipa, &offset, MEM_FT_V4, IPA_NUM_PIPES + 2, 2);
 	ipa_partition_put(ipa, &offset, MEM_FT_V6, IPA_NUM_PIPES + 2, 2);
-	ipa_partition_put(ipa, &offset, MEM_RT_V4, 7, 2);
-	ipa_partition_put(ipa, &offset, MEM_RT_V6, 7, 2);
+	ipa_partition_put(ipa, &offset, MEM_RT_V4, rt_apps_entry ? 8 : 7, 2);	/* A6L data3 */
+	ipa_partition_put(ipa, &offset, MEM_RT_V6, rt_apps_entry ? 8 : 7, 2);
 	ipa_partition_put(ipa, &offset, MEM_MDM_HDR, 80, 2);
 	ipa_partition_put(ipa, &offset, MEM_DRV, sizeof(ipa_rules) / 4, 1);
 
@@ -105,6 +107,7 @@ static int ipa_partition_mem(struct ipa *ipa)
 static const char *names[]={"DRV","FT_V4","FT_V6","RT_V4","RT_V6","MDM_HDR","MDM_COMP","MDM_HDR_PCTX","MDM","END"};
 int main(int argc,char**argv){
   u32 vals[]={0x00002000,0x00003000,0x01002000,0x00004000};
+  for(int ra=1;ra>=0;ra--){ rt_apps_entry=ra; printf("=== rt_apps_entry=%d\n", ra);
   for(unsigned k=0;k<sizeof vals/4;k++){
     struct ipa ipa={.version=26,.mmio=fake_mmio}; shared_mem_val=vals[k]; memset(fake_mmio,0,sizeof fake_mmio);
     int r=ipa_partition_mem(&ipa);
@@ -118,15 +121,19 @@ int main(int argc,char**argv){
     /* QMI view (as init_modem_driver_req builds it) */
     printf("  QMI: hdr %u..%u rt4 start %u end-idx %u rt6 start %u end-idx %u ft4 %u ft6 %u mdm %u+%u zip %u..%u\n",
       ipa.layout[MEM_MDM_HDR].offset, ipa.layout[MEM_MDM_HDR].offset+ipa.layout[MEM_MDM_HDR].size-1,
-      ipa.layout[MEM_RT_V4].offset, ipa.layout[MEM_RT_V4].size/4-1, ipa.layout[MEM_RT_V6].offset, ipa.layout[MEM_RT_V6].size/4-1,
+      ipa.layout[MEM_RT_V4].offset, A6L_MODEM_RT_END(ipa.layout[MEM_RT_V4].size), ipa.layout[MEM_RT_V6].offset, A6L_MODEM_RT_END(ipa.layout[MEM_RT_V6].size),
       ipa.layout[MEM_FT_V4].offset, ipa.layout[MEM_FT_V6].offset, ipa.layout[MEM_MDM].offset, ipa.layout[MEM_MDM].size,
       ipa.layout[MEM_MDM_COMP].offset, ipa.layout[MEM_MDM_COMP].offset+ipa.layout[MEM_MDM_COMP].size-1);
     /* downstream v2.6L (ipa_ram_mmap.h) for the same restricted base */
     u32 rb=ipa.smem_restr_bytes;
     printf("  downstream v2.6L: ft4 %u ft6 %u rt4 %u(idx 0..6 modem, 7..14 apps) rt6 %u mdm_hdr %u..%u comp 0x510+512 mdm %u+6376 end 0x2000\n",
        0x288+rb,0x2e8+rb,0x348+rb,0x388+rb,0x3c8+rb,0x3c8+rb+319,0x714+rb);
+    { /* A6L data3: route index 7 (EP4 ENDP_INIT_ROUTE) must lie inside RT_V4, not on a canary */
+      u32 idx7 = ipa.layout[MEM_RT_V4].offset + 7*4; int in = idx7 + 4 <= ipa.layout[MEM_RT_V4].offset + ipa.layout[MEM_RT_V4].size;
+      printf("  rt4 index7 @0x%04x %s\n", idx7, in ? "inside RT_V4 (valid entry)" : "OUTSIDE RT_V4 (canary word)");
+      if (ra && !in) bad=1; }
     printf("  %s\n", bad?"LAYOUT_FAIL":"LAYOUT_OK");
-  }
+  }}
   printf("ipa_rules words=%zu\n", sizeof(ipa_rules)/4);
   printf("sizeof fifo_desc %zu v4_rule_init %zu v6_rule_init %zu hdr_local %zu hdr_system %zu dma_smem %zu\n", sizeof(struct fifo_desc), sizeof(struct ipa_ip_v4_rule_init), sizeof(struct ipa_ip_v6_rule_init), sizeof(struct ipa_hdr_init_local), sizeof(struct ipa_hdr_init_system), sizeof(struct ipa_hw_imm_cmd_dma_shared_mem));
   return 0;

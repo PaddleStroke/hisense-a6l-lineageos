@@ -17,7 +17,10 @@ MARK="A6L_KIPA_$$"; echo "$MARK" > /dev/kmsg
 klog() { dmesg | sed -n "/$MARK/,\$p"; }
 MODE=${MODE:-load}
 mss_state() { for r in /sys/class/remoteproc/remoteproc*; do [ "$(cat $r/name 2>/dev/null)" = 4080000.remoteproc ] && cat $r/state; done; }
-faults() { dmesg | grep -ciE "Unhandled context fault|smmu.*fault|ipa.*(error|fail)|Internal error|Oops"; }
+# fixes-20260927: ignore the known harmless anoc2 SMMU context-IRQ request lines ("failed to request context IRQ",
+# "request_irq(N) arm_smmu_context_fault") that made the load check report FAIL on a good load.
+SMMU_IRQ_NOISE='request context IRQ|request_irq\([0-9]+\) arm_smmu_context_fault'
+faults() { dmesg | grep -iE "Unhandled context fault|smmu.*fault|ipa.*(error|fail)|Internal error|Oops" | grep -viEc "$SMMU_IRQ_NOISE"; }
 case "$MODE" in
 load)
   case "$(mss_state)" in running) echo "A6L_HW_FAIL modem already running: load IPA first (fresh boot), then radio2"; exit 5;; esac

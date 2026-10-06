@@ -1,7 +1,48 @@
 # A6L port checklist
 
-**Updated 23 September 2026** (after the V71 sessions of 21 Sep, the e-ink bridge work of 22–23 Sep and a review of
-every attended-session report). This file is the current status index; dated reports are the evidence.
+Latest 4 October evening: r7c logger-only vendor update is installed. All29
+runtime pins pass. Both fixed rings accept fresh CRC-checked markers through
+38minutes awake with stable2.1MiB metadata headroom. Phone stays awake on LCD
+while USB plugged; no unattended sleep or hardware-codec probe is performed.
+RAM retention fails across both tested recovery resets, including explicit warm.
+Sleep root cause remains unknown; PM_DEBUG kernel scope and module ABI audits pass.
+Actual Android DT confirms Venus hardware-codec block disabled. Native software
+AVC format probes encode about37-38ms/frame; both formats decode identically,
+with no encode-only NV12 speed gain. C2 input candidate remains uninstalled.
+Camera colors/framing/speed and e-ink notification artifacts remain open.
+See logger-r7c-20261004.md and video-encoder-audit-20261004/README.md.
+
+
+**Latest, 4 October:** r7c is installed and all 28 runtime pins pass. Saved front
+video improves from about 3.7 to 9.3 fps and finalizes normally 2.643 seconds
+after Stop. RGB preparation falls from about 250 to 58 ms; software compression
+still takes about 57 ms. Native capture keeps pace at 48 kHz and closes normally,
+without the prior sustained audio-gap pattern. Recording still falls short of
+30 fps. A signed Camera-only update now bypasses the viewport GL pass and
+physically delivers YUV to Codec2; its saved front video improves further to
+16.463 fps with normal saving and contiguous AAC. This is an app trial on r7c,
+not a new image; broader orientation/mode/camera acceptance remains pending.
+Camera colors, audible speech/playback/calls, e-ink labels and lock/wake
+reliability still need acceptance. No next build has started. Prior paragraphs
+below retain their dated evidence. See [r7c report](rom-r7c-20261004.md).
+
+**Current update, 4 October 2026:** LineageOS 24 r6z is installed, boots and
+passes all21 runtime payload pins. Hardware graphics and touch work. Photo
+previews measure about29/30/28fps; front VIDEO preview now measures29.995fps
+after removing RAW resizing. Encoded HD video still measures4.099fps; conversion
+versus software compression is being measured. Clean recordings save and close
+normally, with about6s finalization delay. The PCM negotiation correction passes
+73 hardware-buffer wraps without the former premature XRUN; audible playback,
+fresh spoken recording and calls await acceptance. Launcher e-ink labels are
+installed, optical result pending. Washed colors and intermittent sleep remain
+open. Late recovery USB was partly its gadget watchdog, not proof of a four-minute
+Android shutdown. Default-off r7a timing/calibration diagnostics are in preparation.
+Current evidence: [r6z report](rom-r6z-20261004.md) and
+[master TODO](master-todo-20260925.md). The chart below is the historical
+23 September recovery/RAM baseline, not the installed Android acceptance list.
+
+**Historical baseline, 23 September 2026** (after the V71 sessions of 21 Sep, the e-ink bridge work of 22–23 Sep and a review of
+every attended-session report). Dated reports are the evidence.
 
 **Phone state:** rooted stock Android (Magisk, boot partition) with the **V71 diagnostic recovery** in the recovery slot.
 Everything below runs **from RAM** under V71 (bundles pushed over ADB); nothing of LineageOS is installed on the eMMC.

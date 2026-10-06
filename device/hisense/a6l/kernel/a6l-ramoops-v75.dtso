@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L pstore/ramoops (r6b boot fix, 30 Sep 2026; docs/rom-r6b-bootfix-20260930.md). Best-effort crash log across a reset.
+// Region: the stock Hisense "recorder_mem" reservation (0xb0180000, 4 MiB, no-map; already in the V74 base DTB, used by the
+// stock kernel's own recorder), so no new RAM is taken and nothing else in our kernel or the bootloader flow maps it.
+// The r5 kernel has CONFIG_PSTORE_RAM=y; the reserved-memory child with compatible "ramoops" gets its platform device from
+// of_platform_default_populate_init (reserved_mem_matches). Layout: console 2 MiB (last kernel console of the previous
+// boot), pmsg 256 KiB, the rest = 128 KiB oops/panic dump records (max-reason 2 = KMSG_DUMP_OOPS).
+// Whether DDR content survives depends on the reset type (PMIC long-press = hard reset may not keep it): the persistent
+// /metadata boot log (userdebug) is the primary record; this only adds the oops/console when RAM survives.
+/dts-v1/;
+/plugin/;
+
+&recorder_mem {
+	compatible = "ramoops";
+	record-size = <0x20000>;
+	console-size = <0x200000>;
+	pmsg-size = <0x40000>;
+	max-reason = <2>;
+};

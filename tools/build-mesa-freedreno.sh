@@ -2,15 +2,25 @@
 # Cross-build Mesa (freedreno gallium, EGL/GLES, Android platform) for the A6L Adreno 512 with the NDK.
 # Offline build experiment; output stays under ~/mesa-a6l. The Lineage tree's external/mesa3d is used read-only.
 set -eo pipefail
+# r6d (30 Sep 2026, docs/rom-r6d-20260930.md): A6L_MESA_ARCH=arm builds the 32-bit (armeabi-v7a) libraries for
+# /vendor/lib/egl + /vendor/lib (zygote_secondary / 32-bit apps: Loader aborts when persist.graphics.egl=mesa has no
+# 32-bit libEGL_mesa). Default arm64 = the 20 Sep build (~/mesa-a6l), unchanged. A6L_MESA_SRC: source copy to use
+# (the arm build reuses the arm64 copy ~/mesa-a6l/src so both ABIs are the same Mesa, 26.1.0-devel, wraps already cached).
 NDK=$HOME/ndk/android-ndk-r27c; TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin; API=34
-SRC=$HOME/android/a6l-lineage24/external/mesa3d; OUT=$HOME/mesa-a6l; mkdir -p $OUT
+ARCH=${A6L_MESA_ARCH:-arm64}
+case $ARCH in
+  arm64) TRIPLE=aarch64-linux-android; CPUF=aarch64; CPU=armv8; OUT=$HOME/mesa-a6l;;
+  arm)   TRIPLE=armv7a-linux-androideabi; CPUF=arm; CPU=armv7a; OUT=$HOME/mesa-a6l-arm;;
+  *) echo "A6L_MESA_ARCH must be arm64 or arm"; exit 2;;
+esac
+SRC=${A6L_MESA_SRC:-$HOME/android/a6l-lineage24/external/mesa3d}; mkdir -p $OUT
 export PATH=$HOME/venv-mesa/bin:$PATH
-cp -r --reflink=auto $SRC $OUT/src 2>/dev/null || true   # wraps download into the copy, never into the tree
+[ -d $OUT/src ] || cp -r --reflink=auto $SRC $OUT/src 2>/dev/null || true   # wraps download into the copy, never into the tree
 cat > $OUT/cross.ini <<X
 [binaries]
 ar = '$TC/llvm-ar'
-c = ['$TC/aarch64-linux-android$API-clang']
-cpp = ['$TC/aarch64-linux-android$API-clang++']
+c = ['$TC/$TRIPLE$API-clang']
+cpp = ['$TC/$TRIPLE$API-clang++']
 c_ld = 'lld'
 cpp_ld = 'lld'
 strip = '$TC/llvm-strip'
@@ -19,8 +29,8 @@ pkg-config = '$HOME/venv-mesa/lib/python3.12/site-packages/pkgconf/.bin/pkgconf'
 cpp_link_args = ['-static-libstdc++']
 [host_machine]
 system = 'android'
-cpu_family = 'aarch64'
-cpu = 'armv8'
+cpu_family = '$CPUF'
+cpu = '$CPU'
 endian = 'little'
 [properties]
 needs_exe_wrapper = true
@@ -41,4 +51,4 @@ meson setup $OUT/build --cross-file $OUT/cross.ini --wrap-mode=default \
   -Dgbm=disabled -Dglx=disabled -Dllvm=disabled -Dshared-glapi=enabled -Dcpp_rtti=false -Dbuildtype=release \
   -Dzstd=disabled -Dxmlconfig=disabled -Dexpat=disabled -Dandroid-strict=false > $OUT/setup.log 2>&1 || { tail -n 25 $OUT/setup.log; exit 1; }
 ninja -C $OUT/build -j12 > $OUT/build.log 2>&1 || { grep -m5 -B2 -A12 "FAILED" $OUT/build.log; exit 1; }
-find $OUT/build -name "*.so*" -type f | head; echo A6L_MESA_FREEDRENO_BUILD_PASS
+find $OUT/build -name "*.so*" -type f | head; echo "A6L_MESA_FREEDRENO_BUILD_PASS arch=$ARCH"

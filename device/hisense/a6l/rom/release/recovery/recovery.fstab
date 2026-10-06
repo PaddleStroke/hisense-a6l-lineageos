@@ -1,0 +1,11 @@
+# A6L Lineage recovery fstab (release-prep, 27 Sep 2026). A-only, fixed GPT, by-name via androidboot.boot_devices.
+# <src>                         <mnt_point>  <type>  <mnt_flags>                         <fs_mgr_flags>
+/dev/block/by-name/system       /system      erofs   ro                                  wait,first_stage_mount
+/dev/block/by-name/vendor       /vendor      erofs   ro                                  wait,first_stage_mount
+/dev/block/by-name/metadata     /metadata    ext4    noatime,nosuid,nodev,discard        wait,check,formattable
+/dev/block/by-name/userdata     /data        ext4    noatime,nosuid,nodev,noauto_da_alloc,discard  wait,check,formattable,reservedsize=128M,fileencryption=aes-256-xts:aes-256-cts:v2
+/dev/block/by-name/boot         /boot        emmc    defaults                            defaults
+/dev/block/by-name/recovery     /recovery    emmc    defaults                            defaults
+/dev/block/by-name/dtbo         /dtbo        emmc    defaults                            defaults
+/dev/block/by-name/misc         /misc        emmc    defaults                            defaults
+/dev/block/by-name/cache        /cache       ext4    noatime,nosuid,nodev                wait,check,nofail

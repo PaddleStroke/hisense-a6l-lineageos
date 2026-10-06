@@ -1,0 +1,15 @@
+# rom-v2: PM660 SMB2 charger (a6l-charger-v75). merge r4 (28 Sep): STOCK limits = FCC 2.4 A (fcc_max_ua, A6L qcom_smbx patch),
+# DCP input 2.0 A (DT), float 4.40 V (clamped by the patch), PMIC JEITA hard limit on (jeita_hard=1), software JEITA
+# 0/10/45/55 C by a6l-chg-guard (warm/cool ~0.9/0.85 A via the input limit). NOT loaded unless
+# persist.vendor.a6l.charger=1 (attended C2 first, docs/rest-20260924.md §6). Without it the PMIC keeps charging with the
+# bootloader/hardware defaults, as with rom-v1.
+# power (26 Sep): rradc = IIO provider of usbin_i/usbin_v for qcom_smbx (DT: a6l-charger-v75 now enables pm660_rradc).
+# Software JEITA + current policy: a6l-chg-guard (device/hisense/a6l/power/rom, started with the charger group).
+qcom-spmi-rradc.ko
+# fastcharge-rom (29 Sep 2026, docs/fastcharge-rom-20260929.md): Quick Charge 2.0/3.0 ON with the stock limits: adapter 5-9 V
+# (hvdcp_max_uv=9000000, never 12 V), input limit at 9 V hvdcp_icl_ua=2000000 (stock qcom,hvdcp-usb-icl 2.0 A; the patch clamps
+# to <= 2 A), FCC 2.4 A. The driver verifies 8.4-9.6 V, aborts to 5 V on OV/sag/overcurrent/battery hot-cold-OV; a6l-chg-guard
+# writes hvdcp_enable=0 (back to 5 V) BEFORE any thermal/OV/suspend limit and 1 only in 12-43 C, and releases the USB gadget
+# D+ pull-up on wall chargers (APSD/QC handshake). Attended QC PASS 30 Sep (power29, QC3 9.06 V). Off switch without a rebuild:
+# setprop persist.vendor.a6l.chg.qc 0 (guard keeps 5 V).
+qcom_smbx.ko fcc_max_ua=2400000 jeita_hard=1 hvdcp_enable=1 hvdcp_max_uv=9000000 hvdcp_icl_ua=2000000

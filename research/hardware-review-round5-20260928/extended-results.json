@@ -1,0 +1,10 @@
+[
+  {
+    "test": "vibrator",
+    "output": "F49 driver_name=a6l_gpio_vibrator present=0 on_400ms_success=1 capability_queries=0 FF_uploads=0 FF_writes=0\nF49 control_name=qti-haptics present=1 FF_uploads=1 FF_writes=1"
+  },
+  {
+    "test": "backlight",
+    "output": "F50 first_unblank_failed=1 subsequent_healthy_iterations=100 write_attempts_total=1 bl_power=4 retry_state=0\nF50 retained_retry_control bl_power=0"
+  }
+]

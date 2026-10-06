@@ -1,0 +1,23 @@
+diff --git a/services/core/java/com/android/server/UiModeManagerService.java b/services/core/java/com/android/server/UiModeManagerService.java
+index 422178028..d2aafb94a 100644
+--- a/services/core/java/com/android/server/UiModeManagerService.java
++++ b/services/core/java/com/android/server/UiModeManagerService.java
+@@ -21,6 +21,7 @@ import static android.app.UiModeManager.DEFAULT_PRIORITY;
+ import static android.app.UiModeManager.FORCE_INVERT_TYPE_DARK;
+ import static android.app.UiModeManager.FORCE_INVERT_TYPE_OFF;
+ import static android.app.UiModeManager.MODE_ATTENTION_THEME_OVERLAY_NIGHT;
++import static android.app.UiModeManager.MODE_ATTENTION_THEME_OVERLAY_DAY;
+ import static android.app.UiModeManager.MODE_ATTENTION_THEME_OVERLAY_OFF;
+ import static android.app.UiModeManager.MODE_NIGHT_AUTO;
+ import static android.app.UiModeManager.MODE_NIGHT_CUSTOM;
+@@ -2104,7 +2105,9 @@ final class UiModeManagerService extends SystemService {
+      * Override night mode in power save mode if not in car mode
+      */
+     private boolean isPowerSaveNightModeOverrideNeeded() {
+-        return mPowerSave && !mCarModeEnabled && !mCar;
++        // An explicit day overlay must remain light, including on e-ink.
++        return mPowerSave && !mCarModeEnabled && !mCar
++                && mAttentionModeThemeOverlay != MODE_ATTENTION_THEME_OVERLAY_DAY;
+     }
+ 
+     @UiModeManager.NightMode

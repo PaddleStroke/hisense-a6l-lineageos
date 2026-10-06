@@ -1,0 +1,3 @@
+# A6L property namespaces not owned by an area dir (radio: vendor_a6l_ril_prop/vendor_a6l_voice_prop; eink: vendor_eink_prop)
+vendor_internal_prop(vendor_a6l_prop)          # vendor.a6l.* / persist.vendor.a6l.* (feature gates: radio, charger, ipa, camera, ...)
+vendor_public_prop(vendor_a6l_ro_prop)         # ro.vendor.a6l.* (build markers, audio capture pcm) - read by HALs

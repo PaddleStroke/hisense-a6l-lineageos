@@ -1,0 +1,2 @@
+# misc2: MultiMedia1 capture only (TX route of MM1, no RX route)
+MultiMedia1 Mixer LPI_MI2S_TX_3|1

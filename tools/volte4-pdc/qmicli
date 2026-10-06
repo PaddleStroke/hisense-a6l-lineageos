@@ -1,0 +1,7 @@
+#!/system/bin/sh
+# Wrapper: runs the unmodified Alpine v3.22 aarch64 qmicli 1.36.0 (libqmi + libqrtr-glib, QRTR support) through the
+# bundled musl dynamic loader. Nothing is installed; all files stay in $(dirname $0)/q. A6L_QEMU = test hook (WSL qemu).
+# 28 Sep: --preload libgmffix.so works around a libqmi 1.36 qmicli bug (g_free on g_mapped_file contents -> segfault in --pdc-load-config); see tools/volte4-pdc/gmf-fix.
+Q=$(cd "$(dirname "$0")" && pwd)/q
+export HOME=${HOME:-/tmp} LANG=C LC_ALL=C GIO_USE_VFS=local
+exec ${A6L_QEMU:-} "$Q/ld-musl-aarch64.so.1" --library-path "$Q/lib" --preload "$Q/libgmffix.so" "$Q/qmicli.bin" "$@"

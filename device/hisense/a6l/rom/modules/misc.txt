@@ -1,0 +1,21 @@
+# rom-v2 (agent merge, 25 Sep 2026): non-RF peripherals loaded at boot after the ADSP group.
+# thermal follow-up (29 Sep 2026, docs/android-thermal-20260929.md): PM660 VADC (adc5 rev2, adc@3100) = IIO provider of the
+# pm660-thermal die_temp (spmi-temp-alarm defers without it) and of the board thermistors xo/msm/emmc/pa_therm0/pa_therm1
+# (stock epd_therm)/quiet_therm (stock skin sensor) read by the thermal HAL. Order: vadc-common (exports) -> adc5.
+qcom-vadc-common.ko
+qcom-spmi-adc5.ko
+# fuel gauge (read-only telemetry for the health HAL; DT node from a6l-charger-v75)
+pmi8998_fg.ko
+# vibrator (misc2, 25 Sep 2026): the motor is on TLMM GPIO79 like stock timed-gpio (the PM660 haptics block is NOT wired to
+# it; stock has no qpnp-haptic driver). a6l_gpio_vib = LED class device "vibrator" (r5 review fix F49: what VibratorOL's
+# LedVibratorDevice drives; its FF name filter rejects our input device) + input FF device "a6l_gpio_vibrator" (a6l_vib
+# test tool; FF_CONSTANT/PERIODIC/RUMBLE). NEVER ship a6l_pm660_haptics / qcom-spmi-haptics with it (VibratorOL takes the first FF device).
+a6l_gpio_vib.ko
+# flash/torch LED (pm660l flash, a6l-flash-v75)
+led-class-flash.ko
+leds-qcom-flash.ko
+# e-ink frontlight: PM660L LPG ch4 -> leds-pwm "epd-backlight" (a6l-eink-frontlight-v75; order lpg -> leds-pwm)
+led-class-multicolor.ko
+leds-qcom-lpg.ko
+leds-pwm.ko
+# cameras: moved to camera.txt (merge2, 25 Sep: experimental, gated by persist.vendor.a6l.camera=1)

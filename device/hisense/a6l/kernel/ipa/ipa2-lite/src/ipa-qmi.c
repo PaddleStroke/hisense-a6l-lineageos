@@ -19,6 +19,14 @@
 #define IPA_QMI_INDICATION_REGISTER	0x20	/* modem -> AP request */
 #define IPA_QMI_INIT_DRIVER		0x21	/* AP -> modem request */
 #define IPA_QMI_INIT_COMPLETE		0x22	/* AP -> modem indication */
+/* A6L data3: requests the SDM660 modem may send to the AP server (downstream ipa_v2 answers all
+ * three; upstream ipa2-lite did not register them, so the modem never got a response). */
+#define IPA_QMI_INSTALL_FILTER_RULE	0x23	/* modem -> AP request (UL rules for the embedded pipe) */
+#define IPA_QMI_FILTER_INSTALLED_NOTIF	0x24	/* modem -> AP request */
+#define IPA_QMI_CONFIG			0x27	/* modem -> AP request */
+#define A6L_QMI_RSP_SZ			7	/* standard response TLV only */
+/* v4/v6 route table indices that belong to the modem (downstream v4_modem_rt_index_hi = 6) */
+#define A6L_MODEM_RT_INDEX_HI		6
 
 /* The maximum size required for message types.  These sizes include
  * the message data, along with type (1 byte) and length (2 byte)
@@ -31,8 +39,10 @@
 #define IPA_QMI_INIT_DRIVER_RSP_SZ		25	/* client handle <- */
 #define IPA_QMI_INIT_COMPLETE_IND_SZ		7	/* <- server handle */
 
-/* Maximum size of messages we expect the AP to receive (max of above) */
-#define IPA_QMI_SERVER_MAX_RCV_SZ		8
+/* Maximum size of messages we expect the AP to receive (max of above).
+ * A6L data3: was 8; INSTALL_FILTER_RULE can be up to 33705 bytes (downstream
+ * QMI_IPA_INSTALL_FILTER_RULE_REQ_MAX_MSG_LEN_V01), FILTER_INSTALLED_NOTIF 1899, CONFIG 102. */
+#define IPA_QMI_SERVER_MAX_RCV_SZ		33712
 #define IPA_QMI_CLIENT_MAX_RCV_SZ		25
 
 /* Request message for the IPA_QMI_INDICATION_REGISTER request */
@@ -1003,12 +1013,14 @@ static void ipa_server_init_complete(struct ipa_qmi *ipa_qmi)
 	ret = qmi_send_indication(qmi, sq, IPA_QMI_INIT_COMPLETE,
 				  IPA_QMI_INIT_COMPLETE_IND_SZ,
 				  ipa_init_complete_ind_ei, &ind);
-	if (ret)
+	if (ret) {
 		dev_err(ipa_qmi->dev,
 			"error %d sending init complete indication\n", ret);
-	else
+	} else {
+		/* r5 bug hunt round2 kernel-drivers: was unbraced, so the success line was logged after a failure too */
 		ipa_qmi->indication_sent = true;
 		dev_info(ipa_qmi->dev, "A6L_IPA INIT_COMPLETE indication sent to modem\n");
+	}
 }
 
 /* Determine whether everything is ready to start normal operation.
@@ -1095,7 +1107,133 @@ static void ipa_server_indication_register(struct qmi_handle *qmi,
 	}
 }
 
-/* The server handles two request message types sent by the modem. */
+/* A6L data3: minimal decoders. Unknown optional TLVs (>= 0x10) are skipped by qmi_decode(),
+ * mandatory ones must be described. */
+struct a6l_install_filter_req {
+	u8 source_pipe_index_valid;
+	u32 source_pipe_index;
+	u8 num_ipv4_filters_valid;
+	u32 num_ipv4_filters;
+	u8 num_ipv6_filters_valid;
+	u32 num_ipv6_filters;
+};
+
+#define A6L_OPT_U32(_s, _f, _t) \
+	{ .data_type = QMI_OPT_FLAG, .elem_len = 1, .elem_size = sizeof(u8), .tlv_type = (_t), \
+	  .offset = offsetof(struct _s, _f##_valid) }, \
+	{ .data_type = QMI_UNSIGNED_4_BYTE, .elem_len = 1, .elem_size = sizeof(u32), .tlv_type = (_t), \
+	  .offset = offsetof(struct _s, _f) }
+
+static const struct qmi_elem_info a6l_install_filter_req_ei[] = {
+	A6L_OPT_U32(a6l_install_filter_req, source_pipe_index, 0x11),
+	A6L_OPT_U32(a6l_install_filter_req, num_ipv4_filters, 0x12),
+	A6L_OPT_U32(a6l_install_filter_req, num_ipv6_filters, 0x13),
+	{ .data_type = QMI_EOTI },
+};
+
+#define A6L_MAX_FILTERS 64	/* downstream QMI_IPA_MAX_FILTERS_V01 */
+struct a6l_filter_handle_to_index {
+	u32 filter_handle;
+	u32 filter_index;
+};
+
+struct a6l_filter_installed_notif_req {
+	u32 source_pipe_index;
+	u16 install_status;
+	u8 filter_index_list_len;
+	struct a6l_filter_handle_to_index filter_index_list[A6L_MAX_FILTERS];
+	u8 embedded_pipe_index_valid;
+	u32 embedded_pipe_index;
+	u8 retain_header_valid;
+	u8 retain_header;
+	u8 embedded_call_mux_id_valid;
+	u32 embedded_call_mux_id;
+};
+
+static const struct qmi_elem_info a6l_filter_handle_to_index_ei[] = {
+	{ .data_type = QMI_UNSIGNED_4_BYTE, .elem_len = 1, .elem_size = sizeof(u32),
+	  .offset = offsetof(struct a6l_filter_handle_to_index, filter_handle) },
+	{ .data_type = QMI_UNSIGNED_4_BYTE, .elem_len = 1, .elem_size = sizeof(u32),
+	  .offset = offsetof(struct a6l_filter_handle_to_index, filter_index) },
+	{ .data_type = QMI_EOTI },
+};
+
+static const struct qmi_elem_info a6l_filter_installed_notif_req_ei[] = {
+	{ .data_type = QMI_UNSIGNED_4_BYTE, .elem_len = 1, .elem_size = sizeof(u32), .tlv_type = 0x01,
+	  .offset = offsetof(struct a6l_filter_installed_notif_req, source_pipe_index) },
+	{ .data_type = QMI_UNSIGNED_2_BYTE, .elem_len = 1, .elem_size = sizeof(u16), .tlv_type = 0x02,
+	  .offset = offsetof(struct a6l_filter_installed_notif_req, install_status) },
+	{ .data_type = QMI_DATA_LEN, .elem_len = 1, .elem_size = sizeof(u8), .tlv_type = 0x03,
+	  .offset = offsetof(struct a6l_filter_installed_notif_req, filter_index_list_len) },
+	{ .data_type = QMI_STRUCT, .elem_len = A6L_MAX_FILTERS,
+	  .elem_size = sizeof(struct a6l_filter_handle_to_index), .array_type = VAR_LEN_ARRAY, .tlv_type = 0x03,
+	  .offset = offsetof(struct a6l_filter_installed_notif_req, filter_index_list),
+	  .ei_array = a6l_filter_handle_to_index_ei },
+	A6L_OPT_U32(a6l_filter_installed_notif_req, embedded_pipe_index, 0x10),
+	{ .data_type = QMI_OPT_FLAG, .elem_len = 1, .elem_size = sizeof(u8), .tlv_type = 0x11,
+	  .offset = offsetof(struct a6l_filter_installed_notif_req, retain_header_valid) },
+	{ .data_type = QMI_UNSIGNED_1_BYTE, .elem_len = 1, .elem_size = sizeof(u8), .tlv_type = 0x11,
+	  .offset = offsetof(struct a6l_filter_installed_notif_req, retain_header) },
+	A6L_OPT_U32(a6l_filter_installed_notif_req, embedded_call_mux_id, 0x12),
+	{ .data_type = QMI_EOTI },
+};
+
+struct a6l_empty_req { u8 unused; };
+static const struct qmi_elem_info a6l_empty_req_ei[] = {
+	{ .data_type = QMI_EOTI },
+};
+
+/* INSTALL_FILTER_RULE response: result TLV only. With qcom,modem-cfg-emb-pipe-flt (stock SDM660 DT)
+ * downstream does not install anything either (rule handles stay 0); the modem programs the
+ * embedded-pipe (EP4) filter itself. */
+static void a6l_server_ack(struct qmi_handle *qmi, struct sockaddr_qrtr *sq, struct qmi_txn *txn,
+			   int msg_id, const char *what)
+{
+	struct ipa_indication_register_rsp rsp = { };	/* = struct qmi_response_type_v01 only */
+	struct ipa_qmi *ipa_qmi = container_of(qmi, struct ipa_qmi, server_handle);
+	int ret;
+
+	rsp.rsp.result = QMI_RESULT_SUCCESS_V01;
+	rsp.rsp.error = QMI_ERR_NONE_V01;
+	ret = qmi_send_response(qmi, sq, txn, msg_id, A6L_QMI_RSP_SZ,
+				ipa_indication_register_rsp_ei, &rsp);
+	dev_info(ipa_qmi->dev, "A6L_IPA qmi %s (0x%02x) from modem: replied %s (%d)\n",
+		 what, msg_id, ret ? "ERROR" : "success", ret);
+}
+
+static void a6l_server_install_filter(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
+				      struct qmi_txn *txn, const void *decoded)
+{
+	const struct a6l_install_filter_req *req = decoded;
+	struct ipa_qmi *ipa_qmi = container_of(qmi, struct ipa_qmi, server_handle);
+
+	dev_info(ipa_qmi->dev, "A6L_IPA qmi INSTALL_FILTER_RULE: src_pipe %d v4 %d v6 %d\n",
+		 req->source_pipe_index_valid ? (int)req->source_pipe_index : -1,
+		 req->num_ipv4_filters_valid ? (int)req->num_ipv4_filters : -1,
+		 req->num_ipv6_filters_valid ? (int)req->num_ipv6_filters : -1);
+	a6l_server_ack(qmi, sq, txn, IPA_QMI_INSTALL_FILTER_RULE, "INSTALL_FILTER_RULE");
+}
+
+static void a6l_server_filter_installed(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
+					struct qmi_txn *txn, const void *decoded)
+{
+	const struct a6l_filter_installed_notif_req *req = decoded;
+	struct ipa_qmi *ipa_qmi = container_of(qmi, struct ipa_qmi, server_handle);
+
+	dev_info(ipa_qmi->dev, "A6L_IPA qmi FILTER_INSTALLED_NOTIF: src_pipe %u status %u n %u emb_pipe %d mux %d\n",
+		 req->source_pipe_index, req->install_status, req->filter_index_list_len,
+		 req->embedded_pipe_index_valid ? (int)req->embedded_pipe_index : -1,
+		 req->embedded_call_mux_id_valid ? (int)req->embedded_call_mux_id : -1);
+	a6l_server_ack(qmi, sq, txn, IPA_QMI_FILTER_INSTALLED_NOTIF, "FILTER_INSTALLED_NOTIF");
+}
+
+static void a6l_server_config(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
+			      struct qmi_txn *txn, const void *decoded)
+{
+	a6l_server_ack(qmi, sq, txn, IPA_QMI_CONFIG, "CONFIG");
+}
+
+/* The server handles the request message types sent by the modem. */
 static const struct qmi_msg_handler ipa_server_msg_handlers[] = {
 	{
 		.type		= QMI_REQUEST,
@@ -1103,6 +1241,27 @@ static const struct qmi_msg_handler ipa_server_msg_handlers[] = {
 		.ei		= ipa_indication_register_req_ei,
 		.decoded_size	= IPA_QMI_INDICATION_REGISTER_REQ_SZ,
 		.fn		= ipa_server_indication_register,
+	},
+	{	/* A6L data3 */
+		.type		= QMI_REQUEST,
+		.msg_id		= IPA_QMI_INSTALL_FILTER_RULE,
+		.ei		= a6l_install_filter_req_ei,
+		.decoded_size	= sizeof(struct a6l_install_filter_req),
+		.fn		= a6l_server_install_filter,
+	},
+	{	/* A6L data3 */
+		.type		= QMI_REQUEST,
+		.msg_id		= IPA_QMI_FILTER_INSTALLED_NOTIF,
+		.ei		= a6l_filter_installed_notif_req_ei,
+		.decoded_size	= sizeof(struct a6l_filter_installed_notif_req),
+		.fn		= a6l_server_filter_installed,
+	},
+	{	/* A6L data3 */
+		.type		= QMI_REQUEST,
+		.msg_id		= IPA_QMI_CONFIG,
+		.ei		= a6l_empty_req_ei,
+		.decoded_size	= sizeof(struct a6l_empty_req),
+		.fn		= a6l_server_config,
 	},
 	{ },
 };
@@ -1163,11 +1322,11 @@ init_modem_driver_req(struct ipa_qmi *ipa_qmi, struct ipa_init_modem_driver_req 
 	req->hdr_tbl_info_valid = !!mem[MEM_MDM_HDR].size;
 
 	req->v4_route_tbl_info.start = mem[MEM_RT_V4].offset;
-	req->v4_route_tbl_info.end = mem[MEM_RT_V4].size / 4 - 1;
+	req->v4_route_tbl_info.end = min_t(u32, mem[MEM_RT_V4].size / 4 - 1, A6L_MODEM_RT_INDEX_HI);
 	req->v4_route_tbl_info_valid = 1;
 
 	req->v6_route_tbl_info.start = mem[MEM_RT_V6].offset;
-	req->v6_route_tbl_info.end = mem[MEM_RT_V6].size / 4 - 1;
+	req->v6_route_tbl_info.end = min_t(u32, mem[MEM_RT_V6].size / 4 - 1, A6L_MODEM_RT_INDEX_HI);
 	req->v6_route_tbl_info_valid = 1;
 
 	req->v4_filter_tbl_start = mem[MEM_FT_V4].offset;

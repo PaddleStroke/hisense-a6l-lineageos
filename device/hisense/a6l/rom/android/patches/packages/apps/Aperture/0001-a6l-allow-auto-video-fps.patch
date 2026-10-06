@@ -1,0 +1,17 @@
+--- a/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
++++ b/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
+@@ -1546,9 +1546,11 @@
+                 ] ?: error("Video quality not supported by the camera")
+ 
+                 require(
+-                    videoQualityInfo.supportedFrameRates.contains(
+-                        cameraConfiguration.videoFrameRate
+-                    )
++                    // null is Auto: clear the explicit Camera2 FPS request.
++                    cameraConfiguration.videoFrameRate == null ||
++                            videoQualityInfo.supportedFrameRates.contains(
++                                cameraConfiguration.videoFrameRate
++                            )
+                 ) {
+                     "Video frame rate not supported with the requested video quality"
+                 }

@@ -1,0 +1,5 @@
+F55 TTY_FULL_HCO_VCO success=1 getter_echoes_request=1 modem_requests=0
+F56 DTMF_stop_rejected HAL_success=1 fake_continuous_tone=1 cleanup_retries=0
+F56 explicit_stop_positive_control tone=0
+F57 reject_with_only_held_call success=1 broad_release_request=1 no_call_id=1 fake_held_released=1
+F57 incoming_call_positive_control targeted_END_CALL=1

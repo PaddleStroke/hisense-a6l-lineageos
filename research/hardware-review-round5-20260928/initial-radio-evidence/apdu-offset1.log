@@ -1,0 +1,2 @@
+READ_BINARY offset=1 dummy_file_length=2
+process_returncode=-6 (SIGABRT)

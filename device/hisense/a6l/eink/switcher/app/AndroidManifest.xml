@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.CONTROL_DISPLAY_BRIGHTNESS" />
+    <uses-permission android:name="android.permission.MODIFY_DAY_NIGHT_MODE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
@@ -16,6 +17,11 @@
         android:persistent="true"
         android:directBootAware="true"
         android:defaultToDeviceProtectedStorage="true">
+
+        <provider android:name=".SettingsProvider"
+            android:authorities="org.lineageos.a6l.dualux.settings"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS" />
 
         <activity
             android:name=".SettingsActivity"
@@ -27,12 +33,7 @@
                 <action android:name="org.lineageos.a6l.dualux.SETTINGS" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- injected into Settings > Display -->
-            <intent-filter>
-                <action android:name="com.android.settings.action.EXTRA_SETTINGS" />
-            </intent-filter>
-            <meta-data android:name="com.android.settings.category" android:value="com.android.settings.category.ia.display" />
-            <meta-data android:name="com.android.settings.summary" android:resource="@string/settings_summary" />
+            <!-- Controls live directly in Settings' E-ink tab; keep this page for tile long-press. -->
             <!-- long-press on any of our Quick Settings tiles opens this screen -->
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />

@@ -1,0 +1,5 @@
+LABEL                          USER           PID  PPID        VSZ    RSS WCHAN            ADDR S NAME
+u:r:init:s0                    root             1     0   10870496  9000 do_epoll_wait       0 S init
+u:r:vendor_modprobe:s0         root           412     1   10870496  3000 do_wait             0 S /vendor/bin/a6l-radio.sh
+u:r:a6l_modules:s0             root           300     1   10870496  3000 do_wait             0 S /vendor/bin/a6l-modules.sh
+u:r:hal_thermal_default:s0     system         700     1   10870496  3000 do_epoll_wait       0 S /vendor/bin/hw/android.hardware.thermal-service.a6l

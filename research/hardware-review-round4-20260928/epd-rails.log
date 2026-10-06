@@ -1,0 +1,5 @@
+WARN rails not switched on
+update 0 shown in 0 ms: ok, missed vblanks during drive=0 (total 0)
+rail_on_error=-1 return=0 flips=3
+update 0 shown in 0 ms: ok, missed vblanks during drive=0 (total 0)
+rail_off_error=-1 return=0 flips=3

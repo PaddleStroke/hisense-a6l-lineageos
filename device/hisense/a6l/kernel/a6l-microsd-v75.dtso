@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * A6L microSD slot (agent merge, 25 Sep 2026) = stock DT sdhci@c084000 translated to mainline sdhc_2:
+ *   stock: vdd-supply = pm660l_l5 (2.95 V, 15..800 mA), vdd-io-supply = pm660l_l2 (1.8..2.95 V, 0.2..22 mA),
+ *          cd-gpios = <&tlmm 54 0> (active HIGH), cd pin gpio54 "gpio" + bias-pull-up, drive 2 mA, 4-bit bus, SDR104.
+ *   (same wiring as the mainline sdm630 Sony Nile boards: vmmc l5b, vqmmc l2b, cd gpio54 ACTIVE_HIGH)
+ * The V74 base has no pm660l L2/L5 RPM nodes (regulators-0 lists l1/l3/l4/l7 only): they are added here with the
+ * stock voltage windows. Nothing else uses L2/L5 in the base.
+ */
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	fragment@90 {
+		target-path = "/remoteproc/glink-edge/rpm-requests/regulators-0";
+		__overlay__ {
+			a6l_vreg_l2b: l2 {
+				regulator-name = "pm660l_l2";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <2950000>;
+				regulator-allow-set-load;
+			};
+			a6l_vreg_l5b: l5 {
+				regulator-name = "pm660l_l5";
+				regulator-min-microvolt = <2944000>;
+				regulator-max-microvolt = <2952000>; /* 29 Sep: 2.95 V is between the 8 mV grid points 2.944/2.952 -> min>max, l5 refused (-22) */
+				regulator-allow-set-load;
+			};
+		};
+	};
+};
+
+&tlmm {
+	a6l_sd_cd: a6l-sd-cd-state {
+		pins = "gpio54";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+};
+
+&sdhc_2 {
+	status = "okay";
+	vmmc-supply = <&a6l_vreg_l5b>;
+	vqmmc-supply = <&a6l_vreg_l2b>;
+	cd-gpios = <&tlmm 54 GPIO_ACTIVE_HIGH>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&sdc2_state_on &a6l_sd_cd>;
+	pinctrl-1 = <&sdc2_state_off &a6l_sd_cd>;
+};

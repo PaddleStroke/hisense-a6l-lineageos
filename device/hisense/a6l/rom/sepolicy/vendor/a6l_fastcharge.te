@@ -1,0 +1,11 @@
+# fastcharge-rom (29 Sep 2026, docs/fastcharge-rom-20260929.md): a6l-chg-guard Q1-Q5 (power/rom/a6l-chg-guard.sh).
+# qcom_smbx module parameters (hvdcp_enable 0644 written: 5 V before thermal/OV limits, QC only in 12-43 C; hvdcp_rerun
+# 0200 written once per plug-in; hvdcp_status/hvdcp_icl_ua read), labelled by genfs_contexts (/module/qcom_smbx/parameters).
+type sysfs_a6l_chg_param, sysfs_type, fs_type;
+allow a6l_chg_guard sysfs_a6l_chg_param:dir r_dir_perms;
+allow a6l_chg_guard sysfs_a6l_chg_param:file rw_file_perms;
+# USB gadget D+ pull-up off on wall chargers / on for USB hosts: /sys/class/udc/a800000.usb/soft_connect (sysfs_udc,
+# usb/sepolicy/vendor/genfs_contexts); the class dir + symlink are plain sysfs (already readable by the guard).
+allow a6l_chg_guard sysfs_udc:dir r_dir_perms;
+allow a6l_chg_guard sysfs_udc:lnk_file read;
+allow a6l_chg_guard sysfs_udc:file w_file_perms;

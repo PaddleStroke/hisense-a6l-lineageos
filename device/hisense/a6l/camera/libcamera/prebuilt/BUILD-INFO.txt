@@ -1,0 +1,36 @@
+libcamera v0.7.2 + reviewed A6L patches0001-0022.
+r6s: validated discrete native RAW10 processed sizes in Android metadata. Only HAL changes fromr6r; core stop+AGC, IPA signature/key, tuning, modes and registers retained.
+Native-wide physical probe:ISP192.649->51.789ms, callback196->55ms. Normal app and main/front acceptance pending.
+
+4 October r6u: bounded default-off camera stage diagnostics; only core and HAL replaced.
+IPA/signature/base/proxy/public key/tuning and electrical programming retained.
+libcamera.so 955fb746056c2522383df720fbd7169afbfb74b98b8f1e7cd14450a2179007a4
+camera.libcamera.so f299cbf127f622dd75f759745145bb3dfd1830931220a4f7abba595bc9cbab11
+
+4 October r6v: exact NEON RAW/NV12 and preview columns, six worker default.
+Scalar gamma/AWB tables, native field of view, resolutions, sensor modes, IPA/signature/key/tunings retained.
+libcamera.so d251ffb09da8d88184aed9e99f8dcdba2a9256b8d931092ee6ff2ace7ca4ef4f
+camera.libcamera.so ef92c6acc7f78732f4b50cce3f63f5b48c028347fac934fb4252471bdd08d755
+
+4 October r6w: reviewed64-row dynamic work, exact Y/UV parallel preview, shared-descriptor DMA synchronization deduplication.
+Native resolution/FoV, arithmetic/gamma/AWB, sensor modes, tunings, IPA/signature/key and clocks retained.
+libcamera.so 076f529443e20a33a4be25d83e624039ddb665f5a7fb5194e1de47c803798503
+camera.libcamera.so fa2950d12a87bacdd1c6c4d03ba4bffb28a8fcdbf9ce0f06db2ca8ac0d1ce610
+
+4 October r6x: reviewed retained frame mappings, eight dynamic workers and bounded callback/RAW synchronization timing. All existing DMA START/END protocols retained.
+Native resolution/FoV, arithmetic/gamma/AWB, sensor modes, tunings, IPA/signature/key and clocks retained.
+libcamera.so 6b80a8de3d8883b4ab7cfa7bd94c9b67e57d2a1dc6d3d3565d99137372658e62
+camera.libcamera.so 41a9ea32b12eb0a873ecd587744be5434e1e88f37764c149e09977ed2c237c38
+
+4 October r6y: default-off native V4L2 RAW read lease with bounded fail-closed coherence verification; async preview preparation and shared-source/descriptor retirement. Generic/output DMA synchronization and kernel capture ownership retained.
+Native resolution/FoV, arithmetic/gamma/AWB, sensor modes, tunings, IPA/signature/key and clocks retained.
+libcamera.so 220557ffae1a988d1708930c074f1474fd9aba0a691e49174152eb2b69726ab1
+camera.libcamera.so 9e2d900a7b924947768659522280c2b92a8b80744d9bddda81850e6ecba3cb8c
+
+4 October r6z candidate: known A6L simple pure NV12 outputs use discovered native full-field processing, preserving requested destination size/format/rotation and existing aspect-aware YUV scaling. Avoids expensive RAW resize in CameraX video SurfaceTexture path. JPEG/RAW/mixed/unsupported paths retain fallback.
+HAL d9432fe12f2c88bfb5155d78838560e47a2726b3dc4b8e52fb7373955d27a1f2
+Core/base/IPA/proxy/tuning/key/signature/lifecycle/clocks retained; physical video acceptance pending.
+
+4 October r7a measurement build: bounded frame176 original10-bit numeric calibration under existing opt-in quality gate. Matching full247-task graph with retained r6z0028HAL source, original IPA key and unchanged IPA/proxy/base/tuning. No image controls changed.
+Core ddae16c6efdd2242d5ca743ee21cb5fc0d7dddd8fe4fd578289402e82e0b5892
+HAL 13b57fcc07081a03caf22e633a8ee30c5fb15b2844a3cb8269e1c5e9040a7206

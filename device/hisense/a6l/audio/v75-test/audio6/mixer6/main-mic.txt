@@ -1,0 +1,8 @@
+# audio6: stock mixer_paths.xml "handset-mic" -> "adc1": ADC1 Volume 8, DEC1 MUX ADC1 (+ ADC1_INP1 Switch, no mainline
+# equivalent: AMIC1 is hard-wired to ADC1). Bias: DT audio-routing AMIC1 <- MIC BIAS External1 (stock: MIC BIAS External).
+# DEC1 Volume 84 = mainline "Digital TX1 Digital Volume" 84 (0 dB).
+ADC2 MUX|ZERO
+Digital DEC1 MUX|ADC1
+Digital CIC1 MUX|AMIC
+ADC1 Volume|8
+Digital TX1 Digital Volume|84

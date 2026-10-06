@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: CC0-1.0
+# Hisense A6L hi846 (8 MP wide) tuning for the libcamera simple IPA (SoftISP). Phase 1 = uncalibrated:
+# black level from the CameraSensorHelper (64 @ 10 bit), grey-world AWB, AGC, gamma/contrast.
+# CCM is left disabled until measured (colour chart shot or stock chromatix decode, docs/libcamera-plan-20260929.md s.6).
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+  - Awb:
+  # Stock Qualcomm AWB-driven CCM decoded from libchromatix_hi846_hmct_d8h02f_a3_zsl_preview.so (camera-quality-20261006).
+  # Row-major, rows = output R,G,B; columns = input R,G,B (chromatix c0..c8 RtoR,GtoR,BtoR,...);
+  # applied after black level + AWB gains, rows sum to 1 (neutral-preserving).
+  # NOTE: enabling Ccm switches debayer to the slower upstream scalar CCM path (A6L NEON prefix is !ccm only).
+  - Ccm:
+      ccms:
+        - ct: 4000   # stock TL84
+          ccm: [   1.6673,  -0.8875,   0.2202,
+                  -0.1701,   1.2571,  -0.0870,
+                  -0.0071,  -0.7303,   1.7374 ]
+  - Adjust:
+      # Read only with patch 0030 (adjust tuning defaults); older IPA ignores these keys (= contrast 1.0).
+      contrast: 1.2
+  - Agc:
+...

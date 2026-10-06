@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L APSS watchdog (cpufreq-watchdog agent, 29 Sep 2026; completeness audit H64; docs/cpufreq-watchdog-20260929.md).
+// Stock SDM660 DT (stock-00.dts): qcom,wdt@17817000 "qcom,msm-watchdog", reg 0x17817000/0x1000, interrupts SPI 3 (bark)
+// + SPI 4, bark 11 s / pet 10 s. Mainline driver = qcom-wdt ("qcom,kpss-wdt": KPSS/APSS layout, bark IRQ = pretimeout,
+// clocked by the 32.764 kHz sleep clock -> max timeout 0xfffff / 32764 = 32 s). Same block/address as MSM8998.
+// Harmless until something opens /dev/watchdog: the probe only READS WDT_EN/WDT_STS (the stock kernel accesses this
+// block from EL1, so it is not XPU-protected), and nothing is armed unless the bootloader left it running (then the
+// kernel pings it, CONFIG_WATCHDOG_HANDLE_BOOT_ENABLED=y). watchdogd (init.a6l-watchdog.rc, opt-in property) arms it.
+// "qcom,apss-wdt-sdm660" is not in the upstream binding enum yet; the driver matches the "qcom,kpss-wdt" fallback.
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+&soc {
+	apss_wdt: watchdog@17817000 {
+		compatible = "qcom,apss-wdt-sdm660", "qcom,kpss-wdt";
+		reg = <0x17817000 0x1000>;
+		clocks = <&sleep_clk>;
+		interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
+		timeout-sec = <30>;
+	};
+};

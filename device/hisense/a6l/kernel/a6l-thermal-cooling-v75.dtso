@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L CPU thermal cooling-maps (thermal follow-up, 29 Sep 2026, docs/android-thermal-cooling-20260929.md).
+// NOT in tools/build-rom-v2-dt.sh OVLS: apply AFTER a6l-cpufreq-v75 once cpufreq (H52, qcom,sdm660-cpufreq-hw) is merged
+// and phone-proven; without cpufreq the maps bind nothing (no cpufreq cooling device) and are harmless.
+// Checked offline: fdtoverlay onto rom-v2.dtb (V74 base + V75 overlays) with and without a6l-cpufreq-v75.
+//
+// tsens -> CPU mapping (stock thermal-engine.conf: VIRTUAL-CLUSTER1 = tsens 3..7 = gold, VIRTUAL-CLUSTER0 = tsens 1,2 = silver;
+// DT: cpu0-3 = cpu@100..103 gold/perfcl (capacity 1024), cpu4-7 = cpu@0..3 silver/pwrcl (capacity 640)):
+//   cpu0..cpu3-thermal (hw 3..6, passive 70 C)  -> gold cluster cpu0-3
+//   pwr-cluster-thermal (hw 7 = gold L2 per stock, passive 70 C) -> gold cluster cpu0-3
+//   cpuss0/cpuss1-thermal (hw 1,2 = silver) have only a 125 C "hot" trip in the base DT: this adds a passive 70 C trip
+//   mapped to the silver cluster cpu4-7 and a critical 110 C trip (same as the gold zones; the base has NO kernel
+//   shutdown trip for the silver cluster).
+// One cpufreq cooling device is registered per policy (first CPU): listing all CPUs of the cluster is the mainline pattern
+// (sdm845/sm8150); entries whose CPU has no cooling device are skipped by thermal_of.
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/thermal/thermal.h>
+
+#define GOLD_COOLING \
+	<&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>, <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>, \
+	<&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>, <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>
+#define SILVER_COOLING \
+	<&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>, <&cpu5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>, \
+	<&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>, <&cpu7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>
+
+&{/thermal-zones/cpu0-thermal} {
+	cooling-maps {
+		map0 {
+			trip = <&cpu0_alert0>;
+			cooling-device = GOLD_COOLING;
+		};
+	};
+};
+
+&{/thermal-zones/cpu1-thermal} {
+	cooling-maps {
+		map0 {
+			trip = <&cpu1_alert0>;
+			cooling-device = GOLD_COOLING;
+		};
+	};
+};
+
+&{/thermal-zones/cpu2-thermal} {
+	cooling-maps {
+		map0 {
+			trip = <&cpu2_alert0>;
+			cooling-device = GOLD_COOLING;
+		};
+	};
+};
+
+&{/thermal-zones/cpu3-thermal} {
+	cooling-maps {
+		map0 {
+			trip = <&cpu3_alert0>;
+			cooling-device = GOLD_COOLING;
+		};
+	};
+};
+
+&{/thermal-zones/pwr-cluster-thermal} {
+	cooling-maps {
+		map0 {
+			trip = <&pwr_cluster_alert0>;
+			cooling-device = GOLD_COOLING;
+		};
+	};
+};
+
+&{/thermal-zones/cpuss0-thermal} {
+	trips {
+		cpuss0_alert1: trip-point1 {
+			temperature = <70000>;
+			hysteresis = <1000>;
+			type = "passive";
+		};
+
+		cpuss0_crit: cpuss-crit {
+			temperature = <110000>;
+			hysteresis = <1000>;
+			type = "critical";
+		};
+	};
+
+	cooling-maps {
+		map0 {
+			trip = <&cpuss0_alert1>;
+			cooling-device = SILVER_COOLING;
+		};
+	};
+};
+
+&{/thermal-zones/cpuss1-thermal} {
+	trips {
+		cpuss1_alert1: trip-point1 {
+			temperature = <70000>;
+			hysteresis = <1000>;
+			type = "passive";
+		};
+
+		cpuss1_crit: cpuss-crit {
+			temperature = <110000>;
+			hysteresis = <1000>;
+			type = "critical";
+		};
+	};
+
+	cooling-maps {
+		map0 {
+			trip = <&cpuss1_alert1>;
+			cooling-device = SILVER_COOLING;
+		};
+	};
+};

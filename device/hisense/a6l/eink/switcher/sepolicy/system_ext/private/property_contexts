@@ -1,3 +1,14 @@
 # a6l_dualux (agent dualux): sys.a6l.dualux.req, persist.sys.a6l.dualux.*, persist.sys.a6l.eink.{refresh,clear_every,contrast}
 sys.a6l.dualux.req          u:object_r:a6l_dualux_ctl_prop:s0 exact string
 persist.sys.a6l.            u:object_r:a6l_dualux_ctl_prop:s0
+
+# Pre-light appearance request and committed readiness handshake
+sys.a6l.dualux.ready u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.dualux.theme_sync u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.dualux.appearance u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.dualux.wallpaper_ready u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.dualux.wallpaper_sync u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.dualux.theme_ready u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.dualux.frame_ready u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.eink.no_animations u:object_r:a6l_eink_animation_prop:s0 exact bool
+sys.a6l.eink.gesture_slop u:object_r:a6l_eink_animation_prop:s0 exact uint

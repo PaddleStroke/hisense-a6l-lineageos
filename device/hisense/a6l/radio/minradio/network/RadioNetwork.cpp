@@ -45,6 +45,15 @@ std::vector<aidl::CellInfo> RadioNetwork::getCellInfoListBase() {
     auto signalStrength = mResponseTracker()->getSignalStrength();
     if (!dataRegistrationState.expectOk() || !signalStrength.expectOk()) return {};
 
+    // During startup or loss of service, registration may have no cell identity.
+    // makeCellInfo requires a supported RAT; return an empty list until one is
+    // available instead of aborting the HAL or inventing a serving cell.
+    const auto cellTag = dataRegistrationState->cellIdentity.getTag();
+    if (cellTag == aidl::CellIdentity::Tag::noinit ||
+        cellTag == aidl::CellIdentity::Tag::cdma) {
+        return {};
+    }
+
     return {structs::makeCellInfo(*dataRegistrationState, *signalStrength)};
 }
 

@@ -1,0 +1,149 @@
+--- a/sound/soc/codecs/msm8916-wcd-analog.c
++++ b/sound/soc/codecs/msm8916-wcd-analog.c
+@@ -15,6 +15,7 @@
+ #include <sound/pcm_params.h>
+ #include <sound/tlv.h>
+ #include <sound/jack.h>
++#include <linux/workqueue.h>
+ 
+ #define CDC_D_REVISION1			(0xf000)
+ #define CDC_D_PERPH_SUBTYPE		(0xf005)
+@@ -188,6 +189,7 @@
+ 					CDC_A_MBHC_BTN_VREF_FINE_MASK)
+ #define CDC_A_MBHC_RESULT_1		(0xf158)
+ #define CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK	GENMASK(4, 0)
++#define CDC_A_MBHC_ZDET_ELECT_RESULT	(0xf159)	/* A6L: HS_COMP / MIC_SCHMT / HPHR / HPHL schmitt results (debug) */
+ #define CDC_A_TX_1_EN			(0xf160)
+ #define CDC_A_TX_2_EN			(0xf161)
+ #define CDC_A_TX_1_2_TEST_CTL_1		(0xf162)
+@@ -317,8 +319,23 @@
+ 	unsigned int micbias1_cap_mode;
+ 	unsigned int micbias2_cap_mode;
+ 	unsigned int micbias_mv;
++	/*
++	 * A6L (27 Sep 2026): headset-mic detection after insertion. Upstream only reports SND_JACK_HEADSET when a BTN0
++	 * press+release happened just BEFORE the mechanical insertion interrupt; on the Hisense A6L (PM660L analog
++	 * codec) that never happens, so every headset was reported as headphones ("Mic Jack: Off") although the headset
++	 * mic itself records fine. After insertion we now measure the mic line with MIC BIAS2 on: a 4-pole headset mic
++	 * sits above the highest button threshold (BTN result 0x1f), a 3-pole plug grounds the mic ring (result 0).
++	 */
++	struct delayed_work a6l_hs_work;
++	int a6l_hs_tries;
++	bool a6l_inserted;
++	bool a6l_measuring;
+ };
+ 
++static bool a6l_mbhc_detect = true;
++module_param(a6l_mbhc_detect, bool, 0644);
++MODULE_PARM_DESC(a6l_mbhc_detect, "A6L: measure the mic line after insertion to detect a headset mic (default on)");
++
+ static const char *const adc2_mux_text[] = { "ZERO", "INP2", "INP3" };
+ static const char *const rdac2_mux_text[] = { "RX1", "RX2" };
+ static const char *const hph_text[] = { "ZERO", "Switch", };
+@@ -883,6 +900,8 @@
+ {
+ 	struct pm8916_wcd_analog_priv *priv = dev_get_drvdata(component->dev);
+ 
++	priv->a6l_inserted = false;
++	cancel_delayed_work_sync(&priv->a6l_hs_work);
+ 	snd_soc_component_update_bits(component, CDC_D_CDC_RST_CTL,
+ 			    RST_CTL_DIG_SW_RST_N_MASK, 0);
+ 
+@@ -1118,6 +1137,9 @@
+ {
+ 	struct pm8916_wcd_analog_priv *priv = arg;
+ 
++	if (priv->a6l_measuring)
++		return IRQ_HANDLED;
++
+ 	if (priv->detect_accessory_type) {
+ 		struct snd_soc_component *component = priv->component;
+ 		u32 val = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1);
+@@ -1139,6 +1161,9 @@
+ 	struct snd_soc_component *component = priv->component;
+ 	u32 btn_result;
+ 
++	if (priv->a6l_measuring)
++		return IRQ_HANDLED;
++
+ 	btn_result = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1) &
+ 				  CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK;
+ 
+@@ -1170,6 +1195,50 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++static void a6l_mbhc_hs_work(struct work_struct *work)
++{
++	struct pm8916_wcd_analog_priv *priv = container_of(to_delayed_work(work),
++			struct pm8916_wcd_analog_priv, a6l_hs_work);
++	struct snd_soc_component *component = priv->component;
++	struct snd_soc_dapm_context *dapm;
++	u32 res, elect;
++
++	/* the card (and its DAPM mutex) exists once the machine driver has set the jack */
++	if (!component || !priv->jack || !priv->a6l_inserted)
++		return;
++	dapm = snd_soc_component_to_dapm(component);
++
++	priv->a6l_measuring = true;
++	snd_soc_dapm_force_enable_pin(dapm, "MIC BIAS External2");
++	snd_soc_dapm_sync(dapm);
++	msleep(100);
++	res = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1) &
++	      CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK;
++	elect = snd_soc_component_read(component, CDC_A_MBHC_ZDET_ELECT_RESULT);
++	snd_soc_dapm_disable_pin(dapm, "MIC BIAS External2");
++	snd_soc_dapm_sync(dapm);
++	msleep(60);	/* let the mic line settle before button interrupts count again */
++	priv->a6l_measuring = false;
++
++	if (!priv->a6l_inserted)
++		return;
++	dev_info(component->dev, "A6L_MBHC try %d: btn_result=0x%02x elect_result=0x%02x\n",
++		 priv->a6l_hs_tries, res, elect);
++	if (res == CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK) {
++		/* mic line above every button threshold: electret mic present */
++		snd_soc_jack_report(priv->jack, SND_JACK_HEADSET, hs_jack_mask);
++		dev_info(component->dev, "A6L_MBHC_HEADSET (mic detected)\n");
++	} else if (res == 0) {
++		dev_info(component->dev, "A6L_MBHC_HEADPHONE (mic ring grounded: 3-pole)\n");
++	} else if (++priv->a6l_hs_tries < 4) {
++		/* in between: a button may be held during insertion, measure again */
++		mod_delayed_work(system_wq, &priv->a6l_hs_work, msecs_to_jiffies(500));
++	} else {
++		dev_info(component->dev, "A6L_MBHC_HEADPHONE (undecided after %d tries)\n",
++			 priv->a6l_hs_tries);
++	}
++}
++
+ static irqreturn_t pm8916_mbhc_switch_irq_handler(int irq, void *arg)
+ {
+ 	struct pm8916_wcd_analog_priv *priv = arg;
+@@ -1209,8 +1278,18 @@
+ 					    SND_JACK_HEADPHONE, hs_jack_mask);
+ 
+ 		priv->detect_accessory_type = false;
++		dev_info(component->dev, "A6L_MBHC inserted (btn0_released=%d)\n",
++			 priv->mbhc_btn0_released);
++		priv->a6l_inserted = true;
++		priv->a6l_hs_tries = 0;
++		if (a6l_mbhc_detect && !priv->mbhc_btn0_released)
++			mod_delayed_work(system_wq, &priv->a6l_hs_work,
++					 msecs_to_jiffies(300));
+ 
+ 	} else { /* removal */
++		priv->a6l_inserted = false;
++		cancel_delayed_work(&priv->a6l_hs_work);
++		dev_info(component->dev, "A6L_MBHC removed\n");
+ 		snd_soc_jack_report(priv->jack, 0, hs_jack_mask);
+ 		priv->detect_accessory_type = true;
+ 		priv->mbhc_btn0_released = false;
+@@ -1326,6 +1405,7 @@
+ 	ret = pm8916_wcd_analog_parse_dt(dev, priv);
+ 	if (ret < 0)
+ 		return ret;
++	INIT_DELAYED_WORK(&priv->a6l_hs_work, a6l_mbhc_hs_work);
+ 
+ 	for (i = 0; i < ARRAY_SIZE(supply_names); i++)
+ 		priv->supplies[i].supply = supply_names[i];

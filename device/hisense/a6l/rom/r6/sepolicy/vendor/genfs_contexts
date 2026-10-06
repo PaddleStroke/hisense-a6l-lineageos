@@ -1,0 +1,5 @@
+# thermal-r5prep (29 Sep 2026; docs/android-thermal-20260929.md): PM660 VADC (qcom-spmi-adc5, pm660_adc adc@3100) IIO
+# device = the board thermistors the thermal HAL reads (quiet_therm skin, xo/msm/emmc/pa_therm). Same SPMI child naming as
+# rom/sepolicy/vendor/genfs_contexts ("800f000.spmi:pmic@0:<node>"). Platform type sysfs_thermal: hal_thermal_default already
+# reads it (hal_thermal_a6l.te), no new type. To confirm on the phone: readlink -f /sys/bus/iio/devices/iio:device*
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmic@0:adc@3100 u:object_r:sysfs_thermal:s0

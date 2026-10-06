@@ -1,0 +1,21 @@
+// stk agent 25 Sep 2026: front STK3338 light + WAKE-UP proximity (legacy sensors HAL module, API 1.3), loaded by
+// LineageOS' android.hardware.sensors@2.0-subhal-impl-1.0 inside android.hardware.sensors-service.multihal.
+// NDK compile check passed (relay stk-09-halcheck2).
+// senshal agent 26 Sep 2026: + accelerometer / gyroscope / magnetometer (+ uncalibrated) from the SMGR IIO devices
+// (a6l_motion.c) with magnetometer hard-iron calibration (a6l_magcal.c); replaces the trout IIO sub-HAL.
+// Host tests: tests/run-tests.sh (fake IIO tree, ASan/UBSan).
+soong_namespace {}
+
+cc_library_shared {
+    name: "sensors.a6l",
+    relative_install_path: "hw",
+    vendor: true,
+    srcs: [
+        "sensors_a6l.c",
+        "a6l_motion.c",
+        "a6l_magcal.c",
+    ],
+    header_libs: ["libhardware_headers"],
+    shared_libs: ["liblog", "libcutils"],
+    cflags: ["-Wall", "-Werror", "-Wno-unused-parameter"],
+}

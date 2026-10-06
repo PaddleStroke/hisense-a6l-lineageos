@@ -1,0 +1,12 @@
+[
+  {
+    "test": "audio",
+    "exit_code": 0,
+    "stdout": "F62 mode=NORMAL requested=speaker/main published_route=empty daemon=headphones/headset-mic\nF62 mode=IN_COMMUNICATION requested=speaker/main published_route=empty daemon=headphones/headset-mic\nF62 modem_call_positive_control published=speaker daemon=voice-speaker/main-mic\n"
+  },
+  {
+    "test": "frontlight",
+    "exit_code": 0,
+    "stdout": "F63 backend_recreated desired=50 actual=0 cached=50 recovery_writes=0 iterations=100\nF63 changed_slider_positive_control desired=60 actual=60\nF63 rejected_write_positive_control recovery=1\n"
+  }
+]

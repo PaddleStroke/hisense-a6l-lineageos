@@ -1,0 +1,54 @@
+# ---- A6L ROM-level labels (release-prep, 27 Sep 2026) -------------------------------------------------------------------
+# rom/ scripts + radio companions (real ROM paths; hals/sepolicy had /vendor/bin/rmtfs etc. - wrong for rom-v2)
+/vendor/bin/a6l-modules\.sh                 u:object_r:a6l_modules_exec:s0
+/vendor/bin/a6l-radio\.sh                   u:object_r:a6l_radio_ctl_exec:s0
+/vendor/bin/a6l-chg-guard\.sh               u:object_r:a6l_chg_guard_exec:s0
+/vendor/a6l/radio/bin/rmtfs                 u:object_r:a6l_rmtfs_exec:s0
+/vendor/a6l/radio/bin/tqftpserv             u:object_r:a6l_tqftpserv_exec:s0
+/vendor/a6l/radio/bin/diag-router           u:object_r:a6l_diag_exec:s0
+/vendor/bin/rmtfs                           u:object_r:a6l_rmtfs_exec:s0
+/vendor/bin/tqftpserv                       u:object_r:a6l_tqftpserv_exec:s0
+/vendor/bin/a6l_macs                        u:object_r:a6l_macs_exec:s0
+# kernel modules (the GSI board labels none; insmod needs system:module_load on this type)
+/vendor/lib/modules(/.*)?                   u:object_r:vendor_kernel_modules:s0
+# HAL binaries that were UNLABELED in r3 (vendor_file => no domain transition => refused in enforcing)
+/vendor/bin/hw/android\.hardware\.security\.keymint-service\.nonsecure      u:object_r:hal_keymint_default_exec:s0
+/vendor/bin/hw/android\.hardware\.graphics\.allocator-service\.minigbm      u:object_r:hal_graphics_allocator_default_exec:s0
+/vendor/bin/hw/android\.hardware\.graphics\.allocator@4\.0-service\.minigbm u:object_r:hal_graphics_allocator_default_exec:s0
+/vendor/bin/hw/vendor\.qti\.hardware\.vibrator\.service                     u:object_r:hal_vibrator_default_exec:s0
+# data
+/data/vendor/a6l(/.*)?                      u:object_r:a6l_vendor_data_file:s0
+/data/vendor/tmp/tqftpserv(/.*)?            u:object_r:a6l_tqftpserv_data_file:s0
+/data/vendor/sensors(/.*)?                  u:object_r:a6l_sensors_data_file:s0
+/mnt/vendor/persist(/.*)?                   u:object_r:a6l_persist_file:s0
+/dev/a6l(/.*)?                              u:object_r:a6l_dev_file:s0
+# devices
+/dev/qcom_rmtfs_mem[0-9]*                   u:object_r:a6l_rmtfs_mem_device:s0
+# r5 build (29 Sep): /dev/iio:device[0-9]+ iio_device removed - already in system/sepolicy/private/file_contexts (duplicate spec broke file_contexts.bin)
+/dev/rfkill                                 u:object_r:a6l_rfkill_device:s0
+# eMMC partitions (androidboot.boot_devices=soc@0/c0c4000.mmc -> /dev/block/platform/soc@0/c0c4000.mmc/by-name + /dev/block/by-name).
+# Required in enforcing mode: init/fs_mgr (system, vendor, metadata, userdata), vold (userdata, metadata), uncrypt +
+# recovery (misc, boot, recovery), rmtfs (modem EFS). Without them every node is block_device (neverallowed for most domains).
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/system       u:object_r:system_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/vendor       u:object_r:system_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/boot         u:object_r:boot_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/dtbo         u:object_r:boot_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/recovery     u:object_r:recovery_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/userdata     u:object_r:userdata_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/metadata     u:object_r:metadata_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/cache        u:object_r:cache_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/misc         u:object_r:misc_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/persist      u:object_r:a6l_persist_block_device:s0
+/dev/block/platform/soc@0/c0c4000\.mmc/by-name/(modemst1|modemst2|fsg|fsc)  u:object_r:a6l_modem_block_device:s0
+/dev/block/by-name/system                   u:object_r:system_block_device:s0
+/dev/block/by-name/vendor                   u:object_r:system_block_device:s0
+/dev/block/by-name/boot                     u:object_r:boot_block_device:s0
+/dev/block/by-name/dtbo                     u:object_r:boot_block_device:s0
+/dev/block/by-name/recovery                 u:object_r:recovery_block_device:s0
+/dev/block/by-name/userdata                 u:object_r:userdata_block_device:s0
+/dev/block/by-name/metadata                 u:object_r:metadata_block_device:s0
+/dev/block/by-name/cache                    u:object_r:cache_block_device:s0
+/dev/block/by-name/misc                     u:object_r:misc_block_device:s0
+/dev/block/by-name/persist                  u:object_r:a6l_persist_block_device:s0
+/dev/block/by-name/(modemst1|modemst2|fsg|fsc)  u:object_r:a6l_modem_block_device:s0
+/dev/block/zram0                            u:object_r:swap_block_device:s0

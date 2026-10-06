@@ -1,0 +1,23 @@
+--- a/drivers/gpu/drm/msm/msm_gpu.h
++++ b/drivers/gpu/drm/msm/msm_gpu.h
+@@ -109,7 +109,8 @@
+ 	unsigned long iova;
+ 	int flags;
+ 	const char *type;
+-	const char *block;
++	/* Owned copy: a5xx supplies a fault source formatted on its stack. */
++	char block[32];
+ 
+ 	/* Information about what we think/expect is the current SMMU state,
+ 	 * for example expected_ttbr0 should match smmu_info.ttbr0 which
+--- a/drivers/gpu/drm/msm/adreno/adreno_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+@@ -346,7 +346,7 @@
+ 		fault_info.iova  = iova;
+ 		fault_info.flags = flags;
+ 		fault_info.type  = type;
+-		fault_info.block = block;
++		strscpy(fault_info.block, block, sizeof(fault_info.block));
+ 
+ 		msm_gpu_fault_crashstate_capture(gpu, &fault_info);
+ 

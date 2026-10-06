@@ -1,0 +1,6 @@
+# A6L AF test (run-af.sh MODE=af): AfMode Auto (1), then AfTrigger Start (0) once AGC has settled
+frames:
+  - 0:
+      AfMode: 1
+  - 12:
+      AfTrigger: 0

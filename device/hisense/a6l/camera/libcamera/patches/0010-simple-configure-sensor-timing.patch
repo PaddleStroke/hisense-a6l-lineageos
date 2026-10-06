@@ -1,0 +1,70 @@
+From: A6L port maintainers
+Subject: [PATCH] simple: align Android capture rate and refresh IPA mode timing
+
+IMX576 has a 90 fps video mode but the Android HAL advertises a 30 fps cap.
+Apply the cap through supported VBLANK at configure time, then read the
+actual duration. Send current mode sensor information to the simple IPA
+so exposure line duration is not inherited from a different startup mode.
+
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -1545,10 +1545,28 @@
+ 		const int64_t pixelRate = timing.get(V4L2_CID_PIXEL_RATE).get<int64_t>();
+ 		const int64_t lineLength = format.size.width +
+ 			timing.get(V4L2_CID_HBLANK).get<int32_t>();
+-		const int64_t frameLength = format.size.height +
++		int64_t frameLength = format.size.height +
+ 			timing.get(V4L2_CID_VBLANK).get<int32_t>();
+ 		if (pixelRate <= 0 || lineLength <= 0 || frameLength <= 0)
+ 			return -EINVAL;
++		/* Match the Android HAL's 30 fps cap using real sensor blanking. */
++		const int64_t targetLines = (pixelRate + lineLength * 30 - 1) /
++					    (lineLength * 30);
++		if (frameLength < targetLines) {
++			const ControlInfo &vblank = data->sensor_->controls().at(V4L2_CID_VBLANK);
++			const int32_t lines = std::min<int64_t>(
++				targetLines - format.size.height, vblank.max().get<int32_t>());
++			ControlList blanking(data->sensor_->controls());
++			blanking.set(V4L2_CID_VBLANK, lines);
++			ret = data->sensor_->setControls(&blanking);
++			if (ret < 0)
++				return ret;
++			timing = data->sensor_->getControls(timingIds);
++			if (!timing.contains(V4L2_CID_VBLANK))
++				return -EINVAL;
++			frameLength = format.size.height +
++				timing.get(V4L2_CID_VBLANK).get<int32_t>();
++		}
+ 		data->frameDuration_ = (lineLength * frameLength * 1000000 +
+ 					 pixelRate - 1) / pixelRate;
+ 		ControlInfoMap::Map controls;
+@@ -1641,6 +1659,9 @@
+ 		return data->converter_->configure(inputCfg, outputCfgs);
+ 	} else {
+ 		ipa::soft::IPAConfigInfo configInfo;
++		ret = data->sensor_->sensorInfo(&configInfo.sensorInfo);
++		if (ret < 0)
++			return ret;
+ 		configInfo.sensorControls = data->sensor_->controls();
+ 		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
+ 	}
+--- a/include/libcamera/ipa/soft.mojom
++++ b/include/libcamera/ipa/soft.mojom
+@@ -9,6 +9,7 @@
+ import "include/libcamera/ipa/core.mojom";
+ 
+ struct IPAConfigInfo {
++	libcamera.IPACameraSensorInfo sensorInfo;
+ 	libcamera.ControlInfoMap sensorControls;
+ };
+ 
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -201,6 +201,7 @@
+ 
+ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ {
++	context_.sensorInfo = configInfo.sensorInfo;
+ 	sensorInfoMap_ = configInfo.sensorControls;
+ 
+ 	const ControlInfo &exposureInfo = sensorInfoMap_.find(V4L2_CID_EXPOSURE)->second;

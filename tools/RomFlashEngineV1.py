@@ -104,9 +104,21 @@ class Session:
         entry['acknowledged'] = True
         self.save()
 
+    def hash_region(self, label, start, sectors, suffix=''):
+        """Verify a range without retaining its bytes; adb hashes on the phone."""
+        if hasattr(self.dev, 'hash_region'):
+            digest = self.dev.hash_region(start, sectors)
+            self.report.setdefault('reads', {})[label + suffix] = {
+                'start_sector': start, 'sectors': sectors, 'sha256': digest,
+                'method': 'device-hash', 'payload_saved': False}
+            self.save()
+            return digest
+        path, digest = self.read_region(label, start, sectors, suffix)
+        os.remove(path)
+        return digest
+
     def verify_written(self, label, start, sectors, expected_sha):
-        out, digest = self.read_region(label, start, sectors, '-readback')
-        os.remove(out)   # keep the capture small; the hash is recorded
+        digest = self.hash_region(label, start, sectors, '-readback')
         ok = digest == expected_sha
         self.report['writes'][label]['readback_sha256'] = digest
         self.report['writes'][label]['readback_verified'] = ok
@@ -129,6 +141,13 @@ def zero_sha(nbytes):
     return h.hexdigest()
 
 
+def checked_plan(writes):
+    try:
+        L.check_plan(writes)
+    except ValueError as e:
+        raise StopRun(str(e))
+
+
 def check_disk_identity(s, kit_expected):
     """GPT primary+tail must equal the verified spare backup; layout parsed from the GPT must match the plan."""
     p, _ = s.read_region('gpt-primary', *L.GPT_PRIMARY)
@@ -149,6 +168,7 @@ def run_install(dev, capture, images, pins, kit_expected, report, save, allow_no
         if payload_sha(path, nbytes) != digest:
             raise StopRun('payload hash differs before any USB write: ' + name)
     writes = L.install_writes({k: v[1] for k, v in images.items()})
+    checked_plan(writes)
     report['plan'] = [list(w) for w in writes]
     save()
     check_disk_identity(s, kit_expected)
@@ -228,6 +248,12 @@ def run_restore(dev, capture, backup_dir, kit_expected, report, save, userdata='
             raise StopRun('backup file differs from its manifest: ' + label)
     report['backup_files_verified'] = True
     save()
+    # bug hunt round2 install-tools (29 Sep 2026): the manifest's recorded layout must be this tool's layout (userdata=original
+    # took its write ranges from the manifest, unchecked) and every source file must have exactly the programmed length (a
+    # shorter file used to fail INSIDE the raw-mode transfer, after earlier partitions were already overwritten).
+    expected_layout = {k: list(v) for k, v in L.backup_regions().items()}
+    if manifest.get('layout') != expected_layout:
+        raise StopRun('backup manifest layout differs from this tool\'s layout; not restoring')
     check_disk_identity(s, kit_expected)
     changed = set()
     for label in L.ROM_MAY_WRITE:
@@ -240,6 +266,12 @@ def run_restore(dev, capture, backup_dir, kit_expected, report, save, userdata='
         writes = [w for w in writes if not w[0].startswith('userdata')]
         ud = manifest['layout']
         writes += [('userdata-head', *ud['userdata-head']), ('userdata-tail', *ud['userdata-tail'])]
+    checked_plan(writes)
+    for label, start, sectors in writes:
+        if not label.endswith('-zero'):
+            src = backup_dir / f'{label}.bin'
+            if label not in manifest['backups'] or src.stat().st_size != sectors * L.SECTOR:
+                raise StopRun('backup file length differs from the restore range (no write done): ' + label)
     report['plan'] = [list(w) for w in writes]
     save()
     expected = {}

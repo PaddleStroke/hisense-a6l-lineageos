@@ -1,0 +1,4 @@
+# WindowManager rear-wallpaper override reads the prepared target and acknowledges
+# its compositor transaction; it does not modify wallpaper files/components.
+get_prop(system_server, a6l_dualux_ctl_prop)
+set_prop(system_server, a6l_dualux_ctl_prop)

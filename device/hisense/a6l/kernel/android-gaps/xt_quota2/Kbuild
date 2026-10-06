@@ -1,0 +1,3 @@
+# A6L out-of-tree xt_quota2 (Android Common Kernel CONFIG_NETFILTER_XT_MATCH_QUOTA2 + _LOG), see ../README.md
+ccflags-y += -I$(src)/include
+obj-m += xt_quota2.o

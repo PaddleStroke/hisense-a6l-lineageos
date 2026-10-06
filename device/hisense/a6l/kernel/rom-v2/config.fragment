@@ -1,0 +1,15 @@
+# rom-v2 kernel config fragment on top of out-a6l-phone-v67/.config (all modules; the built-in Image is unchanged).
+# Until a full rebuild of the Image is proven, these are built as external modules (M=) against out-a6l-phone-v67,
+# with -DCONFIG_<X>_MODULE where the source needs it (v4l2-cci), exactly like the attended bundles.
+CONFIG_SND_SOC_QDSP6_Q6VOICE=m
+CONFIG_SND_SOC_QDSP6_Q6VOICE_DAI=m
+CONFIG_V4L2_CCI_I2C=m
+CONFIG_I2C_QCOM_CCI=m
+CONFIG_VIDEO_HI846=m
+CONFIG_LEDS_PWM=m
+# already =m in v67 (listed for completeness): LEDS_QCOM_LPG, LEDS_CLASS_MULTICOLOR, LEDS_QCOM_FLASH, VIDEO_QCOM_CAMSS,
+# RMNET, CHARGER_QCOM_SMB2 (qcom_smbx), BATTERY_QCOM_FG (pmi8998_fg), MMC_SDHCI_MSM. INPUT_UINPUT=y, KEYBOARD_GPIO=y.
+# Out-of-tree modules (sources in device/hisense/a6l/kernel/): tfa98xx-a6l (snd-soc-tfa98xx: apply-a6l-patches.sh +
+# apply-a6l-optional-v75.sh), tmd3702, a6l-pm660-haptics (misc-fixed), camera/{imx576_a6l,s5k3t1,gt9769}.c,
+# ipa/ipa2-lite (ipa2_lite, a6l-ipa2-lite-fix.py + steplog), panels (V73 e-ink panel), a6l_simplefb.
+# NOT in rom-v2: CPR3/OSM cpufreq (rest agent, separate Image, RAM-boot only), qcom-wdt.

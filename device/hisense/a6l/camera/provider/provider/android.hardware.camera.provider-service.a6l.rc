@@ -1,0 +1,20 @@
+# A6L camera provider (lc2, 29 Sep 2026): fork of hardware/lineage/interfaces/camera/aidl (AIDL ICameraProvider/internal/0
+# over a camera3 HAL module) + torch strength levels (A6lTorch). The HAL module is libcamera's Android adapter
+# /vendor/lib64/hw/camera.libcamera.so (ro.hardware.camera=libcamera). libcamera enumerates the media graph ONCE (no udev
+# hotplug), so the provider starts only after a6l-modules.sh misc has loaded the camera stack (persist.vendor.a6l.camera=1)
+# and the flash LED (leds-qcom-flash).
+service vendor.camera.provider /vendor/bin/hw/android.hardware.camera.provider-service.a6l
+    interface aidl android.hardware.camera.provider.ICameraProvider/internal/0
+    class hal
+    user cameraserver
+    group audio camera input drmrpc usb
+    ioprio rt 4
+    capabilities SYS_NICE
+    task_profiles CameraServiceCapacity MaxPerformance
+    # libcamera log -> logcat (bionic syslog), INFO for the first installed-ROM tests
+    setenv LIBCAMERA_LOG_FILE syslog
+    setenv LIBCAMERA_LOG_LEVELS *:INFO
+    disabled
+
+on property:init.svc.a6l_modules_misc=stopped
+    start vendor.camera.provider

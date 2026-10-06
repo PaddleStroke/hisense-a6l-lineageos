@@ -20,6 +20,7 @@ public class FrontlightTile extends TileService {
         boolean on = Dualux.getInt(Dualux.P_FL_ENABLE, 1) != 0;
         t.setState(on ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         t.setLabel(getString(R.string.tile_frontlight));
+        t.setSubtitle(on ? getString(R.string.fl_tile_on, Dualux.getInt(Dualux.P_FL_MAX, 100)) : getString(R.string.fl_tile_off));
         t.updateTile();
     }
 }

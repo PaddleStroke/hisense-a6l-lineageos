@@ -1,0 +1,384 @@
+From 4cf309b94feaa9860efd9969d8192f5fd780be10 Mon Sep 17 00:00:00 2001
+From: a6l <a6l@local>
+Date: Tue, 29 Sep 2026 16:16:54 +0200
+Subject: [PATCH] a6l 0005 android: single processed stream, YUV centre crop,
+ dma-buf internal allocator
+
+---
+ src/android/camera_device.cpp                 |  76 +++++++++-
+ .../mm/generic_frame_buffer_allocator.cpp     | 131 ++++++------------
+ src/android/yuv/post_processor_yuv.cpp        |  25 +++-
+ src/android/yuv/post_processor_yuv.h          |   1 +
+ src/libcamera/dma_buf_allocator.cpp           |   3 +
+ 5 files changed, 143 insertions(+), 93 deletions(-)
+
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index 80ff248..435f0c7 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -27,6 +27,8 @@
+ 
+ #include "system/graphics.h"
+ 
++#include "libcamera/internal/formats.h"
++
+ #include "camera_buffer.h"
+ #include "camera_hal_config.h"
+ #include "camera_ops.h"
+@@ -704,6 +706,77 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 		streamConfigs[index].streams.push_back({ jpegStream, type });
+ 	}
+ 
++	/*
++	 * A6L: pipelines with a single processed output (simple pipeline +
++	 * software ISP) cannot produce several processed streams. Merge all
++	 * the processed streams onto one libcamera stream: the JPEG size if a
++	 * JPEG stream is requested (the encoder needs identical input and
++	 * output sizes), the largest requested size otherwise. The other
++	 * streams become Mapped streams scaled by the YUV post-processor.
++	 */
++	if (!utils::secure_getenv("LIBCAMERA_HAL_MULTI_STREAM")) {
++		std::vector<size_t> processed;
++		for (size_t i = 0; i < streamConfigs.size(); ++i) {
++			const PixelFormatInfo &info =
++				PixelFormatInfo::info(streamConfigs[i].config.pixelFormat);
++			if (info.colourEncoding != PixelFormatInfo::ColourEncodingRAW)
++				processed.push_back(i);
++		}
++
++		if (processed.size() > 1) {
++			size_t source = processed[0];
++			bool hasJpeg = false;
++			for (size_t i : processed) {
++				for (const auto &s : streamConfigs[i].streams) {
++					if (s.stream == jpegStream) {
++						source = i;
++						hasJpeg = true;
++					}
++				}
++			}
++			if (!hasJpeg) {
++				for (size_t i : processed) {
++					if (streamConfigs[i].config.size.width * streamConfigs[i].config.size.height >
++					    streamConfigs[source].config.size.width * streamConfigs[source].config.size.height)
++						source = i;
++				}
++			}
++
++			Camera3StreamConfig &src = streamConfigs[source];
++			camera3_stream_t *srcStream = src.streams[0].stream;
++			for (size_t i : processed) {
++				if (i == source)
++					continue;
++				for (const auto &s : streamConfigs[i].streams) {
++					if (s.stream->width > src.config.size.width ||
++					    s.stream->height > src.config.size.height) {
++						LOG(HAL, Error)
++							<< "Single-stream mode: " << s.stream->width
++							<< "x" << s.stream->height
++							<< " larger than the source stream "
++							<< src.config.size;
++						return -EINVAL;
++					}
++					srcStream->usage |= GRALLOC_USAGE_SW_READ_OFTEN;
++					s.stream->usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
++					src.streams.push_back({ s.stream, CameraStream::Type::Mapped });
++				}
++			}
++
++			LOG(HAL, Info) << "Single-stream mode: " << src.streams.size()
++				       << " Android streams on one " << src.config.toString()
++				       << " libcamera stream";
++
++			std::vector<Camera3StreamConfig> merged;
++			for (size_t i = 0; i < streamConfigs.size(); ++i) {
++				if (i == source ||
++				    std::find(processed.begin(), processed.end(), i) == processed.end())
++					merged.push_back(std::move(streamConfigs[i]));
++			}
++			streamConfigs = std::move(merged);
++		}
++	}
++
+ 	sortCamera3StreamConfigs(streamConfigs, jpegStream);
+ 	for (const auto &streamConfig : streamConfigs) {
+ 		config->addConfiguration(streamConfig.config);
+@@ -723,7 +796,8 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 			 * be used when constructing the subsequent mapped
+ 			 * streams.
+ 			 */
+-			if (stream.type == CameraStream::Type::Direct)
++			/* A6L: an Internal (JPEG) stream can be the source of Mapped streams too */
++			if (stream.type != CameraStream::Type::Mapped)
+ 				sourceStream = &streams_.back();
+ 		}
+ 	}
+diff --git a/src/android/mm/generic_frame_buffer_allocator.cpp b/src/android/mm/generic_frame_buffer_allocator.cpp
+index 25ad6b0..aeb68ab 100644
+--- a/src/android/mm/generic_frame_buffer_allocator.cpp
++++ b/src/android/mm/generic_frame_buffer_allocator.cpp
+@@ -2,23 +2,29 @@
+ /*
+  * Copyright (C) 2021, Google Inc.
+  *
+- * Allocate FrameBuffer using gralloc API
++ * Allocate FrameBuffer for the HAL internal streams.
++ *
++ * A6L: the buffers come from the dma-buf heaps (DmaBufAllocator: CMA,
++ * system, udmabuf) instead of the legacy gralloc0 module, which neither
++ * the NDK build (no libhardware) nor a minigbm/gralloc4 platform provides.
++ * The planes are laid out contiguously in one dma-buf with the stride
++ * aligned to 8 bytes, the layout the software ISP writes.
+  */
+ 
+-#include <dlfcn.h>
+ #include <memory>
+ #include <vector>
+ 
+ #include <libcamera/base/log.h>
+ #include <libcamera/base/shared_fd.h>
++#include <libcamera/base/unique_fd.h>
++#include <libcamera/base/utils.h>
+ 
++#include "libcamera/internal/dma_buf_allocator.h"
+ #include "libcamera/internal/formats.h"
+-#include "libcamera/internal/framebuffer.h"
+ 
+ #include <hardware/camera3.h>
+-#include <hardware/gralloc.h>
+-#include <hardware/hardware.h>
+ 
++#include "../camera_capabilities.h"
+ #include "../camera_device.h"
+ #include "../frame_buffer_allocator.h"
+ #include "../hal_framebuffer.h"
+@@ -27,45 +33,6 @@ using namespace libcamera;
+ 
+ LOG_DECLARE_CATEGORY(HAL)
+ 
+-namespace {
+-class GenericFrameBufferData : public FrameBuffer::Private
+-{
+-	LIBCAMERA_DECLARE_PUBLIC(FrameBuffer)
+-
+-public:
+-	GenericFrameBufferData(struct alloc_device_t *allocDevice,
+-			       buffer_handle_t handle,
+-			       Span<const FrameBuffer::Plane> planes)
+-		: FrameBuffer::Private(planes), allocDevice_(allocDevice),
+-		  handle_(handle)
+-	{
+-		ASSERT(allocDevice_);
+-		ASSERT(handle_);
+-	}
+-
+-	~GenericFrameBufferData() override
+-	{
+-		/*
+-		 * allocDevice_ is used to destroy handle_. allocDevice_ is
+-		 * owned by PlatformFrameBufferAllocator::Private.
+-		 * GenericFrameBufferData must be destroyed before it is
+-		 * destroyed.
+-		 *
+-		 * \todo Consider managing alloc_device_t with std::shared_ptr
+-		 * if this is difficult to maintain.
+-		 *
+-		 * \todo Thread safety against alloc_device_t is not documented.
+-		 * Is it no problem to call alloc/free in parallel?
+-		 */
+-		allocDevice_->free(allocDevice_, handle_);
+-	}
+-
+-private:
+-	struct alloc_device_t *allocDevice_;
+-	const buffer_handle_t handle_;
+-};
+-} /* namespace */
+-
+ class PlatformFrameBufferAllocator::Private : public Extensible::Private
+ {
+ 	LIBCAMERA_DECLARE_PUBLIC(PlatformFrameBufferAllocator)
+@@ -73,78 +40,64 @@ class PlatformFrameBufferAllocator::Private : public Extensible::Private
+ public:
+ 	Private(CameraDevice *const cameraDevice)
+ 		: cameraDevice_(cameraDevice),
+-		  hardwareModule_(nullptr),
+-		  allocDevice_(nullptr)
++		  allocator_(DmaBufAllocator::DmaBufAllocatorFlag::CmaHeap |
++			     DmaBufAllocator::DmaBufAllocatorFlag::SystemHeap |
++			     DmaBufAllocator::DmaBufAllocatorFlag::UDmaBuf)
+ 	{
+-		hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &hardwareModule_);
+-		ASSERT(hardwareModule_);
++		if (!allocator_.isValid())
++			LOG(HAL, Error) << "No dma-buf heap or udmabuf for internal buffers";
+ 	}
+ 
+-	~Private() override;
++	~Private() override = default;
+ 
+ 	std::unique_ptr<HALFrameBuffer>
+ 	allocate(int halPixelFormat, const libcamera::Size &size, uint32_t usage);
+ 
+ private:
+ 	const CameraDevice *const cameraDevice_;
+-	const struct hw_module_t *hardwareModule_;
+-	struct alloc_device_t *allocDevice_;
++	DmaBufAllocator allocator_;
+ };
+ 
+-PlatformFrameBufferAllocator::Private::~Private()
+-{
+-	if (allocDevice_)
+-		gralloc_close(allocDevice_);
+-	dlclose(hardwareModule_->dso);
+-}
+-
+ std::unique_ptr<HALFrameBuffer>
+ PlatformFrameBufferAllocator::Private::allocate(int halPixelFormat,
+ 						const libcamera::Size &size,
+-						uint32_t usage)
++						[[maybe_unused]] uint32_t usage)
+ {
+-	if (!allocDevice_) {
+-		int ret = gralloc_open(hardwareModule_, &allocDevice_);
+-		if (ret) {
+-			LOG(HAL, Fatal) << "gralloc_open() failed: " << ret;
+-			return nullptr;
+-		}
++	const PixelFormat pixelFormat =
++		cameraDevice_->capabilities()->toPixelFormat(halPixelFormat);
++	const PixelFormatInfo &info = PixelFormatInfo::info(pixelFormat);
++	if (!info.isValid()) {
++		LOG(HAL, Error) << "Internal buffer: unsupported HAL format "
++				<< halPixelFormat;
++		return nullptr;
+ 	}
+ 
+-	int stride = 0;
+-	buffer_handle_t handle = nullptr;
+-	int ret = allocDevice_->alloc(allocDevice_, size.width, size.height,
+-				      halPixelFormat, usage, &handle, &stride);
+-	if (ret) {
+-		LOG(HAL, Error) << "failed buffer allocation: " << ret;
+-		return nullptr;
++	const unsigned int stride = info.stride(size.width, 0, 8);
++	std::vector<unsigned int> planeSizes;
++	size_t total = 0;
++	for (unsigned int i = 0; i < info.numPlanes(); i++) {
++		planeSizes.push_back(info.planeSize(size.height, i, stride));
++		total += planeSizes.back();
+ 	}
+-	if (!handle) {
+-		LOG(HAL, Fatal) << "invalid buffer_handle_t";
++
++	UniqueFD fd = allocator_.alloc("libcamera-hal", total);
++	if (!fd.isValid()) {
++		LOG(HAL, Error) << "Internal buffer allocation failed ("
++				<< total << " bytes)";
+ 		return nullptr;
+ 	}
+ 
+-	/* This code assumes the planes are mapped consecutively. */
+-	const libcamera::PixelFormat pixelFormat =
+-		cameraDevice_->capabilities()->toPixelFormat(halPixelFormat);
+-	const auto &info = PixelFormatInfo::info(pixelFormat);
++	SharedFD sharedFd(std::move(fd));
+ 	std::vector<FrameBuffer::Plane> planes(info.numPlanes());
+-
+-	SharedFD fd{ handle->data[0] };
+ 	size_t offset = 0;
+ 	for (auto [i, plane] : utils::enumerate(planes)) {
+-		const size_t planeSize = info.planeSize(size.height, i, stride);
+-
+-		plane.fd = fd;
++		plane.fd = sharedFd;
+ 		plane.offset = offset;
+-		plane.length = planeSize;
+-		offset += planeSize;
++		plane.length = planeSizes[i];
++		offset += planeSizes[i];
+ 	}
+ 
+-	return std::make_unique<HALFrameBuffer>(
+-		std::make_unique<GenericFrameBufferData>(
+-			allocDevice_, handle, planes),
+-		handle);
++	return std::make_unique<HALFrameBuffer>(planes, nullptr);
+ }
+ 
+ PUBLIC_FRAME_BUFFER_ALLOCATOR_IMPLEMENTATION
+diff --git a/src/android/yuv/post_processor_yuv.cpp b/src/android/yuv/post_processor_yuv.cpp
+index c998807..66d0f7e 100644
+--- a/src/android/yuv/post_processor_yuv.cpp
++++ b/src/android/yuv/post_processor_yuv.cpp
+@@ -66,11 +66,16 @@ void PostProcessorYuv::process(Camera3RequestDescriptor::StreamBuffer *streamBuf
+ 		return;
+ 	}
+ 
+-	int ret = libyuv::NV12Scale(sourceMapped.planes()[0].data(),
++	/* A6L: centre crop (even offsets keep the CbCr pairs aligned) */
++	const uint8_t *srcY = sourceMapped.planes()[0].data() +
++			      crop_.y * sourceStride_[0] + crop_.x;
++	const uint8_t *srcUV = sourceMapped.planes()[1].data() +
++			       crop_.y / 2 * sourceStride_[1] + crop_.x;
++	int ret = libyuv::NV12Scale(srcY,
+ 				    sourceStride_[0],
+-				    sourceMapped.planes()[1].data(),
++				    srcUV,
+ 				    sourceStride_[1],
+-				    sourceSize_.width, sourceSize_.height,
++				    crop_.width, crop_.height,
+ 				    destination->plane(0).data(),
+ 				    destinationStride_[0],
+ 				    destination->plane(1).data(),
+@@ -133,6 +138,20 @@ void PostProcessorYuv::calculateLengths(const StreamConfiguration &inCfg,
+ 	sourceSize_ = inCfg.size;
+ 	destinationSize_ = outCfg.size;
+ 
++	/* A6L: largest centred source rectangle with the destination aspect ratio */
++	crop_ = libcamera::Rectangle(sourceSize_);
++	const uint64_t sw = sourceSize_.width, sh = sourceSize_.height;
++	const uint64_t dw = destinationSize_.width, dh = destinationSize_.height;
++	if (dw && dh) {
++		if (sw * dh > dw * sh) {
++			crop_.width = static_cast<unsigned int>(sh * dw / dh) & ~1u;
++			crop_.x = static_cast<int>((sw - crop_.width) / 2) & ~1;
++		} else if (sw * dh < dw * sh) {
++			crop_.height = static_cast<unsigned int>(sw * dh / dw) & ~1u;
++			crop_.y = static_cast<int>((sh - crop_.height) / 2) & ~1;
++		}
++	}
++
+ 	const PixelFormatInfo &nv12Info = PixelFormatInfo::info(formats::NV12);
+ 	for (unsigned int i = 0; i < 2; i++) {
+ 		sourceStride_[i] = inCfg.stride;
+diff --git a/src/android/yuv/post_processor_yuv.h b/src/android/yuv/post_processor_yuv.h
+index ed7bb1f..2b2a3d3 100644
+--- a/src/android/yuv/post_processor_yuv.h
++++ b/src/android/yuv/post_processor_yuv.h
+@@ -28,6 +28,7 @@ private:
+ 
+ 	libcamera::Size sourceSize_;
+ 	libcamera::Size destinationSize_;
++	libcamera::Rectangle crop_; /* A6L: source area with the destination aspect ratio */
+ 	unsigned int sourceLength_[2] = {};
+ 	unsigned int destinationLength_[2] = {};
+ 	unsigned int sourceStride_[2] = {};
+diff --git a/src/libcamera/dma_buf_allocator.cpp b/src/libcamera/dma_buf_allocator.cpp
+index d8c62dd..49c6791 100644
+--- a/src/libcamera/dma_buf_allocator.cpp
++++ b/src/libcamera/dma_buf_allocator.cpp
+@@ -101,6 +101,9 @@ DmaBufAllocator::DmaBufAllocator(DmaBufAllocatorFlags type)
+ 			continue;
+ 
+ 		int ret = ::open(info.deviceNodeName, O_RDWR | O_CLOEXEC, 0);
++		/* A6L: Android ueventd makes /dev/dma_heap/system 0444, the ioctl needs no write access */
++		if (ret < 0 && errno == EACCES)
++			ret = ::open(info.deviceNodeName, O_RDONLY | O_CLOEXEC, 0);
+ 		if (ret < 0) {
+ 			ret = errno;
+ 			LOG(DmaBufAllocator, Debug)
+-- 
+2.43.0
+

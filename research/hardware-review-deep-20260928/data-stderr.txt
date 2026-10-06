@@ -1,0 +1,5 @@
+[227760.976] I wds4: server WDS(1) inst 0 at 0:100
+[227760.978] I data: mux 1 v4 settings: ip=10.0.0.5/30
+[227760.978] W data: cid 1 disconnected by network (end reason -1)
+[227761.185] I wds4: server WDS(1) inst 0 at 0:100
+[227761.186] I data: mux 1 v4 settings: ip=10.0.0.5/30

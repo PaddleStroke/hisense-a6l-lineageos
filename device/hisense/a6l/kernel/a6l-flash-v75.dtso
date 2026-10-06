@@ -3,6 +3,9 @@
 // flash_0/torch_0/switch_0 -> one LED on channel 1). Mainline leds-qcom-flash (CONFIG_LEDS_QCOM_FLASH=m).
 // Stock limits: flash_0 max 1500 mA (default 1000 mA, 1280 ms), torch_0 max 500 mA (default 200 mA).
 // First test values are deliberately lower: torch 100 mA, flash 500 mA / 400 ms.
+// lc2 (29 Sep 2026): torch ceiling = the stock torch_0 maximum 500 mA (leds-qcom-flash TORCH_CURRENT_MAX_UA). brightness
+// 0..255 scales onto it; the camera provider (camera/provider A6lTorch) exposes 5 mA strength levels 1..100 and turns the torch
+// on at 100 mA by default (level 20) - the old fixed 100 mA. Higher levels only on an explicit user choice (QS slider).
 /dts-v1/;
 /plugin/;
 #include <dt-bindings/leds/common.h>
@@ -14,7 +17,7 @@
 		function = LED_FUNCTION_FLASH;
 		color = <LED_COLOR_ID_WHITE>;
 		led-sources = <1>;
-		led-max-microamp = <100000>;
+		led-max-microamp = <500000>;
 		flash-max-microamp = <500000>;
 		flash-max-timeout-us = <400000>;
 	};

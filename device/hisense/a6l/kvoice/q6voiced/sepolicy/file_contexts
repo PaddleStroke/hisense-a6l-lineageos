@@ -1,1 +1,2 @@
 /vendor/bin/a6l-q6voiced    u:object_r:a6l_q6voiced_exec:s0
+/dev/socket/a6l_q6voiced    u:object_r:a6l_q6voiced_socket:s0

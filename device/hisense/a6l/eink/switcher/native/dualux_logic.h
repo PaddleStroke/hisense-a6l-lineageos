@@ -34,9 +34,13 @@ struct dx_cfg {
 struct dx_state {
     struct dx_cfg cfg;
     int screen;			/* enum dx_screen */
+    int appearance_hold; /* 0=visible, 1=theme/wallpaper preparation, 2=first rear frame */
     int awake;			/* Android interactive (LCD CRTC active) */
     int ek_down, ek_long, ek_double, ek_pending; double ek_t, ek_pending_t;
     int pw_down, pw_grabbed_at_down, pw_injected; double pw_t;
+    /* r5 pass2 F20 (fail-open power key; both 0 = normal, set by the daemon) */
+    int no_inject;		/* 1 = the uinput keyboard is not usable: never take the power key from Android */
+    int pw_not_held;		/* 1 = the grab is wanted but the kernel grab is not held: Android gets the press itself */
 };
 
 /* what the daemon must do after an event (several may be set) */
@@ -57,10 +61,14 @@ struct dx_out dx_power_key(struct dx_state *s, int value, double now);
 struct dx_out dx_tick(struct dx_state *s, double now);		/* long presses while held */
 struct dx_out dx_request(struct dx_state *s, const char *req);	/* app/QS: "eink" "lcd" "toggle" "clear" */
 void dx_set_awake(struct dx_state *s, int awake);
+/* r5 pass2 F20: the key state is lost (SYN_DROPPED resync says "up", device gone, uinput gone): forget the press
+ * without acting on it; balances an injected KEY_POWER down with an up (o.power_up) */
+struct dx_out dx_power_cancel(struct dx_state *s);
+struct dx_out dx_eink_cancel(struct dx_state *s);
 void dx_apply(struct dx_state *s, const struct dx_out *o);	/* commit o->set_screen into the state */
 
 /* derived outputs */
-int dx_power_grabbed(const struct dx_state *s);		/* grab the power key device (e-ink + awake) */
+int dx_power_grabbed(const struct dx_state *s);		/* grab the power key device (e-ink + awake + uinput usable) */
 int dx_front_touch_grabbed(const struct dx_state *s);		/* drop front touches (e-ink active) */
 int dx_lcd_blank(const struct dx_state *s);			/* keep the LCD backlight off (bl_power=4) */
 int dx_mirror_on(const struct dx_state *s);			/* persist.vendor.eink.mode = mirror */

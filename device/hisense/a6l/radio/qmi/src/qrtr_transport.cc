@@ -60,6 +60,7 @@ class QrtrTransport : public Transport {
     }
 
     uint32_t localNode() const override { return mNode; }
+    uint32_t localPort() const override { return mPort; }
 
     bool send(const Addr& to, const std::vector<uint8_t>& data) override {
         sockaddr_qrtr sq{};

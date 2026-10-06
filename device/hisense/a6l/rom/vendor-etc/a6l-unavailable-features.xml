@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A6L rom-v2 (merge2, 25 Sep 2026; Astra review R2/R13: advertised features must match working behaviour).
+     handheld_core_hardware.xml (full_base_telephony.mk) declares a compass and a camera. SystemConfig removes every
+     <unavailable-feature> after all permission files are read, so the camera is withdrawn here:
+       - compass: NO LONGER withdrawn (senshal, 26 Sep 2026): sensors.a6l serves the AK09918 through SMGR IIO with
+         hard-iron calibration. If the attended ROM test fails, put the line back:
+            - camera: the camss/sensor stack is experimental and gated off (persist.vendor.a6l.camera=0), no camera HAL.
+     Delete the matching line when the feature works on the installed system. -->
+<permissions>
+    <!-- lc2 (29 Sep 2026): camera, camera.any, camera.front, camera.flash are now provided by the libcamera camera stack
+         (camera/a6l-camera-features.xml). Autofocus stays withdrawn: fixed focus until contrast AF (libcamera plan M5). -->
+    <unavailable-feature name="android.hardware.camera.autofocus" />
+</permissions>

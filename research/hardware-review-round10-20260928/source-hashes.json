@@ -1,0 +1,16 @@
+{
+  "device/hisense/a6l/gnss/lib/android_map.h": "5eece05e36461383a056f8f7988410804d7fd10baa724db8d061a91b56743315",
+  "device/hisense/a6l/gnss/lib/fake_modem.h": "3c63d690809479071cafa2d31df7e318c23176ccf3d1e77dc8f1cc894b2ba757",
+  "device/hisense/a6l/gnss/lib/loc_client.h": "02b4e9f7f31926702453fb0a7e28c491243f97e5cbf154630657e7a686a30610",
+  "device/hisense/a6l/gnss/lib/loc_v02.h": "8a88d67b830f62116b03b93cb1452350775d36cf5c14f5b18fe95d03b3a9e8ec",
+  "device/hisense/a6l/gnss/lib/nmea.h": "f3e6067e4855c67fcd0855b20c88519b4386e6542e17569148124c2f788427d8",
+  "device/hisense/a6l/gnss/lib/qmi.h": "540491883d1ca2f8b12dc547af7c3da8ec0986184171bdaf59b7c1242e366219",
+  "device/hisense/a6l/gnss/lib/transport.h": "a2f853877ba13fd33b540f9c6127cba53230c502977399e592a28de488e442ce",
+  "device/hisense/a6l/gnss/lib/android_map.cpp": "fdab97710f31d96abbf2691d6e993c2de847ae6b6f49aacb9528a6613eef1fdb",
+  "device/hisense/a6l/gnss/lib/loc_client.cpp": "3d00004920152a63a5f54136f41b295581d7f8b7ea4db75ebcc64862355daa6c",
+  "device/hisense/a6l/gnss/lib/loc_v02.cpp": "cf4818a4589fb151a494e47da5ef003c94611e146edf522a0a79f9cd7d5418e0",
+  "device/hisense/a6l/gnss/lib/nmea.cpp": "8870fce867ed89dfe587d36172b0a0e9fbb5cf0da05c7bbbd33d71a53f6ad881",
+  "device/hisense/a6l/gnss/lib/qmi.cpp": "6dcc7737edbabbbd059df1238ea0c1085a13fc52c20b77312759d99f6b5398d6",
+  "device/hisense/a6l/gnss/lib/qrtr_transport.cpp": "e9496ee685f1b51edc893f6ac3fe34e2da2611bf76b5e139509acde22d11e3c9",
+  "device/hisense/a6l/gnss/hal/Gnss.cpp": "b6559c6060ee2be9e316712f0d3f71aec68e6a7fbf65f04dc1128c84b8ec8fb9"
+}

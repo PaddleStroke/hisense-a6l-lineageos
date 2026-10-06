@@ -20,18 +20,19 @@ on property:init.svc.vendor.hwcomposer-3=running
     start vendor.a6l_epdd
     start vendor.a6l_eink
 
-service vendor.a6l_epdd /vendor/bin/hw/a6l_epdd --socket a6l_epd --no-master --lease hwc:a6l.hwc.lease --wait-drm 60 --waveform /mnt/vendor/persist/epd/epd-nor.bin --waveform /data/vendor/epd/epd-nor.bin --nor-spidev auto --waveform-cache /data/vendor/epd/epd-nor.bin --waveform /vendor/etc/epd/epd-nor.bin --lib /vendor/lib64/libtcon_eink.so --idle-off ${persist.vendor.eink.idle_off_s:-30} --wakelock
+service vendor.a6l_epdd /vendor/bin/hw/a6l_epdd --socket a6l_epd --no-master --dither ${persist.vendor.eink.dither:-ordered} --lease hwc:a6l.hwc.lease --wait-drm 60 --waveform /mnt/vendor/persist/epd/epd-nor.bin --waveform /data/vendor/epd/epd-nor.bin --nor-spidev auto --waveform-cache /data/vendor/epd/epd-nor.bin --waveform /vendor/etc/epd/epd-nor.bin --lib /vendor/lib64/libtcon_eink.so --idle-off ${persist.vendor.eink.idle_off_s:-30} --wakelock
     class hal
     user system
     group system graphics wakelock
     socket a6l_epd stream 0660 system system
     disabled
-    task_profiles ServiceCapacityLow
+    # Display work may use all CPUs; do not confine it to system-background.
+    task_profiles ProcessCapacityNormal
 
-service vendor.a6l_eink /vendor/bin/a6l_eink_mirror --source drm --wait-prop sys.boot_completed=1 --epd-socket /dev/socket/a6l_epd --interval ${persist.vendor.eink.interval_ms:-250} --clear-every ${persist.vendor.eink.clear_every:-10} --key-dev ${persist.vendor.eink.key_dev:-none}
+service vendor.a6l_eink /vendor/bin/a6l_eink_mirror --source drm --auto-small-regal --wait-prop sys.boot_completed=1 --epd-socket /dev/socket/a6l_epd --interval ${persist.vendor.eink.interval_ms:-100} --clear-every ${persist.vendor.eink.clear_every:-10} --fit ${persist.vendor.eink.fit:-stretch} --key-dev ${persist.vendor.eink.key_dev:-none}
     class hal
     user system
     group system graphics input uhid
     capabilities SYS_ADMIN
     disabled
-    task_profiles ServiceCapacityLow
+    task_profiles ProcessCapacityNormal

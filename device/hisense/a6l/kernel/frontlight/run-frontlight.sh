@@ -28,10 +28,13 @@ probe)
     regs; say PROBE_DONE ;;
 load)
     cd "$D" || exit 1
+    # misc2 25 Sep: leds-qcom-lpg needs led-class-multicolor (v67: =m); a6l_fl_ovl now re-parents the LPG device under
+    # the SPMI pmic@3 device (fix for "parent regmap unavailable" after a runtime overlay)
+    grep -q '^led_class_multicolor ' /proc/modules || insmod ./led-class-multicolor.ko || say "WARN led-class-multicolor insmod failed"
     grep -q '^leds_qcom_lpg ' /proc/modules || insmod ./leds-qcom-lpg.ko || say "WARN leds-qcom-lpg insmod failed"
     grep -q '^leds_pwm ' /proc/modules || insmod ./leds-pwm.ko || say "WARN leds-pwm insmod failed"
     grep -q '^a6l_fl_ovl ' /proc/modules || insmod ./a6l_fl_ovl.ko || say "WARN overlay insmod failed"
-    sleep 2; dmesg | grep -iE 'A6L_FL_OVL|lpg|leds-pwm|epd-backlight|pwm' | tail -20 | sed 's/^/A6L_FL_DMESG /'
+    sleep 2; dmesg | grep -iE 'A6L_FL_OVL|lpg|leds-pwm|epd-backlight|pwm|regmap' | tail -24 | sed 's/^/A6L_FL_DMESG /'
     if [ -d $L ]; then say "LOAD_PASS $L max=$(cat $L/max_brightness) brightness=$(cat $L/brightness)"; else say "LOAD_FAIL no $L"; fi
     cat /sys/kernel/debug/pwm 2>/dev/null | sed 's/^/A6L_FL_PWM /'; regs ;;
 step)

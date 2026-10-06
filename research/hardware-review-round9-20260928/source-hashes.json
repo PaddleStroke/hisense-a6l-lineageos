@@ -1,0 +1,11 @@
+{
+  "device/hisense/a6l/audio/patches/0001-a6l-primary-capture-pcm.patch": "6db5f99612e4033cd99e9c5d846ade053c2e5e1c498f249ff80ee0f80243899c",
+  "device/hisense/a6l/audio/patches/0002-a6l-call-route-mute.patch": "2d7531b6fd9a9a1803e3e11d796bca269a4dd8bc40a448064715168fe368421d",
+  "device/hisense/a6l/audio/route/a6l_audio_route.c": "97d17fe3e49fbb8ac4a2196541e629ed5e5040738a828e9427f3ae3bbee0ea14",
+  "device/hisense/a6l/audio/audio_policy_configuration.xml": "c49e1bff1a818c3cc24446c8b8ebc19fb2695d1076527114a064e4fbd06b0be0",
+  "device/hisense/a6l/eink/switcher/native/a6l_dualux.c": "b54262884570d6a7883d1472f1841afbfb0701f108d2d70d041c40679e3c9eb3",
+  "device/hisense/a6l/eink/switcher/native/dualux_logic.c": "00dfe60b1f3215ef566b344d642e80046ca52bd137044bb02582591e5bee417d",
+  "device/hisense/a6l/eink/switcher/native/dualux_logic.h": "a291c6108c2a0fbabab7287c70639dafdfcbf88d748231aa0d1b134f9b12c499",
+  "tools/rom-v2-pipeline.sh": "8d96eee0281a1bdbadbe16cc7f47c62271a66535ecae8b9c27efe4a90a435a47",
+  "/home/a6l/android/a6l-lineage24/hardware/interfaces/audio/aidl/default/primary/StreamPrimary.cpp": "e84c90a923a7899126817957edae24e56b4096e6ce7ebe4bd1818b6791bc6597"
+}

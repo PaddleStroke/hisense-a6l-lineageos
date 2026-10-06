@@ -9,6 +9,7 @@
 #include <a6lqmi/datacall.h>
 #include <a6lqmi/log.h>
 #include <a6lqmi/message.h>
+#include <a6lqmi/multisim.h>
 #include <a6lqmi/rmnet.h>
 #include <a6lqmi/services.h>
 #include <a6lqmi/sms.h>
@@ -16,6 +17,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -401,6 +403,410 @@ static void testDataCallNoNetdev() {
     EXPECT_EQ(o.failCause, 0x1001);
 }
 
+// data2 (25 Sep): DPM Open Port before WDA (the phone answered WDA INVALID_OPERATION without it).
+static std::string hexOf(const std::vector<uint8_t>& v) { return hex(v); }
+
+static void testDpmWdaEncoding() {
+    dpm::HwDataPort p;  // defaults: embedded/1, rx 4, tx 5
+    auto m = dpm::buildOpenPort({p});
+    // TLV 0x11: count 1, ep_type 4, iface 1, rx_ep(consumer) 4, tx_ep(producer) 5 (all le32)
+    EXPECT_EQ(hexOf(*m.get(0x11)), std::string("0104000000010000000400000005000000"));
+    EXPECT(!m.has(0x10));
+    EXPECT_EQ(m.msgId, 0x0020);
+    // control port form (not used over QRTR, but keep the encoder right): name u8-prefixed
+    dpm::CtlPort c;
+    c.name = "DATA5_CNTL";
+    auto m2 = dpm::buildOpenPort({}, {c});
+    EXPECT_EQ(hexOf(*m2.get(0x10)), std::string("010A44415441355F434E544C0400000001000000"));
+    EXPECT(!m2.has(0x11));
+    wda::DataFormat f;
+    auto w = wda::buildSetDataFormat(f);
+    EXPECT_EQ(hexOf(*w.get(0x11)), std::string("02000000"));
+    EXPECT_EQ(hexOf(*w.get(0x12)), std::string("05000000"));
+    EXPECT_EQ(hexOf(*w.get(0x13)), std::string("05000000"));
+    EXPECT_EQ(hexOf(*w.get(0x15)), std::string("20000000"));
+    EXPECT_EQ(hexOf(*w.get(0x16)), std::string("00800000"));
+    EXPECT_EQ(hexOf(*w.get(0x17)), std::string("0400000001000000"));
+    if (getenv("A6L_DUMP_VECTORS")) {  // cross-checked with libqmi (docs/data2-20260925.md)
+        printf("VEC dpm_open %s\n", hexOf(m.encode()).c_str());
+        printf("VEC dpm_open_ctl %s\n", hexOf(m2.encode()).c_str());
+        printf("VEC wda_set %s\n", hexOf(w.encode()).c_str());
+        Message g = Message::request(wda::kGetDataFormat);
+        g.raw(0x10, {4, 0, 0, 0, 1, 0, 0, 0});
+        printf("VEC wda_get %s\n", hexOf(g.encode()).c_str());
+    }
+}
+
+// Models the SDM660 modem: WDA Set/Get Data Format for ep 4/1 is INVALID_OPERATION until a DPM
+// Open Port with that hardware data port (rx 4 / tx 5) was received.
+struct DpmModel {
+    std::atomic<bool> opened{false};
+    std::atomic<int> dpmReqs{0};
+    std::optional<Message> handle(uint32_t svc, const Message& req) {
+        if (svc == kSvcDpm && req.msgId == dpm::kOpenPort) {
+            dpmReqs++;
+            auto* v = req.get(0x11);
+            if (v && hex(*v) == "0104000000010000000400000005000000") {
+                opened = true;
+                return test::okResponse(req.msgId);
+            }
+            return test::errResponse(req.msgId, kErrInvalidArgument);
+        }
+        if (svc == kSvcWda && (req.msgId == wda::kSetDataFormat || req.msgId == wda::kGetDataFormat)) {
+            if (!opened) return test::errResponse(req.msgId, kErrInvalidOperation);
+            auto r = test::okResponse(req.msgId);
+            r.u32(0x11, 2);
+            r.u32(0x12, 5);
+            r.u32(0x13, 5);
+            r.u32(0x15, 10);
+            r.u32(0x16, 8192);
+            return r;
+        }
+        return modemHandler(svc, req);
+    }
+};
+
+static radio::DataConfig dpmTestCfg() {
+    radio::DataConfig cfg;
+    cfg.requireNetdev = false;
+    cfg.setDataFormat = true;
+    cfg.parentIface = "a6l_no_such_if0";  // no sysfs endpoint ids -> 4/5 defaults
+    return cfg;
+}
+
+static void testDpmBeforeWda() {
+    {   // 1. phone behaviour reproduced: no DPM -> INVALID_OPERATION
+        FakeModem modem;
+        DpmModel model;
+        modem.addService(kSvcWds);
+        modem.addService(kSvcWda);
+        modem.addService(kSvcDpm);
+        modem.setHandler([&](uint32_t s, const Message& r) { return model.handle(s, r); });
+        Client ctl(modem.transport(), "ctl");
+        EXPECT(ctl.start({kSvcWda}));
+        EXPECT(ctl.waitForServices({kSvcWda}, 1000).empty());
+        auto cfg = dpmTestCfg();
+        cfg.dpmOpenPort = false;
+        radio::DataCallManager dm(cfg, [&](const char* tag) {
+            return std::make_unique<Client>(modem.transport(), tag);
+        }, &ctl);
+        EXPECT(!dm.prepareDataPath());
+        EXPECT(dm.formatReport().find("INVALID_OPERATION") != std::string::npos);
+        EXPECT_EQ(model.dpmReqs.load(), 0);
+        ctl.stop();
+    }
+    {   // 2. default: DPM open port first, then WDA succeeds, then the call comes up
+        FakeModem modem;
+        DpmModel model;
+        modem.addService(kSvcWds);
+        modem.addService(kSvcWda);
+        modem.addService(kSvcDpm);
+        modem.setHandler([&](uint32_t s, const Message& r) { return model.handle(s, r); });
+        Client ctl(modem.transport(), "ctl");
+        EXPECT(ctl.start({kSvcWda}));
+        EXPECT(ctl.waitForServices({kSvcWda}, 1000).empty());
+        radio::DataCallManager dm(dpmTestCfg(), [&](const char* tag) {
+            return std::make_unique<Client>(modem.transport(), tag);
+        }, &ctl);
+        EXPECT(dm.prepareDataPath());
+        EXPECT(dm.prepareDataPath());  // idempotent
+        EXPECT_EQ(model.dpmReqs.load(), 1);
+        auto rep = dm.formatReport();
+        EXPECT(rep.find("dpm: open port hw ep=4/1 rx_ep(consumer)=4 tx_ep(producer)=5: ok") != std::string::npos);
+        EXPECT(rep.find("wda: format set llp=2 ul=5 dl=5 dl_max=10/8192") != std::string::npos);
+        // order on the wire: DPM open < WDA set < WDS bind mux
+        int iDpm = -1, iWda = -1, iBind = -1, i = 0;
+        radio::DataRequest rq;
+        rq.apn = "orange";
+        rq.protocol = radio::Protocol::V4;
+        auto o = dm.setup(rq);
+        EXPECT(o.ok);
+        uint8_t muxSeen = 0;
+        for (auto& [svc, m] : modem.requests()) {
+            if (svc == kSvcDpm && m.msgId == dpm::kOpenPort && iDpm < 0) iDpm = i;
+            if (svc == kSvcWda && m.msgId == wda::kSetDataFormat && iWda < 0) iWda = i;
+            if (svc == kSvcWds && m.msgId == wds::kBindMuxDataPort && iBind < 0) {
+                iBind = i;
+                EXPECT_EQ(hex(*m.get(0x10)), std::string("0400000001000000"));
+                muxSeen = (*m.get(0x11))[0];
+            }
+            i++;
+        }
+        EXPECT(iDpm >= 0 && iWda > iDpm && iBind > iWda);
+        EXPECT_EQ(muxSeen, 1);
+        // modem restart: DPM + WDA are sent again
+        dm.modemReset();
+        model.opened = false;
+        EXPECT(dm.prepareDataPath());
+        EXPECT_EQ(model.dpmReqs.load(), 2);
+        dm.deactivateAll();
+        ctl.stop();
+    }
+    {   // 3. no DPM service: reported, WDA still tried (and fails in this model)
+        FakeModem modem;
+        DpmModel model;
+        modem.addService(kSvcWda);
+        modem.setHandler([&](uint32_t s, const Message& r) { return model.handle(s, r); });
+        Client ctl(modem.transport(), "ctl");
+        EXPECT(ctl.start({kSvcWda}));
+        EXPECT(ctl.waitForServices({kSvcWda}, 1000).empty());
+        radio::DataCallManager dm(dpmTestCfg(), [&](const char* tag) {
+            return std::make_unique<Client>(modem.transport(), tag);
+        }, &ctl);
+        EXPECT(!dm.prepareDataPath());
+        auto rep = dm.formatReport();
+        EXPECT(rep.find("dpm: service 0x2f not found") != std::string::npos);
+        EXPECT(rep.find("(DPM port not open)") != std::string::npos);
+        ctl.stop();
+    }
+}
+
+// ---------------------------------------------------------------- ril3 (25 Sep 2026)
+// Build an SMS-DELIVER TPDU carrying the UD of an SMS-SUBMIT (to round-trip the encoder).
+static std::vector<uint8_t> submitToDeliver(const std::vector<uint8_t>& sub) {
+    // sub: 00 | FO | MR | DA-len | DA-toa | DA digits | PID | DCS | UDL | UD
+    size_t i = 1;
+    uint8_t fo = sub[i++];
+    i++;  // MR
+    uint8_t n = sub[i++];
+    i += 1 + (n + 1) / 2;
+    uint8_t pid = sub[i++], dcs = sub[i++];
+    std::vector<uint8_t> d = {static_cast<uint8_t>(0x04 | (fo & 0x40)), 0x0B, 0x91, 0x33, 0x66, 0x33, 0x36, 0x22, 0xF8,
+                              pid, dcs, 0x62, 0x90, 0x52, 0x11, 0x00, 0x00, 0x80};
+    d.insert(d.end(), sub.begin() + i, sub.end());  // UDL + UD
+    return d;
+}
+
+static void testSmsEncoding() {
+    // GSM7 single part: same bytes as the v1 ASCII encoder
+    auto p = sms::buildSubmitParts("+33612345678", "hello");
+    EXPECT(p.has_value());
+    EXPECT(p->coding == sms::Coding::Gsm7);
+    EXPECT_EQ(p->pdus.size(), 1u);
+    EXPECT_EQ(hex(p->pdus[0]), std::string("0001000B913316325476F8000005E8329BFD06"));
+    // French accents in the GSM7 alphabet (é è à ù) + extension table (€ [ ]) stay GSM7
+    auto g = sms::utf8ToGsm7("\xc3\xa9t\xc3\xa9 \xe2\x82\xac[x]");
+    EXPECT(g.has_value());
+    EXPECT_EQ(hex(*g), std::string("05740520") + "1B65" + "1B3C" + "78" + "1B3E");
+    // ç is not in GSM7 -> UCS2 (UTF-16BE), 70 units max in one part
+    p = sms::buildSubmitParts("0612345678", "gar\xc3\xa7on \xf0\x9f\x98\x80");
+    EXPECT(p.has_value());
+    EXPECT(p->coding == sms::Coding::Ucs2);
+    EXPECT_EQ(p->pdus.size(), 1u);
+    EXPECT_EQ(p->units, 9u);  // 7 BMP chars + 1 surrogate pair (2 units)
+    EXPECT_EQ(hex(p->pdus[0]), std::string("0001000A81602143658700081200670061007200E7006F006E0020D83DDE00"));
+    auto rt = sms::parseDeliver(submitToDeliver(p->pdus[0]), sms::SmscForm::Bare);
+    EXPECT(rt.has_value());
+    EXPECT_EQ(rt->text, std::string("gar\xc3\xa7on \xf0\x9f\x98\x80"));
+    // multipart GSM7: 200 chars -> 153 + 47, UDH 05 00 03 ref total seq, TP-UDHI set, SRR on request
+    std::string longText;
+    for (int i = 0; i < 200; i++) longText += static_cast<char>('a' + i % 26);
+    sms::SubmitOptions so;
+    so.concatRef = 0x42;
+    so.statusReport = true;
+    p = sms::buildSubmitParts("+33612345678", longText, so);
+    EXPECT(p.has_value());
+    EXPECT_EQ(p->pdus.size(), 2u);
+    EXPECT_EQ(p->pdus[0][1], 0x61);  // SUBMIT | SRR | UDHI
+    std::string joined;
+    for (size_t k = 0; k < p->pdus.size(); k++) {
+        auto d = sms::parseDeliver(submitToDeliver(p->pdus[k]), sms::SmscForm::Bare);
+        EXPECT(d.has_value());
+        if (!d) continue;
+        EXPECT_EQ(d->concatRef, 0x42u);
+        EXPECT_EQ(d->concatTotal, 2u);
+        EXPECT_EQ(d->concatSeq, k + 1);
+        joined += d->text;
+    }
+    EXPECT_EQ(joined, longText);
+    // UDL of part 1 = 7 header septets + 153
+    EXPECT_EQ(p->pdus[0][4 + 1 + 6 + 2], 160);
+    // an escape pair is never split across parts: 152 'a' + '€' (septets 152/153) + 10 'b'
+    std::string esc(152, 'a');
+    esc += "\xe2\x82\xac" "bbbbbbbbbb";
+    p = sms::buildSubmitParts("+33612345678", esc);
+    EXPECT(p.has_value() && p->pdus.size() == 2);
+    if (p && p->pdus.size() == 2) {
+        auto d1 = sms::parseDeliver(submitToDeliver(p->pdus[0]), sms::SmscForm::Bare);
+        auto d2 = sms::parseDeliver(submitToDeliver(p->pdus[1]), sms::SmscForm::Bare);
+        EXPECT(d1 && d2 && d1->text + d2->text == esc);
+        EXPECT(d2 && d2->text == "\xe2\x82\xac" "bbbbbbbbbb");
+    }
+    // multipart UCS2: 100 'ç' -> 67 + 33
+    std::string u;
+    for (int i = 0; i < 100; i++) u += "\xc3\xa7";
+    p = sms::buildSubmitParts("+33612345678", u);
+    EXPECT(p.has_value() && p->pdus.size() == 2 && p->coding == sms::Coding::Ucs2);
+    if (p && p->pdus.size() == 2) {
+        auto d1 = sms::parseDeliver(submitToDeliver(p->pdus[0]), sms::SmscForm::Bare);
+        EXPECT(d1 && d1->concatTotal == 2 && d1->text.size() == 67 * 2);
+    }
+    // limits and bad input
+    EXPECT(!sms::buildSubmitParts("+33x", "hi").has_value());
+    EXPECT(!sms::buildSubmitParts("+33612345678", "").has_value());
+    EXPECT(!sms::buildSubmitParts("+33612345678", "\xc3").has_value());  // truncated UTF-8
+    sms::SubmitOptions two;
+    two.maxParts = 2;
+    EXPECT(!sms::buildSubmitParts("+33612345678", std::string(400, 'x'), two).has_value());
+    // delivery report fields (status report TP-MR / TP-ST)
+    auto sr = sms::parseDeliver(H("06050B913366336322F8629042418444806290424184548000"));
+    EXPECT(sr && sr->statusReport && sr->srMessageRef == 5 && sr->srStatus == 0);
+}
+
+static void testWmsAck() {
+    // ERR_84 on 25 Sep = QMI_ERR_ACK_NOT_SENT (0x54): named now
+    EXPECT_EQ(errorName(84), std::string("ACK_NOT_SENT"));
+    EXPECT_EQ(std::string(wms::ackFailureCauseName(1)), std::string("network-released-link"));
+    EXPECT_EQ(wms::messageProtocolFor(wms::kFormatGwPp), 1);
+    EXPECT_EQ(wms::messageProtocolFor(wms::kFormatCdma), 0);
+    Message ev(MsgType::Indication, wms::kSetEventReport);
+    ev.raw(0x11, {1, 1, 0, 0, 0, 6, 1, 0, 0x04}).u8(0x16, 1);
+    auto e = wms::parseEventReport(ev);
+    EXPECT(e.hasTransfer);
+    EXPECT(!e.needsAck());  // ack indicator 1 = DO_NOT_SEND
+    EXPECT(e.smsOnIms && *e.smsOnIms);
+    Message st(MsgType::Indication, wms::kSetEventReport);
+    st.raw(0x10, {1, 3, 0, 0, 0});
+    EXPECT(!wms::parseEventReport(st).needsAck());  // stored message: the modem acked it
+    // Send Ack over the fake modem: request layout + failure cause from TLV 0x10
+    FakeModem modem;
+    modem.addService(kSvcWms);
+    modem.setHandler([](uint32_t, const Message& r) -> std::optional<Message> {
+        if (r.msgId == wms::kSendAck) return test::errResponse(r.msgId, kErrAckNotSent).u8(0x10, 0);
+        return test::okResponse(r.msgId);
+    });
+    Client c(modem.transport(), "ack");
+    EXPECT(c.start({kSvcWms}));
+    EXPECT(c.waitForServices({kSvcWms}, 1000).empty());
+    wms::AckOptions ao;
+    ao.smsOnIms = true;
+    int cause = -2;
+    auto r = wms::sendAck(c, 0x01020304, true, 0, 0, ao, &cause);
+    EXPECT_EQ(r.qmiError, kErrAckNotSent);
+    EXPECT_EQ(cause, 0);
+    auto reqs = modem.requests();
+    EXPECT(!reqs.empty());
+    if (!reqs.empty()) {
+        auto& m = reqs.back().second;
+        EXPECT(m.get(0x01) && hex(*m.get(0x01)) == "040302010101");
+        EXPECT(m.get(0x12) && hex(*m.get(0x12)) == "01");
+        EXPECT(!m.get(0x11));
+    }
+    c.stop();
+}
+
+static void testMultisimViews() {
+    // A6L 25 Sep: card 0 USIM (primary), card 1 present-error (empty slot) -- SDM845 capture shape
+    auto m = fromQmux(H(kUimGetCardStatus));
+    auto cs = uim::parseCardStatus(*m.get(0x10));
+    EXPECT(cs.has_value());
+    auto v0 = multisim::viewFor(*cs, 0);
+    auto v1 = multisim::viewFor(*cs, 1);
+    EXPECT(v0.provisioned && v0.card == 0 && v0.gwAppIndex == 0 && v0.present());
+    EXPECT_EQ(v0.cardSession, multisim::kSessionCardSlot1);
+    EXPECT(!v1.provisioned && v1.card == 1 && !v1.present() && v1.gwApp == nullptr);
+    EXPECT_EQ(v1.cardSession, multisim::kSessionCardSlot2);
+    EXPECT_EQ(v1.provSession, multisim::kSessionSecondaryGw);
+    EXPECT(!multisim::provisioningCandidate(*cs, 1).has_value());
+    // v1 single-SIM equivalence: slot 1 = primaryCard()/primaryGwApp()
+    EXPECT(v0.cardPtr == cs->primaryCard());
+    EXPECT(v0.gwApp == cs->primaryGwApp());
+    // SIM only in physical slot 2, provisioned as primary: logical slot 1 -> card 1
+    uim::CardStatus s2 = *cs;
+    std::swap(s2.cards[0], s2.cards[1]);
+    s2.indexGwPrimary = 0x0100;
+    v0 = multisim::viewFor(s2, 0);
+    v1 = multisim::viewFor(s2, 1);
+    EXPECT(v0.card == 1 && v0.provisioned && v0.cardSession == multisim::kSessionCardSlot2);
+    EXPECT(v1.card == 0 && !v1.provisioned);
+    // two SIMs, second not provisioned yet -> candidate {uim slot 2, aid}
+    uim::CardStatus s3 = *cs;
+    s3.cards[1] = s3.cards[0];
+    s3.cards[1].apps[0].state = uim::kAppStateDetected;
+    auto cand = multisim::provisioningCandidate(s3, 1);
+    EXPECT(cand.has_value() && cand->first == 2 && hex(cand->second) == "A0000000871002FF44FF128900000100");
+    s3.indexGwSecondary = 0x0100;
+    EXPECT(!multisim::provisioningCandidate(s3, 1).has_value());
+    EXPECT(multisim::viewFor(s3, 1).provisioned);
+    // messages (IDL layouts from stock libqmiservices.so)
+    auto cp = multisim::buildChangeProvisioning(multisim::kSessionSecondaryGw, true, 2, {0xA0, 0x01});
+    EXPECT_EQ(cp.msgId, 0x0038);
+    EXPECT(hex(*cp.get(0x01)) == "0201" && hex(*cp.get(0x10)) == "0202A001");
+    auto dds = multisim::buildSetDefaultDataSub(1);
+    EXPECT(dds.msgId == 0x004B && hex(*dds.get(0x12)) == "01" && dds.tlvs.size() == 1);
+    Message dsb(MsgType::Response, 0x005C);
+    dsb.raw(0x10, {4}).raw(0x11, {0}).raw(0x12, {0}).raw(0x13, {1}).raw(0x14, {0}).u64(0x15, 3);
+    auto p = multisim::parseDualStandbyPref(dsb);
+    EXPECT(p.defaultDataSubs && *p.defaultDataSubs == 1 && p.activeSubsMask && *p.activeSubsMask == 3);
+    // bindAll over the fake modem: sub 0 sends nothing, sub 1 sends the 4 binds
+    FakeModem modem;
+    for (auto s : {kSvcNas, kSvcWms, kSvcDms, kSvcVoice}) modem.addService(s);
+    modem.setHandler([](uint32_t, const Message& r) -> std::optional<Message> { return test::okResponse(r.msgId); });
+    Client c(modem.transport(), "bind");
+    EXPECT(c.start({kSvcNas, kSvcWms, kSvcDms, kSvcVoice}));
+    EXPECT(c.waitForServices({kSvcNas, kSvcWms, kSvcDms, kSvcVoice}, 1000).empty());
+    EXPECT(multisim::bindAll(c, 0, true).ok());
+    EXPECT(modem.requests().empty());
+    std::string log;
+    EXPECT(multisim::bindAll(c, 1, true, &log).ok());
+    auto reqs = modem.requests();
+    EXPECT_EQ(reqs.size(), 4u);
+    for (auto& [svc, msg] : reqs) {
+        if (svc == kSvcDms) EXPECT(msg.msgId == 0x0054 && hex(*msg.get(0x01)) == "02000000");
+        if (svc == kSvcNas) EXPECT(msg.msgId == 0x0045 && hex(*msg.get(0x01)) == "01");
+        if (svc == kSvcWms) EXPECT(msg.msgId == 0x004C && hex(*msg.get(0x01)) == "01");
+        if (svc == kSvcVoice) EXPECT(msg.msgId == 0x0044 && hex(*msg.get(0x01)) == "01");
+    }
+    c.stop();
+    // power vote (airplane mode)
+    multisim::PowerVote pv;
+    EXPECT(!pv.any());
+    EXPECT(pv.vote(0, true));
+    EXPECT(pv.vote(1, false));   // slot 2 off, slot 1 on: modem online
+    EXPECT(!pv.vote(0, false));  // both off: low power
+    EXPECT(pv.vote(1, true));
+    pv.reset();
+    EXPECT(pv.wants(0) && pv.wants(1) && !pv.any());
+    EXPECT_EQ(multisim::slotCountFromConfig("dsds"), 2);
+    EXPECT_EQ(multisim::slotCountFromConfig("ssss"), 1);
+    EXPECT_EQ(multisim::slotCountFromConfig("dsds", 1), 1);
+    EXPECT_EQ(multisim::slotCountFromConfig("", 2), 2);
+}
+
+static void testSsrClient() {
+    // Modem restart as seen by one client: every service DEL_SERVER, requests fail fast with
+    // NoService (no 5 s timeouts), then NEW_SERVER on new ports and requests work again.
+    FakeModem modem;
+    for (auto s : {kSvcDms, kSvcNas}) modem.addService(s);
+    modem.setHandler([](uint32_t, const Message& r) -> std::optional<Message> {
+        if (r.msgId == dms::kGetOperatingMode) return test::okResponse(r.msgId).u8(0x01, 0);
+        return test::okResponse(r.msgId);
+    });
+    Client c(modem.transport(), "ssr");
+    std::atomic<int> down{0}, up{0};
+    c.onServiceChange([&](uint32_t, bool u) { (u ? up : down)++; });
+    EXPECT(c.start({kSvcDms, kSvcNas}));
+    EXPECT(c.waitForServices({kSvcDms, kSvcNas}, 1000).empty());
+    uint8_t mode = 9;
+    EXPECT(dms::getOperatingMode(c, &mode).ok() && mode == 0);
+    for (int round = 0; round < 3; round++) {
+        modem.removeService(kSvcDms);
+        modem.removeService(kSvcNas);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        auto t0 = std::chrono::steady_clock::now();
+        auto r = dms::getOperatingMode(c, &mode);
+        EXPECT_EQ(r.status, Result::NoService);
+        EXPECT(std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(500));
+        modem.addService(kSvcDms);
+        modem.addService(kSvcNas);
+        EXPECT(c.waitForServices({kSvcDms, kSvcNas}, 1000).empty());
+        mode = 9;
+        EXPECT(dms::getOperatingMode(c, &mode).ok() && mode == 0);
+    }
+    EXPECT(down.load() >= 6);
+    c.stop();
+}
+
 int main(int argc, char** argv) {
     gLogLevel = (argc > 1 && !strcmp(argv[1], "-v")) ? 4 : 0;
     testCodec();
@@ -417,6 +823,12 @@ int main(int argc, char** argv) {
     testClient();
     testDataCallModemOnly();
     testDataCallNoNetdev();
+    testDpmWdaEncoding();
+    testDpmBeforeWda();
+    testSmsEncoding();
+    testWmsAck();
+    testMultisimViews();
+    testSsrClient();
     printf("a6l-qmi tests: %d passed, %d failed\n", gPass, gFail);
     return gFail ? 1 : 0;
 }

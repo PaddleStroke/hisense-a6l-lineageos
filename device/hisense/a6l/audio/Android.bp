@@ -6,6 +6,7 @@ cc_binary {
     shared_libs: [
         "libaudioroute",
         "libtinyalsa",
+        "libcutils",
         "liblog",
     ],
     cflags: ["-Wall", "-Werror"],

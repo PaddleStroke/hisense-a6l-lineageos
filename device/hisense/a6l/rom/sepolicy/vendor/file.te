@@ -1,0 +1,36 @@
+# A6L ROM-level types (release-prep, 27 Sep 2026)
+# --- init services (rom/init/init.qcom.rc, power/rom/init.a6l-power.rc, rom/v2/init.a6l.wifibt.rc)
+type a6l_modules_exec, exec_type, vendor_file_type, file_type;     # /vendor/bin/a6l-modules.sh
+type a6l_radio_ctl_exec, exec_type, vendor_file_type, file_type;   # /vendor/bin/a6l-radio.sh
+type a6l_chg_guard_exec, exec_type, vendor_file_type, file_type;   # /vendor/bin/a6l-chg-guard.sh
+type a6l_rmtfs_exec, exec_type, vendor_file_type, file_type;       # /vendor/a6l/radio/bin/rmtfs
+type a6l_tqftpserv_exec, exec_type, vendor_file_type, file_type;   # /vendor/a6l/radio/bin/tqftpserv
+type a6l_diag_exec, exec_type, vendor_file_type, file_type;        # /vendor/a6l/radio/bin/diag-router
+type a6l_macs_exec, exec_type, vendor_file_type, file_type;        # /vendor/bin/a6l_macs
+# --- runtime / data
+type a6l_dev_file, file_type;                                       # /dev/a6l (e-ink mode hand-off, tmpfs)
+type a6l_tqftpserv_data_file, file_type, data_file_type;            # /data/vendor/tmp/tqftpserv
+type a6l_sensors_data_file, file_type, data_file_type;              # /data/vendor/sensors (mag hard-iron bias)
+type a6l_vendor_data_file, file_type, data_file_type;               # /data/vendor/a6l
+# stock /persist (mounted read-only; stock labels are unknown to this policy -> fstab context= mount option, release fstab)
+type a6l_persist_file, file_type;
+# --- devices
+type a6l_rmtfs_mem_device, dev_type;                                # /dev/qcom_rmtfs_mem*
+type a6l_modem_block_device, dev_type;                              # modemst1/modemst2/fsg/fsc
+type a6l_persist_block_device, dev_type;                            # persist (and stock-only partitions)
+# --- sysfs (genfs_contexts; paths UNVERIFIED until `ls -lZ` on the phone)
+type sysfs_a6l_remoteproc, sysfs_type, fs_type;                     # ADSP/MSS remoteproc state
+type sysfs_a6l_ipa, sysfs_type, fs_type;                            # 14780000.ipa power/control
+type sysfs_a6l_drm, sysfs_type, fs_type;                            # msm DPU/DSI0 connector status/modes
+type sysfs_a6l_iio, sysfs_type, fs_type;                            # SMGR + STK3338 IIO devices (sensors.a6l)
+type sysfs_a6l_power_supply, sysfs_type, fs_type;                   # pm660 charger / pmi8998_fg (health HAL)
+type a6l_rfkill_device, dev_type;                                  # /dev/rfkill (BT HAL HCI_CHANNEL_USER)
+# /persist is mounted with context=u:object_r:a6l_persist_file:s0 in the release fstab (vendor-etc/fstab.qcom.fbe): stock
+# xattr labels (stock-policy types) would otherwise read as unlabeled. init performs mount_all.
+allow a6l_persist_file labeledfs:filesystem associate;
+allow init labeledfs:filesystem relabelfrom;
+allow init a6l_persist_file:filesystem { mount unmount relabelto relabelfrom getattr };
+# r5 review fix F13 (28 Sep 2026): flash/torch LED sysfs (leds-qcom-flash white:flash; genfs_contexts path UNVERIFIED)
+type sysfs_a6l_flash, sysfs_type, fs_type;
+# r5 review fix F49 (29 Sep 2026): a6l_gpio_vib LED class device "vibrator" (genfs_contexts path UNVERIFIED)
+type sysfs_a6l_vibrator, sysfs_type, fs_type;

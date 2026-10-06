@@ -1,0 +1,10 @@
+--- h846base/hi846.c
++++ h846fix/hi846.c
+@@ -1356,6 +1356,7 @@
+ 	ret = pm_runtime_get_if_in_use(&client->dev);
+ 	if (!ret || ret == -EAGAIN)
+ 		return 0;
++	ret = 0; /* A6L: pm_runtime_get_if_in_use() returned 1; do not leak it into the s_ctrl result */
+ 
+ 	switch (ctrl->id) {
+ 	case V4L2_CID_ANALOGUE_GAIN:

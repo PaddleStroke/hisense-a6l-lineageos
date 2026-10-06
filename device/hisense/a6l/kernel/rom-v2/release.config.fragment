@@ -1,0 +1,24 @@
+# RELEASE kernel config (release-prep, 27 Sep 2026; docs/release-prep-20260927.md section 4). Built-in options = a NEW Image
+# (the V67 Image hash 0d7d2eb6... changes; every module must then be rebuilt against the new tree: vermagic/CRCs).
+# NOT BUILT. Checked against /home/a6l/kernel/out-a6l-phone-v67/.config on 27 Sep 2026 (current value in brackets).
+#
+# --- FBE (fscrypt v2, software AES on ARMv8 CE: CRYPTO_AES_ARM64_CE_BLK=y, XTS=y, CTS=y, SHA512=y, HMAC=y already y)
+CONFIG_FS_ENCRYPTION=y                 # [not set]  REQUIRED for fileencryption= in fstab.qcom.fbe
+CONFIG_FS_ENCRYPTION_ALGS=y            # [n/a] selected by FS_ENCRYPTION
+CONFIG_CRYPTO_ADIANTUM=y               # [not set]  optional: adiantum policy if AES-XTS turns out too slow
+CONFIG_CRYPTO_HCTR2=y                  # [not set]  optional: filenames hctr2 (fscrypt v2 option)
+# --- inline crypto (eMMC ICE on SDM660: sdhc_1 + qcom-ice via SCM calls; UNPROVEN on this TZ, later)
+# CONFIG_BLK_INLINE_ENCRYPTION=y       # [not set]
+# CONFIG_MMC_CRYPTO=y
+# CONFIG_QCOM_INLINE_CRYPTO_ENGINE=y
+# --- metadata encryption: dm-default-key is an Android Common Kernel target (not in mainline 7.2): port
+#     drivers/md/dm-default-key.c + blk-crypto fallback from ACK android16-6.12 before enabling metadata_encryption.
+# CONFIG_DM_DEFAULT_KEY=y
+# --- Android userspace expectations checked in the same pass
+CONFIG_FS_VERITY=y                     # [not set]  fs-verity (APK/ART verification paths in Android 17 userspace)
+CONFIG_STATIC_USERMODEHELPER=y         # [not set]  CDD/VTS hardening
+CONFIG_STATIC_USERMODEHELPER_PATH=""
+# CONFIG_SECURITY_SELINUX_DEVELOP stays =y [y]: needed for the userdebug permissive trial; a `user` Android build is
+#   enforcing regardless (init ALLOW_PERMISSIVE_SELINUX=0).
+# CONFIG_MODULE_SIG=y [y]: the module signing key is generated in the kernel build dir at build time - keep that key
+#   with the release keys, or modules rebuilt later will not load if MODULE_SIG_FORCE is ever enabled.

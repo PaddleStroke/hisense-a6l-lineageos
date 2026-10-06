@@ -1,0 +1,10 @@
+diff --git a/src/apps/common/meson.build b/src/apps/common/meson.build
+index 5b68339..5f52d26 100644
+--- a/src/apps/common/meson.build
++++ b/src/apps/common/meson.build
+@@ -24,4 +24,4 @@ endif
+ 
+ apps_lib = static_library('apps', apps_sources,
+                           cpp_args : apps_cpp_args,
+-                          dependencies : [libcamera_public])
++                          dependencies : [libcamera_public, libevent])

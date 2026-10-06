@@ -1,0 +1,10 @@
+# Stock "headphones" (mixer_paths_mtp.xml): RX1/RX2 MIX1 INP1=RX1/RX2, RDAC2 MUX=RX2, HPHL/HPHR=Switch, RX digital 84 (0 dB).
+# (stock also sets "RX HPH Mode"=HD2 and "COMP0 RX1/RX2"=1: no equivalent control in the mainline msm8916 codecs)
+# Volume = @RAW@ (dB = raw - 84), capped by run.sh (CAP=90 = +6 dB).
+Digital RX1 MIX1 INP1|RX1
+Digital RX2 MIX1 INP1|RX2
+RDAC2 MUX|RX2
+Digital RX1 Digital Volume|@RAW@
+Digital RX2 Digital Volume|@RAW@
+HPHL|Switch
+HPHR|Switch

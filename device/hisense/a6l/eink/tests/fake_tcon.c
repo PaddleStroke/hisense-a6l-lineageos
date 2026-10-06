@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 struct buf { void *data; uint32_t size; uint32_t pad; };
+int fake_tcon_last_force, fake_tcon_last_mode;
 void *Init_Eink_SWTcon(struct buf *ring, int n, uint32_t *cfg, void *flash, uint32_t size, void *info) {
     (void)ring; (void)n; (void)cfg;
     if (!flash || size < 0x70080) return NULL;
@@ -13,6 +14,7 @@ void *Init_Eink_SWTcon(struct buf *ring, int n, uint32_t *cfg, void *flash, uint
     memcpy(info, "FAKE-ED058TC7  ", 15); memcpy((char *)info + 47, "FAKE-WAVEFORM", 13); return h;
 }
 int ModeDecision_MirrorMode(struct buf *img, void *handle, int t1, int t2, int force, int mode) {
+    fake_tcon_last_force = force; fake_tcon_last_mode = mode;
     (void)img; (void)t1; (void)t2; uint8_t *h = handle; uint32_t *calls = (uint32_t *)(h + 0x274), *flag = (uint32_t *)(h + 0x270);
     int n = *flag ? 99 : force ? 38 : mode == 8 || mode > 5 ? 10 : mode == 1 ? 23 : 39;
     if (*calls == 1 && *flag) *flag = 0;

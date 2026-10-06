@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A6L (lc2, 29 Sep 2026): camera features of the libcamera HAL (rear imx576, front s5k3t1) + rear torch (A6lTorch in
+     android.hardware.camera.provider-service.a6l). NOT declared until they work: android.hardware.camera.autofocus (the
+     simple pipeline has no lens/AF support, fixed focus; milestone M5), camera.raw/manual_sensor/full/level.full, camera.ar. -->
+<permissions>
+    <feature name="android.hardware.camera.any" />
+    <feature name="android.hardware.camera" />
+    <feature name="android.hardware.camera.front" />
+    <feature name="android.hardware.camera.flash" />
+</permissions>

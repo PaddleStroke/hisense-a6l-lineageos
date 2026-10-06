@@ -19,6 +19,7 @@ const char* serviceName(uint32_t svc) {
         case kSvcLoc: return "LOC";
         case kSvcWda: return "WDA";
         case kSvcImsa: return "IMSA";
+        case kSvcImss: return "IMSS";
         case kSvcDpm: return "DPM";
         default: return "SVC?";
     }
@@ -94,11 +95,16 @@ Client::Client(std::unique_ptr<Transport> t, const char* tag) : mT(std::move(t))
 Client::~Client() { stop(); }
 
 bool Client::start(const std::vector<uint32_t>& services) {
-    if (mRunning) return true;
+    if (mRunning) {
+        if (!mFailed) return true;
+        ALOGW_Q("%s: restarting after a transport failure", mTag.c_str());
+        stop();  // joins the exited reader and the dispatcher, closes the dead transport
+    }
     if (!mT->open()) {
         ALOGE_Q("%s: transport open failed", mTag.c_str());
         return false;
     }
+    mFailed = false;
     mRunning = true;
     mReader = std::thread([this] { readerLoop(); });
     mDispatcher = std::thread([this] { dispatchLoop(); });
@@ -127,6 +133,33 @@ void Client::stop() {
     if (mReader.joinable()) mReader.join();
     if (mDispatcher.joinable()) mDispatcher.join();
     mT->close();
+    {
+        // a restarted client must not use servers seen through the old socket
+        std::lock_guard<std::mutex> l(mLock);
+        mServers.clear();
+        mAddrToSvc.clear();
+    }
+}
+
+// r5 review F16 (28 Sep 2026): fatal recv error. Before, the reader just exited: mRunning stayed true, services
+// stayed cached, requests timed out one by one and start() returned "already running" without reopening.
+void Client::failTransport() {
+    std::vector<Event> evs;
+    {
+        std::lock_guard<std::mutex> l(mLock);
+        mFailed = true;
+        for (auto& [k, p] : mPending) {
+            if (p->done) continue;
+            p->done = true;
+            p->res.status = Result::TransportError;
+        }
+        for (auto& [svc, m] : mServers)
+            if (!m.empty()) evs.push_back({Event::Svc, svc, false, {}});
+        mServers.clear();
+        mAddrToSvc.clear();
+        mCv.notify_all();
+    }
+    for (auto& e : evs) post(std::move(e));
 }
 
 void Client::readerLoop() {
@@ -135,7 +168,8 @@ void Client::readerLoop() {
     while (mRunning) {
         int r = mT->recv(&from, &buf, 200);
         if (r < 0) {
-            ALOGE_Q("%s: recv error, reader exits", mTag.c_str());
+            ALOGE_Q("%s: recv error, reader exits (transport failed, services reported down)", mTag.c_str());
+            failTransport();
             break;
         }
         if (r == 0) continue;
@@ -328,13 +362,17 @@ std::vector<uint32_t> Client::waitForServices(const std::vector<uint32_t>& servi
         return m;
     };
     mCv.wait_for(l, std::chrono::milliseconds(timeoutMs),
-                 [&] { return missing().empty() || !mRunning; });
+                 [&] { return missing().empty() || !mRunning || mFailed; });
     return missing();
 }
 
 Result Client::request(uint32_t svc, Message req, int timeoutMs) {
     Result r;
     if (!mRunning) return r;
+    if (mFailed) {
+        r.status = Result::TransportError;
+        return r;
+    }
     Addr to;
     auto pend = std::make_shared<Pending>();
     uint16_t txn;

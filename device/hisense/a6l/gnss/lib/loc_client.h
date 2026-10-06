@@ -87,6 +87,13 @@ struct EngineConfig {
     bool coldStart = false;           // delete all assistance data once before the first start
     int reconnectMs = 5000;           // retry period while AF_QIPCRTR / the LOC service is missing
     uint32_t clientRevision = 2;
+    // r5 review F21 (28 Sep 2026): capped retries while a session is wanted but configuration/START failed with the
+    // LOC service still present (backoff retryMinMs, doubling up to retryMaxMs, at most maxStartRetries in a row;
+    // reset by setActive/service up).
+    int retryMinMs = 1000;
+    int retryMaxMs = 30000;
+    int maxStartRetries = 10;
+    int xtraPartTimeoutMs = 5000;   // per-part confirmation deadline (r5 F33)
 };
 
 class EngineListener {
@@ -117,9 +124,23 @@ class GnssEngine {
     void end();
     void setActive(bool on);
     void setInterval(uint32_t ms);
+    // r5 round6 F53: Android IGnss.setPositionMode: interval + recurrence. A single-fix session is started with QMI
+    // recurrence SINGLE and completed (STOP, no restart) after its first final fix; setActive(true) re-arms it.
+    void setPositionMode(uint32_t intervalMs, bool single);
+    // r5 review F64 (28 Sep 2026): the UTC sample keeps its CLOCK_BOOTTIME reference (Android elapsedRealtime at
+    // sampling) through the worker queue and is advanced by the elapsed boot time immediately before the QMI request is
+    // built, so a request waiting behind blocking assistance work is not stale. A reference in the future, a negative
+    // UTC or an overflowing sum is discarded (logged). The two-argument form means "sampled now".
     void injectTime(uint64_t utcMs, uint32_t uncMs);
+    void injectTime(int64_t utcMs, uint32_t uncMs, int64_t refBootMs);
+    static int64_t bootMs();   // CLOCK_BOOTTIME (suspend-inclusive, = Android elapsedRealtime) in ms
+    // pure: UTC at bootNowMs for a sample (utcMs at refBootMs); false = unusable sample
+    static bool advanceUtc(int64_t utcMs, int64_t refBootMs, int64_t bootNowMs, uint64_t* out);
     void injectLocation(double lat, double lon, float accM);
+    // r5 round6 F54: the deletion stays pending until the modem acknowledged it; a START never overtakes it (service
+    // absence / timeout: retried before the next START; a QMI rejection is final and logged).
     void deleteAll();
+    bool deletePending() const { return deletePending_; }
     // XTRA predicted orbits: splits the file and injects it part by part, waiting for each part's indication.
     // Result through EngineListener::onXtraResult; then queries validity (onXtraInfo).
     void injectXtra(std::vector<uint8_t> file, size_t partSize = loc::kMaxOrbitsPart);
@@ -139,14 +160,27 @@ class GnssEngine {
     void post(std::function<void()> fn);
     void onIndication(const qmi::Message& m);
     bool connect();
-    void configure();
+    bool configure();        // true when the essential configuration was acknowledged
     void startSession();
-    void stopSession();
+    void stopSession();      // r5 round6 F52: session_ stays set when the STOP was not applied (bounded retry)
+    bool applyPendingDelete();   // F54: worker only; false = still pending (no service / timeout)
+    void completeSingle();       // F53: first final fix of a single-fix session
+    void onSessionFinished();    // F52 related: modem-reported end of our session
+    void reconcile();        // bring the modem session to desired_
+    void scheduleRetry(const char* what);
+    void serviceControl();   // r5 F34: run a pending stop from inside long assistance waits (worker thread only)
+    void pauseMs(int ms);    // interruptible sleep (services stop requests)
     int call(const qmi::Message& m, const char* what);
     bool waitInd(uint16_t id, int timeoutMs, qmi::Message* out);
     void clearInd(uint16_t id);
     bool doInjectXtra(const std::vector<uint8_t>& f, size_t partSize, bool withFormat, std::string* detail,
-                      bool* formatRejected);
+                      int* firstPartErr);
+    bool querySource(loc::OrbitsSource* o);
+    // r5 bug hunt round2 G2: XTRA received while the LOC service is absent (or lost mid-transfer) is kept (latest
+    // file only, worker only) and injected once the service is up.
+    void runXtra(const std::vector<uint8_t>& f, size_t partSize);
+    void deferXtra(std::vector<uint8_t> f, size_t partSize, const char* why);
+    void runPendingXtra();
     void doQueryXtra();
     static int64_t nowMs();
 
@@ -168,10 +202,19 @@ class GnssEngine {
     std::atomic<bool> configured_{false};
     std::atomic<bool> pendingServiceUp_{false};
     std::atomic<bool> pendingServiceDown_{false};
+    std::atomic<bool> ctrlPending_{false};   // setActive(false) waiting for the worker (guarded wakeup: indMu_)
+    int64_t retryAt_ = 0;                    // worker only: next START/configure retry (0 = none)
+    int retryN_ = 0;
     std::atomic<int> lastErr_{0};
     std::atomic<uint64_t> fixes_{0};
     std::atomic<int64_t> lastModemNmeaMs_{0};
     std::atomic<uint32_t> interval_{1000};
+    std::atomic<bool> single_{false};        // F53: requested recurrence
+    std::atomic<bool> deletePending_{false}; // F54
+    bool sessionSingle_ = false;             // worker only: recurrence of the running session
+    bool singleDone_ = false;                // worker only: the single fix was delivered; no restart until setActive(true)
+    std::vector<uint8_t> pendingXtra_;      // G2: worker only
+    size_t pendingXtraPart_ = 0;
     bool coldDone_ = false;
     bool unlockTried_ = false;
     std::mutex indMu_;

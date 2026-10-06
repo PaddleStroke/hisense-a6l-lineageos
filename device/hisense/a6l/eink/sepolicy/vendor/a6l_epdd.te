@@ -32,3 +32,7 @@ allow a6l_epdd a6l_epd_spi_device:chr_file rw_file_perms;
 
 # hold a wakelock while a waveform is being driven
 wakelock_use(a6l_epdd)
+
+# One-slot nonpersistent debug trace; no socket/data permission changes.
+get_prop(a6l_epdd, vendor_a6l_eink_trace_prop)
+get_prop(a6l_epdd, build_prop)

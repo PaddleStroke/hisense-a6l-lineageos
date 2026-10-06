@@ -1,0 +1,7 @@
+# rom-v2: IPA v2.6L data path (ipa2-lite; overlay-A node is in the V75 DT). merge r4 (28 Sep): ipa4 build 11f20f0f (data3:
+# QMI filter-rule replies, route index 7) - mobile data proven 27 Sep (ping/DNS/HTTP). Loaded by a6l-radio.sh whenever the radio
+# starts (persist.vendor.a6l.ipa defaults to 1) and ALWAYS before the modem (a modem without IPA asserts when IMS comes up).
+# r5 F8: a failed load/bind/rmnet_ipa0 => the modem is NOT started; IPA-less only with persist.vendor.a6l.radio.ipa_less_diag=1.
+# a6l-radio.sh loads it BEFORE the modem stack (ipa before mss). qrtr/qcom_common/qmi_helpers are loaded earlier.
+rmnet.ko
+ipa2_lite.ko

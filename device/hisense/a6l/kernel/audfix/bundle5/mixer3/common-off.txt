@@ -1,0 +1,14 @@
+# audio3: everything silent/idle (real names from the 23 Sep dump). RAW volumes: dB = raw - 84.
+LPI_MI2S_RX_0 Audio Mixer MultiMedia1|0
+MultiMedia1 Mixer LPI_MI2S_TX_3|0
+MultiMedia2 Mixer LPI_MI2S_TX_3|0
+EAR_S|ZERO
+HPHL|ZERO
+HPHR|ZERO
+Digital RX1 MIX1 INP1|ZERO
+Digital RX2 MIX1 INP1|ZERO
+RDAC2 MUX|RX1
+Digital RX1 Digital Volume|0
+Digital RX2 Digital Volume|0
+Digital DEC1 MUX|ZERO
+ADC2 MUX|ZERO

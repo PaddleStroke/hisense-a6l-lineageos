@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* 29 Sep 2026: live fix for a recovery where a6l_sd_ovl cd=0..2 was already applied with L5 = 2950000..2950000
+ * (not on the pm660l 8 mV grid: l5 probe -22). Loaded as a6l_sd_ovl cd=3: sets the window, then reprobes the regulators. */
+/dts-v1/;
+/plugin/;
+/ {
+	fragment@0 {
+		target-path = "/remoteproc/glink-edge/rpm-requests/regulators-a6lsd/l5";
+		__overlay__ {
+			regulator-min-microvolt = <2944000>;
+			regulator-max-microvolt = <2952000>;
+		};
+	};
+};

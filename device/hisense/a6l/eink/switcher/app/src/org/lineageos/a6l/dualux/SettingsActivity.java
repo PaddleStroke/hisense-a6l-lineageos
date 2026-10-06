@@ -54,6 +54,45 @@ public class SettingsActivity extends Activity {
         mRoot.addView(mSwitch);
         text(getString(R.string.keys_help));
 
+        header(R.string.sec_appearance);
+        text(getString(R.string.theme_help));
+        RadioGroup themes = new RadioGroup(this);
+        PerScreenAppearance appearance = PerScreenAppearance.get(this);
+        String[] choices = { "light", "dark", "lcd" };
+        int[] labels = { R.string.theme_light, R.string.theme_dark, R.string.theme_lcd };
+        for (int i = 0; i < choices.length; i++) {
+            RadioButton choice = new RadioButton(this);
+            choice.setId(View.generateViewId());
+            choice.setText(labels[i]);
+            choice.setTag(choices[i]);
+            themes.addView(choice);
+            if (choices[i].equals(appearance.theme())) choice.setChecked(true);
+        }
+        themes.setOnCheckedChangeListener((group, id) -> {
+            View checked = group.findViewById(id);
+            if (checked != null) appearance.setTheme((String) checked.getTag());
+        });
+        mRoot.addView(themes);
+
+        header(R.string.sec_wallpaper);
+        RadioGroup wallpapers = new RadioGroup(this);
+        String wallpaper = Dualux.get("persist.sys.a6l.eink.wallpaper", "white");
+        String[] wallpapersValues = {"white", "lcd"};
+        int[] wallpaperLabels = {R.string.wallpaper_white, R.string.wallpaper_lcd};
+        for (int i = 0; i < wallpapersValues.length; i++) {
+            RadioButton choice = new RadioButton(this);
+            choice.setId(View.generateViewId());
+            choice.setText(wallpaperLabels[i]);
+            choice.setTag(wallpapersValues[i]);
+            wallpapers.addView(choice);
+            if (wallpapersValues[i].equals(wallpaper)) choice.setChecked(true);
+        }
+        wallpapers.setOnCheckedChangeListener((group, id) -> {
+            View checked = group.findViewById(id);
+            if (checked != null) Dualux.set("persist.sys.a6l.eink.wallpaper", (String) checked.getTag());
+        });
+        mRoot.addView(wallpapers);
+
         header(R.string.sec_refresh);
         RadioGroup rg = new RadioGroup(this);
         String cur = Dualux.refreshMode();
@@ -83,6 +122,7 @@ public class SettingsActivity extends Activity {
                 v -> Dualux.set(Dualux.P_CONTRAST, Integer.toString(v)));
 
         header(R.string.sec_frontlight);
+        text(getString(R.string.fl_help));
         toggle(R.string.fl_enable, Dualux.getInt(Dualux.P_FL_ENABLE, 1) != 0, on -> Dualux.set(Dualux.P_FL_ENABLE, on ? "1" : "0"));
         TextView flLabel = text("");
         seek(100, Dualux.getInt(Dualux.P_FL_MAX, 100), flLabel, v -> getString(R.string.fl_max, v),
@@ -107,8 +147,8 @@ public class SettingsActivity extends Activity {
 
     private void refreshScreen() {
         boolean running = Dualux.daemonRunning(), eink = Dualux.isEink();
-        mScreenState.setText(running ? getString(eink ? R.string.screen_eink : R.string.screen_lcd) + "  (" + Dualux.state() + ")"
-                : getString(R.string.daemon_missing));
+        mScreenState.setText(running ? getString(R.string.screen_now, getString(eink ? R.string.screen_eink : R.string.screen_lcd),
+                Dualux.state()) : getString(R.string.daemon_missing));
         mSwitch.setText(eink ? R.string.switch_to_lcd : R.string.switch_to_eink);
         mSwitch.setEnabled(running);
     }

@@ -1,0 +1,30 @@
+{
+  "verify_v75u": {
+    "rc": 0,
+    "out": "{\n  \"passed\": true,\n  \"pin_count\": 35,\n  \"verified\": {\n    \"v38_tools\": 9,\n    \"v75u\": 12,\n    \"v75r\": 12\n  },\n  \"scope\": \"Offline staged-file verification; no USB access or phone actions\"\n}\n"
+  },
+  "verify_v75r": {
+    "rc": 0,
+    "out": "{\n  \"passed\": true,\n  \"pin_count\": 35,\n  \"verified\": {\n    \"v38_tools\": 9,\n    \"v75u\": 12,\n    \"v75r\": 12\n  },\n  \"scope\": \"Offline staged-file verification; no USB access or phone actions\"\n}\n"
+  },
+  "kit_sums": {
+    "rc": 0,
+    "out": "DiagnosticRecoveryProtocolV75R.py: OK\nDiagnosticRecoveryProtocolV75U.py: OK\nInspect-DiagnosticRecovery-user-v75r.py: OK\nInspect-DiagnosticRecovery-user-v75u.py: OK\nLaunch-ControlsV75R.py: OK\nLaunch-ControlsV75RInstall.py: OK\nLaunch-ControlsV75U.py: OK\nLaunch-ControlsV75UInstall.py: OK\nRecoveryTransitionV75R.py: OK\nRecoveryTransitionV75U.py: OK\nRun-LaptopControlsCapture-v75r.py: OK\nRun-LaptopControlsCapture-v75u.py: OK\nRun-LaptopDiagnosticInstall-user-v75r.py: OK\nRun-LaptopDiagnosticInstall-user-v75u.py: OK\nRun-LaptopDiagnosticRestore-user-v75r.py: OK\nRun-LaptopDiagnosticRestore-user-v75u.py: OK\nTest-DiagnosticRecoveryProtocolV75R.py: OK\nTest-DiagnosticRecoveryProtocolV75U.py: OK\nTest-RecoveryTransitionV75R.py: OK\nTest-RecoveryTransitionV75U.py: OK\nTest-V75UChain.py: OK\nVerify-ControlsV75RReadbacks.py: OK\nVerify-ControlsV75RStage.py: OK\nVerify-ControlsV75UReadbacks.py: OK\nVerify-ControlsV75UStage.py: OK\nWrite-LaptopDiagnosticRecovery-user-v75r.py: OK\nWrite-LaptopDiagnosticRecovery-user-v75u.py: OK\ndiagnostic-user-v75r-tools.json: OK\ndiagnostic-user-v75u-tools.json: OK\nram-staging/recovery-diagnostic-staged-usb-v75r.img: OK\nram-staging/recovery-diagnostic-staged-usb-v75u.img: OK\nv75u-pins.json: OK\nv75usb/image/SHA256SUMS: OK\nv75usb/image/captured-abl-validation.json: OK\nv75usb/image/recovery-diagnostic-unsigned.img: OK\nv75usb/image/report.json: OK\nKIT_SHA_OK\n"
+  },
+  "image_sums": {
+    "rc": 0,
+    "out": "recovery-diagnostic-unsigned.img: OK\nIMAGE_SHA_OK\n"
+  },
+  "inspect_v75u": {
+    "rc": 0,
+    "out": "Qualcomm Sahara / Firehose Client V3.62 (c) B.Kerler 2018-2025.\n{\n  \"scope\": \"Offline restore imports/geometry/payload check; no USB opened\",\n  \"payload_bytes\": 67108864,\n  \"payload_sha256\": {\n    \"restore-stock\": \"9688e3dfb349186fb60efc057a618aeaf696b030ad52974932ea83a077b31621\",\n    \"install-diagnostic\": \"8ecb8e9e4c5289cfe63c23eb32b749178935a6588673cea3a1b1ebee3c94b304\"\n  },\n  \"worker_sha256\": \"09810bdaf0a068d33ce9a0a16c155596efb0f916fc3fc9caaf28576db56f522d\",\n  \"protocol_sha256\": \"c9925e78e17dcf607e14c1e08874c07fa4b936e29250bb17f6c1cd4dd63417cc\",\n  \"passed\": true\n}\n"
+  },
+  "inspect_v75r": {
+    "rc": 0,
+    "out": "Qualcomm Sahara / Firehose Client V3.62 (c) B.Kerler 2018-2025.\n{\n  \"scope\": \"Offline restore imports/geometry/payload check; no USB opened\",\n  \"payload_bytes\": 67108864,\n  \"payload_sha256\": {\n    \"restore-stock\": \"9688e3dfb349186fb60efc057a618aeaf696b030ad52974932ea83a077b31621\",\n    \"install-diagnostic\": \"24ede49b0f34b10f216617cb007c757e495fa2df1b6cd1ddd0afd63f9819da62\"\n  },\n  \"worker_sha256\": \"6df4c1b98de5c578e9a2690358fbe74f54f82dd114a5af2d4d5f82598af6477c\",\n  \"protocol_sha256\": \"bec94809d871203e50be28e01ebbbd8536c0e442f66b076fe51ba5c73085ff2b\",\n  \"passed\": true\n}\n"
+  },
+  "chain": {
+    "rc": 0,
+    "out": "PASS v75u_accepts_current_V74\nPASS v75r_refuses_current_V74\nPASS v75u_refuses_V71\nPASS v75u_refuses_stock\nPASS v75u_refuses_V75U\nPASS v75u_refuses_unknown\nPASS v75r_accepts_V75U\nPASS v75r_refuses_V71\nPASS v75r_refuses_stock\nPASS v75r_refuses_V74\nPASS v75u_install_payload_is_V75U\nPASS v75r_install_payload_is_V74\nPASS restore_payload_is_stock_both\nPASS sim_install_v75u_over_V74\nPASS sim_second_v75u_refused\nPASS sim_rollback_v75r_to_V74\nPASS sim_second_v75r_refused\nPASS sim_reinstall_v75u_after_rollback\nPASS sim_restore_stock_any_recovery\nPASS guard_rejects <data><erase/></data>\nPASS guard_rejects <data><power value=\"reset_to_edl\"/></dat\nPASS guard_rejects <?xml version=\"1.0\" ?><data><program SEC\n{\n \"fixture\": \"/home/pierrelouis/A6L-usb-20260915/capture-diagnostic-install-user-v74c/edl\",\n \"laptop\": true,\n \"results\": {\n  \"v75u_accepts_current_V74\": true,\n  \"v75r_refuses_current_V74\": true,\n  \"v75u_refuses_V71\": true,\n  \"v75u_refuses_stock\": true,\n  \"v75u_refuses_V75U\": true,\n  \"v75u_refuses_unknown\": true,\n  \"v75r_accepts_V75U\": true,\n  \"v75r_refuses_V71\": true,\n  \"v75r_refuses_stock\": true,\n  \"v75r_refuses_V74\": true,\n  \"v75u_install_payload_is_V75U\": true,\n  \"v75r_install_payload_is_V74\": true,\n  \"restore_payload_is_stock_both\": true,\n  \"sim_install_v75u_over_V74\": true,\n  \"sim_second_v75u_refused\": true,\n  \"sim_rollback_v75r_to_V74\": true,\n  \"sim_second_v75r_refused\": true,\n  \"sim_reinstall_v75u_after_rollback\": true,\n  \"sim_restore_stock_any_recovery\": true,\n  \"guard_rejects <data><erase/></data>\": true,\n  \"guard_rejects <data><power value=\\\"reset_to_edl\\\"/></dat\": true,\n  \"guard_rejects <?xml version=\\\"1.0\\\" ?><data><program SEC\": true\n }\n}\nV75U_CHAIN PASS\n"
+  }
+}

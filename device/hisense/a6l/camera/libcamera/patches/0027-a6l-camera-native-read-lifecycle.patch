@@ -1,0 +1,1223 @@
+--- /dev/null
++++ b/include/libcamera/internal/a6l_native_raw_mmap.h
+@@ -0,0 +1,201 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <fcntl.h>
++#include <memory>
++#include <mutex>
++#include <string_view>
++#include <sys/mman.h>
++#include <unistd.h>
++#include <vector>
++
++#include <libcamera/base/shared_fd.h>
++#include <libcamera/base/span.h>
++#include <libcamera/base/unique_fd.h>
++#include <libcamera/framebuffer.h>
++
++namespace libcamera {
++
++inline bool a6lNativeRawGate(std::string_view trial, std::string_view device,
++	std::string_view driver, std::string_view sensor, bool conversion,
++	bool softwareIsp, bool exposedRaw)
++{
++	return trial == "1" && device == "a6l" && driver == "qcom-camss" &&
++		conversion && softwareIsp && !exposedRaw &&
++		(sensor == "imx576" || sensor == "imx576_a6l" ||
++		 sensor == "hi846" || sensor == "s5k3t1");
++}
++
++/* Experimental native V4L2 MMAP access, not a DMA-BUF mapping. Only the
++ * V4L2 allocator creates this provenance. Successful DQBUF grants read
++ * ownership; QBUF reserves it exclusively. CPU access must end before QBUF.
++ * The mapped video-node descriptor and plane snapshots pin the exact pool.
++ * No frame pixels or public metadata are used to guess this ownership. */
++class A6LNativeRawMmap : public std::enable_shared_from_this<A6LNativeRawMmap>
++{
++private:
++	struct Mapping {
++		Mapping(int videoFd, unsigned int offset, unsigned int mapLength,
++			Span<const FrameBuffer::Plane> mapPlanes)
++			: planes(mapPlanes.begin(), mapPlanes.end()), length(mapLength)
++		{
++			int copy = fcntl(videoFd, F_DUPFD_CLOEXEC, 0);
++			if (copy < 0)
++				return;
++			fd = SharedFD(UniqueFD(copy));
++			address = mmap(nullptr, length, PROT_READ, MAP_SHARED, fd.get(), offset);
++		}
++		~Mapping()
++		{
++			if (address != MAP_FAILED)
++				munmap(address, length);
++		}
++		std::vector<FrameBuffer::Plane> planes;
++		SharedFD fd;
++		void *address = MAP_FAILED;
++		unsigned int length;
++	};
++	enum class State { Allocated, Queued, Dequeued, Error, Retired };
++
++public:
++	class ReadLease {
++	public:
++		ReadLease() = default;
++		ReadLease(const ReadLease &) = delete;
++		ReadLease &operator=(const ReadLease &) = delete;
++		ReadLease(ReadLease &&other) noexcept = default;
++		ReadLease &operator=(ReadLease &&other) noexcept
++		{
++			reset();
++			owner_ = std::move(other.owner_);
++			mapping_ = std::move(other.mapping_);
++			return *this;
++		}
++		~ReadLease() { reset(); }
++		explicit operator bool() const { return bool(owner_); }
++		bool issuedBy(const std::shared_ptr<A6LNativeRawMmap> &owner) const
++		{
++			return owner_ && owner_ == owner;
++		}
++		Span<const uint8_t> bytes() const
++		{
++			return mapping_ ? Span<const uint8_t>(
++				static_cast<const uint8_t *>(mapping_->address), mapping_->length)
++				: Span<const uint8_t>();
++		}
++		void reset()
++		{
++			if (!owner_)
++				return;
++			/* Drop the borrowed map before releasing queue exclusion. */
++			mapping_.reset();
++			{
++				std::lock_guard<std::mutex> lock(owner_->mutex_);
++				owner_->reading_ = false;
++				if (owner_->state_ == State::Retired)
++					owner_->mapping_.reset();
++			}
++			owner_.reset();
++		}
++	private:
++		friend class A6LNativeRawMmap;
++		ReadLease(std::shared_ptr<A6LNativeRawMmap> owner,
++			  std::shared_ptr<Mapping> mapping)
++			: owner_(std::move(owner)), mapping_(std::move(mapping)) {}
++		std::shared_ptr<A6LNativeRawMmap> owner_;
++		std::shared_ptr<Mapping> mapping_;
++	};
++
++	/* Holds the mutex through the QBUF ioctl. A failed ioctl leaves the
++ * prior dequeue/allocation ownership intact. The ioctl cannot call user
++ * code inline; other readers cannot begin during queue submission. */
++	class QueueTicket {
++	public:
++		~QueueTicket() = default;
++		void commit() { owner_->state_ = State::Queued; }
++	private:
++		friend class A6LNativeRawMmap;
++		QueueTicket(std::shared_ptr<A6LNativeRawMmap> owner,
++			    std::unique_lock<std::mutex> lock)
++			: owner_(std::move(owner)), lock_(std::move(lock)) {}
++		std::shared_ptr<A6LNativeRawMmap> owner_;
++		std::unique_lock<std::mutex> lock_;
++	};
++
++	static std::shared_ptr<A6LNativeRawMmap> create(int videoFd,
++		uint64_t generation, unsigned int index, unsigned int mmapOffset,
++		unsigned int length, const FrameBuffer &buffer)
++	{
++		const long page = sysconf(_SC_PAGESIZE);
++		const auto planes = buffer.planes();
++		if (!generation || page <= 0 || mmapOffset % page || !length ||
++		    planes.size() != 1 || planes[0].offset != 0 ||
++		    planes[0].length != length || !planes[0].fd.isValid())
++			return {};
++		auto mapping = std::make_shared<Mapping>(videoFd, mmapOffset, length, planes);
++		if (mapping->address == MAP_FAILED)
++			return {};
++		return std::shared_ptr<A6LNativeRawMmap>(
++			new A6LNativeRawMmap(generation, index, std::move(mapping)));
++	}
++
++	std::unique_ptr<QueueTicket> beginQueue(const FrameBuffer &buffer,
++		uint64_t generation, unsigned int index)
++	{
++		std::unique_lock<std::mutex> lock(mutex_);
++		if (!matches(buffer, generation, index) || reading_ ||
++		    (state_ != State::Allocated && state_ != State::Dequeued && state_ != State::Error))
++			return {};
++		return std::unique_ptr<QueueTicket>(
++			new QueueTicket(shared_from_this(), std::move(lock)));
++	}
++	bool dequeued(const FrameBuffer &buffer, uint64_t generation,
++		unsigned int index, bool success)
++	{
++		std::lock_guard<std::mutex> lock(mutex_);
++		if (!matches(buffer, generation, index) || state_ != State::Queued || reading_)
++			return false;
++		state_ = success ? State::Dequeued : State::Error;
++		return true;
++	}
++	ReadLease read(const FrameBuffer &buffer)
++	{
++		std::lock_guard<std::mutex> lock(mutex_);
++		if (!matches(buffer, generation_, index_) || state_ != State::Dequeued || reading_)
++			return {};
++		reading_ = true;
++		return ReadLease(shared_from_this(), mapping_);
++	}
++	/* Invalidates future grants immediately; an existing lease pins its
++ * mapping until CPU work ends. ReleaseBuffers must refuse REQBUFS while
++ * false, and may retry after the serialized worker is retired. */
++	bool retire()
++	{
++		std::lock_guard<std::mutex> lock(mutex_);
++		state_ = State::Retired;
++		if (reading_)
++			return false;
++		mapping_.reset();
++		return true;
++	}
++private:
++	A6LNativeRawMmap(uint64_t generation, unsigned int index,
++			 std::shared_ptr<Mapping> mapping)
++		: generation_(generation), index_(index), mapping_(std::move(mapping)) {}
++	bool matches(const FrameBuffer &buffer, uint64_t generation, unsigned int index) const
++	{
++		const auto planes = buffer.planes();
++		return mapping_ && generation == generation_ && index == index_ &&
++			planes.size() == 1 && mapping_->planes[0].fd == planes[0].fd &&
++			mapping_->planes[0].offset == planes[0].offset &&
++			mapping_->planes[0].length == planes[0].length;
++	}
++	const uint64_t generation_;
++	const unsigned int index_;
++	std::mutex mutex_;
++	std::shared_ptr<Mapping> mapping_;
++	State state_ = State::Allocated;
++	bool reading_ = false;
++};
++
++} /* namespace libcamera */
+--- /dev/null
++++ b/include/libcamera/internal/a6l_native_raw_verify.h
+@@ -0,0 +1,136 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <cerrno>
++#include <cstdint>
++#include <optional>
++#include <string_view>
++#include <sys/ioctl.h>
++#include <linux/dma-buf.h>
++
++#include <libcamera/base/span.h>
++#include <libcamera/framebuffer.h>
++#include "libcamera/internal/mapped_framebuffer.h"
++
++namespace libcamera {
++
++/* Separate bounded diagnostic. begin() hashes native CPU bytes BEFORE any
++ * legacy RAW START; verify() runs only after workers have joined. Its END
++ * must be followed by no more RAW reads, then native lease release. */
++class A6LNativeRawVerifier
++{
++public:
++	struct Snapshot { uint64_t hash; size_t length; };
++	enum class Status { Equal, StartError, MappingError, SizeError, Mismatch, EndError, SessionFailed };
++	struct Result {
++		Status status = Status::Equal;
++		uint64_t before = 0, after = 0;
++		size_t length = 0;
++		int startError = 0, endError = 0;
++		bool passed() const { return status == Status::Equal; }
++	};
++	void startSession(std::string_view enabled) { failed_ = false; remaining_ = enabled == "1" ? 8 : 0; }
++	bool failed() const { return failed_; }
++	unsigned int remaining() const { return remaining_; }
++	std::optional<Snapshot> begin(Span<const uint8_t> native)
++	{
++		if (!remaining_)
++			return {};
++		--remaining_;
++		return Snapshot{ hash(native), native.size() };
++	}
++	static const char *statusName(Status status)
++	{
++		switch (status) {
++		case Status::Equal: return "equal";
++		case Status::StartError: return "start_error";
++		case Status::MappingError: return "mapping_error";
++		case Status::SizeError: return "size_error";
++		case Status::Mismatch: return "mismatch";
++		case Status::EndError: return "end_error";
++		case Status::SessionFailed: return "session_failed";
++		}
++		return "unknown";
++	}
++	Result verify(FrameBuffer &buffer, const Snapshot &snapshot)
++	{
++		Result result;
++		result.before = snapshot.hash;
++		result.length = snapshot.length;
++		if (failed_) { result.status = Status::SessionFailed; return result; }
++		if (buffer.planes().size() != 1 || !buffer.planes()[0].fd.isValid()) {
++			result.status = Status::SizeError;
++			return finishResult(result);
++		}
++		ReadSync sync(buffer.planes()[0].fd.get());
++		result.startError = sync.startError();
++		if (result.startError) {
++			result.status = Status::StartError;
++			return finishResult(result); // Never touch legacy pixels after failed START.
++		}
++		{
++			MappedFrameBuffer legacy(&buffer, MappedFrameBuffer::MapFlag::Read);
++			if (!legacy.isValid())
++				result.status = Status::MappingError;
++			else if (legacy.planes().size() != 1 || legacy.planes()[0].size() != snapshot.length)
++				result.status = Status::SizeError;
++			else {
++				result.after = hash(Span<const uint8_t>(legacy.planes()[0].data(), legacy.planes()[0].size()));
++				if (result.before != result.after)
++					result.status = Status::Mismatch;
++			}
++		} // Legacy mapping no longer used, before READ END.
++		result.endError = sync.finish();
++		if (result.endError && result.status == Status::Equal)
++			result.status = Status::EndError;
++		return finishResult(result);
++	}
++private:
++	Result finishResult(Result result)
++	{
++		if (!result.passed()) { failed_ = true; remaining_ = 0; }
++		return result;
++	}
++	static uint64_t hash(Span<const uint8_t> bytes)
++	{
++		uint64_t value = 14695981039346656037ULL;
++		for (uint8_t byte : bytes)
++			value = (value ^ byte) * 1099511628211ULL;
++		return value;
++	}
++	class ReadSync {
++	public:
++		explicit ReadSync(int fd) : fd_(fd), startError_(sync(DMA_BUF_SYNC_START)), active_(!startError_) {}
++		~ReadSync() { finish(); }
++		int startError() const { return startError_; }
++		int finish()
++		{
++			if (!active_)
++				return endError_;
++			active_ = false;
++			endError_ = sync(DMA_BUF_SYNC_END);
++			return endError_;
++		}
++	private:
++		int sync(uint64_t phase) const
++		{
++			dma_buf_sync request{ .flags = DMA_BUF_SYNC_READ | phase };
++			for (unsigned int retry = 0; retry < 8; ++retry) {
++				if (::ioctl(fd_, DMA_BUF_IOCTL_SYNC, &request) == 0)
++					return 0;
++				int error = errno;
++				if (error != EINTR && error != EAGAIN)
++					return -error;
++			}
++			return -errno;
++		}
++		const int fd_;
++		const int startError_;
++		bool active_;
++		int endError_ = 0;
++	};
++	bool failed_ = false;
++	unsigned int remaining_ = 0;
++};
++
++} /* namespace libcamera */
+--- a/include/libcamera/internal/framebuffer.h
++++ b/include/libcamera/internal/framebuffer.h
+@@ -19,6 +19,8 @@
+ 
+ namespace libcamera {
+ 
++class A6LNativeRawMmap;
++
+ class FrameBuffer::Private : public Extensible::Private
+ {
+ 	LIBCAMERA_DECLARE_PUBLIC(FrameBuffer)
+@@ -37,6 +39,9 @@
+ 
+ 	FrameMetadata &metadata() { return metadata_; }
+ 
++	const std::shared_ptr<A6LNativeRawMmap> &a6lNativeRaw() const { return a6lNativeRaw_; }
++	void setA6lNativeRaw(std::shared_ptr<A6LNativeRawMmap> value) { a6lNativeRaw_ = std::move(value); }
++
+ private:
+ 	std::vector<Plane> planes_;
+ 	FrameMetadata metadata_;
+@@ -45,6 +50,7 @@
+ 	std::unique_ptr<Fence> fence_;
+ 	Request *request_;
+ 	bool isContiguous_;
++	std::shared_ptr<A6LNativeRawMmap> a6lNativeRaw_;
+ };
+ 
+ } /* namespace libcamera */
+--- a/include/libcamera/internal/v4l2_videodevice.h
++++ b/include/libcamera/internal/v4l2_videodevice.h
+@@ -37,6 +37,8 @@
+ 
+ namespace libcamera {
+ 
++class A6LNativeRawMmap;
++
+ class EventNotifier;
+ class MediaDevice;
+ class MediaEntity;
+@@ -217,6 +219,7 @@
+ 			  std::vector<std::unique_ptr<FrameBuffer>> *buffers);
+ 	int importBuffers(unsigned int count);
+ 	int releaseBuffers();
++	void setA6lNativeRawReadTrial(bool enabled) { a6lNativeRawReadTrial_ = enabled; }
+ 
+ 	int queueBuffer(FrameBuffer *buffer, const V4L2Request *request = nullptr);
+ 	Signal<FrameBuffer *> bufferReady;
+@@ -262,6 +265,7 @@
+ 	int createBuffers(unsigned int count,
+ 			  std::vector<std::unique_ptr<FrameBuffer>> *buffers);
+ 	std::unique_ptr<FrameBuffer> createBuffer(unsigned int index);
++	int retireA6lNativeRawPool();
+ 	UniqueFD exportDmabufFd(unsigned int index, unsigned int plane);
+ 
+ 	void bufferAvailable();
+@@ -279,6 +283,10 @@
+ 
+ 	enum v4l2_buf_type bufferType_;
+ 	enum v4l2_memory memoryType_;
++	bool a6lNativeRawReadTrial_ = false;
++	uint64_t a6lNativeRawGeneration_ = 0;
++	bool a6lNativeRawBuilding_ = false;
++	std::vector<std::shared_ptr<A6LNativeRawMmap>> a6lNativeRawPool_;
+ 
+ 	std::unique_ptr<V4L2BufferCache> cache_;
+ 	std::map<unsigned int, FrameBuffer *> queuedBuffers_;
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "camera_device.h"
++#include "libcamera/internal/a6l_stage_profile.h"
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -429,6 +430,8 @@
+ 	}
+ 
+ 	camera_->stop();
++	for (CameraStream &stream : streams_)
++		stream.flush();
+ 
+ 	MutexLocker stateLock(stateMutex_);
+ 	state_ = State::Stopped;
+@@ -436,9 +439,18 @@
+ 
+ void CameraDevice::stop()
+ {
++	{
++		MutexLocker stateLock(stateMutex_);
++		state_ = State::Flushing;
++	}
++
++	camera_->stop();
++	/* Callbacks require descriptors and internal buffers to remain alive.
++	 * Join with neither state nor descriptor mutex held. */
++	for (CameraStream &stream : streams_)
++		stream.flush();
++
+ 	MutexLocker stateLock(stateMutex_);
+-
+-	camera_->stop();
+ 
+ 	{
+ 		MutexLocker descriptorsLock(descriptorsMutex_);
+@@ -1303,6 +1315,8 @@
+ 	if (state_ == State::Stopped) {
+ 		lastSettings_ = {};
+ 
++		for (CameraStream &stream : streams_)
++			stream.start();
+ 		ret = camera_->start();
+ 		if (ret) {
+ 			LOG(HAL, Error) << "Failed to start camera";
+@@ -1442,12 +1456,6 @@
+ 			setBufferStatus(*buffer, Camera3RequestDescriptor::Status::Error);
+ 			descriptor->pendingStreamsToProcess_.erase(stream);
+ 
+-			/*
+-			 * If the framebuffer is internal to CameraStream return
+-			 * it back now that we're done processing it.
+-			 */
+-			if (buffer->internalBuffer)
+-				stream->putBuffer(buffer->internalBuffer);
+ 		}
+ 	}
+ 
+@@ -1470,12 +1478,43 @@
+  */
+ void CameraDevice::completeDescriptor(Camera3RequestDescriptor *descriptor)
+ {
+-	MutexLocker lock(descriptorsMutex_);
+-	descriptor->complete_ = true;
+-
+-	sendCaptureResults();
+-}
+-
++	const uint32_t frame = a6lQualityDebug(0) && descriptor->request_
++		? descriptor->request_->sequence() : 240;
++	const bool enabled = a6lStageProfileEnabled(frame);
++	const uint32_t androidFrame = enabled ? descriptor->frameNumber_ : 0;
++	const uint64_t lockStart = enabled ? a6lQualityMonotonicNs() : 0;
++	uint64_t lockWaitNs = 0, drainNs = 0;
++	{
++		MutexLocker lock(descriptorsMutex_);
++		const uint64_t acquiredNs = enabled ? a6lQualityMonotonicNs() : 0;
++
++		/* Internal buffers can feed several mapped post-processing streams.
++		 * Return the source only after every consumer of this descriptor has
++		 * retired, including asynchronous destination preparation. */
++		for (auto &buffer : descriptor->buffers_) {
++			if (buffer.internalBuffer) {
++				buffer.stream->putBuffer(buffer.internalBuffer);
++				buffer.internalBuffer = nullptr;
++			}
++		}
++
++		descriptor->complete_ = true;
++
++		const uint64_t drainStart = enabled ? a6lQualityMonotonicNs() : 0;
++		sendCaptureResults();
++		const uint64_t drainEnd = enabled ? a6lQualityMonotonicNs() : 0;
++		lockWaitNs = acquiredNs - lockStart;
++		drainNs = drainEnd - drainStart;
++	}
++	const uint64_t returnedNs = enabled ? a6lQualityMonotonicNs() : 0;
++	if (enabled)
++		LOG(HAL, Info) << "A6L_STAGE_HAL_RESULT frame=" << frame
++			<< " android_frame=" << androidFrame
++			<< " camera_key=" << reinterpret_cast<uintptr_t>(camera_.get())
++			<< " mono_ns=" << returnedNs
++			<< " descriptor_lock_wait_ns=" << lockWaitNs
++			<< " ordered_result_drain_ns=" << drainNs;
++}
+ /**
+  * \brief Sequentially send capture results to the framework
+  *
+@@ -1529,7 +1568,18 @@
+ 		if (descriptor->status_ == Camera3RequestDescriptor::Status::Success)
+ 			captureResult.partial_result = 1;
+ 
++		const uint32_t frame = a6lQualityDebug(0) && descriptor->request_
++			? descriptor->request_->sequence() : 240;
++		const bool trace = a6lStageProfileEnabled(frame);
++		const uint64_t callbackStart = trace ? a6lQualityMonotonicNs() : 0;
+ 		callbacks_->process_capture_result(callbacks_, &captureResult);
++		const uint64_t callbackEnd = trace ? a6lQualityMonotonicNs() : 0;
++		if (trace)
++			LOG(HAL, Info) << "A6L_STAGE_HAL_CALLBACK frame=" << frame
++				<< " android_frame=" << captureResult.frame_number
++				<< " camera_key=" << reinterpret_cast<uintptr_t>(camera_.get())
++				<< " mono_ns=" << callbackEnd
++				<< " framework_callback_ns=" << callbackEnd - callbackStart;
+ 	}
+ }
+ 
+@@ -1565,13 +1615,6 @@
+ 					    Camera3RequestDescriptor::Status status)
+ {
+ 	setBufferStatus(*streamBuffer, status);
+-
+-	/*
+-	 * If the framebuffer is internal to CameraStream return it back now
+-	 * that we're done processing it.
+-	 */
+-	if (streamBuffer->internalBuffer)
+-		streamBuffer->stream->putBuffer(streamBuffer->internalBuffer);
+ 
+ 	Camera3RequestDescriptor *request = streamBuffer->request;
+ 
+--- a/src/android/camera_request.cpp
++++ b/src/android/camera_request.cpp
+@@ -6,12 +6,15 @@
+  */
+ 
+ #include "camera_request.h"
++#include <libcamera/base/log.h>
++#include "libcamera/internal/a6l_stage_profile.h"
+ 
+ #include <libcamera/base/span.h>
+ 
+ #include "camera_buffer.h"
+ 
+ using namespace libcamera;
++LOG_DECLARE_CATEGORY(HAL)
+ 
+ /*
+  * \class Camera3RequestDescriptor
+@@ -186,7 +189,21 @@
+ {
+ }
+ 
+-Camera3RequestDescriptor::StreamBuffer::~StreamBuffer() = default;
++Camera3RequestDescriptor::StreamBuffer::~StreamBuffer()
++{
++	if (!stageTrace.enabled)
++		return;
++	/* dstBuffer is the first non-trivial member destroyed in the normal
++	 * reverse member order. Do not access the already-retired request. */
++	const uint64_t destroyStart = a6lQualityMonotonicNs();
++	dstBuffer.reset();
++	const uint64_t destroyedNs = a6lQualityMonotonicNs();
++	LOG(HAL, Info) << "A6L_STAGE_HAL_DESTROY frame=" << stageTrace.frame
++		<< " android_frame=" << stageTrace.androidFrame
++		<< " camera_key=" << stageTrace.cameraKey << " stream_key=" << stageTrace.streamKey
++		<< " mono_ns=" << destroyedNs
++		<< " destination_destroy_ns=" << destroyedNs - destroyStart;
++}
+ 
+ Camera3RequestDescriptor::StreamBuffer::StreamBuffer(StreamBuffer &&) = default;
+ 
+--- a/src/android/camera_request.h
++++ b/src/android/camera_request.h
+@@ -8,6 +8,7 @@
+ #pragma once
+ 
+ #include <map>
++#include <cstdint>
+ #include <memory>
+ #include <vector>
+ 
+@@ -53,6 +54,16 @@
+ 		std::unique_ptr<CameraBuffer> dstBuffer;
+ 		Camera3RequestDescriptor *request;
+ 
++		/* Immutable sampled keys; destructor must not inspect request lifetime. */
++		struct StageTrace {
++			bool enabled = false;
++			uint32_t frame = 240;
++			uint32_t androidFrame = 0;
++			uintptr_t cameraKey = 0;
++			uintptr_t streamKey = 0;
++			uint64_t queuedNs = 0;
++		} stageTrace;
++
+ 	private:
+ 		LIBCAMERA_DISABLE_COPY(StreamBuffer)
+ 	};
+--- a/src/android/camera_stream.cpp
++++ b/src/android/camera_stream.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "camera_stream.h"
++#include "libcamera/internal/a6l_stage_profile.h"
+ 
+ #include <errno.h>
+ #include <poll.h>
+@@ -68,6 +69,11 @@
+ 	 * Manually delete buffers and then the allocator to make sure buffers
+ 	 * are released while the allocator is still valid.
+ 	 */
++	/* Retire request/source users before either allocation owner. */
++	if (worker_) {
++		worker_->flush();
++		worker_.reset();
++	}
+ 	allocatedBuffers_.clear();
+ 	allocator_.reset();
+ }
+@@ -110,7 +116,14 @@
+ 		if (ret)
+ 			return ret;
+ 
+-		worker_ = std::make_unique<PostProcessorWorker>(postProcessor_.get());
++		worker_ = std::make_unique<PostProcessorWorker>(postProcessor_.get(), outFormat, output.size,
++			reinterpret_cast<uintptr_t>(cameraDevice_->camera().get()),
++			reinterpret_cast<uintptr_t>(camera3Stream_));
++		if (a6lQualityDebug(0))
++			LOG(HAL, Info) << "A6L_STAGE_HAL_STREAM camera=" << cameraDevice_->camera()->id()
++				<< " camera_key=" << reinterpret_cast<uintptr_t>(cameraDevice_->camera().get())
++				<< " stream_key=" << reinterpret_cast<uintptr_t>(camera3Stream_)
++				<< " output=" << output.size << " format=" << outFormat;
+ 		postProcessor_->processComplete.connect(
+ 			this, [&](Camera3RequestDescriptor::StreamBuffer *streamBuffer,
+ 				  PostProcessor::Status status) {
+@@ -136,7 +149,7 @@
+ 	return 0;
+ }
+ 
+-int CameraStream::waitFence(int fence)
++int CameraStream::PostProcessorWorker::waitFence(int fence)
+ {
+ 	/*
+ 	 * \todo The implementation here is copied from camera_worker.cpp
+@@ -165,10 +178,10 @@
+ 	return -errno;
+ }
+ 
+-int CameraStream::process(Camera3RequestDescriptor::StreamBuffer *streamBuffer)
+-{
+-	ASSERT(type_ != Type::Direct);
+-
++int CameraStream::PostProcessorWorker::prepareDestination(Camera3RequestDescriptor::StreamBuffer *streamBuffer)
++{
++	const auto trace = streamBuffer->stageTrace;
++	const uint64_t preparationStart = trace.enabled ? a6lQualityMonotonicNs() : 0;
+ 	/* Handle waiting on fences on the destination buffer. */
+ 	if (streamBuffer->fence.isValid()) {
+ 		int ret = waitFence(streamBuffer->fence.get());
+@@ -182,20 +195,37 @@
+ 		streamBuffer->fence.reset();
+ 	}
+ 
+-	const PixelFormat outFormat =
+-		cameraDevice_->capabilities()->toPixelFormat(camera3Stream_->format);
+-	const Size outSize(camera3Stream_->width, camera3Stream_->height);
++	const uint64_t headerStart = trace.enabled ? a6lQualityMonotonicNs() : 0;
+ 	streamBuffer->dstBuffer = std::make_unique<CameraBuffer>(
+-		*streamBuffer->camera3Buffer, outFormat, outSize,
++		*streamBuffer->camera3Buffer, outputFormat_, outputSize_,
+ 		PROT_READ | PROT_WRITE);
+ 	if (!streamBuffer->dstBuffer->isValid()) {
+ 		LOG(HAL, Error) << "Failed to create destination buffer";
+ 		return -EINVAL;
+ 	}
+ 
++	const uint64_t preparedNs = trace.enabled ? a6lQualityMonotonicNs() : 0;
++	if (trace.enabled)
++		LOG(HAL, Info) << "A6L_STAGE_HAL_PREPARE frame=" << trace.frame
++			<< " android_frame=" << trace.androidFrame
++			<< " camera_key=" << trace.cameraKey << " stream_key=" << trace.streamKey
++			<< " mono_ns=" << preparedNs
++			<< " fence_ns=" << headerStart - preparationStart
++			<< " layout_header_ns=" << preparedNs - headerStart;
++	return 0;
++}
++
++int CameraStream::process(Camera3RequestDescriptor::StreamBuffer *streamBuffer)
++{
++	ASSERT(type_ != Type::Direct);
+ 	worker_->queueRequest(streamBuffer);
+-
+ 	return 0;
++}
++
++void CameraStream::start()
++{
++	if (worker_)
++		worker_->start();
+ }
+ 
+ void CameraStream::flush()
+@@ -258,27 +288,26 @@
+  * post-processing on an internal thread as soon as any request is available on
+  * its queue.
+  */
+-CameraStream::PostProcessorWorker::PostProcessorWorker(PostProcessor *postProcessor)
+-	: postProcessor_(postProcessor)
++CameraStream::PostProcessorWorker::PostProcessorWorker(PostProcessor *postProcessor,
++						     PixelFormat outputFormat, Size outputSize,
++						     uintptr_t cameraKey, uintptr_t streamKey)
++	: postProcessor_(postProcessor), outputFormat_(outputFormat), outputSize_(outputSize),
++	  cameraKey_(cameraKey), streamKey_(streamKey)
+ {
+ }
+ 
+ CameraStream::PostProcessorWorker::~PostProcessorWorker()
++{
++	flush();
++}
++
++void CameraStream::PostProcessorWorker::start()
+ {
+ 	{
+ 		MutexLocker lock(mutex_);
+-		state_ = State::Stopped;
+-	}
+-
+-	cv_.notify_one();
+-	wait();
+-}
+-
+-void CameraStream::PostProcessorWorker::start()
+-{
+-	{
+-		MutexLocker lock(mutex_);
+-		ASSERT(state_ != State::Running);
++		if (state_ == State::Running)
++			return;
++		ASSERT(state_ == State::Stopped);
+ 		state_ = State::Running;
+ 	}
+ 
+@@ -287,6 +316,16 @@
+ 
+ void CameraStream::PostProcessorWorker::queueRequest(Camera3RequestDescriptor::StreamBuffer *dest)
+ {
++	const uint32_t frame = a6lQualityDebug(0) && dest->request && dest->request->request_
++		? dest->request->request_->sequence() : 240;
++	dest->stageTrace.enabled = a6lStageProfileEnabled(frame);
++	if (dest->stageTrace.enabled) {
++		dest->stageTrace.frame = frame;
++		dest->stageTrace.androidFrame = dest->request->frameNumber_;
++		dest->stageTrace.cameraKey = cameraKey_;
++		dest->stageTrace.streamKey = streamKey_;
++		dest->stageTrace.queuedNs = a6lQualityMonotonicNs();
++	}
+ 	{
+ 		MutexLocker lock(mutex_);
+ 		ASSERT(state_ == State::Running);
+@@ -312,7 +351,26 @@
+ 		requests_.pop();
+ 		locker.unlock();
+ 
+-		postProcessor_->process(streamBuffer);
++		const auto trace = streamBuffer->stageTrace;
++		const uint64_t dequeueNs = trace.enabled ? a6lQualityMonotonicNs() : 0;
++		const int preparation = prepareDestination(streamBuffer);
++		const uint64_t processStart = trace.enabled ? a6lQualityMonotonicNs() : 0;
++		if (preparation)
++			postProcessor_->processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		else
++			postProcessor_->process(streamBuffer);
++
++		/* Completion may destroy streamBuffer: only captured keys remain. */
++		const uint64_t returnedNs = trace.enabled ? a6lQualityMonotonicNs() : 0;
++		if (trace.enabled)
++			LOG(HAL, Info) << "A6L_STAGE_HAL_WORKER frame=" << trace.frame
++				<< " android_frame=" << trace.androidFrame
++				<< " camera_key=" << trace.cameraKey << " stream_key=" << trace.streamKey
++				<< " mono_ns=" << returnedNs
++				<< " fifo_ns=" << dequeueNs - trace.queuedNs
++				<< " preparation_ns=" << processStart - dequeueNs
++				<< " convert_and_completion_ns=" << returnedNs - processStart
++				<< " preparation_ret=" << preparation;
+ 
+ 		locker.lock();
+ 	}
+@@ -336,8 +394,15 @@
+ void CameraStream::PostProcessorWorker::flush()
+ {
+ 	MutexLocker lock(mutex_);
++	if (state_ == State::Stopped) {
++		lock.unlock();
++		wait();
++		return;
++	}
+ 	state_ = State::Flushing;
+ 	lock.unlock();
+ 
+ 	cv_.notify_one();
+-}
++	/* Active preparation/processing and queued error callbacks retire first. */
++	wait();
++}
+--- a/src/android/camera_stream.h
++++ b/src/android/camera_stream.h
+@@ -131,6 +131,7 @@
+ 	libcamera::FrameBuffer *getBuffer();
+ 	void putBuffer(libcamera::FrameBuffer *buffer);
+ 	void flush();
++	void start();
+ 
+ private:
+ 	class PostProcessorWorker : public libcamera::Thread
+@@ -142,7 +143,9 @@
+ 			Flushing,
+ 		};
+ 
+-		PostProcessorWorker(PostProcessor *postProcessor);
++		PostProcessorWorker(PostProcessor *postProcessor,
++				    libcamera::PixelFormat outputFormat, libcamera::Size outputSize,
++				    uintptr_t cameraKey, uintptr_t streamKey);
+ 		~PostProcessorWorker();
+ 
+ 		void start();
+@@ -153,7 +156,14 @@
+ 		void run() override;
+ 
+ 	private:
++		int prepareDestination(Camera3RequestDescriptor::StreamBuffer *buffer);
++		int waitFence(int fence);
++
+ 		PostProcessor *postProcessor_;
++		const libcamera::PixelFormat outputFormat_;
++		const libcamera::Size outputSize_;
++		const uintptr_t cameraKey_;
++		const uintptr_t streamKey_;
+ 
+ 		libcamera::Mutex mutex_;
+ 		libcamera::ConditionVariable cv_;
+@@ -163,8 +173,6 @@
+ 
+ 		State state_ LIBCAMERA_TSA_GUARDED_BY(mutex_) = State::Stopped;
+ 	};
+-
+-	int waitFence(int fence);
+ 
+ 	CameraDevice *const cameraDevice_;
+ 	const libcamera::CameraConfiguration *config_;
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -7,6 +7,9 @@
+  */
+ 
+ #include <algorithm>
++#ifdef __ANDROID__
++#include <sys/system_properties.h>
++#endif
+ #include <iterator>
+ #include <list>
+ #include <map>
+@@ -39,6 +42,7 @@
+ #include "libcamera/internal/a6l_sensor_control_guard.h"
+ #include "libcamera/internal/raw10_fov.h"
+ #include "libcamera/internal/framebuffer.h"
++#include "libcamera/internal/a6l_native_raw_mmap.h"
+ #include "libcamera/internal/camera_lens.h"
+ #include "libcamera/internal/camera_manager.h"
+ #include "libcamera/internal/camera_sensor.h"
+@@ -1783,6 +1787,17 @@
+ 		return -EBUSY;
+ 	}
+ 
++	bool nativeTrial = false;
++#ifdef __ANDROID__
++	char nativeDevice[PROP_VALUE_MAX] = {};
++	__system_property_get("ro.product.vendor.device", nativeDevice);
++	const char *trial = utils::secure_getenv("LIBCAMERA_A6L_NATIVE_RAW_MMAP");
++	const std::string &model = data->sensor_->model();
++	nativeTrial = a6lNativeRawGate(trial ? trial : "", nativeDevice,
++		video->driverName(), model, data->useConversion_,
++		bool(data->swIsp_), bool(data->rawStream_));
++#endif
++	video->setA6lNativeRawReadTrial(nativeTrial);
+ 	if (data->useConversion_ && !data->rawStream_) {
+ 		/*
+ 		 * When using the converter allocate a fixed number of internal
+--- a/src/libcamera/software_isp/debayer.cpp
++++ b/src/libcamera/software_isp/debayer.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include "debayer.h"
++#include "libcamera/internal/framebuffer.h"
+ 
+ #include "libcamera/internal/a6l_quality_debug.h"
+ 
+@@ -328,6 +329,25 @@
+ 	}
+ }
+ 
++/* Native video-node MMAP relies on V4L2 finish/prepare ownership, not
++ * the DMA-BUF mmap API. Only a live private READ lease permits this
++ * path. All output allocations retain their normal WRITE START/END. */
++bool Debayer::dmaSyncNativeRawRead(std::vector<DmaSyncer> &syncers, FrameBuffer *input,
++	FrameBuffer *output, const A6LNativeRawMmap::ReadLease &lease)
++{
++	if (!input || !output || !lease.issuedBy(input->_d()->a6lNativeRaw())) return false;
++	const auto raw = input->planes();
++	std::vector<SharedFD> unique;
++	for (const auto &plane : output->planes()) {
++		if (plane.fd == raw[0].fd) return false;
++		if (std::find(unique.begin(), unique.end(), plane.fd) == unique.end())
++			unique.push_back(plane.fd);
++	}
++	syncers.reserve(syncers.size() + unique.size());
++	for (const auto &fd : unique) syncers.emplace_back(fd, DmaSyncer::SyncType::Write);
++	return true;
++}
++
+ /**
+  * \fn void Debayer::isStandardBayerOrder(BayerFormat::Order order)
+  * \brief Common method to validate standard 2x2 Bayer pattern of 2 Green, 1 Blue, 1 Red pixels
+--- a/src/libcamera/software_isp/debayer.h
++++ b/src/libcamera/software_isp/debayer.h
+@@ -24,6 +24,7 @@
+ #include "libcamera/internal/dma_buf_allocator.h"
+ #include "libcamera/internal/software_isp/benchmark.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
++#include "libcamera/internal/a6l_native_raw_mmap.h"
+ 
+ namespace libcamera {
+ 
+@@ -88,6 +89,8 @@
+ protected:
+ 	void dmaSyncBegin(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input, FrameBuffer *output,
+ 			  uint32_t profileFrame = 0, bool profile = false);
++	bool dmaSyncNativeRawRead(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input,
++		FrameBuffer *output, const A6LNativeRawMmap::ReadLease &lease);
+ 	static bool isStandardBayerOrder(BayerFormat::Order order);
+ };
+ 
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -696,6 +696,8 @@
+ 	inputMappings_.clear();
+ 	outputMappings_.clear();
+ 
++	nativeVerifyInputSize_ = inputCfg.size;
++	nativeVerifyInputStride_ = inputCfg.stride;
+ 	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0)
+ 		return -EINVAL;
+ 
+@@ -1249,7 +1251,13 @@
+ 
+ 	std::vector<DmaSyncer> dmaSyncers;
+ 
+-	stage.measure(A6LStageProfile::DmaBegin, true, [&] { dmaSyncBegin(dmaSyncers, input, output, frame, stage.enabled()); });
++	const auto &native = input->_d()->a6lNativeRaw();
++	auto nativeLease = native ? native->read(*input) : A6LNativeRawMmap::ReadLease();
++	bool accessValid = !native || bool(nativeLease);
++	stage.measure(A6LStageProfile::DmaBegin, true, [&] {
++		if (native) accessValid = accessValid && dmaSyncNativeRawRead(dmaSyncers, input, output, nativeLease);
++		else dmaSyncBegin(dmaSyncers, input, output, frame, stage.enabled());
++	});
+ 
+ 	stage.measure(A6LStageProfile::Lut, true, [&] { updateLookupTables(params); });
+ 
+@@ -1263,15 +1271,17 @@
+ 	auto fail = [&]() {
+ 		metadata.status = FrameMetadata::FrameError;
+ 		dmaSyncers.clear();
++		nativeLease.reset();
+ 		outputBufferReady.emit(output);
+ 		inputBufferReady.emit(input);
+ 	};
+ 
++	if (!accessValid || (native && nativeVerifier_.failed())) { fail(); return; }
+ 	const uint64_t mapStart = stage.start();
+-	const auto inputMapping = inputMappings_.get(*input);
++	const auto inputMapping = native ? A6LFrameMappingCache::Lease() : inputMappings_.get(*input);
+ 	const auto outputMapping = outputMappings_.get(*output);
+ 	stage.add(A6LStageProfile::Map, mapStart);
+-	if (!inputMapping || !outputMapping) {
++	if ((!native && !inputMapping) || !outputMapping) {
+ 		LOG(Debayer, Error) << "mmap-ing buffer(s) failed";
+ 		fail();
+ 		return;
+@@ -1279,20 +1289,23 @@
+ 
+ 	/* Identity bypass must retain the scaler's actual mapped-plane bounds
+ 	 * check. This requirement is reset for every non-FOV configuration. */
+-	const MappedFrameBuffer &in = inputMapping->mapping();
++	const Span<const uint8_t> rawSpan = native ? nativeLease.bytes() : Span<const uint8_t>(
++		inputMapping->mapping().planes()[0].data(), inputMapping->mapping().planes()[0].size());
+ 	const MappedFrameBuffer &out = outputMapping->mapping();
+ 
+-	if (rawFovInputBytes_ && in.planes()[0].size() < rawFovInputBytes_) {
++	if (rawFovInputBytes_ && rawSpan.size() < rawFovInputBytes_) {
+ 		LOG(Debayer, Error) << "RAW10 FOV mapped input too small";
+ 		fail();
+ 		return;
+ 	}
+ 
+-	const uint8_t *rawInput = in.planes()[0].data();
++	const auto nativeSnapshot = native ? nativeVerifier_.begin(rawSpan)
++		: std::optional<A6LNativeRawVerifier::Snapshot>();
++	const uint8_t *rawInput = rawSpan.data();
+ 	if (rawFovActive_) {
+ 		const uint64_t rawStageStart = stage.start();
+ 		const uint64_t resampleStart = qualityStart ? a6lQualityMonotonicNs() : 0;
+-		if (!rawFov_.process(std::span<const uint8_t>(rawInput, in.planes()[0].size()), rawFovBuffer_)) {
++		if (!rawFov_.process(std::span<const uint8_t>(rawInput, rawSpan.size()), rawFovBuffer_)) {
+ 			LOG(Debayer, Error) << "RAW10 FOV source/destination bounds invalid";
+ 			fail();
+ 			return;
+@@ -1346,6 +1359,26 @@
+ 		metadata.planes()[i].bytesused = out.planes()[i].size();
+ 
+ 	stage.measure(A6LStageProfile::DmaEnd, true, [&] { dmaSyncers.clear(); });
++	if (nativeSnapshot) {
++		const auto verified = nativeVerifier_.verify(*input, *nativeSnapshot);
++		LOG(Debayer, Info) << "A6L_NATIVE_RAW_VERIFY frame=" << frame
++			<< " sensor_sequence=" << input->metadata().sequence
++			<< " sensor_timestamp_ns=" << input->metadata().timestamp
++			<< " raw=" << nativeVerifyInputSize_ << " stride=" << nativeVerifyInputStride_
++			<< " bytes=" << verified.length << " before_hash=" << verified.before
++			<< " after_hash=" << verified.after
++			<< " status=" << A6LNativeRawVerifier::statusName(verified.status)
++			<< " start_error=" << verified.startError << " end_error=" << verified.endError
++			<< " remaining=" << nativeVerifier_.remaining()
++			<< " session_failed=" << nativeVerifier_.failed()
++			<< " lease_baseline=e6ce74b918767b4910028f4fcaf9b66f88ce3c9f7df2aa7964cb0c51f92705cb";
++		/* READ END has happened. No RAW pixel access follows, even on
++		 * mismatch. Fail before stats publication, return both buffers. */
++		if (!verified.passed()) { fail(); return; }
++	}
++	/* No worker reads the native mapping after join; release BEFORE
++	 * any completion/metadata callback can requeue the RAW allocation. */
++	nativeLease.reset();
+ 	stage.add(A6LStageProfile::Total, stageStart);
+ 	if (stage.enabled())
+ 		LOG(Debayer, Info) << "A6L_STAGE_ISP frame=" << frame << " output=" << window_.size()
+@@ -1388,6 +1421,8 @@
+ 
+ int DebayerCpu::start()
+ {
++	const char *verify = utils::secure_getenv("LIBCAMERA_A6L_NATIVE_RAW_VERIFY");
++	nativeVerifier_.startSession(verify ? verify : "");
+ 	for (auto &thread : threads_)
+ 		thread->start();
+ 
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -23,6 +23,7 @@
+ 
+ #include "libcamera/internal/bayer_format.h"
+ #include "libcamera/internal/a6l_frame_mapping_cache.h"
++#include "libcamera/internal/a6l_native_raw_verify.h"
+ #include "libcamera/internal/raw10_fov.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
+ #include "libcamera/internal/software_isp/swstats_cpu.h"
+@@ -163,6 +164,9 @@
+ 	bool rawFovActive_ = false;
+ 	size_t rawFovInputBytes_ = 0;
+ 	std::unique_ptr<SwStatsCpu> stats_;
++	A6LNativeRawVerifier nativeVerifier_;
++	Size nativeVerifyInputSize_;
++	unsigned int nativeVerifyInputStride_ = 0;
+ 	A6LFrameMappingCache inputMappings_{ MappedFrameBuffer::MapFlag::Read };
+ 	A6LFrameMappingCache outputMappings_{ MappedFrameBuffer::MapFlag::Write };
+ 	unsigned int xShift_; /* Offset of 0/1 applied to window_.x */
+--- a/src/libcamera/v4l2_videodevice.cpp
++++ b/src/libcamera/v4l2_videodevice.cpp
+@@ -28,6 +28,8 @@
+ 
+ #include "libcamera/internal/formats.h"
+ #include "libcamera/internal/framebuffer.h"
++#include "libcamera/internal/a6l_native_raw_mmap.h"
++#include <string_view>
+ #include "libcamera/internal/media_device.h"
+ #include "libcamera/internal/media_object.h"
+ #include "libcamera/internal/v4l2_request.h"
+@@ -1369,6 +1371,20 @@
+ int V4L2VideoDevice::allocateBuffers(unsigned int count,
+ 				     std::vector<std::unique_ptr<FrameBuffer>> *buffers)
+ {
++	if (a6lNativeRawReadTrial_) {
++		if (cache_ || std::string_view(driverName()) != "qcom-camss" ||
++		    bufferType_ != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE ||
++		    format_.planesCount != 1 ||
++		    (format_.fourcc.fourcc() != V4L2_PIX_FMT_SBGGR10P &&
++		     format_.fourcc.fourcc() != V4L2_PIX_FMT_SGBRG10P &&
++		     format_.fourcc.fourcc() != V4L2_PIX_FMT_SGRBG10P &&
++		     format_.fourcc.fourcc() != V4L2_PIX_FMT_SRGGB10P))
++			return -EINVAL;
++		++a6lNativeRawGeneration_;
++		if (!a6lNativeRawGeneration_) ++a6lNativeRawGeneration_;
++	}
++	a6lNativeRawBuilding_ = a6lNativeRawReadTrial_;
++	auto nativeBuildGuard = utils::scope_exit{ [&] { a6lNativeRawBuilding_ = false; } };
+ 	int ret = createBuffers(count, buffers);
+ 	if (ret < 0)
+ 		return ret;
+@@ -1444,6 +1460,7 @@
+ 		if (!buffer) {
+ 			LOG(V4L2, Error) << "Unable to create buffer";
+ 
++			retireA6lNativeRawPool();
+ 			requestBuffers(0, V4L2_MEMORY_MMAP);
+ 			buffers->clear();
+ 
+@@ -1541,7 +1558,15 @@
+ 		}
+ 	}
+ 
+-	return std::make_unique<FrameBuffer>(planes);
++	auto buffer = std::make_unique<FrameBuffer>(planes);
++	if (a6lNativeRawBuilding_) {
++		auto native = A6LNativeRawMmap::create(fd(), a6lNativeRawGeneration_, index,
++			buf.m.planes[0].m.mem_offset, buf.m.planes[0].length, *buffer);
++		if (!native) return {};
++		buffer->_d()->setA6lNativeRaw(native);
++		a6lNativeRawPool_.push_back(std::move(native));
++	}
++	return buffer;
+ }
+ 
+ UniqueFD V4L2VideoDevice::exportDmabufFd(unsigned int index,
+@@ -1613,8 +1638,20 @@
+  * memory allocated by allocateBuffers() is freed. Buffer exported by
+  * exportBuffers(), if any, are not affected.
+  */
++int V4L2VideoDevice::retireA6lNativeRawPool()
++{
++	bool idle = true;
++	for (const auto &entry : a6lNativeRawPool_)
++		idle = entry->retire() && idle;
++	if (!idle) return -EBUSY;
++	a6lNativeRawPool_.clear();
++	return 0;
++}
++
+ int V4L2VideoDevice::releaseBuffers()
+ {
++	int nativeRet = retireA6lNativeRawPool();
++	if (nativeRet) return nativeRet;
+ 	if (!cache_)
+ 		return 0;
+ 
+@@ -1782,6 +1819,13 @@
+ 
+ 	LOG(V4L2, Debug) << "Queueing buffer " << buf.index;
+ 
++	const auto &native = buffer->_d()->a6lNativeRaw();
++	if (native && (!a6lNativeRawReadTrial_ || memoryType_ != V4L2_MEMORY_MMAP ||
++		buf.index >= a6lNativeRawPool_.size() || a6lNativeRawPool_[buf.index] != native))
++		return -EINVAL;
++	auto nativeTicket = native ? native->beginQueue(*buffer, a6lNativeRawGeneration_, buf.index)
++		: std::unique_ptr<A6LNativeRawMmap::QueueTicket>();
++	if (native && !nativeTicket) return -EBUSY;
+ 	ret = ioctl(VIDIOC_QBUF, &buf);
+ 	if (ret < 0) {
+ 		LOG(V4L2, Error)
+@@ -1796,6 +1840,8 @@
+ 			watchdog_.start(std::chrono::duration_cast<std::chrono::milliseconds>(watchdogDuration_));
+ 	}
+ 
++	if (nativeTicket) nativeTicket->commit();
++	nativeTicket.reset();
+ 	queuedBuffers_[buf.index] = buffer;
+ 
+ 	guard.release();
+@@ -1892,6 +1938,12 @@
+ 
+ 	FrameMetadata &metadata = buffer->_d()->metadata();
+ 
++	const auto &native = buffer->_d()->a6lNativeRaw();
++	if (native && !native->dequeued(*buffer, a6lNativeRawGeneration_, buf.index,
++					!(buf.flags & V4L2_BUF_FLAG_ERROR))) {
++		native->retire();
++		buf.flags |= V4L2_BUF_FLAG_ERROR;
++	}
+ 	metadata.status = buf.flags & V4L2_BUF_FLAG_ERROR
+ 			? FrameMetadata::FrameError
+ 			: FrameMetadata::FrameSuccess;
+@@ -2038,6 +2090,9 @@
+ 	}
+ 
+ 	state_ = State::Stopping;
++	/* Retire grants before cancellation callbacks. Existing reads may
++	 * finish, but REQBUFS must wait for them via releaseBuffers. */
++	for (const auto &entry : a6lNativeRawPool_) entry->retire();
+ 
+ 	/* Send back all queued buffers. */
+ 	for (const auto &[id, buffer] : queuedBuffers_) {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<resources>
+    <!-- Hi-846 is exposed as standalone back camera 2, alongside main camera 0. -->
+    <bool name="config_enableAuxCameras">true</bool>
+</resources>

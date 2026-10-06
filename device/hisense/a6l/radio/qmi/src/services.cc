@@ -3,7 +3,10 @@
 #include <a6lqmi/log.h>
 #include <a6lqmi/services.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <thread>
 
 namespace a6l::qmi {
 
@@ -356,21 +359,29 @@ std::string decodeImsi(const std::vector<uint8_t>& ef) {
     return s;
 }
 
-Result readIccid(Client& c, std::string* out) {
+Result readIccid(Client& c, std::string* out) { return readIccid(c, out, kSessionCardSlot1, true); }
+
+Result readIccid(Client& c, std::string* out, uint8_t cardSession, bool dmsFallback) {
     IoResult io;
-    Session s{kSessionCardSlot1, {}};
+    Session s{cardSession, {}};
     auto r = readTransparent(c, s, FilePath{0x2FE2, {0x3F00}}, 0, 0, &io);
     if (r.ok() && !io.data.empty()) {
         *out = decodeIccid(io.data);
         return r;
     }
+    if (!dmsFallback) return r;
     ALOGW_Q("UIM EF_ICCID read failed (%s), trying DMS", r.describe().c_str());
     return dms::uimGetIccid(c, out);
 }
 
 Result readImsi(Client& c, const std::vector<uint8_t>& aid, std::string* out) {
+    return readImsi(c, kSessionPrimaryGw, aid, out, true);
+}
+
+Result readImsi(Client& c, uint8_t provSession, const std::vector<uint8_t>& aid, std::string* out,
+                bool dmsFallback) {
     IoResult io;
-    Session s{kSessionPrimaryGw, aid};
+    Session s{provSession, aid};
     // EF_IMSI lives under ADF.USIM (7FFF) on a USIM and under DF.GSM (7F20) on a 2G SIM.
     auto r = readTransparent(c, s, FilePath{0x6F07, {0x3F00, 0x7FFF}}, 0, 0, &io);
     if (!(r.ok() && io.data.size() >= 2)) {
@@ -380,6 +391,7 @@ Result readImsi(Client& c, const std::vector<uint8_t>& aid, std::string* out) {
         *out = decodeImsi(io.data);
         return r;
     }
+    if (!dmsFallback) return r;
     ALOGW_Q("UIM EF_IMSI read failed (%s), trying DMS", r.describe().c_str());
     return dms::uimGetImsi(c, out);
 }
@@ -391,6 +403,25 @@ static std::string digits(uint16_t v, bool three) {
     char b[8];
     snprintf(b, sizeof b, three ? "%03u" : "%02u", v);
     return b;
+}
+const char* radioIfName(int8_t r) {
+    switch (r) {
+        case kRifNone: return "none";
+        case kRifCdma1x: return "1x";
+        case kRifEvdo: return "evdo";
+        case kRifGsm: return "gsm";
+        case kRifUmts: return "umts";
+        case kRifLte: return "lte";
+        case kRifTdscdma: return "tdscdma";
+        case kRif5gnr: return "nr";
+        default: return "other";
+    }
+}
+std::string radioIfList(const ServingSystem& s) {
+    if (s.radioIfs.empty()) return "none";
+    std::string o;
+    for (auto r : s.radioIfs) o += std::string(o.empty() ? "" : "+") + radioIfName(r);
+    return o;
 }
 std::string ServingSystem::mccStr() const { return digits(mcc, true); }
 std::string ServingSystem::mncStr() const { return digits(mnc, mnc3Digits || mnc > 99); }
@@ -617,7 +648,7 @@ Result getModePreference(Client& c, uint16_t* modeMask) {
     return r;
 }
 
-Result setNetworkSelection(Client& c, bool manual, uint16_t mcc, uint16_t mnc, int8_t rat) {
+Result setNetworkSelection(Client& c, bool manual, uint16_t mcc, uint16_t mnc, int8_t rat, bool mncThreeDigits) {
     Message m = req(kInitiateNetworkRegister);
     m.u8(0x01, manual ? 2 : 1);
     if (manual) {
@@ -625,6 +656,7 @@ Result setNetworkSelection(Client& c, bool manual, uint16_t mcc, uint16_t mnc, i
                      static_cast<uint8_t>(mnc & 0xff), static_cast<uint8_t>(mnc >> 8),
                      static_cast<uint8_t>(rat)});
         m.u8(0x11, 1);  // permanent
+        m.u8(0x12, mncThreeDigits ? 1 : 0);  // r5 round5 F46: MNC PCS digit include status
     }
     return c.request(kSvcNas, m, 30000);
 }
@@ -669,6 +701,70 @@ Result networkScan(Client& c, std::vector<ScanEntry>* out, int timeoutMs) {
     }
     return r;
 }
+
+// volte3: subscription info / VSIDs (see services.h)
+SubscriptionInfo parseSubscriptionInfo(const Message& m) {
+    SubscriptionInfo s;
+    auto u8o = [&](uint8_t t, std::optional<uint8_t>* o) {
+        if (auto* v = m.get(t); v && !v->empty()) *o = (*v)[0];
+    };
+    auto u32o = [&](uint8_t t, std::optional<uint32_t>* o) {
+        if (auto* v = m.get(t); v && v->size() >= 4) {
+            Reader r(*v);
+            *o = r.u32();
+        }
+    };
+    u8o(0x10, &s.priority);
+    u8o(0x11, &s.active);
+    u8o(0x12, &s.defaultData);
+    u32o(0x13, &s.voiceVsid);
+    u32o(0x14, &s.lteVoiceVsid);
+    u32o(0x15, &s.wlanVoiceVsid);
+    return s;
+}
+std::string SubscriptionInfo::summary() const {
+    char b[256];
+    auto vs = [](const std::optional<uint32_t>& v, char* o, size_t n) {
+        if (v) snprintf(o, n, "0x%08X(%s)", *v, vsidName(*v));
+        else snprintf(o, n, "absent");
+    };
+    char a[48], l[48], w[48];
+    vs(voiceVsid, a, sizeof a);
+    vs(lteVoiceVsid, l, sizeof l);
+    vs(wlanVoiceVsid, w, sizeof w);
+    snprintf(b, sizeof b, "cs_vsid=%s lte_vsid=%s wlan_vsid=%s active=%d priority=%d dds=%d", a, l, w,
+             active ? *active : -1, priority ? *priority : -1, defaultData ? *defaultData : -1);
+    return b;
+}
+Result getSubscriptionInfo(Client& c, SubscriptionInfo* out) {
+    auto r = c.request(kSvcNas, req(kGetSubscriptionInfo));
+    if (r.ok()) *out = parseSubscriptionInfo(r.msg);
+    return r;
+}
+const char* vsidName(uint32_t v) {
+    switch (v) {
+        case 0x10C01000: return "CS-Voice";
+        case 0x10C02000: return "VoLTE";
+        case 0x10DC1000: return "Voice2";
+        case 0x10803000: return "QCHAT";
+        case 0x10002000: return "VoWLAN";
+        case 0x10004000: return "VoIP";
+        case 0x11C05000: return "VoiceMMode1";
+        case 0x11DC5000: return "VoiceMMode2";
+        case 0: return "none";
+        default: return "unknown";
+    }
+}
+Result getImsVoiceSupport(Client& c, ImsVoiceSupport* out) {
+    auto r = c.request(kSvcNas, req(kGetSystemInfo));
+    if (!r.ok()) return r;
+    if (auto* v = r.msg.get(0x29); v && !v->empty()) out->lteImsVoice = (*v)[0];
+    if (auto* v = r.msg.get(0x2A); v && v->size() >= 4) {
+        Reader rd(*v);
+        out->lteVoiceDomain = rd.u32();
+    }
+    return r;
+}
 }  // namespace nas
 
 // =============================================================== WMS
@@ -694,6 +790,17 @@ Result setEventReport(Client& c, bool enable) {
     return c.request(kSvcWms, req(kSetEventReport).u8(0x10, enable ? 1 : 0));
 }
 
+Result setRoutesAction(Client& c, uint8_t storage, uint8_t action) {
+    std::vector<uint8_t> v{5, 0};
+    for (uint8_t cls : {0, 1, 2, 3, 4}) {
+        v.push_back(0);  // point to point
+        v.push_back(cls);
+        v.push_back(storage);
+        v.push_back(action);
+    }
+    return c.request(kSvcWms, req(kSetRoutes).raw(0x01, v).u8(0x10, 1));
+}
+
 Result setRoutes(Client& c, bool store) {
     std::vector<uint8_t> v{5, 0};
     for (uint8_t cls : {0, 1, 2, 3, 4}) {
@@ -705,13 +812,36 @@ Result setRoutes(Client& c, bool store) {
     return c.request(kSvcWms, req(kSetRoutes).raw(0x01, v).u8(0x10, 1));
 }
 
-Result sendAck(Client& c, uint32_t txn, bool success, uint8_t rpCause, uint8_t tpCause) {
+Result sendAck(Client& c, uint32_t txn, bool success, uint8_t rpCause, uint8_t tpCause,
+               const AckOptions& o, int* failureCause) {
     Message m = req(kSendAck);
     m.raw(0x01, {static_cast<uint8_t>(txn), static_cast<uint8_t>(txn >> 8),
                  static_cast<uint8_t>(txn >> 16), static_cast<uint8_t>(txn >> 24),
-                 1 /*WCDMA/GW*/, static_cast<uint8_t>(success ? 1 : 0)});
+                 o.protocol, static_cast<uint8_t>(success ? 1 : 0)});
     if (!success) m.raw(0x11, {rpCause, tpCause});
-    return c.request(kSvcWms, m);
+    if (o.smsOnIms) m.u8(0x12, *o.smsOnIms ? 1 : 0);
+    auto r = c.request(kSvcWms, m);
+    if (failureCause) {
+        *failureCause = -1;
+        if (auto* t = r.msg.get(0x10); t && !t->empty() && !r.ok()) *failureCause = (*t)[0];
+    }
+    return r;
+}
+
+uint8_t messageProtocolFor(uint8_t format) { return format == kFormatCdma ? 0 : 1; }
+
+const char* ackFailureCauseName(int cause) {
+    switch (cause) {
+        case 0: return "no-network-response";
+        case 1: return "network-released-link";
+        case 2: return "not-sent";
+        case -1: return "none";
+        default: return "unknown";
+    }
+}
+
+Result bindSubscription(Client& c, uint8_t sub) {
+    return c.request(kSvcWms, req(kBindSubscription).u8(0x01, sub));
 }
 
 Result rawRead(Client& c, uint8_t storage, uint32_t index, uint8_t* format,
@@ -740,6 +870,45 @@ Result deleteMessage(Client& c, uint8_t storage, uint32_t index) {
 
 Result setBroadcastActivation(Client& c, bool activate) {
     return c.request(kSvcWms, req(kSetBroadcastActivation).raw(0x01, {1, static_cast<uint8_t>(activate)}));
+}
+
+bool normalizeBroadcastRanges(std::vector<BroadcastRange> in, std::vector<BroadcastRange>* out) {
+    std::sort(in.begin(), in.end(), [](const BroadcastRange& a, const BroadcastRange& b) {
+        if (a.selected != b.selected) return a.selected > b.selected;
+        return a.from != b.from ? a.from < b.from : a.to < b.to;
+    });
+    out->clear();
+    for (auto& r : in) {
+        if (!out->empty() && out->back().selected == r.selected &&
+            static_cast<uint32_t>(r.from) <= static_cast<uint32_t>(out->back().to) + 1) {
+            out->back().to = std::max(out->back().to, r.to);
+            continue;
+        }
+        out->push_back(r);
+    }
+    return out->size() <= kMaxBroadcastRanges;
+}
+
+Message buildSetBroadcastConfig(const std::vector<BroadcastRange>& ranges) {
+    std::vector<uint8_t> v{static_cast<uint8_t>(ranges.size())};
+    for (auto& r : ranges) {
+        v.push_back(static_cast<uint8_t>(r.from & 0xff));
+        v.push_back(static_cast<uint8_t>(r.from >> 8));
+        v.push_back(static_cast<uint8_t>(r.to & 0xff));
+        v.push_back(static_cast<uint8_t>(r.to >> 8));
+        v.push_back(r.selected ? 1 : 0);
+    }
+    return req(kSetBroadcastConfig).u8(0x01, 1).raw(0x10, std::move(v));
+}
+
+Result setBroadcastConfig(Client& c, const std::vector<BroadcastRange>& ranges) {
+    if (ranges.size() > kMaxBroadcastRanges) {
+        Result r;
+        r.status = Result::QmiFailure;
+        r.qmiError = kErrInvalidArgument;
+        return r;
+    }
+    return c.request(kSvcWms, buildSetBroadcastConfig(ranges));
 }
 
 Result getSmscAddress(Client& c, std::string* number, std::string* type) {
@@ -774,6 +943,16 @@ EventReport parseEventReport(const Message& m) {
     }
     if (auto* v = m.get(0x12); v && !v->empty()) e.messageMode = (*v)[0];
     if (auto* v = m.get(0x15)) e.smsc = std::string(v->begin(), v->end());
+    if (auto* v = m.get(0x16); v && !v->empty()) e.smsOnIms = (*v)[0] != 0;
+    if (auto* v = m.get(0x13)) {
+        Reader r(*v);
+        uint8_t type = r.u8();
+        auto data = r.bytes16();
+        if (r.good() && !data.empty()) {
+            e.etwsType = type;
+            e.etws = std::move(data);
+        }
+    }
     return e;
 }
 }  // namespace wms
@@ -821,6 +1000,7 @@ Result indicationRegister(Client& c) {
     Message m = req(kIndicationRegister);
     m.u8(0x13, 1);  // call notification events
     m.u8(0x12, 1);  // supplementary service notifications
+    m.u8(0x16, 1);  // telephony-flows (29 Sep 2026): USSD notification events (USSD / release indications)
     return c.request(kSvcVoice, m);
 }
 
@@ -857,6 +1037,288 @@ Result burstDtmf(Client& c, uint8_t callId, const std::string& digits) {
     std::vector<uint8_t> v{callId, static_cast<uint8_t>(digits.size())};
     v.insert(v.end(), digits.begin(), digits.end());
     return c.request(kSvcVoice, req(kBurstDtmf).raw(0x01, v), 20000);
+}
+
+// volte3: call domain / VoLTE helpers (see services.h)
+const char* callTypeName(uint8_t t) {
+    switch (t) {
+        case 0x00: return "voice";
+        case 0x01: return "voice-forced";
+        case 0x02: return "voice-ip";
+        case 0x03: return "vt";
+        case 0x04: return "videoshare";
+        case 0x05: return "test";
+        case 0x06: return "otapa";
+        case 0x07: return "std-otasp";
+        case 0x08: return "non-std-otasp";
+        case 0x09: return "emergency";
+        case 0x0A: return "sups";
+        case 0x0B: return "emergency-ip";
+        case 0x0C: return "ecall";
+        case 0x0D: return "emergency-vt";
+        default: return "?";
+    }
+}
+const char* callModeName(uint8_t m) {
+    switch (m) {
+        case kModeNoSrv: return "no-srv";
+        case kModeCdma: return "cdma";
+        case kModeGsm: return "gsm";
+        case kModeUmts: return "umts";
+        case kModeLte: return "lte";
+        case kModeTdscdma: return "tdscdma";
+        case kModeUnknown: return "unknown";
+        case kModeWlan: return "wlan";
+        case kModeNr5g: return "nr5g";
+        default: return "?";
+    }
+}
+bool isImsCall(const CallInfo& c) {
+    if (c.type == 0x02 || c.type == 0x03 || c.type == 0x04 || c.type == 0x0B || c.type == 0x0D) return true;
+    return c.mode == kModeLte || c.mode == kModeWlan || c.mode == kModeNr5g;
+}
+const char* callDomain(const CallInfo& c) {
+    if (isImsCall(c)) return c.mode == kModeWlan ? "ims-wlan" : "ims";
+    if (c.mode == kModeCdma || c.mode == kModeGsm || c.mode == kModeUmts || c.mode == kModeTdscdma) return "cs";
+    return "unknown";
+}
+Result dialTyped(Client& c, const std::string& number, uint8_t callType, uint8_t* callId) {
+    Message m = req(kDialCall).strNoLen(0x01, number);
+    m.u8(0x10, callType);
+    auto r = c.request(kSvcVoice, m, 30000);
+    if (auto* v = r.msg.get(0x10); v && !v->empty()) *callId = (*v)[0];
+    return r;
+}
+// r5 deep review F23/F24 (28 Sep 2026)
+Message buildDial(const DialRequest& d) {
+    Message m = req(kDialCall).strNoLen(0x01, d.number);
+    if (d.emergency) m.u8(0x10, kTypeEmergency);
+    if (d.clir) m.u8(0x11, *d.clir);
+    if (d.emergency && d.emergencyCategory) m.u8(0x14, *d.emergencyCategory);
+    return m;
+}
+Result dial(Client& c, const DialRequest& d, uint8_t* callId) {
+    auto r = c.request(kSvcVoice, buildDial(d), 30000);
+    if (auto* v = r.msg.get(0x10); v && !v->empty()) *callId = (*v)[0];
+    return r;
+}
+bool clirFromAndroid(int32_t androidClir, std::optional<uint8_t>* out) {
+    switch (androidClir) {
+        case 0: *out = std::nullopt; return true;       // CLIR_DEFAULT: subscription default
+        case 1: *out = kClirInvocation; return true;    // CLIR_INVOCATION: restrict presentation
+        case 2: *out = kClirSuppression; return true;   // CLIR_SUPPRESSION: allow presentation
+        default: return false;
+    }
+}
+bool isWellKnownEmergencyNumber(const std::string& number) {
+    std::string d;
+    for (char ch : number)
+        if (ch >= '0' && ch <= '9') d += ch;
+        else if (ch != '+' && ch != '-' && ch != ' ' && ch != '(' && ch != ')') return false;  // *#, pause: not a plain number
+    static const char* const kList[] = {"112", "911", "999", "000", "08",  "110", "118", "119", "100", "101",
+                                        "102", "103", "104", "108", "113", "115", "120", "122", "15",  "17",
+                                        "18",  "190", "192", "193", "197", "995", "997", "998", "061", "062",
+                                        "114", "191", "196"};  // telephony-flows: FR 114 (deaf), 191 air, 196 sea
+    for (auto* e : kList)
+        if (d == e) return true;
+    return false;
+}
+bool isEncodingRejection(const Result& r) {
+    return r.status == Result::QmiFailure &&
+           (r.qmiError == kErrMalformedMessage || r.qmiError == kErrInvalidArgument ||
+            r.qmiError == kErrMissingArgument || r.qmiError == kErrNotSupported);
+}
+EmergencyDialOutcome emergencyDial(Client& c, const EmergencyDialRequest& q, uint8_t* callId) {
+    EmergencyDialOutcome o;
+    std::optional<uint8_t> clir;
+    if (!clirFromAndroid(q.androidClir, &clir)) clir.reset();  // never block an emergency call on a bad CLIR value
+    auto attempt = [&](DialRequest d) {
+        o.attempts.push_back(d);
+        o.result = dial(c, d, callId);
+        ALOGI_Q("emergency dial attempt %zu (emergency=%d clir=%d cat=%d): %s", o.attempts.size(), d.emergency,
+                d.clir ? *d.clir : -1, d.emergencyCategory ? *d.emergencyCategory : -1, o.result.describe().c_str());
+        return o.result;
+    };
+    if (q.isTesting) {
+        // "must not be sent to a real emergency service": no emergency call type, no emergency fallback, and no
+        // request at all for a number the modem/network would route to an emergency centre anyway.
+        if (isWellKnownEmergencyNumber(q.number)) {
+            o.refusedTestToEmergencyNumber = true;
+            o.result.status = Result::QmiFailure;
+            o.result.qmiError = kErrInvalidArgument;
+            ALOGW_Q("test emergency dial to a real emergency number refused (nothing sent)");
+            return o;
+        }
+        attempt({q.number, false, clir, std::nullopt});
+        return o;
+    }
+    bool normalAttempted = false;
+    if (q.routing == EmergencyRouting::Normal && !q.hasKnownUserIntentEmergency) {
+        normalAttempted = true;
+        auto r = attempt({q.number, false, clir, std::nullopt});
+        // success, or an ambiguous outcome (timeout / transport: a call may have been created) -> no second dial
+        if (r.ok() || r.status != Result::QmiFailure) return o;
+        ALOGW_Q("normal routing refused (0x%x): using emergency routing", r.qmiError);
+    }
+    std::optional<uint8_t> cat;
+    if (q.categories & 0x1F) cat = static_cast<uint8_t>(q.categories & 0x1F);
+    auto r = attempt({q.number, true, std::nullopt, cat});
+    if (r.ok() || !isEncodingRejection(r)) return o;
+    if (cat) {
+        r = attempt({q.number, true, std::nullopt, std::nullopt});
+        if (r.ok() || !isEncodingRejection(r)) return o;
+    }
+    if (!normalAttempted) attempt({q.number, false, std::nullopt, std::nullopt});  // legacy VOICE: no call type TLV
+    return o;
+}
+Result indicationRegisterVolte(Client& c) {
+    Message m = req(kIndicationRegister);
+    m.u8(0x12, 1);  // supplementary service notifications
+    m.u8(0x13, 1);  // call notification events
+    m.u8(0x14, 1);  // handover events (SRVCC)
+    m.u8(0x15, 1);  // speech codec events (AMR / AMR-WB = HD)
+    m.u8(0x23, 1);  // audio RAT change events (stock qcrild: byte 38 of the request struct = TLV 0x23)
+    return c.request(kSvcVoice, m);
+}
+AudioRatInfo parseAudioRatChange(const Message& m) {
+    AudioRatInfo a;
+    if (auto* v = m.get(0x10); v && v->size() >= 4) {
+        Reader r(*v);
+        a.sessionInfo = r.u32();
+    }
+    if (auto* v = m.get(0x11); v && !v->empty()) a.rat = (*v)[0];
+    return a;
+}
+
+// ---- r5 review round7 (28 Sep 2026): F56 finite DTMF, F57 targeted reject, F58 call end reasons
+std::vector<std::pair<uint8_t, uint16_t>> parseCallEndReasons(const Message& m) {
+    std::vector<std::pair<uint8_t, uint16_t>> out;
+    auto* v = m.get(0x14);
+    if (!v || v->empty()) return out;
+    Reader r(*v);
+    uint8_t n = r.u8();
+    if (v->size() != 1u + 3u * n) return out;  // layout mismatch: unknown, never misread
+    for (unsigned i = 0; i < n; i++) {
+        uint8_t id = r.u8();
+        uint16_t reason = r.u16();
+        out.push_back({id, reason});
+    }
+    return out;
+}
+
+int32_t lastCallFailCauseFromQmi(uint16_t q) {
+    // 3GPP TS 24.008 CC causes (QMI 141..188) -> the same Android value
+    static const std::pair<uint16_t, int32_t> kCc[] = {
+            {141, 1},   {142, 3},   {143, 6},   {144, 8},   {145, 16},  {146, 17},  {147, 18},  {148, 19},
+            {149, 21},  {150, 22},  {151, 25},  {152, 27},  {153, 28},  {154, 29},  {155, 30},  {156, 31},
+            {157, 34},  {158, 38},  {159, 41},  {160, 42},  {161, 43},  {162, 44},  {163, 47},  {164, 49},
+            {165, 50},  {166, 55},  {167, 57},  {168, 58},  {169, 63},  {170, 68},  {171, 65},  {172, 69},
+            {173, 70},  {174, 79},  {175, 81},  {176, 87},  {177, 88},  {178, 91},  {179, 95},  {180, 96},
+            {181, 97},  {182, 98},  {183, 99},  {184, 100}, {185, 101}, {186, 102}, {187, 111}, {188, 127},
+    };
+    for (auto& [k, v] : kCc)
+        if (k == q) return v;
+    switch (q) {
+        case 29:   // CLIENT_END: this phone's user ended the call
+        case 25:   // RELEASE_NORMAL: normal release from the network
+            return kLcfNormal;
+        case 104:  // NETWORK_END: network ended the call, no further cause
+            return kLcfNormalUnspecified;
+        case 102:  // INCOMING_REJECTED (client rejected the incoming call)
+        case 103:  // SETUP_REJECTED
+        case 134:  // REJECTED_BY_USER
+            return kLcfCallRejected;
+        case 105: return 68;   // NO_FUNDS -> ACM_LIMIT_EXCEEDED
+        case 115:              // CALL_BARRED
+        case 189:              // OUTGOING_CALLS_BARRED_WITHIN_CUG
+            return 240;        // CALL_BARRED
+        case 199: return 242;  // IMSI_UNKNOWN_IN_VLR
+        case 200: return 243;  // IMEI_NOT_ACCEPTED
+        case 0: return kLcfRadioOff;  // OFFLINE
+        case 21: case 106: case 107: case 108: case 223:  // NO_SERVICE / NO_GW / NO_CDMA / NO_FULL / NO_CELL
+            return kLcfOutOfService;
+        case 34: case 217: return kLcfNoValidSim;  // UIM_NOT_PRESENT / INVALID_SIM
+        case 22: case 225: case 307: return kLcfRadioLinkLost;  // FADE / RADIO_LINK_LOST / DATA_CONNECTION_LOST
+        case 216: case 228: case 229: case 230: case 231: case 232: case 233: case 234: case 235: case 236:
+            return kLcfRadioAccessFailure;  // ACCESS_STRATUM_FAILURE / ACCESS_STRATUM_REJECT_*
+        case 219: case 313: return kLcfAccessClassBlocked;  // ACCESS_CLASS_BLOCKED / SSAC_REJECT
+        case 222: case 226: case 305: case 310: return kLcfNetworkRespTimeout;  // T3230 / T303 / no response
+        case 135: case 198: case 201: case 202: case 203: case 204: case 205: case 206: case 210: case 211:
+        case 212: case 224: case 309:
+            return kLcfNetworkReject;  // REJECTED_BY_NETWORK / MM rejects / ABORT / SIP 403
+        case 209: return 34;   // NETWORK_CONGESTION -> CONGESTION
+        case 220: return 47;   // NO_RESOURCES -> RESOURCES_UNAVAILABLE_OR_UNSPECIFIED
+        default: return kLcfErrorUnspecified;
+    }
+}
+
+RejectOutcome rejectRingingOrWaiting(Client& c) {
+    RejectOutcome o;
+    std::vector<CallInfo> calls;
+    o.result = getAllCalls(c, &calls);
+    if (!o.result.ok()) {
+        o.kind = RejectOutcome::QueryFailed;  // no untargeted fallback on a failed query
+        return o;
+    }
+    auto find = [](const std::vector<CallInfo>& v, uint8_t state) -> std::optional<uint8_t> {
+        for (auto& ci : v)
+            if (ci.state == state) return ci.id;
+        return std::nullopt;
+    };
+    if (auto id = find(calls, kStateIncoming)) {
+        o.kind = RejectOutcome::EndedIncoming;
+        o.callId = *id;
+        o.result = endCall(c, *id);
+        return o;
+    }
+    auto w = find(calls, kStateWaiting);
+    if (!w) {
+        o.kind = RejectOutcome::NoTarget;  // only held/active/nothing: never release an unrelated call
+        o.result = Result{};
+        return o;
+    }
+    o.kind = RejectOutcome::ReleasedWaiting;
+    o.callId = *w;
+    o.result = manageCalls(c, kSupsReleaseHeldOrWaiting, *w);
+    if (o.result.ok() || !isEncodingRejection(o.result)) return o;
+    // the call-id TLV itself was refused: plain CHLD=0 only while that same call is still the waiting one
+    std::vector<CallInfo> again;
+    if (!getAllCalls(c, &again).ok()) return o;
+    bool stillWaiting = false;
+    for (auto& ci : again)
+        if (ci.id == *w && ci.state == kStateWaiting) stillWaiting = true;
+    if (stillWaiting) o.result = manageCalls(c, kSupsReleaseHeldOrWaiting);
+    return o;
+}
+
+bool isDtmfDigit(char ch) { return (ch >= '0' && ch <= '9') || ch == '*' || ch == '#'; }
+
+FiniteDtmfOutcome finiteDtmf(Client& c, uint8_t callId, char digit, int toneMs, int stopTries, int retryMs) {
+    FiniteDtmfOutcome o;
+    o.start = startDtmf(c, callId, digit);
+    // a refused START started nothing; a timed-out START may have been applied: it is stopped too (still a failure)
+    if (!o.start.ok() && o.start.status != Result::Timeout) return o;
+    std::this_thread::sleep_for(std::chrono::milliseconds(toneMs));
+    for (int i = 0; i < std::max(1, stopTries); i++) {
+        if (i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(retryMs));
+            // retry only for the same live call: a vanished id means the tone ended with the call
+            std::vector<CallInfo> calls;
+            if (getAllCalls(c, &calls).ok()) {
+                bool live = false;
+                for (auto& ci : calls)
+                    if (ci.id == callId && ci.state != kStateEnd && ci.state != kStateDisconnecting) live = true;
+                if (!live) {
+                    o.callGone = true;
+                    return o;
+                }
+            }
+        }
+        o.stopAttempts++;
+        o.stop = stopDtmf(c, callId);
+        if (o.stop.ok()) return o;
+    }
+    return o;
 }
 }  // namespace voice
 
@@ -975,7 +1437,21 @@ PacketStatus parsePacketStatus(const Message& m) {
 }  // namespace wds
 
 namespace wda {
-Result setDataFormat(Client& c, const DataFormat& f, DataFormat* granted) {
+static void putEp(std::vector<uint8_t>* v, uint32_t epType, uint32_t iface) {
+    for (uint32_t x : {epType, iface})
+        for (int i = 0; i < 4; i++) v->push_back((x >> (8 * i)) & 0xff);
+}
+static void readFormat(const Message& m, DataFormat* d) {
+    auto u32 = [&](uint8_t t, uint32_t* dst) {
+        if (auto* v = m.get(t); v && v->size() >= 4) *dst = Reader(*v).u32();
+    };
+    u32(0x11, &d->llp);
+    u32(0x12, &d->ulAgg);
+    u32(0x13, &d->dlAgg);
+    u32(0x15, &d->dlMaxDatagrams);
+    u32(0x16, &d->dlMaxSize);
+}
+Message buildSetDataFormat(const DataFormat& f) {
     Message m = req(kSetDataFormat);
     m.u32(0x11, f.llp);
     m.u32(0x12, f.ulAgg);
@@ -985,23 +1461,65 @@ Result setDataFormat(Client& c, const DataFormat& f, DataFormat* granted) {
         m.u32(0x16, f.dlMaxSize);
     }
     std::vector<uint8_t> ep;
-    for (uint32_t x : {f.epType, f.iface})
-        for (int i = 0; i < 4; i++) ep.push_back((x >> (8 * i)) & 0xff);
+    putEp(&ep, f.epType, f.iface);
     m.raw(0x17, ep);
-    auto r = c.request(kSvcWda, m);
+    return m;
+}
+Result setDataFormat(Client& c, const DataFormat& f, DataFormat* granted) {
+    auto r = c.request(kSvcWda, buildSetDataFormat(f));
     if (r.ok() && granted) {
         *granted = f;
-        auto u32 = [&](uint8_t t, uint32_t* dst) {
-            if (auto* v = r.msg.get(t); v && v->size() >= 4) *dst = Reader(*v).u32();
-        };
-        u32(0x11, &granted->llp);
-        u32(0x12, &granted->ulAgg);
-        u32(0x13, &granted->dlAgg);
-        u32(0x15, &granted->dlMaxDatagrams);
-        u32(0x16, &granted->dlMaxSize);
+        readFormat(r.msg, granted);
+    }
+    return r;
+}
+Result getDataFormat(Client& c, uint32_t epType, uint32_t iface, DataFormat* out) {
+    Message m = req(kGetDataFormat);
+    std::vector<uint8_t> ep;
+    putEp(&ep, epType, iface);
+    m.raw(0x10, ep);
+    auto r = c.request(kSvcWda, m);
+    if (r.ok() && out) {
+        out->epType = epType;
+        out->iface = iface;
+        readFormat(r.msg, out);
     }
     return r;
 }
 }  // namespace wda
+
+namespace dpm {
+Message buildOpenPort(const std::vector<HwDataPort>& hw, const std::vector<CtlPort>& ctl) {
+    Message m = req(kOpenPort);
+    auto le32 = [](std::vector<uint8_t>* v, uint32_t x) {
+        for (int i = 0; i < 4; i++) v->push_back((x >> (8 * i)) & 0xff);
+    };
+    if (!ctl.empty()) {
+        std::vector<uint8_t> v{static_cast<uint8_t>(ctl.size())};
+        for (auto& p : ctl) {
+            v.push_back(static_cast<uint8_t>(p.name.size()));
+            v.insert(v.end(), p.name.begin(), p.name.end());
+            le32(&v, p.epType);
+            le32(&v, p.iface);
+        }
+        m.raw(0x10, v);
+    }
+    if (!hw.empty()) {
+        std::vector<uint8_t> v{static_cast<uint8_t>(hw.size())};
+        for (auto& p : hw) {
+            le32(&v, p.epType);
+            le32(&v, p.iface);
+            le32(&v, p.rxEp);
+            le32(&v, p.txEp);
+        }
+        m.raw(0x11, v);
+    }
+    return m;
+}
+Result openPort(Client& c, const std::vector<HwDataPort>& hw, const std::vector<CtlPort>& ctl) {
+    return c.request(kSvcDpm, buildOpenPort(hw, ctl), 10000);
+}
+Result closePort(Client& c) { return c.request(kSvcDpm, req(kClosePort)); }
+}  // namespace dpm
 
 }  // namespace a6l::qmi

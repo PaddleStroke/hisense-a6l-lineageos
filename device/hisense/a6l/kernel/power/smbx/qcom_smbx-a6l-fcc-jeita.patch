@@ -1,0 +1,64 @@
+--- a/drivers/power/supply/qcom_smbx.c
++++ b/drivers/power/supply/qcom_smbx.c
+@@ -385,6 +385,24 @@
+  * @usb_in_v_chan:	USB_IN voltage measurement channel
+  * @chg_psy:		Charger power supply instance
+  */
++/*
++ * A6L (27 Sep 2026): the upstream driver hard-codes FCC 1.95 A and leaves the PMIC JEITA hard limits as the
++ * bootloader left them. For the first attended test (C2) FCC is capped with fcc_max_ua (run-power.sh passes
++ * <= 1.0 A), and the charger's JEITA hard-limit (charging stops outside the FG cold/hot thresholds, 0 / 55 C on
++ * this phone) is enabled with jeita_hard=1. The float voltage is clamped to 4.40 V whatever the battery node says.
++ * merge r4 (28 Sep 2026): the upper bound is the STOCK FCC (qpnp-smb2 qcom,fcc-max-ua = 2400000); the ROM passes
++ * fcc_max_ua=2400000 (rom/modules/charger.txt). The default stays the upstream 1.95 A.
++ */
++static unsigned int fcc_max_ua = 1950000;
++module_param(fcc_max_ua, uint, 0444);
++MODULE_PARM_DESC(fcc_max_ua, "A6L: fast-charge current cap in uA (500000..2400000 = stock, default 1950000)");
++static bool jeita_hard = true;
++module_param(jeita_hard, bool, 0444);
++MODULE_PARM_DESC(jeita_hard, "A6L: enable the SMB2 JEITA hard limits (stop charging outside FG cold/hot)");
++#define A6L_FCC_MIN_UA					500000
++#define A6L_FCC_MAX_UA					2400000
++#define A6L_FV_MAX_UV					4400000
++
+ struct smb_chip {
+ 	struct device *dev;
+ 	const char *name;
+@@ -994,6 +1012,12 @@
+ 		return dev_err_probe(chip->dev, rc,
+ 				     "Failed to init status change work\n");
+ 
++	if (chip->batt_info->voltage_max_design_uv <= 0 ||
++	    chip->batt_info->voltage_max_design_uv > A6L_FV_MAX_UV) {
++		dev_warn(chip->dev, "A6L: float %d uV clamped to %d uV\n",
++			 chip->batt_info->voltage_max_design_uv, A6L_FV_MAX_UV);
++		chip->batt_info->voltage_max_design_uv = A6L_FV_MAX_UV;
++	}
+ 	rc = (chip->batt_info->voltage_max_design_uv - 3487500) / 7500 + 1;
+ 	rc = regmap_update_bits(chip->regmap, chip->base + FLOAT_VOLTAGE_CFG,
+ 				FLOAT_VOLTAGE_SETTING_MASK, rc);
+@@ -1033,12 +1057,22 @@
+ 	 * would expect this to be changed dynamically based on temperature
+ 	 * reporting.
+ 	 */
++	fcc_max_ua = clamp_t(unsigned int, fcc_max_ua, A6L_FCC_MIN_UA, A6L_FCC_MAX_UA);
+ 	rc = regmap_write(chip->regmap, chip->base + FAST_CHARGE_CURRENT_CFG,
+-			  1950000 / CURRENT_SCALE_FACTOR);
++			  fcc_max_ua / CURRENT_SCALE_FACTOR);
+ 	if (rc < 0)
+ 		return dev_err_probe(chip->dev, rc,
+ 				     "Couldn't write fast charge current cfg");
+ 
++	rc = regmap_update_bits(chip->regmap, chip->base + JEITA_EN_CFG,
++				JEITA_EN_HARDLIMIT_BIT,
++				jeita_hard ? JEITA_EN_HARDLIMIT_BIT : 0);
++	if (rc < 0)
++		return dev_err_probe(chip->dev, rc, "Couldn't write JEITA_EN_CFG\n");
++	dev_info(chip->dev, "A6L: FCC %u uA, float %d uV, JEITA hard limit %s\n",
++		 fcc_max_ua, chip->batt_info->voltage_max_design_uv,
++		 jeita_hard ? "on" : "off");
++
+ 	/* Initialise charger state */
+ 	schedule_delayed_work(&chip->status_change_work, 0);
+ 

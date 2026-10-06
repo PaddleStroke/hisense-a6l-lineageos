@@ -1,0 +1,14 @@
+# A6L debug-only logcat -> kernel log stream (selinux-release, 29 Sep 2026; was in init.qcom.rc). Installed by
+# rom/selinux/selinux.mk ONLY in userdebug/eng builds with A6L_SELINUX_PREP=1 (or A6L_RELEASE=1): it runs
+# /system/bin/logcat through /vendor/bin/a6l-logcat.sh, which no vendor domain may do (vendor may not exec system
+# binaries), so it keeps the debug `su` domain, which does not exist in user builds.
+# Enable: androidboot.a6l_logcat=1 on the kernel cmdline (QEMU test / attended first boot).
+on property:logd.ready=true && property:ro.boot.a6l_logcat=1
+    start a6l_logcat
+
+service a6l_logcat /vendor/bin/a6l-logcat.sh
+    user root
+    group root log
+    disabled
+    stdio_to_kmsg
+    seclabel u:r:su:s0

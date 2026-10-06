@@ -56,6 +56,14 @@ perf_rows = [(300000000,0x4000f,0x1200020,1,1),(1113600000,0x404003a,0x52e002e,1
              (2208000000,0x4040073,0xb5c005c,3,7)]
 # first bring-up: frequencies common to speed bins 0/1/3/4 only
 PWR_MAX, PERF_MAX = 1536000000, 1747200000
+# power (26 Sep): --pwr-max/--perf-max/--out make the reduced F2a overlay (a6l-cpufreq-f2a.dtso: 3 lowest corners per
+# cluster, lowest-risk first boot); defaults regenerate a6l-cpufreq-v75.dtso unchanged.
+import argparse
+_ap = argparse.ArgumentParser()
+_ap.add_argument('--pwr-max', type=int, default=PWR_MAX); _ap.add_argument('--perf-max', type=int, default=PERF_MAX)
+_ap.add_argument('--out', default='a6l-cpufreq-v75.dtso')
+_args = _ap.parse_args()
+PWR_MAX, PERF_MAX = _args.pwr_max, _args.perf_max
 pwr_fmax = [2,3,4,5,8]; perf_fmax = [2,3,4,6,7]
 def fuse_level(corner, fmax):
     for i, f in enumerate(fmax):
@@ -122,5 +130,5 @@ for i in range(8):
     o.append(f"&cpu{i} {{\n\toperating-points-v2 = <&{'perfcl' if perf else 'pwrcl'}_opp_table>;\n"
              f"\tpower-domains = <&apc_cprh {1 if perf else 0}>;\n\tpower-domain-names = \"perf\";\n"
              f"\tqcom,freq-domain = <&cpufreq_hw {1 if perf else 0}>;\n}};\n\n")
-open("a6l-cpufreq-v75.dtso", "w").write("".join(o))
+open(_args.out, "w").write("".join(o))
 print("cells:", len(refs))

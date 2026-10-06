@@ -13,3 +13,7 @@ DEVICE_PACKAGE_OVERLAYS += device/hisense/a6l/audio/overlay
 
 # sepolicy for the routing daemon: add to BoardConfig.mk (board variable):
 #   BOARD_VENDOR_SEPOLICY_DIRS += device/hisense/a6l/audio/sepolicy
+
+# merge3 r3 (25 Sep 2026): media capture = FE MultiMedia2 (pcmC0D1c), mono. Read by the tree patch
+# audio/patches/0001-a6l-primary-capture-pcm.patch (hardware/interfaces StreamPrimary, applied by tools/rom-v2-pipeline.sh).
+# (the property itself is set in rom/rom.mk: ro.vendor.a6l.audio.capture_pcm=1; audio.mk is not inherited by the ROM)

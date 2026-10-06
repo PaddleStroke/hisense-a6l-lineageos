@@ -1,0 +1,12 @@
+# A6L Lineage recovery (release-prep, 27 Sep 2026): same USB gate as the ROM and the V74 recovery (kernel a6l_manual_usb=1:
+# the D+ pullup is released only by soft_connect after every UDC bind) so adb/sideload work in recovery.
+on init
+    setprop sys.usb.configfs 1
+    setprop sys.usb.controller a800000.usb
+    symlink /dev/block/platform/soc@0/c0c4000.mmc /dev/block/bootdevice
+
+on property:sys.usb.state=*
+    write /sys/class/udc/a800000.usb/soft_connect connect
+
+on property:sys.usb.ffs.ready=1
+    write /sys/class/udc/a800000.usb/soft_connect connect

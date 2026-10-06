@@ -1,0 +1,50 @@
+From: A6L port maintainers
+Subject: [PATCH] android: preserve preview modes below 30 fps
+
+The Hi-846's actual fixed sensor timing is below 30 fps. The IPU3-oriented
+metadata filter removed every PRIVATE/YUV stream while retaining JPEG,
+causing Android StreamConfigurationMap to assert during CameraX discovery.
+Publish the supported modes with their existing conservative durations.
+Keep integer FPS ranges ordered for fixed timings rounded to whole FPS.
+
+--- a/src/android/camera_capabilities.cpp
++++ b/src/android/camera_capabilities.cpp
+@@ -1337,20 +1337,13 @@
+ 
+ 	for (const auto &entry : streamConfigurations_) {
+ 		/*
+-		 * Filter out YUV streams not capable of running at 30 FPS.
+-		 *
+-		 * This requirement comes from CTS RecordingTest failures most
+-		 * probably related to a requirement of the camcoder video
+-		 * recording profile. Inspecting the Intel IPU3 HAL
+-		 * implementation confirms this but no reference has been found
+-		 * in the metadata documentation.
++		 * A6L: slower sensors still need PRIVATE/YUV preview modes.
++		 * Report their actual supported durations instead of dropping
++		 * them and exposing a JPEG-only backward-compatible camera.
+ 		 */
+ 		unsigned int fps =
+ 			static_cast<unsigned int>(floor(1e9 / entry.minFrameDurationNsec));
+ 
+-		if (entry.androidFormat != HAL_PIXEL_FORMAT_BLOB && fps < 30)
+-			continue;
+-
+ 		/*
+ 		 * Collect the FPS of the maximum YUV output size to populate
+ 		 * AE_AVAILABLE_TARGET_FPS_RANGE
+@@ -1393,7 +1386,13 @@
+ 	 * as the camera service expects the camera maximum frame duration to be
+ 	 * smaller than 10^9 / minFps.
+ 	 */
+-	int32_t minFps = std::ceil(1e9 / maxFrameDuration_);
++	if (maxYUVFps <= 0 || maxFrameDuration_ <= 0) {
++		LOG(HAL, Error) << "No usable YUV preview frame rate";
++		return -EINVAL;
++	}
++	/* Fixed sensor timing plus integer FPS rounding must not yield [4, 3]. */
++	int32_t minFps = std::min<int32_t>(maxYUVFps,
++					std::ceil(1e9 / maxFrameDuration_));
+ 	int32_t availableAeFpsTarget[] = {
+ 		minFps, maxYUVFps, maxYUVFps, maxYUVFps,
+ 	};

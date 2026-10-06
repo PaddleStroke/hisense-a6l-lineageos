@@ -1,0 +1,711 @@
+From f0916d3230e8c4fbf74b509df2c15e12ce74d635 Mon Sep 17 00:00:00 2001
+From: a6l <a6l@local>
+Date: Tue, 29 Sep 2026 23:20:51 +0200
+Subject: [PATCH 103/104] a6l 0103 ipa: simple: contrast AF algorithm (GT9769)
+
+---
+ src/ipa/simple/algorithms/af.cpp      | 248 ++++++++++++++++++++++
+ src/ipa/simple/algorithms/af.h        |  50 +++++
+ src/ipa/simple/algorithms/af_search.h | 295 ++++++++++++++++++++++++++
+ src/ipa/simple/algorithms/meson.build |   1 +
+ src/ipa/simple/data/imx576_a6l.yaml   |  19 ++
+ src/ipa/simple/ipa_context.h          |   9 +
+ src/ipa/simple/soft_simple.cpp        |  11 +
+ 7 files changed, 633 insertions(+)
+ create mode 100755 src/ipa/simple/algorithms/af.cpp
+ create mode 100755 src/ipa/simple/algorithms/af.h
+ create mode 100755 src/ipa/simple/algorithms/af_search.h
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+new file mode 100755
+index 0000000..669661c
+--- /dev/null
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -0,0 +1,248 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Hisense A6L: contrast-detect autofocus for the simple IPA.
++ *
++ * Statistic: SwStatsCpu accumulates, in the centre half x half of the stats window, the squared difference of
++ * the averaged green of consecutive sampled 2x2 blocks (4 px apart) on the sampled rows (RAW10 CSI-2 packed only;
++ * sharpnessCount == 0 means "not available" and AF stays manual). Stats are produced every
++ * SwStatsCpu::kStatPerNumFrames (4) frames, which also covers the VCM settle time (GT9769 ringing control,
++ * < 10 ms) and the sensor pipeline delay: a lens move requested while processing stats frame N is complete
++ * before frame N + 4 starts exposing.
++ *
++ * Controls (only when the pipeline passed a lens with V4L2_CID_FOCUS_ABSOLUTE):
++ *   AfMode Manual (default) / Auto / Continuous, AfTrigger Start / Cancel (Auto), LensPosition (dioptres, Manual;
++ *   range 0 .. the widened macro end of the scan = the Android minimum focus distance)
++ * Metadata: AfState, LensPosition.
++ * The lens is moved by IPAActiveState::af (dac + moveRequested), emitted by IPASoftSimple::processStats() as
++ * a setLensControls(V4L2_CID_FOCUS_ABSOLUTE) event; a valid stats frame less than settleFrames (default 3) after
++ * that event is not used (a move requested from queueRequest() can land just before a stats frame).
++ *
++ * Log lines (category IPASoftAf): Debug "A6L_AF pos=<dac> sharp=<v> state=<s>" per measurement,
++ * Info "A6L_AF_RESULT state=<focused|failed> dac=<n> dioptres=<d> peak=<v> coarse=<n> fine=<n>" per scan.
++ */
++
++#include "af.h"
++
++#include <cmath>
++
++#include <libcamera/base/log.h>
++
++#include <libcamera/control_ids.h>
++
++#include "libcamera/internal/software_isp/swisp_stats.h"
++
++namespace libcamera {
++
++namespace ipa::soft::algorithms {
++
++LOG_DEFINE_CATEGORY(IPASoftAf)
++
++int Af::init(IPAContext &context, const ValueNode &tuningData)
++{
++	enabled_ = context.lens.present;
++	if (!enabled_) {
++		LOG(IPASoftAf, Info) << "No focus lens, AF disabled";
++		return 0;
++	}
++
++	tuning_.dacMin = context.lens.min;
++	tuning_.dacMax = context.lens.max;
++	tuning_.infinityDac = tuningData["infinityDac"].get<int32_t>(tuning_.infinityDac);
++	tuning_.macroDac = tuningData["macroDac"].get<int32_t>(tuning_.macroDac);
++	tuning_.infinityMargin = tuningData["infinityMargin"].get<double>(tuning_.infinityMargin);
++	tuning_.macroMargin = tuningData["macroMargin"].get<double>(tuning_.macroMargin);
++	tuning_.coarseSteps = tuningData["coarseSteps"].get<uint32_t>(tuning_.coarseSteps);
++	tuning_.fineSteps = tuningData["fineSteps"].get<uint32_t>(tuning_.fineSteps);
++	tuning_.minContrast = tuningData["minContrast"].get<double>(tuning_.minContrast);
++	tuning_.minPeakRatio = tuningData["minPeakRatio"].get<double>(tuning_.minPeakRatio);
++	tuning_.stopRatio = tuningData["stopRatio"].get<double>(tuning_.stopRatio);
++	tuning_.rescanDrop = tuningData["rescanDrop"].get<double>(tuning_.rescanDrop);
++	tuning_.rescanRise = tuningData["rescanRise"].get<double>(tuning_.rescanRise);
++	tuning_.rescanCount = tuningData["rescanCount"].get<uint32_t>(tuning_.rescanCount);
++	tuning_.macroDioptres = tuningData["macroDioptres"].get<double>(tuning_.macroDioptres);
++	tuning_.defaultDioptres = tuningData["defaultDioptres"].get<double>(tuning_.defaultDioptres);
++	settleFrames_ = tuningData["settleFrames"].get<uint32_t>(settleFrames_);
++
++	if (tuning_.macroDac <= tuning_.infinityDac || tuning_.macroDioptres <= 0) {
++		LOG(IPASoftAf, Error) << "Invalid AF tuning: infinityDac " << tuning_.infinityDac
++				      << " macroDac " << tuning_.macroDac;
++		return -EINVAL;
++	}
++	search_.configure(tuning_);
++
++	context.ctrlMap[&controls::AfMode] = ControlInfo(controls::AfModeValues,
++							 ControlValue(static_cast<int32_t>(controls::AfModeManual)));
++	context.ctrlMap[&controls::AfTrigger] = ControlInfo(controls::AfTriggerValues);
++	context.ctrlMap[&controls::LensPosition] =
++		ControlInfo(0.0f, static_cast<float>(search_.dacToDioptres(search_.rangeHigh())),
++			    static_cast<float>(tuning_.defaultDioptres));
++
++	LOG(IPASoftAf, Info) << "A6L_AF_INIT lens " << tuning_.dacMin << "-" << tuning_.dacMax
++			     << " infinity " << tuning_.infinityDac << " macro " << tuning_.macroDac
++			     << " scan " << search_.rangeLow() << "-" << search_.rangeHigh()
++			     << " default " << search_.defaultDac();
++	return 0;
++}
++
++int Af::configure(IPAContext &context, [[maybe_unused]] const IPAConfigInfo &configInfo)
++{
++	context.activeState.af = {};
++	if (!enabled_)
++		return 0;
++
++	mode_ = controls::AfModeManual;
++	triggered_ = false;
++	measurements_ = 0;
++	search_.configure(tuning_);
++	/* known rest position at stream start */
++	moveTo(context, search_.defaultDac());
++	return 0;
++}
++
++void Af::moveTo(IPAContext &context, int32_t dac)
++{
++	dac = search_.clamp(dac);
++	if (context.activeState.af.dac != dac || !context.activeState.af.valid) {
++		context.activeState.af.dac = dac;
++		context.activeState.af.moveRequested = true;
++		context.activeState.af.valid = true;
++	}
++}
++
++void Af::queueRequest(IPAContext &context, [[maybe_unused]] const uint32_t frame,
++		      [[maybe_unused]] IPAFrameContext &frameContext,
++		      const ControlList &controls)
++{
++	if (!enabled_)
++		return;
++
++	const auto &mode = controls.get(controls::AfMode);
++	if (mode && *mode != mode_) {
++		mode_ = *mode;
++		triggered_ = false;
++		LOG(IPASoftAf, Debug) << "AfMode " << mode_;
++		if (mode_ == controls::AfModeContinuous) {
++			search_.start();
++			moveTo(context, search_.target());
++		} else if (mode_ == controls::AfModeManual) {
++			search_.hold(context.activeState.af.dac);
++		}
++		/*
++		 * Auto: a running scan finishes and the focused/failed state is kept (the Android HAL
++		 * switches Continuous -> Auto to lock after AF_TRIGGER_START).
++		 */
++	}
++
++	const auto &lensPosition = controls.get(controls::LensPosition);
++	if (lensPosition && mode_ == controls::AfModeManual) {
++		int32_t dac = search_.dioptresToDac(*lensPosition);
++		search_.hold(dac);
++		moveTo(context, dac);
++	}
++
++	const auto &trigger = controls.get(controls::AfTrigger);
++	if (trigger && mode_ == controls::AfModeAuto) {
++		if (*trigger == controls::AfTriggerStart) {
++			triggered_ = true;
++			search_.start();
++			moveTo(context, search_.target());
++		} else if (*trigger == controls::AfTriggerCancel) {
++			triggered_ = false;
++			search_.cancel();
++		}
++	}
++}
++
++double Af::normalisedSharpness(const SwIspStats *stats, unsigned int blackLevel)
++{
++	if (!stats->sharpnessCount)
++		return -1.0;
++
++	uint64_t samples = 0;
++	for (uint32_t v : stats->yHistogram)
++		samples += v;
++	if (!samples)
++		return 0.0;
++
++	double meanG = static_cast<double>(stats->sum_.g()) / samples - blackLevel;
++	meanG = std::max(meanG, 4.0);
++	double msd = static_cast<double>(stats->sharpness) / stats->sharpnessCount;
++	return msd / (meanG * meanG);
++}
++
++int32_t Af::afStateControl() const
++{
++	switch (search_.state()) {
++	case a6l_af::State::Coarse:
++	case a6l_af::State::Fine:
++		return controls::AfStateScanning;
++	case a6l_af::State::Focused:
++		return controls::AfStateFocused;
++	case a6l_af::State::Failed:
++		return controls::AfStateFailed;
++	case a6l_af::State::Idle:
++	default:
++		return controls::AfStateIdle;
++	}
++}
++
++void Af::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
++		 [[maybe_unused]] IPAFrameContext &frameContext,
++		 const SwIspStats *stats, ControlList &metadata)
++{
++	if (!enabled_)
++		return;
++
++	const auto &af = context.activeState.af;
++	const bool settling = af.moveEmitted && frame < af.moveFrame + settleFrames_;
++	if (stats->valid && settling) {
++		LOG(IPASoftAf, Debug) << "A6L_AF skip frame " << frame << " (lens moved at " << af.moveFrame << ")";
++	} else if (stats->valid) {
++		double sharp = normalisedSharpness(stats, context.activeState.blc.level);
++		if (sharp < 0) {
++			if (!warnedNoStats_)
++				LOG(IPASoftAf, Warning) << "No sharpness statistic for this format, AF manual only";
++			warnedNoStats_ = true;
++			if (search_.scanning()) {
++				search_.hold(context.activeState.af.dac);
++			}
++		} else {
++			/*
++			 * The lens was moved while processing the previous valid stats (4 frames ago): this
++			 * measurement belongs to search_.target() == activeState.af.dac.
++			 */
++			const bool wasScanning = search_.scanning();
++			bool moved = false;
++			if (wasScanning)
++				moved = search_.measure(sharp);
++			else if (mode_ == controls::AfModeContinuous)
++				moved = search_.monitor(sharp);
++
++			measurements_++;
++			LOG(IPASoftAf, Debug) << "A6L_AF pos=" << context.activeState.af.dac
++					      << " sharp=" << sharp
++					      << " state=" << a6l_af::stateName(search_.state());
++
++			if (wasScanning && !search_.scanning())
++				LOG(IPASoftAf, Info)
++					<< "A6L_AF_RESULT state=" << a6l_af::stateName(search_.state())
++					<< " dac=" << search_.target()
++					<< " dioptres=" << search_.dacToDioptres(search_.target())
++					<< " peak=" << search_.focusedSharpness()
++					<< " coarse=" << search_.coarseSamples().size()
++					<< " fine=" << search_.fineSamples().size();
++			if (moved)
++				moveTo(context, search_.target());
++		}
++	}
++
++	metadata.set(controls::AfState, afStateControl());
++	metadata.set(controls::LensPosition,
++		     static_cast<float>(search_.dacToDioptres(context.activeState.af.dac)));
++}
++
++REGISTER_IPA_ALGORITHM(Af, "Af")
++
++} /* namespace ipa::soft::algorithms */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+new file mode 100755
+index 0000000..26c75f3
+--- /dev/null
++++ b/src/ipa/simple/algorithms/af.h
+@@ -0,0 +1,50 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Hisense A6L: contrast-detect autofocus for the simple IPA (SoftISP sharpness statistic + VCM lens).
++ */
++
++#pragma once
++
++#include "af_search.h"
++#include "algorithm.h"
++
++namespace libcamera {
++
++namespace ipa::soft::algorithms {
++
++class Af : public Algorithm
++{
++public:
++	Af() = default;
++	~Af() = default;
++
++	int init(IPAContext &context, const ValueNode &tuningData) override;
++	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
++	void queueRequest(IPAContext &context, const uint32_t frame,
++			  IPAFrameContext &frameContext,
++			  const ControlList &controls) override;
++	void process(IPAContext &context, const uint32_t frame,
++		     IPAFrameContext &frameContext,
++		     const SwIspStats *stats,
++		     ControlList &metadata) override;
++
++	/* normalised focus measure: mean squared green difference / (mean green - black)^2 */
++	static double normalisedSharpness(const SwIspStats *stats, unsigned int blackLevel);
++
++private:
++	void moveTo(IPAContext &context, int32_t dac);
++	int32_t afStateControl() const;
++
++	a6l_af::Tuning tuning_;
++	a6l_af::Search search_;
++	bool enabled_ = false;
++	int32_t mode_ = 0;		/* controls::AfModeManual */
++	bool triggered_ = false;	/* Auto mode: a scan was triggered since the last AfModeAuto/Cancel */
++	unsigned int measurements_ = 0;
++	uint32_t settleFrames_ = 3;
++	bool warnedNoStats_ = false;
++};
++
++} /* namespace ipa::soft::algorithms */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/af_search.h b/src/ipa/simple/algorithms/af_search.h
+new file mode 100755
+index 0000000..77cd6b5
+--- /dev/null
++++ b/src/ipa/simple/algorithms/af_search.h
+@@ -0,0 +1,295 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Hisense A6L: contrast-detect autofocus search for the GT9769 VCM (pure logic, no libcamera dependency,
++ * host-testable: device/hisense/a6l/camera/af/tests/test_af_search.cpp).
++ *
++ * The lens is driven in VCM DAC codes (V4L2_CID_FOCUS_ABSOLUTE, 0..1023). The search range comes from the stock
++ * calibration: infinity/macro DAC (per-unit OTP in the imx576 module EEPROM, 0x708 flag / 0x709 macro BE16 /
++ * 0x70b infinity BE16 / 0x720 checksum) widened by the stock margins (libmmcamera_imx576_hmct_eeprom.so:
++ * infinity -0.25, macro +0.05 of the infinity..macro span). Without OTP data the stock actuator tuning
++ * (libactuator_gt9769.so: initial_code 227, 400 steps x 1 code) gives 227..627.
++ *
++ * Search = coarse sweep from infinity to macro (early stop once the curve has clearly passed its peak), then a
++ * fine sweep of +-1 coarse step around the best coarse position, then a parabolic fit on the best fine sample and
++ * its neighbours. One measurement per call to measure(); the caller moves the lens to target() after each call and
++ * must only feed measurements taken after the lens settled at the previous target.
++ */
++
++#pragma once
++
++#include <algorithm>
++#include <cmath>
++#include <stdint.h>
++#include <vector>
++
++namespace a6l_af {
++
++struct Tuning {
++	int32_t dacMin = 0;
++	int32_t dacMax = 1023;
++	int32_t infinityDac = 227;
++	int32_t macroDac = 627;
++	double infinityMargin = -0.25;
++	double macroMargin = 0.05;
++	unsigned int coarseSteps = 12;	/* coarse intervals over the widened range */
++	unsigned int fineSteps = 4;	/* fine samples per coarse step, each side */
++	double minContrast = 1e-4;	/* normalised sharpness below this = no texture */
++	double minPeakRatio = 1.10;	/* peak / worst coarse sample */
++	double stopRatio = 0.70;	/* coarse early stop: 2 samples below stopRatio * peak */
++	double rescanDrop = 0.65;	/* continuous: rescan below rescanDrop * focused sharpness */
++	double rescanRise = 1.60;	/* ... or above rescanRise * focused sharpness (scene change) */
++	unsigned int rescanCount = 3;	/* consecutive measurements before a rescan */
++	double macroDioptres = 10.0;	/* dioptres at macroDac (stock OTP macro is measured at 10 cm) */
++	double defaultDioptres = 0.2;	/* hyperfocal-ish rest position (f 3.95 mm, f/1.8) */
++};
++
++enum class State { Idle, Coarse, Fine, Focused, Failed };
++
++inline const char *stateName(State s)
++{
++	switch (s) {
++	case State::Idle: return "idle";
++	case State::Coarse: return "coarse";
++	case State::Fine: return "fine";
++	case State::Focused: return "focused";
++	case State::Failed: return "failed";
++	}
++	return "?";
++}
++
++class Search
++{
++public:
++	Search() { configure(Tuning()); }
++
++	void configure(const Tuning &t)
++	{
++		t_ = t;
++		if (t_.dacMax < t_.dacMin)
++			std::swap(t_.dacMin, t_.dacMax);
++		if (t_.macroDac <= t_.infinityDac)
++			t_.macroDac = t_.infinityDac + 1;
++		if (t_.coarseSteps < 2)
++			t_.coarseSteps = 2;
++		if (t_.fineSteps < 1)
++			t_.fineSteps = 1;
++		const double span = t_.macroDac - t_.infinityDac;
++		lo_ = clamp(static_cast<int32_t>(std::lround(t_.infinityDac + t_.infinityMargin * span)));
++		hi_ = clamp(static_cast<int32_t>(std::lround(t_.macroDac + t_.macroMargin * span)));
++		if (hi_ <= lo_)
++			hi_ = std::min(t_.dacMax, lo_ + 1);
++		state_ = State::Idle;
++		target_ = defaultDac();
++		focusedSharpness_ = 0.0;
++		deviations_ = 0;
++	}
++
++	const Tuning &tuning() const { return t_; }
++	int32_t rangeLow() const { return lo_; }
++	int32_t rangeHigh() const { return hi_; }
++	State state() const { return state_; }
++	int32_t target() const { return target_; }
++	bool scanning() const { return state_ == State::Coarse || state_ == State::Fine; }
++	double focusedSharpness() const { return focusedSharpness_; }
++
++	int32_t clamp(int32_t dac) const { return std::clamp(dac, t_.dacMin, t_.dacMax); }
++
++	double dacToDioptres(int32_t dac) const
++	{
++		double d = (dac - t_.infinityDac) * t_.macroDioptres / (t_.macroDac - t_.infinityDac);
++		return std::max(0.0, d);
++	}
++
++	int32_t dioptresToDac(double dioptres) const
++	{
++		double dac = t_.infinityDac + std::max(0.0, dioptres) * (t_.macroDac - t_.infinityDac) / t_.macroDioptres;
++		return clamp(static_cast<int32_t>(std::lround(dac)));
++	}
++
++	double maxDioptres() const { return dacToDioptres(t_.dacMax); }
++	int32_t defaultDac() const { return dioptresToDac(t_.defaultDioptres); }
++
++	/* Start a scan; the lens must be moved to target() before the first measurement. */
++	void start()
++	{
++		coarse_.clear();
++		fine_.clear();
++		coarseStep_ = std::max<int32_t>(1, (hi_ - lo_ + static_cast<int32_t>(t_.coarseSteps) - 1) /
++						       static_cast<int32_t>(t_.coarseSteps));
++		state_ = State::Coarse;
++		target_ = lo_;
++		deviations_ = 0;
++	}
++
++	/* Cancel a scan: keep the lens where it is, back to idle. */
++	void cancel()
++	{
++		if (scanning())
++			state_ = State::Idle;
++	}
++
++	/* Force idle at a given position (manual mode). */
++	void hold(int32_t dac)
++	{
++		state_ = State::Idle;
++		target_ = clamp(dac);
++	}
++
++	/*
++	 * Feed the sharpness measured at target(). Returns true when target() changed (the caller moves the lens).
++	 * Ignored outside a scan.
++	 */
++	bool measure(double sharpness)
++	{
++		if (!std::isfinite(sharpness) || sharpness < 0)
++			sharpness = 0;
++
++		if (state_ == State::Coarse) {
++			coarse_.push_back({ target_, sharpness });
++			if (target_ < hi_ && !coarsePassedPeak()) {
++				target_ = std::min(hi_, target_ + coarseStep_);
++				return true;
++			}
++			return startFine();
++		}
++
++		if (state_ == State::Fine) {
++			fine_.push_back({ target_, sharpness });
++			if (fineIndex_ + 1 < finePositions_.size()) {
++				target_ = finePositions_[++fineIndex_];
++				return true;
++			}
++			return finish();
++		}
++
++		return false;
++	}
++
++	/*
++	 * Continuous AF: feed sharpness while focused. Returns true when a rescan was started (target() = scan start).
++	 */
++	bool monitor(double sharpness)
++	{
++		if (state_ != State::Focused && state_ != State::Failed)
++			return false;
++		const double ref = state_ == State::Focused ? focusedSharpness_ : failedSharpness_;
++		bool deviates = ref <= 0 ? sharpness > t_.minContrast
++					 : (sharpness < ref * t_.rescanDrop || sharpness > ref * t_.rescanRise);
++		deviations_ = deviates ? deviations_ + 1 : 0;
++		if (deviations_ < t_.rescanCount)
++			return false;
++		start();
++		return true;
++	}
++
++	struct Sample {
++		int32_t dac;
++		double sharpness;
++	};
++	const std::vector<Sample> &coarseSamples() const { return coarse_; }
++	const std::vector<Sample> &fineSamples() const { return fine_; }
++
++private:
++	bool coarsePassedPeak() const
++	{
++		if (coarse_.size() < 4)
++			return false;
++		double peak = 0;
++		size_t peakIdx = 0;
++		for (size_t i = 0; i < coarse_.size(); i++)
++			if (coarse_[i].sharpness > peak) {
++				peak = coarse_[i].sharpness;
++				peakIdx = i;
++			}
++		if (peak < t_.minContrast || peakIdx + 2 >= coarse_.size())
++			return false;
++		const size_t n = coarse_.size();
++		return coarse_[n - 1].sharpness < t_.stopRatio * peak &&
++		       coarse_[n - 2].sharpness < t_.stopRatio * peak;
++	}
++
++	bool startFine()
++	{
++		size_t best = 0;
++		for (size_t i = 1; i < coarse_.size(); i++)
++			if (coarse_[i].sharpness > coarse_[best].sharpness)
++				best = i;
++
++		double worst = coarse_[0].sharpness;
++		for (const auto &s : coarse_)
++			worst = std::min(worst, s.sharpness);
++
++		const double peak = coarse_[best].sharpness;
++		if (peak < t_.minContrast || peak < worst * t_.minPeakRatio)
++			return fail(peak);
++
++		const int32_t centre = coarse_[best].dac;
++		const int32_t fstep = std::max<int32_t>(1, coarseStep_ / static_cast<int32_t>(t_.fineSteps));
++		finePositions_.clear();
++		for (int32_t p = centre - coarseStep_ + fstep; p < centre + coarseStep_; p += fstep) {
++			int32_t c = std::clamp(p, lo_, hi_);
++			if (finePositions_.empty() || finePositions_.back() != c)
++				finePositions_.push_back(c);
++		}
++		fine_.clear();
++		/* the coarse peak itself is re-measured in the fine pass (same direction of approach) */
++		fineIndex_ = 0;
++		state_ = State::Fine;
++		target_ = finePositions_[0];
++		return true;
++	}
++
++	bool finish()
++	{
++		size_t best = 0;
++		for (size_t i = 1; i < fine_.size(); i++)
++			if (fine_[i].sharpness > fine_[best].sharpness)
++				best = i;
++		const double peak = fine_[best].sharpness;
++		if (peak < t_.minContrast)
++			return fail(peak);
++
++		double pos = fine_[best].dac;
++		if (best > 0 && best + 1 < fine_.size()) {
++			/* parabola through (x-1, a) (x, b) (x+1, c) on a uniform grid */
++			const double a = fine_[best - 1].sharpness, b = peak, c = fine_[best + 1].sharpness;
++			const double h = (fine_[best + 1].dac - fine_[best - 1].dac) / 2.0;
++			const double den = a - 2 * b + c;
++			if (den < 0) {
++				double off = 0.5 * (a - c) / den * h;
++				pos += std::clamp(off, -h, h);
++			}
++		}
++		const int32_t old = target_;
++		target_ = clamp(static_cast<int32_t>(std::lround(pos)));
++		state_ = State::Focused;
++		focusedSharpness_ = peak;
++		deviations_ = 0;
++		return target_ != old;
++	}
++
++	bool fail(double peak)
++	{
++		const int32_t old = target_;
++		target_ = defaultDac();
++		state_ = State::Failed;
++		failedSharpness_ = peak;
++		focusedSharpness_ = 0;
++		deviations_ = 0;
++		return target_ != old;
++	}
++
++	Tuning t_;
++	int32_t lo_ = 0, hi_ = 0;
++	int32_t coarseStep_ = 1;
++	State state_ = State::Idle;
++	int32_t target_ = 0;
++	double focusedSharpness_ = 0;
++	double failedSharpness_ = 0;
++	unsigned int deviations_ = 0;
++	std::vector<Sample> coarse_, fine_;
++	std::vector<int32_t> finePositions_;
++	size_t fineIndex_ = 0;
++};
++
++} /* namespace a6l_af */
+diff --git a/src/ipa/simple/algorithms/meson.build b/src/ipa/simple/algorithms/meson.build
+index 73c6372..1cd58d5 100644
+--- a/src/ipa/simple/algorithms/meson.build
++++ b/src/ipa/simple/algorithms/meson.build
+@@ -2,6 +2,7 @@
+ 
+ soft_simple_ipa_algorithms = files([
+     'adjust.cpp',
++    'af.cpp',
+     'awb.cpp',
+     'agc.cpp',
+     'blc.cpp',
+diff --git a/src/ipa/simple/data/imx576_a6l.yaml b/src/ipa/simple/data/imx576_a6l.yaml
+index 9a74446..1f4e597 100755
+--- a/src/ipa/simple/data/imx576_a6l.yaml
++++ b/src/ipa/simple/data/imx576_a6l.yaml
+@@ -16,4 +16,23 @@ algorithms:
+   #                0, 0, 1 ]
+   - Adjust:
+   - Agc:
++  # A6L camera phase 3: contrast AF on the GT9769 VCM (device/hisense/a6l/camera/af, docs/camera-af-video-20260929.md).
++  # infinityDac/macroDac = stock no-OTP actuator range (libactuator_gt9769.so initial_code 227 + 400 steps x 1 code);
++  # replace with this unit's OTP values (run-af.sh MODE=otp prints A6L_AF_OTP macro=<m> infinity=<i>) once read.
++  - Af:
++      infinityDac: 227
++      macroDac: 627
++      infinityMargin: -0.25
++      macroMargin: 0.05
++      macroDioptres: 10.0
++      defaultDioptres: 0.2
++      coarseSteps: 12
++      fineSteps: 4
++      settleFrames: 3
++      minContrast: 0.0001
++      minPeakRatio: 1.10
++      stopRatio: 0.70
++      rescanDrop: 0.65
++      rescanRise: 1.60
++      rescanCount: 3
+ ...
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 7e896c2..2b72c7a 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -55,6 +55,15 @@ struct IPAActiveState {
+ 
+ 	Matrix<float, 3, 3> combinedMatrix;
+ 
++	/* A6L AF: lens position in VCM DAC codes */
++	struct {
++		int32_t dac;
++		bool valid;
++		bool moveRequested;
++		bool moveEmitted;
++		uint32_t moveFrame;
++	} af;
++
+ 	struct {
+ 		float gamma;
+ 		/* 0..2 range, 1.0 = normal */
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 05a0938..62189fa 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -338,6 +338,17 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 		  static_cast<int32_t>(camHelper_ ? camHelper_->gainCode(againNew) : againNew));
+ 
+ 	setSensorControls.emit(ctrls);
++
++	/* A6L AF: lens move requested by the Af algorithm (from process() or queueRequest()) */
++	auto &af = context_.activeState.af;
++	if (context_.lens.present && af.moveRequested) {
++		ControlList lensCtrls(lensInfoMap_);
++		lensCtrls.set(V4L2_CID_FOCUS_ABSOLUTE, af.dac);
++		setLensControls.emit(lensCtrls);
++		af.moveRequested = false;
++		af.moveEmitted = true;
++		af.moveFrame = frame;
++	}
+ }
+ 
+ std::string IPASoftSimple::logPrefix() const

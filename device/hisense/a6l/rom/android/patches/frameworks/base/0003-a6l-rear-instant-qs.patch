@@ -1,0 +1,37 @@
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/util/A6lEinkAnimations.java
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: Apache-2.0
++package com.android.systemui.util;
++import android.os.SystemProperties;
++/** A6L only: gesture interpolation shows endpoints instead of intermediate transforms. */
++public final class A6lEinkAnimations {
++    private A6lEinkAnimations() { }
++    public static boolean disabled() {
++        return SystemProperties.getBoolean("sys.a6l.eink.no_animations", false);
++    }
++    public static float position(float fraction) {
++        return disabled() ? (fraction < 0.5f ? 0f : 1f) : fraction;
++    }
++}
+--- a/packages/SystemUI/src/com/android/systemui/qs/TouchAnimator.java
++++ b/packages/SystemUI/src/com/android/systemui/qs/TouchAnimator.java
+@@ -67,6 +67,7 @@
+         if (mInterpolator != null) {
+             t = mInterpolator.getInterpolation(t);
+         }
++        t = com.android.systemui.util.A6lEinkAnimations.position(t);
+         if (t == mLastT) {
+             return;
+         }
+--- a/packages/SystemUI/src/com/android/systemui/shade/ShadeHeaderController.kt
++++ b/packages/SystemUI/src/com/android/systemui/shade/ShadeHeaderController.kt
+@@ -621,7 +621,7 @@
+     private fun updatePosition() {
+         if (!largeScreenActive && visible) {
+             logInstantEvent("updatePosition: $qsExpandedFraction")
+-            header.progress = qsExpandedFraction
++            header.progress = com.android.systemui.util.A6lEinkAnimations.position(qsExpandedFraction)
+             updateBatteryMode()
+         }
+     }

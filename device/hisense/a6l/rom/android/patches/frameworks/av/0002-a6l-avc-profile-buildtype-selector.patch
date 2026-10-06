@@ -1,0 +1,31 @@
+--- a/frameworks/av/media/codec2/components/avc/C2SoftAvcEnc.cpp
++++ b/frameworks/av/media/codec2/components/avc/C2SoftAvcEnc.cpp
+@@ -47,11 +47,11 @@
+ 
+ static int64_t a6lProfileClock() { return systemTime(SYSTEM_TIME_MONOTONIC); }
+ static bool a6lProfileEnabled() {
+-    char board[PROPERTY_VALUE_MAX], debug[PROPERTY_VALUE_MAX], requested[PROPERTY_VALUE_MAX];
++    char board[PROPERTY_VALUE_MAX], buildType[PROPERTY_VALUE_MAX], requested[PROPERTY_VALUE_MAX];
+     property_get("ro.product.vendor.device", board, "");
+-    property_get("ro.debuggable", debug, "0");
++    property_get("ro.system.build.type", buildType, "");
+     property_get("media.a6l.avc.profile", requested, "0");
+-    return A6lAvcProfile::gate(board, debug, requested);
++    return A6lAvcProfile::gate(board, buildType, requested);
+ }
+ static void a6lProfileLog(const A6lAvcProfileRecord &r) {
+     ALOGI("A6L_AVC_STAGE frame=%" PRIu64 " pts_us=%" PRId64
+--- a/frameworks/av/media/codec2/components/avc/A6lAvcProfile.h
++++ b/frameworks/av/media/codec2/components/avc/A6lAvcProfile.h
+@@ -28,8 +28,9 @@
+ public:
+     using Clock = int64_t (*)();
+     using Sink = void (*)(const A6lAvcProfileRecord &);
+-    static bool gate(const char *board, const char *debuggable, const char *requested) {
+-        return !std::strcmp(board, "a6l") && !std::strcmp(debuggable, "1") &&
++    static bool gate(const char *board, const char *buildType, const char *requested) {
++        return !std::strcmp(board, "a6l") &&
++               (!std::strcmp(buildType, "userdebug") || !std::strcmp(buildType, "eng")) &&
+                !std::strcmp(requested, "1");
+     }
+     A6lAvcProfile(bool enabled, uint32_t &count, uint64_t frame, int64_t ptsUs,

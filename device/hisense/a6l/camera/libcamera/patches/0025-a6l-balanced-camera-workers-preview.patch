@@ -1,0 +1,272 @@
+--- /dev/null
++++ b/src/android/yuv/a6l_parallel_nv12.h
+@@ -0,0 +1,92 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <condition_variable>
++#include <cstdint>
++#include <mutex>
++#include <thread>
++
++#include <libyuv/scale.h>
++#include <libyuv/scale_uv.h>
++
++/* One persistent UV worker; the caller scales Y. CameraStream stops its
++ * PostProcessorWorker before destroying the processor and this helper. Both
++ * planes finish before processComplete releases their source/destination.
++ * Unsupported geometry uses the original serial NV12Scale path. */
++class A6lParallelNv12
++{
++public:
++	A6lParallelNv12() : thread_([this] { run(); }) {}
++	~A6lParallelNv12()
++	{
++		{
++			std::lock_guard<std::mutex> lock(mutex_);
++			stopped_ = true;
++		}
++		cv_.notify_all();
++		thread_.join();
++	}
++
++	int scale(const uint8_t *y, int ys, const uint8_t *uv, int uvs,
++		  int sw, int sh, uint8_t *dy, int dys, uint8_t *duv, int duvs,
++		  int dw, int dh, libyuv::FilterMode filter)
++	{
++		/* Also serialize callers if a future CameraStream gains concurrency. */
++		std::lock_guard<std::mutex> callerLock(callerMutex_);
++		if (!y || !uv || !dy || !duv || sw < 2 || sh < 2 || dw < 2 || dh < 2 ||
++		    sw > 32768 || sh > 32768 || dw > 32768 || dh > 32768 ||
++		    ((sw | sh | dw | dh) & 1))
++			return libyuv::NV12Scale(y, ys, uv, uvs, sw, sh,
++					 dy, dys, duv, duvs, dw, dh, filter);
++		{
++			std::lock_guard<std::mutex> lock(mutex_);
++			job_ = { uv, uvs, sw / 2, sh / 2,
++				 duv, duvs, dw / 2, dh / 2, filter };
++			pending_ = true;
++		}
++		cv_.notify_all();
++		int yResult = libyuv::ScalePlane(y, ys, sw, sh, dy, dys, dw, dh, filter);
++		std::unique_lock<std::mutex> lock(mutex_);
++		cv_.wait(lock, [this] { return !pending_; });
++		/* UV has finished even when Y returned an error; no late writes. */
++		job_ = {};
++		return yResult ? yResult : uvResult_;
++	}
++
++private:
++	struct Job {
++		const uint8_t *source = nullptr;
++		int sourceStride = 0, sourceWidth = 0, sourceHeight = 0;
++		uint8_t *destination = nullptr;
++		int destinationStride = 0, destinationWidth = 0, destinationHeight = 0;
++		libyuv::FilterMode filter = libyuv::kFilterNone;
++	};
++	void run()
++	{
++		std::unique_lock<std::mutex> lock(mutex_);
++		for (;;) {
++			cv_.wait(lock, [this] { return pending_ || stopped_; });
++			if (stopped_)
++				return;
++			const Job job = job_;
++			lock.unlock();
++			int result = libyuv::UVScale(job.source, job.sourceStride,
++				job.sourceWidth, job.sourceHeight, job.destination,
++				job.destinationStride, job.destinationWidth,
++				job.destinationHeight, job.filter);
++			lock.lock();
++			uvResult_ = result;
++			pending_ = false;
++			cv_.notify_all();
++		}
++	}
++	std::mutex callerMutex_;
++	std::mutex mutex_;
++	std::condition_variable cv_;
++	Job job_;
++	bool pending_ = false;
++	bool stopped_ = false;
++	int uvResult_ = 0;
++	/* Start the thread only after all state it uses has been initialized. */
++	std::thread thread_;
++};
+--- a/src/android/yuv/post_processor_yuv.cpp
++++ b/src/android/yuv/post_processor_yuv.cpp
+@@ -80,7 +80,7 @@
+ 	const uint8_t *srcUV = sourceMapped.planes()[1].data() +
+ 			       crop_.y / 2 * sourceStride_[1] + crop_.x;
+ 	const uint64_t scaleStart = stage.start();
+-	int ret = libyuv::NV12Scale(srcY,
++	int ret = previewScaler_.scale(srcY,
+ 				    sourceStride_[0],
+ 				    srcUV,
+ 				    sourceStride_[1],
+--- a/src/android/yuv/post_processor_yuv.h
++++ b/src/android/yuv/post_processor_yuv.h
+@@ -10,6 +10,8 @@
+ #include "../post_processor.h"
+ 
+ #include <libcamera/geometry.h>
++
++#include "a6l_parallel_nv12.h"
+ 
+ class PostProcessorYuv : public PostProcessor
+ {
+@@ -26,6 +28,7 @@
+ 	void calculateLengths(const libcamera::StreamConfiguration &inCfg,
+ 			      const libcamera::StreamConfiguration &outCfg);
+ 
++	A6lParallelNv12 previewScaler_;
+ 	libcamera::Size sourceSize_;
+ 	libcamera::Size destinationSize_;
+ 	libcamera::Rectangle crop_; /* A6L: source area with the destination aspect ratio */
+--- a/src/libcamera/software_isp/debayer.cpp
++++ b/src/libcamera/software_isp/debayer.cpp
+@@ -281,13 +281,39 @@
+  */
+ void Debayer::dmaSyncBegin(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input, FrameBuffer *output)
+ {
++	/* CPU access synchronization applies to the whole dma-buf, not one
++	 * image plane. Internal NV12 planes share a SharedFD; synchronize that
++	 * allocation once, using the union of the accesses before START. Only
++	 * equal descriptor numbers are coalesced; distinct dup() aliases remain
++	 * independent, so no backing-object identity is guessed. */
++	struct Access {
++		SharedFD fd;
++		DmaSyncer::SyncType type;
++	};
++	std::vector<Access> accesses;
++	accesses.reserve(input->planes().size() + (output ? output->planes().size() : 0));
++
++	auto add = [&accesses](const SharedFD &fd, DmaSyncer::SyncType type) {
++		for (Access &access : accesses) {
++			if (access.fd == fd) {
++				if (access.type != type)
++					access.type = DmaSyncer::SyncType::ReadWrite;
++				return;
++			}
++		}
++		accesses.push_back({ fd, type });
++	};
++
+ 	for (const FrameBuffer::Plane &plane : input->planes())
+-		dmaSyncers.emplace_back(plane.fd, DmaSyncer::SyncType::Read);
+-
++		add(plane.fd, DmaSyncer::SyncType::Read);
+ 	if (output) {
+ 		for (const FrameBuffer::Plane &plane : output->planes())
+-			dmaSyncers.emplace_back(plane.fd, DmaSyncer::SyncType::Write);
++			add(plane.fd, DmaSyncer::SyncType::Write);
+ 	}
++
++	dmaSyncers.reserve(dmaSyncers.size() + accesses.size());
++	for (const Access &access : accesses)
++		dmaSyncers.emplace_back(access.fd, access.type);
+ }
+ 
+ /**
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -769,6 +769,8 @@
+ 
+ 	ccmEnabled_ = ccmEnabled;
+ 	yuvOutput_ = outputCfg.pixelFormat == formats::NV12;
++	dynamicRows_ = yuvOutput_ && inputConfig_.bpp == 10 &&
++		inputConfig_.patternSize == Size(4, 2);
+ 
+ 	/*
+ 	 * Lookup tables must be initialized because the initial value is used for
+@@ -945,19 +947,38 @@
+ 	const uint64_t workerStart = stageProfile_.start();
+ 	Rectangle &window = debayer_->window_;
+ 
+-	/* Adjust src to top left corner of the window */
+-	src += (window.y + yStart_) * debayer_->inputConfig_.stride +
+-	       window.x * debayer_->inputConfig_.bpp / 8;
+-	/* Adjust dst for yStart_ */
+-	dst += yStart_ * debayer_->outputConfig_.stride;
+-	/* A6L: one CbCr row per line pair (yStart_ is a multiple of the pattern height) */
+-	if (dstUV)
+-		dstUV += yStart_ / 2 * debayer_->outputConfig_.stride;
+-
+-	if (debayer_->inputConfig_.patternSize.height == 2)
+-		process2(frame, src, dst, dstUV);
+-	else
+-		process4(frame, src, dst, dstUV);
++	unsigned int processedRows = 0;
++	unsigned int chunks = 0;
++	auto processRange = [&] {
++		/* Every claim is aligned to the two-row Bayer/NV12 period. Halo
++		 * reads and global-row statistics remain in the existing process2. */
++		const uint8_t *rangeSrc = src +
++			(window.y + yStart_) * debayer_->inputConfig_.stride +
++			window.x * debayer_->inputConfig_.bpp / 8;
++		uint8_t *rangeDst = dst + yStart_ * debayer_->outputConfig_.stride;
++		uint8_t *rangeUV = dstUV ?
++			dstUV + yStart_ / 2 * debayer_->outputConfig_.stride : nullptr;
++		if (debayer_->inputConfig_.patternSize.height == 2)
++			process2(frame, rangeSrc, rangeDst, rangeUV);
++		else
++			process4(frame, rangeSrc, rangeDst, rangeUV);
++		processedRows += yEnd_ - yStart_;
++		chunks++;
++	};
++
++	if (debayer_->dynamicRows_) {
++		for (;;) {
++			const unsigned int begin = debayer_->nextRow_.fetch_add(
++				DebayerCpu::kChunkRows, std::memory_order_relaxed);
++			if (begin >= window.height)
++				break;
++			yStart_ = begin;
++			yEnd_ = std::min(begin + DebayerCpu::kChunkRows, window.height);
++			processRange();
++		}
++	} else {
++		processRange();
++	}
+ 
+ 	stageProfile_.add(A6LStageProfile::Total, workerStart);
+ 	debayer_->workPendingMutex_.lock();
+@@ -966,7 +987,7 @@
+ 	debayer_->workPendingCv_.notify_one();
+ 	if (stageProfile_.enabled())
+ 		LOG(Debayer, Info) << "A6L_STAGE_WORKER frame=" << frame << " worker=" << threadIndex_
+-			<< " rows=" << (yEnd_ - yStart_) << " row_sample_stride=64"
++			<< " rows=" << processedRows << " chunks=" << chunks << " row_sample_stride=64"
+ 			<< " total_ns=" << stageProfile_.ns(A6LStageProfile::Total)
+ 			<< " copy_sample_ns=" << stageProfile_.ns(A6LStageProfile::Copy)
+ 			<< " copy_sample_calls=" << stageProfile_.calls(A6LStageProfile::Copy)
+@@ -1282,6 +1303,7 @@
+ 		}
+ 	}
+ 
++	nextRow_.store(0, std::memory_order_relaxed);
+ 	const uint64_t workerStart = stage.start();
+ 	for (auto &thread : threads_)
+ 		thread->invokeMethod(&DebayerCpuThread::process,
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -11,6 +11,7 @@
+ 
+ #pragma once
+ 
++#include <atomic>
+ #include <memory>
+ #include <stdint.h>
+ #include <vector>
+@@ -167,6 +168,11 @@
+ 	static constexpr unsigned int kMaxThreads = 8;
+ 	static constexpr unsigned int kDefaultThreads = 6;
+ 
++	/* Packed RAW10/NV12: each worker retains its own scratch/stats slot. */
++	bool dynamicRows_ = false;
++	static constexpr unsigned int kChunkRows = 64;
++	std::atomic<unsigned int> nextRow_{ 0 };
++
+ 	unsigned int workPending_ LIBCAMERA_TSA_GUARDED_BY(workPendingMutex_);
+ 	Mutex workPendingMutex_;
+ 	ConditionVariable workPendingCv_;

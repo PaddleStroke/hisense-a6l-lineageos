@@ -1,0 +1,18 @@
+diff --git a/src/libcamera/base/thread.cpp b/src/libcamera/base/thread.cpp
+index bcb25ba..a951e50 100644
+--- a/src/libcamera/base/thread.cpp
++++ b/src/libcamera/base/thread.cpp
+@@ -462,7 +462,13 @@ void Thread::setThreadAffinityInternal()
+ 		return;
+ 
+ 	const cpu_set_t &cpuset = data_->cpuset_.value();
++#ifdef __ANDROID__
++	/* Bionic has no pthread_setaffinity_np(): set the affinity of the thread's TID. */
++	sched_setaffinity(pthread_gettid_np(thread_.native_handle()),
++			  sizeof(cpuset), &cpuset);
++#else
+ 	pthread_setaffinity_np(thread_.native_handle(), sizeof(cpuset), &cpuset);
++#endif
+ }
+ 
+ /**

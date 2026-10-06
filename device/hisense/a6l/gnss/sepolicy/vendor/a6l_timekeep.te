@@ -1,0 +1,11 @@
+# A6L RTC offset keeper (r5 bug hunt round2 gnss-time R1): reads /dev/rtc0, sets the wall clock once at boot
+# (vendor.a6l_timekeep_restore, SYS_TIME), keeps /data/vendor/a6l_time/rtc_offset.
+type a6l_timekeep, domain;
+type a6l_timekeep_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_timekeep)
+type a6l_time_data_file, file_type, data_file_type;
+
+allow a6l_timekeep self:global_capability_class_set sys_time;
+allow a6l_timekeep rtc_device:chr_file r_file_perms;
+allow a6l_timekeep a6l_time_data_file:dir rw_dir_perms;
+allow a6l_timekeep a6l_time_data_file:file create_file_perms;

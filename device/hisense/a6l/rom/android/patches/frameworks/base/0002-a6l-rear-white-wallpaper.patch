@@ -1,0 +1,450 @@
+--- a/core/java/android/view/ViewRootImpl.java
++++ b/core/java/android/view/ViewRootImpl.java
+@@ -2608,12 +2608,36 @@
+ 
+         if (reportDraw) {
+             reportNextDraw("resized");
++            if (shouldInvalidateA6lThemeFrame(reportDraw, syncWithBuffers, displayId)) {
++                // Java's dirty rectangle alone does not dirty HWUI's RenderNode tree.
++                // Record the root display list again so this theme sync draws a new buffer.
++                mFullRedrawNeeded = true;
++                mInvalidateRootRequested = true;
++                Log.i(mTag, "A6L theme root invalidated: " + mA6lInvalidatedThemePair
++                        + " seq=" + seqId + " elapsed_ms=" + SystemClock.elapsedRealtime());
++            }
+         }
+ 
+         if (mView != null && (frameChanged || configChanged)) {
+             forceLayout(mView);
+         }
+         requestLayout();
++    }
++
++    private String mA6lInvalidatedThemePair = "";
++
++    /** One real root redraw for the current A6L theme barrier, only on the default display. */
++    private boolean shouldInvalidateA6lThemeFrame(boolean reportDraw, boolean syncWithBuffers,
++            int displayId) {
++        if (!reportDraw || !syncWithBuffers || displayId != Display.DEFAULT_DISPLAY
++                || SystemProperties.get("ro.vendor.a6l.rom.build", "").isEmpty()) return false;
++        String pair = SystemProperties.get("sys.a6l.dualux.appearance", "");
++        if (pair.isEmpty() || pair.equals(mA6lInvalidatedThemePair)
++                || !pair.equals(SystemProperties.get("sys.a6l.dualux.theme_ready", ""))
++                || pair.equals(SystemProperties.get("sys.a6l.dualux.frame_ready", ""))
++                || !pair.matches("[0-9]+ (eink|lcd)")) return false;
++        mA6lInvalidatedThemePair = pair;
++        return true;
+     }
+ 
+     /** Handles messages {@link #MSG_INSETS_CONTROL_CHANGED}. */
+--- a/services/core/java/com/android/server/wm/WallpaperController.java
++++ b/services/core/java/com/android/server/wm/WallpaperController.java
+@@ -32,10 +32,14 @@
+ import android.graphics.Bitmap;
+ import android.graphics.Point;
+ import android.graphics.Rect;
++import android.hardware.SyncFence;
+ import android.os.Bundle;
+ import android.os.Debug;
+ import android.os.RemoteException;
+ import android.os.Trace;
++import android.os.SystemProperties;
++import android.os.SystemClock;
++import android.view.Display;
+ import android.util.MathUtils;
+ import android.util.Slog;
+ import android.util.SparseArray;
+@@ -52,7 +56,13 @@
+ import com.android.window.flags.Flags;
+ 
+ import java.io.PrintWriter;
++import java.lang.ref.WeakReference;
++import java.time.Duration;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
+ import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.Set;
+ import java.util.function.Consumer;
+ 
+ /**
+@@ -63,6 +73,213 @@
+     private static final String TAG = TAG_WITH_CLASS_NAME ? "WallpaperController" : TAG_WM;
+     private WindowManagerService mService;
+     private DisplayContent mDisplayContent;
++    private static final class A6lPresentWaiter {
++        // Lazy, dedicated worker: never wait on WM's lock/handler or animation thread.
++        static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
++            Thread thread = new Thread(runnable, "A6L-present-fence");
++            thread.setDaemon(true);
++            return thread;
++        });
++    }
++    private boolean mA6lWhiteWallpaper;
++    private String mA6lAppearance = "";
++    private String mA6lWallpaperMode = "";
++    private String mA6lFrameRequest = "";
++    private long mA6lFrameDeadline;
++    private long mA6lAppearanceObserved;
++    private boolean mA6lFrameBusyLogged;
++    private boolean mA6lFrameStarted;
++    private final Runnable mA6lWallpaperUpdate = this::updateA6lWallpaperOverride;
++
++    private void updateA6lWallpaperOverride() {
++        synchronized (mService.mGlobalLock) {
++            if (!isA6lDefaultDisplay()) return;
++            String appearance = SystemProperties.get("sys.a6l.dualux.appearance", "");
++            String mode = SystemProperties.get("persist.sys.a6l.eink.wallpaper", "white");
++            if (appearance.equals(mA6lAppearance) && mode.equals(mA6lWallpaperMode)) {
++                maybeStartA6lFrameSync();
++                return;
++            }
++            // An atomic sequence and target. Ignore malformed/stale callback work.
++            String[] pair = appearance.split(" ", -1);
++            if (pair.length != 2 || !pair[0].matches("[0-9]+")
++                    || !("eink".equals(pair[1]) || "lcd".equals(pair[1]))) return;
++            mA6lAppearance = appearance;
++            final long observed = mA6lAppearanceObserved = SystemClock.elapsedRealtime();
++            logA6lFrameStage(appearance, observed, "appearance observed mode=" + mode);
++            mA6lWallpaperMode = mode;
++            mA6lWhiteWallpaper = "eink".equals(pair[1]) && !"lcd".equals(mode);
++            {
++                // Share WM ordering with layout/crop updates; acknowledge that same transaction.
++                SurfaceControl.Transaction t = mDisplayContent.getPendingTransaction();
++                for (WallpaperWindowToken token : mWallpaperTokens) {
++                    token.updateA6lWhiteWallpaper(t, mA6lWhiteWallpaper);
++                }
++                t.addTransactionCommittedListener(mService.mH::post, () -> {
++                    // Do not acknowledge an older switch after a newer one has begun.
++                    if (appearance.equals(SystemProperties.get("sys.a6l.dualux.appearance", ""))
++                            && mode.equals(SystemProperties.get("persist.sys.a6l.eink.wallpaper", "white"))) {
++                        SystemProperties.set("sys.a6l.dualux.wallpaper_ready", appearance);
++                        logA6lFrameStage(appearance, observed, "wallpaper committed");
++                    }
++                });
++                mDisplayContent.scheduleAnimation();
++                mService.requestTraversal();
++            }
++            maybeStartA6lFrameSync();
++        }
++    }
++
++    /** Sequence-tagged redraw after theme configuration; never overlaps another WM sync. */
++    private void maybeStartA6lFrameSync() {
++        String pair = SystemProperties.get("sys.a6l.dualux.theme_ready", "");
++        if (pair.isEmpty() || !pair.equals(mA6lAppearance)
++                || !pair.equals(SystemProperties.get("sys.a6l.dualux.appearance", ""))) return;
++        if (!pair.equals(mA6lFrameRequest)) {
++            mA6lFrameRequest = pair;
++            mA6lFrameDeadline = SystemClock.uptimeMillis() + 1500;
++            mA6lFrameStarted = false;
++            mA6lFrameBusyLogged = false;
++            logA6lFrameStage(pair, mA6lAppearanceObserved, "theme ready observed");
++        }
++        if (mA6lFrameStarted) return;
++        if (SystemClock.uptimeMillis() >= mA6lFrameDeadline) {
++            mA6lFrameStarted = true;
++            Slog.w(TAG, "A6L themed redraw could not start before deadline: " + pair);
++            return;
++        }
++        if (mService.mSyncEngine.hasActiveSync() || mService.mSyncEngine.hasPendingSyncSets()) {
++            if (!mA6lFrameBusyLogged) {
++                mA6lFrameBusyLogged = true;
++                logA6lFrameStage(pair, mA6lAppearanceObserved, "waiting for WM sync engine");
++            }
++            return;
++        }
++        mA6lFrameStarted = true;
++        String mode = mA6lWallpaperMode;
++        final long observed = mA6lAppearanceObserved;
++        // Both System.nanoTime and TransactionStats latch time use CLOCK_MONOTONIC.
++        final long redrawRequestedNanos = System.nanoTime();
++        class Redraw implements BLASTSyncEngine.TransactionReadyListener {
++            private volatile boolean mFailed;
++            private int mMembers;
++            private int mWindows;
++            private void stage(String detail) {
++                logA6lFrameStage(pair, observed, detail);
++            }
++            private boolean current() {
++                return pair.equals(SystemProperties.get("sys.a6l.dualux.appearance", ""))
++                        && pair.equals(SystemProperties.get("sys.a6l.dualux.theme_ready", ""))
++                        && mode.equals(SystemProperties.get("persist.sys.a6l.eink.wallpaper", "white"));
++            }
++            @Override public void onSyncGroupTimeout(boolean readinessTimeout) {
++                mFailed = true;
++                Slog.w(TAG, "A6L themed redraw timed out: " + pair);
++                stage("failed group-timeout readiness=" + readinessTimeout);
++            }
++            @Override public void onTransactionCommitTimeout() {
++                mFailed = true;
++                Slog.w(TAG, "A6L themed redraw commit timed out: " + pair);
++                stage("failed commit-timeout");
++            }
++            @Override public void onTransactionReady(int id, SurfaceControl.Transaction transaction) {
++                if (!current()) mFailed = true;
++                stage("transaction ready sync=" + id + " tx=" + transaction.getId()
++                        + " roots=" + mMembers + " windows=" + mWindows + " failed=" + mFailed);
++                if (!mFailed && current() && Flags.sdkDesiredPresentTime()) {
++                    transaction.addTransactionCompletedListener(A6lPresentWaiter.EXECUTOR, stats -> {
++                        try (SyncFence fence = stats.getPresentFence()) {
++                            // A completed empty transaction has latch=-1 and no present fence.
++                            // Neither that nor a latched transaction without a fence proves scanout.
++                            final long latchNanos = stats.getLatchTimeNanos();
++                            stage("transaction completed latch_ns=" + latchNanos
++                                    + " present_fence=" + fence.isValid());
++                            if (latchNanos < redrawRequestedNanos) {
++                                mFailed = true;
++                                stage("failed stale-or-empty-latch latch_ns=" + latchNanos);
++                            } else if (!fence.isValid()) {
++                                mFailed = true;
++                                Slog.w(TAG, "A6L themed redraw lacks valid present fence: " + pair);
++                                stage("failed no-present-fence latch_ns=" + stats.getLatchTimeNanos());
++                            } else if (fence.await(Duration.ofMillis(500))) {
++                                publishReady("new buffers presented");
++                            } else {
++                                mFailed = true;
++                                Slog.w(TAG, "A6L themed present fence timed out: " + pair);
++                                stage("failed present-timeout");
++                            }
++                        }
++                    });
++                }
++                // Apply even after timeout/stale request: release held windows and engine state.
++                transaction.apply();
++                transaction.close();
++            }
++            @Override public void onTransactionCommitted() {
++                stage("transaction committed failed=" + mFailed);
++                if (!Flags.sdkDesiredPresentTime()) {
++                    mFailed = true;
++                    Slog.w(TAG, "A6L themed redraw present-fence API disabled: " + pair);
++                }
++            }
++            private void publishReady(String qualification) {
++                mService.mH.post(() -> {
++                    synchronized (mService.mGlobalLock) {
++                        if (!mFailed && mMembers > 0 && current()) {
++                            SystemProperties.set("sys.a6l.dualux.frame_ready", pair);
++                            Slog.i(TAG, "A6L " + qualification + ": " + pair + " windows=" + mMembers);
++                            stage("frame ready roots=" + mMembers + " windows=" + mWindows);
++                        }
++                    }
++                });
++            }
++        }
++        Redraw redraw = new Redraw();
++        int id = mService.mSyncEngine.startSyncSet(redraw, 1500, "A6L theme " + pair, false);
++        mService.mSyncEngine.setSyncMethod(id, BLASTSyncEngine.METHOD_BLAST);
++        Set<WindowContainer<?>> roots = new HashSet<>();
++        mDisplayContent.forAllWindows(win -> {
++            if (!win.mHasSurface || !win.isVisible() || win.mIsWallpaper
++                    || win.mAttrs.type == WindowManager.LayoutParams.TYPE_APPLICATION_STARTING) return;
++            if (win.mActivityRecord == null && !"com.android.systemui".equals(win.getOwningPackage())) return;
++            // Sync the activity/token subtree, including windows replaced by a theme relaunch.
++            WindowContainer<?> root = win.mActivityRecord != null ? win.mActivityRecord : win.mToken;
++            if (roots.add(root)) {
++                mService.mSyncEngine.addToSyncSet(id, root);
++                redraw.mMembers++;
++            }
++            if (redraw.mWindows++ < 8) {
++                redraw.stage("window pkg=" + win.getOwningPackage()
++                        + " type=" + win.mAttrs.type + " seq=" + win.mSyncSeqId
++                        + " buffer_seq=" + win.mBufferSeqId
++                        + " requested_visible=" + win.isVisibleRequested()
++                        + " config_reported=" + win.isLastConfigReportedToClient());
++            }
++            // Keep the BLAST group open until the requested client draw arrives;
++            // an old HAS_DRAWN surface is not the themed-frame readiness proof.
++            win.requireA6lThemeSyncDraw(pair);
++            win.forceReportingResized();
++        }, true);
++        if (redraw.mMembers == 0) redraw.mFailed = true;
++        redraw.stage("sync started id=" + id + " roots=" + redraw.mMembers
++                + " windows=" + redraw.mWindows + " failed=" + redraw.mFailed);
++        mDisplayContent.setLayoutNeeded();
++        mService.mSyncEngine.setReady(id);
++        mService.requestTraversal();
++    }
++
++    /** Bounded stages per switch; elapsed time includes system suspend, unlike uptime. */
++    private static void logA6lFrameStage(String pair, long observed, String detail) {
++        long elapsed = SystemClock.elapsedRealtime();
++        Slog.i(TAG, "A6L frame stage: " + pair + " elapsed_ms=" + elapsed
++                + " since_observed_ms=" + (elapsed - observed) + " " + detail);
++    }
++
++    private boolean isA6lDefaultDisplay() {
++        return mDisplayContent.getDisplayId() == Display.DEFAULT_DISPLAY
++                && !SystemProperties.get("ro.vendor.a6l.rom.build", "").isEmpty();
++    }
++
+ 
+     // Larger index has higher z-order.
+     private final ArrayList<WallpaperWindowToken> mWallpaperTokens = new ArrayList<>();
+@@ -215,6 +432,21 @@
+         mMinWallpaperScale =
+                 resources.getFloat(com.android.internal.R.dimen.config_wallpaperMinScale);
+         mMaxWallpaperScale = resources.getFloat(R.dimen.config_wallpaperMaxScale);
++        if (isA6lDefaultDisplay()) {
++            WeakReference<WallpaperController> owner = new WeakReference<>(this);
++            SystemProperties.addChangeCallback(() -> {
++                WallpaperController controller = owner.get();
++                if (controller == null) return;
++                controller.mService.mH.removeCallbacks(controller.mA6lWallpaperUpdate);
++                controller.mService.mH.post(controller.mA6lWallpaperUpdate);
++            });
++            // A weak, coalesced idle callback avoids joining a transition's active sync.
++            mService.mSyncEngine.addOnIdleListener(() -> {
++                WallpaperController controller = owner.get();
++                if (controller != null) controller.mService.mH.post(controller.mA6lWallpaperUpdate);
++            });
++            mService.mH.post(mA6lWallpaperUpdate);
++        }
+     }
+ 
+     @VisibleForTesting
+@@ -606,6 +838,11 @@
+         Trace.traceBegin(Trace.TRACE_TAG_WINDOW_MANAGER, "adjustWallpaperWindows");
+         // First find top-most window that has asked to be on top of the wallpaper;
+         // all wallpapers go behind it.
++        if (isA6lDefaultDisplay()) {
++            for (WallpaperWindowToken token : mWallpaperTokens) {
++                token.updateA6lWhiteWallpaper(mDisplayContent.getPendingTransaction(), mA6lWhiteWallpaper);
++            }
++        }
+         findWallpaperTarget();
+         updateWallpaperWindowsTarget(mFindResults);
+         WallpaperWindowToken token = getTokenForTarget(mWallpaperTarget);
+--- a/services/core/java/com/android/server/wm/WallpaperWindowToken.java
++++ b/services/core/java/com/android/server/wm/WallpaperWindowToken.java
+@@ -44,6 +44,10 @@
+     private static final String TAG = TAG_WITH_CLASS_NAME ? "WallpaperWindowToken" : TAG_WM;
+ 
+     private boolean mShowWhenLocked = false;
++    private SurfaceControl mA6lWhiteWallpaper;
++    private SurfaceControl mA6lWhiteParent;
++    private boolean mA6lWhiteVisible;
++    private final Rect mA6lWhiteBounds = new Rect();
+     float mWallpaperX = -1;
+     float mWallpaperY = -1;
+     float mWallpaperXStep = -1;
+@@ -62,6 +66,55 @@
+                 true /* ownerCanManageAppTokens */, false /* roundedCornerOverlay */,
+                 false /* fromClientToken */, options);
+         setWindowingMode(WINDOWING_MODE_FULLSCREEN);
++    }
++
++    /** A rendering override below apps; original static/live wallpaper stays attached. */
++    boolean updateA6lWhiteWallpaper(SurfaceControl.Transaction t, boolean white) {
++        SurfaceControl parent = getSurfaceControl();
++        if (parent == null || !parent.isValid()) return false;
++        if (mA6lWhiteWallpaper != null && mA6lWhiteParent != parent) {
++            t.remove(mA6lWhiteWallpaper);
++            mA6lWhiteWallpaper.release();
++            mA6lWhiteWallpaper = null;
++            mA6lWhiteVisible = false;
++            mA6lWhiteBounds.setEmpty();
++        }
++        if (!white && mA6lWhiteWallpaper == null) return false;
++        boolean changed = false;
++        if (mA6lWhiteWallpaper == null) {
++            mA6lWhiteWallpaper = makeChildSurface(null).setName("A6L rear white wallpaper")
++                    .setColorLayer().setCallsite("WallpaperWindowToken.updateA6lWhiteWallpaper")
++                    .build();
++            mA6lWhiteParent = parent;
++            t.setLayer(mA6lWhiteWallpaper, Integer.MAX_VALUE)
++                    .setColor(mA6lWhiteWallpaper, new float[]{1f, 1f, 1f})
++                    .setAlpha(mA6lWhiteWallpaper, 1f);
++            changed = true;
++        }
++        Rect bounds = getBounds();
++        if (!mA6lWhiteBounds.equals(bounds)) {
++            mA6lWhiteBounds.set(bounds);
++            t.setPosition(mA6lWhiteWallpaper, 0, 0)
++                    .setWindowCrop(mA6lWhiteWallpaper, bounds.width(), bounds.height());
++            changed = true;
++        }
++        if (white != mA6lWhiteVisible) {
++            t.setVisibility(mA6lWhiteWallpaper, white);
++            mA6lWhiteVisible = white;
++            changed = true;
++        }
++        return changed;
++    }
++
++    @Override
++    void removeImmediately() {
++        if (mA6lWhiteWallpaper != null) {
++            getSyncTransaction().remove(mA6lWhiteWallpaper);
++            mA6lWhiteWallpaper.release();
++            mA6lWhiteWallpaper = null;
++            mA6lWhiteParent = null;
++        }
++        super.removeImmediately();
+     }
+ 
+     @Override
+--- a/services/core/java/com/android/server/wm/WindowState.java
++++ b/services/core/java/com/android/server/wm/WindowState.java
+@@ -211,6 +211,7 @@
+ import android.os.RemoteCallbackList;
+ import android.os.RemoteException;
+ import android.os.SystemClock;
++import android.os.SystemProperties;
+ import android.os.Trace;
+ import android.os.WorkSource;
+ import android.provider.Settings;
+@@ -6014,6 +6015,21 @@
+         return true;
+     }
+ 
++    // Only WallpaperController's A6L theme barrier requires an explicit new draw.
++    // Ordinary WM sync keeps its existing already-drawn fast path.
++    private BLASTSyncEngine.SyncGroup mA6lThemeDrawGroup;
++
++    void requireA6lThemeSyncDraw(String pair) {
++        final DisplayContent display = getDisplayContent();
++        if (display == null || mSyncState != SYNC_STATE_WAITING_FOR_DRAW || getSyncGroup() == null
++                || getSyncMethod() != BLASTSyncEngine.METHOD_BLAST
++                || display.getDisplayId() != Display.DEFAULT_DISPLAY
++                || SystemProperties.get("ro.vendor.a6l.rom.build", "").isEmpty()
++                || !pair.equals(SystemProperties.get("sys.a6l.dualux.appearance", ""))
++                || !pair.equals(SystemProperties.get("sys.a6l.dualux.theme_ready", ""))) return;
++        mA6lThemeDrawGroup = getSyncGroup();
++    }
++
+     @Override
+     boolean isSyncFinished(BLASTSyncEngine.SyncGroup group) {
+         if (!isVisibleRequested() || isFullyTransparent()) {
+@@ -6022,6 +6038,7 @@
+             return true;
+         }
+         if (mSyncState == SYNC_STATE_WAITING_FOR_DRAW && mLastConfigReportedToClient && isDrawn()
++                && (mA6lThemeDrawGroup == null || mA6lThemeDrawGroup != group)
+                 && (mWmService.mAlwaysSeqId
+                         ? mBufferSeqId <= mSyncSeqId : mPrepareSyncSeqId <= 0)) {
+             // Complete the sync state immediately for a drawn window that doesn't need to redraw.
+@@ -6034,6 +6051,7 @@
+     void finishSync(Transaction outMergedTransaction, BLASTSyncEngine.SyncGroup group,
+             boolean cancel) {
+         if (isDifferentSyncGroup(group)) return;
++        if (mA6lThemeDrawGroup == group) mA6lThemeDrawGroup = null;
+         if (!mWmService.mAlwaysSeqId) {
+             mPrepareSyncSeqId = 0;
+         }
+@@ -6111,7 +6129,13 @@
+             // Currently in a Sync.
+             if (mWmService.mAlwaysSeqId ? (syncSeqId >= mSyncSeqId && syncSeqId >= mBufferSeqId)
+                     : !syncStillPending) {
+-                layoutNeeded = onSyncFinishedDrawing();
++                // reportResized advances the sequence before the client draws. For this
++                // A6L group a null draw report must not release an already-drawn surface.
++                if (mA6lThemeDrawGroup == null || mA6lThemeDrawGroup != getSyncGroup()
++                        || postDrawTransaction != null) {
++                    mA6lThemeDrawGroup = null;
++                    layoutNeeded = onSyncFinishedDrawing();
++                }
+             }
+             if (postDrawTransaction != null
+                     && (!mWmService.mAlwaysSeqId

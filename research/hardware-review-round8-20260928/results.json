@@ -1,0 +1,12 @@
+[
+  {
+    "test": "data",
+    "exit_code": 0,
+    "stdout": "F59 connected_reconfig=1 settings_queries_after_event=0 cached_IP=10.0.0.5/30 cached_DNS=8.8.8.8 cached_MTU=1430\nF59 fresh_query_positive_control IP=10.0.0.9 DNS=9.9.9.9 MTU=1280\nF60 disconnect_during_settings consumed=1 setup_success=1 cached_calls=1 loss_callbacks=0\nF60 post_setup_disconnect_positive_control loss_callbacks=1\n"
+  },
+  {
+    "test": "nitz",
+    "exit_code": 0,
+    "stdout": "F61 sample_received_ms=10000 sent_ms=14000 reported_age_ms=0 reference_error_ms=4000\nF61 immediate_delivery_positive_control reference_error_ms=0\n"
+  }
+]

@@ -82,6 +82,7 @@ cc_binary {
         "hal/RadioMessagingVoice.cpp",
         "hal/RadioNetworkData.cpp",
         "hal/RadioSimModemConfig.cpp",
+        "hal/VoiceMute.cpp",
         "hal/service.cpp",
     ],
     local_include_dirs: ["hal"],
@@ -116,6 +117,30 @@ cc_binary {
     srcs: ["tools/a6l_qmi_cli.cc"],
     static_libs: ["liba6lqmi"],
     shared_libs: ["liblog"],
+}
+
+// volte2 (25 Sep 2026): AP-side IMS data connection manager (QMI IMSDCM 770 server) for modem VoLTE
+cc_binary {
+    name: "a6l-imsdcm",
+    defaults: ["a6l-radio-defaults"],
+    vendor: true,
+    srcs: ["tools/a6l_imsdcm.cc"],
+    static_libs: ["liba6lqmi"],
+    shared_libs: ["liblog"],
+    init_rc: ["init/a6l-imsdcm.rc"],
+}
+
+cc_test_host {
+    name: "a6l-volte2-tests",
+    defaults: ["a6l-radio-defaults"],
+    srcs: [
+        "tests/fake_modem.cc",
+        "tests/volte2_tests.cc",
+    ],
+    static_libs: ["liba6lqmi"],
+    test_options: {
+        unit_test: true,
+    },
 }
 
 cc_test_host {

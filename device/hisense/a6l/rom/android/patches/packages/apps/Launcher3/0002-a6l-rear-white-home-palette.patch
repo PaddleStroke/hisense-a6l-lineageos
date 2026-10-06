@@ -1,0 +1,146 @@
+--- a/src/com/android/launcher3/util/Themes.java
++++ b/src/com/android/launcher3/util/Themes.java
+@@ -47,6 +47,7 @@
+     }
+ 
+     public static int getActivityThemeRes(Context context, int wallpaperColorHints) {
++        wallpaperColorHints = A6lWallpaperPalette.effectiveHints(context, wallpaperColorHints);
+         boolean supportsDarkText = (wallpaperColorHints & HINT_SUPPORTS_DARK_TEXT) != 0;
+         boolean isMainColorDark = (wallpaperColorHints & HINT_SUPPORTS_DARK_THEME) != 0;
+ 
+--- a/src/com/android/launcher3/util/WallpaperThemeManager.kt
++++ b/src/com/android/launcher3/util/WallpaperThemeManager.kt
+@@ -20,6 +20,7 @@
+ import android.content.ComponentCallbacks
+ import android.content.res.Configuration
+ import android.os.Bundle
++import android.view.ViewTreeObserver
+ import com.android.launcher3.LauncherConstants.SavedInstanceKeys.RUNTIME_STATE_RECREATE_TO_UPDATE_THEME
+ import com.android.launcher3.R
+ 
+@@ -30,6 +31,17 @@
+     private var themeRes: Int = R.style.AppTheme
+ 
+     private var recreateToUpdateTheme = false
++
++    // The prepared target changes even when LCD and rear use the same uiMode.
++    // Observe at the actual draw boundary; cancel an old-palette buffer before
++    // the A6L WM BLAST group can use it as the first rear-frame proof.
++    private val a6lPaletteObserver =
++        if (A6lWallpaperPalette.supported(activity)) activity.window.decorView.viewTreeObserver
++        else null
++    private val a6lPaletteDraw = ViewTreeObserver.OnPreDrawListener {
++        if (!recreateToUpdateTheme) updateTheme()
++        !recreateToUpdateTheme
++    }
+ 
+     init {
+         // Update theme
+@@ -42,13 +54,23 @@
+ 
+         activity.registerActivityLifecycleCallbacks(this)
+         activity.registerComponentCallbacks(this)
++        a6lPaletteObserver?.addOnPreDrawListener(a6lPaletteDraw)
+     }
+ 
+     override fun onActivitySaveInstanceState(activity: Activity, bundle: Bundle) =
+         bundle.putBoolean(RUNTIME_STATE_RECREATE_TO_UPDATE_THEME, recreateToUpdateTheme)
+ 
+-    override fun onActivityDestroyed(unused: Activity) =
++    override fun onActivityDestroyed(unused: Activity) {
+         WallpaperColorHints.get(activity).unregisterOnColorsChangedListener(this)
++        if (a6lPaletteObserver != null) {
++            // DecorView attachment may merge listeners into a new observer and kill the old one.
++            val current = activity.window.decorView.viewTreeObserver
++            if (current.isAlive) current.removeOnPreDrawListener(a6lPaletteDraw)
++            if (a6lPaletteObserver !== current && a6lPaletteObserver.isAlive) {
++                a6lPaletteObserver.removeOnPreDrawListener(a6lPaletteDraw)
++            }
++        }
++    }
+ 
+     override fun onConfigurationChanged(config: Configuration) = updateTheme()
+ 
+@@ -63,6 +85,7 @@
+     }
+ 
+     fun recreateToUpdateTheme() {
++        if (recreateToUpdateTheme) return
+         recreateToUpdateTheme = true
+         activity.recreate()
+     }
+--- /dev/null
++++ b/src/com/android/launcher3/util/A6lWallpaperPalette.java
+@@ -0,0 +1,72 @@
++// SPDX-License-Identifier: Apache-2.0
++package com.android.launcher3.util;
++
++import android.app.WallpaperColors;
++import android.content.Context;
++import android.view.Display;
++
++import java.lang.reflect.Method;
++
++/** Transient foreground contrast for the A6L's WM white wallpaper layer. */
++public final class A6lWallpaperPalette {
++    private static Method sGet;
++    private A6lWallpaperPalette() { }
++
++    private static String get(String name, String fallback) {
++        try {
++            if (sGet == null) sGet = Class.forName("android.os.SystemProperties")
++                    .getMethod("get", String.class, String.class);
++            return (String) sGet.invoke(null, name, fallback);
++        } catch (ReflectiveOperationException | RuntimeException e) {
++            return fallback;
++        }
++    }
++
++    public static boolean supported(Context context) {
++        try {
++            Display display = context.getDisplay();
++            return display != null && display.getDisplayId() == Display.DEFAULT_DISPLAY
++                    && !get("ro.vendor.a6l.rom.build", "").isEmpty();
++        } catch (RuntimeException e) {
++            return false; // Non-display/preview contexts retain their normal palette.
++        }
++    }
++
++    public static int effectiveHints(Context context, int original) {
++        if (!supported(context)) return original;
++        String pair = get("sys.a6l.dualux.appearance", "");
++        String prepare = get("vendor.dualux.prepare", "");
++        String state = get("vendor.dualux.state", "lcd");
++        String mode = get("persist.sys.a6l.eink.wallpaper", "white");
++        // The getter runs again at the draw boundary. Never retain a canceled epoch.
++        if (!pair.equals(get("sys.a6l.dualux.appearance", ""))
++                || !prepare.equals(get("vendor.dualux.prepare", ""))
++                || !state.equals(get("vendor.dualux.state", "lcd"))
++                || !mode.equals(get("persist.sys.a6l.eink.wallpaper", "white"))) return original;
++        return hints(original, pair, prepare, state, mode);
++    }
++
++    static int hints(int original, String pair, String prepare, String state, String mode) {
++        if (!valid(pair) || !pair.endsWith(" eink") || "lcd".equals(mode)) return original;
++        if (!prepare.isEmpty()) {
++            if (!pair.equals(prepare)) return original;
++        } else if (!state.startsWith("eink")) {
++            return original;
++        }
++        // RGB colors/Monet seeds and the WallpaperManager cache remain unchanged.
++        return (original | WallpaperColors.HINT_SUPPORTS_DARK_TEXT)
++                & ~WallpaperColors.HINT_SUPPORTS_DARK_THEME;
++    }
++
++    private static boolean valid(String pair) {
++        if (pair == null) return false;
++        int space = pair.indexOf(' ');
++        if (space < 1 || space > 19 || pair.indexOf(' ', space + 1) >= 0
++                || !(pair.endsWith(" eink") || pair.endsWith(" lcd"))) return false;
++        for (int i = 0; i < space; i++) {
++            if (pair.charAt(i) < '0' || pair.charAt(i) > '9') return false;
++        }
++        try { return Long.parseLong(pair.substring(0, space)) > 0; }
++        catch (NumberFormatException e) { return false; }
++    }
++}

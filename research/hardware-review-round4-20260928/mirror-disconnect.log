@@ -1,0 +1,15 @@
+[0.000] A6L_MIRROR start: source=file:/tmp/a6l-review4-d1h0uyb_/constant.raw interval=50 mode=mirror reading=0 clear-every=10 active=fastest fit=letterbox
+[0.000] A6L_MIRROR mirror ON
+[0.000] A6L_MIRROR connected to a6l_epdd (/tmp/a6l-review4-d1h0uyb_/disconnect.sock)
+[0.000] A6L_MIRROR state: mirror
+[0.006] A6L_MIRROR frame 1: 8x16 capture 0 ms, moving 1.000, vs panel 1.000
+[0.007] A6L_MIRROR cmd: clear
+[0.007] A6L_MIRROR epdd: OK cleared (0.00 s)
+[0.009] A6L_MIRROR cmd: frame 720 1440 quality
+[0.009] A6L_MIRROR WARN a6l_epdd closed the connection
+[0.009] A6L_MIRROR state: mirror-no-epdd
+[0.056] A6L_MIRROR frame 2: 8x16 capture 0 ms, moving 0.000, vs panel 0.000
+[0.106] A6L_MIRROR frame 3: 8x16 capture 0 ms, moving 0.000, vs panel 0.000
+[2.006] A6L_MIRROR connected to a6l_epdd (/tmp/a6l-review4-d1h0uyb_/disconnect.sock)
+[2.006] A6L_MIRROR state: mirror
+[4.956] A6L_MIRROR exit after 100 frames

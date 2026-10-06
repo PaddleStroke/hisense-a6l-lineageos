@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * A6L microSD - RUNTIME (attended test) variant of a6l-microsd-v75.dtso, embedded in a6l_sd_ovl.ko.
+ * Difference with the ROM overlay: pm660l L2/L5 are added as a NEW "qcom,rpm-pm660l-regulators" node
+ * (regulators-a6lsd) instead of new children of regulators-0, because the smd-rpm regulator driver only
+ * registers children at probe time (regulators-0 is already bound in the live recovery and must not be
+ * unbound: L1/L3/L4/L7 have consumers). The loader module re-parents the new platform device to the rpm device.
+ * Stock values (sdhci@c084000): vdd = pm660l_l5 2.95 V, vdd-io = pm660l_l2 1.8..2.95 V, cd-gpios tlmm 54 flag 0,
+ * cd pin gpio54 function gpio, 2 mA, bias-pull-up. CD_MODE: 0 = active-high (stock), 1 = active-low, 2 = broken-cd.
+ */
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/gpio/gpio.h>
+
+#ifndef CD_MODE
+#define CD_MODE 0
+#endif
+
+/ {
+	fragment@90 {
+		target-path = "/remoteproc/glink-edge/rpm-requests";
+		__overlay__ {
+			regulators-a6lsd {
+				compatible = "qcom,rpm-pm660l-regulators";
+
+				a6l_vreg_l2b: l2 {
+					regulator-name = "pm660l_l2";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <2950000>;
+					regulator-allow-set-load;
+				};
+
+				a6l_vreg_l5b: l5 {
+					regulator-name = "pm660l_l5";
+					regulator-min-microvolt = <2944000>;
+					regulator-max-microvolt = <2952000>; /* 29 Sep: 2.95 V is between the 8 mV grid points 2.944/2.952 -> min>max, l5 refused (-22) */
+					regulator-allow-set-load;
+				};
+			};
+		};
+	};
+};
+
+&tlmm {
+	a6l_sd_cd: a6l-sd-cd-state {
+		pins = "gpio54";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+};
+
+&sdhc_2 {
+	status = "okay";
+	vmmc-supply = <&a6l_vreg_l5b>;
+	vqmmc-supply = <&a6l_vreg_l2b>;
+#if CD_MODE == 0
+	cd-gpios = <&tlmm 54 GPIO_ACTIVE_HIGH>;
+#elif CD_MODE == 1
+	cd-gpios = <&tlmm 54 GPIO_ACTIVE_LOW>;
+#else
+	broken-cd;
+#endif
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&sdc2_state_on &a6l_sd_cd>;
+	pinctrl-1 = <&sdc2_state_off &a6l_sd_cd>;
+};

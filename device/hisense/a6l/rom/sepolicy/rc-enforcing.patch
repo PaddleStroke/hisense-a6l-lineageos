@@ -1,0 +1,139 @@
+A6L rc enforcing-readiness patch, REGENERATED 30 Sep 2026 (r6c; was r6b boot fix / 29 Sep selinux-release) from the current tree by
+  python3 tools/release/a6l_selinux_prep.py diff device/hisense/a6l > device/hisense/a6l/rom/sepolicy/rc-enforcing.patch
+Reference only: builds use A6L_SELINUX_PREP=1 (pipeline prep applies the same transform to the TREE copy). Do NOT git-apply
+it to the repo (the default permissive build keeps the explicit seclabels). docs/selinux-release-20260929.md
+
+--- a/device/hisense/a6l/power/rom/init.a6l-power.rc
++++ b/device/hisense/a6l/power/rom/init.a6l-power.rc
+@@ -5,7 +5,6 @@
+     group root
+     disabled
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ on property:init.svc.a6l_modules_misc=stopped && property:persist.vendor.a6l.charger=1
+     start a6l_chg_guard
+--- a/device/hisense/a6l/rom/init/init.qcom.rc
++++ b/device/hisense/a6l/rom/init/init.qcom.rc
+@@ -9,6 +9,9 @@
+ #   fs         : mount_all (userdata formatted on first boot, persist read-only)
+ #   boot       : USB gadget controller; sensor registry + ADSP + audio card + TMD3702 (a6l-modules.sh adsp)
+ #   radio      : ONLY when persist.vendor.a6l.radio=1 (RF: needs Pierre's explicit go) -> a6l-radio.sh
++# selinux-release (A6L_SELINUX_PREP): the debug a6l_logcat service (androidboot.a6l_logcat=1) moved to
++# /vendor/etc/init/init.a6l.logcat-debug.rc, installed in userdebug/eng only (it runs as su).
++
+ import /vendor/etc/init/hw/init.a6l.usb.rc
+ 
+ on early-init
+@@ -105,18 +108,6 @@
+     exec_background - system system -- /system/bin/settings put system screen_off_timeout 2147483647
+     exec_background - system system -- /system/bin/svc power stayon true
+ 
+-# Debug (QEMU test / attended first boot): androidboot.a6l_logcat=1 on the kernel cmdline streams logcat warnings+errors
+-# (main, system, crash) into the kernel log, so a boot problem is visible in dmesg / the console.
+-on property:logd.ready=true && property:ro.boot.a6l_logcat=1
+-    start a6l_logcat
+-
+-service a6l_logcat /vendor/bin/a6l-logcat.sh
+-    user root
+-    group root log
+-    disabled
+-    stdio_to_kmsg
+-    seclabel u:r:su:s0
+-
+ # ---- modules --------------------------------------------------------------------------------------------------
+ service a6l_modules_display /vendor/bin/a6l-modules.sh display
+     user root
+@@ -124,7 +115,6 @@
+     disabled
+     oneshot
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ # r6b boot fix: bounded wait for the display group (post-fs-data, charger mode); see a6l-modules.sh displaywait
+ service a6l_display_wait /vendor/bin/a6l-modules.sh displaywait done 45
+@@ -133,7 +123,6 @@
+     disabled
+     oneshot
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ service a6l_modules_adsp /vendor/bin/a6l-modules.sh adsp
+     user root
+@@ -141,7 +130,6 @@
+     disabled
+     oneshot
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ # rom-v2: fuel gauge, vibrator, flash LED, frontlight, cameras (probe only) after the ADSP/audio group; charger gated
+ on property:init.svc.a6l_modules_adsp=stopped
+@@ -161,7 +149,6 @@
+     disabled
+     oneshot
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ # H49 (r5, 28 Sep 2026): off-mode charging. init triggers `charger` instead of late-init (no fs/post-fs-data/boot), so
+ # none of the `on boot` module groups run. Minimal path: fuel gauge + charger group (rom/modules/charger.txt, when
+@@ -180,7 +167,6 @@
+     disabled
+     oneshot
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ service a6l_bootinfo /vendor/bin/a6l-modules.sh bootinfo
+     user root
+@@ -188,7 +174,6 @@
+     disabled
+     oneshot
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ # ---- radio (modem, Wi-Fi, Bluetooth): OFF unless Pierre enables it --------------------------------------------
+ # adb shell setprop persist.vendor.a6l.radio 1   (then reboot, or: adb shell setprop ctl.start a6l_radio)
+@@ -204,25 +189,21 @@
+     disabled
+     oneshot
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ service vendor.rmtfs /vendor/bin/a6l-radio.sh rmtfs
+     user root
+     group root system
+     disabled
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ service vendor.tqftpserv /vendor/bin/a6l-radio.sh tqftpserv
+     user root
+     group root system
+     disabled
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+ 
+ service vendor.diag_router /vendor/bin/a6l-radio.sh diag
+     user root
+     group root system
+     disabled
+     stdio_to_kmsg
+-    seclabel u:r:vendor_modprobe:s0
+--- a/device/hisense/a6l/rom/v2/init.a6l.wifibt.rc
++++ b/device/hisense/a6l/rom/v2/init.a6l.wifibt.rc
+@@ -30,4 +30,3 @@
+     capabilities NET_ADMIN
+     disabled
+     oneshot
+-    seclabel u:r:vendor_modprobe:s0
+--- a/device/hisense/a6l/rom/vendor-etc/ueventd.rc
++++ b/device/hisense/a6l/rom/vendor-etc/ueventd.rc
+@@ -1,5 +1,8 @@
+ # A6L rom-v1 vendor ueventd rules (agent flash). Device nodes the bring-up scripts used to mknod by hand.
+-/dev/dri/*                0666   system     graphics
++# selinux-release (A6L_SELINUX_PREP): KMS nodes only for uid system / group graphics (composer, epdd lease, e-ink mirror,
++# dualux, charger UI); render nodes stay world-usable for Mesa in app processes.
++/dev/dri/card*            0660   system     graphics
++/dev/dri/renderD*         0666   system     graphics
+ /dev/i2c-*                0660   system     system
+ /dev/gpiochip*            0660   system     system
+ /dev/qcom_rmtfs_mem*      0660   root       system

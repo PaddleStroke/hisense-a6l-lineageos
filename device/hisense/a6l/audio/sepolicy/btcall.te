@@ -1,0 +1,4 @@
+# btcall (29 Sep 2026, docs/android-bt-audio-20260929.md): init.a6l.btcall.rc bind-mounts the bridge policy
+# (/vendor/etc/audio_policy_configuration_btcall.xml) over /vendor/etc/audio_policy_configuration.xml at early-boot
+# when persist.vendor.a6l.btcall.bridge=1 (default off). Both files are vendor_configs_file.
+allow init vendor_configs_file:file mounton;

@@ -8,10 +8,15 @@
              (com.android.hardware.audio APEX, module "primary" = ModulePrimary/StreamPrimary) opens pcmC0D0p/pcmC0D0c
              (= FE "MultiMedia1", both directions, after the q6asm-dai fix). It does NOT touch mixer controls: codec and
              DSP routing is done by /vendor/bin/a6l-audio-route (libaudioroute + /vendor/etc/mixer_paths_a6l.xml),
-             which follows the "Headphone Jack"/"Mic Jack" kcontrols of the card. Earpiece: not exposed (broken on
-             Pierre's unit, and no voice-call audio path yet). -->
+             which follows the "Headphone Jack"/"Mic Jack" kcontrols of the card.
+             r5 review F7 (28 Sep 2026): Earpiece exposed (in-call "voice-handset"; physically broken on Pierre's unit
+             only) so that Telecom offers earpiece/speaker. Calls use the legacy policy routing of the primary output
+             (no Telephony Rx/Tx devices); the HAL (tree patch audio/patches/0002) publishes the chosen call device in
+             vendor.a6l.audio.call_out, which a6l-audio-route (codec/TFA paths) and a6l-q6voiced (DSP voice RX port:
+             speaker = TERT_MI2S_RX / TFA9894) follow. -->
         <module name="primary" halVersion="3.0">
             <attachedDevices>
+                <item>Earpiece</item>
                 <item>Speaker</item>
                 <item>Built-In Mic</item>
             </attachedDevices>
@@ -23,10 +28,14 @@
                 </mixPort>
                 <mixPort name="primary input" role="sink">
                     <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
-                             samplingRates="8000 16000 48000" channelMasks="AUDIO_CHANNEL_IN_MONO AUDIO_CHANNEL_IN_STEREO"/>
+                             samplingRates="8000 16000 48000" channelMasks="AUDIO_CHANNEL_IN_MONO"/>
                 </mixPort>
             </mixPorts>
             <devicePorts>
+                <devicePort tagName="Earpiece" type="AUDIO_DEVICE_OUT_EARPIECE" role="sink">
+                    <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
+                </devicePort>
                 <devicePort tagName="Speaker" type="AUDIO_DEVICE_OUT_SPEAKER" role="sink">
                     <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
                              samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
@@ -41,18 +50,21 @@
                 </devicePort>
                 <devicePort tagName="Built-In Mic" type="AUDIO_DEVICE_IN_BUILTIN_MIC" role="source">
                     <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
-                             samplingRates="8000 16000 48000" channelMasks="AUDIO_CHANNEL_IN_MONO AUDIO_CHANNEL_IN_STEREO"/>
+                             samplingRates="8000 16000 48000" channelMasks="AUDIO_CHANNEL_IN_MONO"/>
                 </devicePort>
                 <devicePort tagName="Wired Headset Mic" type="AUDIO_DEVICE_IN_WIRED_HEADSET" role="source">
                     <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
-                             samplingRates="8000 16000 48000" channelMasks="AUDIO_CHANNEL_IN_MONO AUDIO_CHANNEL_IN_STEREO"/>
+                             samplingRates="8000 16000 48000" channelMasks="AUDIO_CHANNEL_IN_MONO"/>
                 </devicePort>
             </devicePorts>
             <routes>
+                <route type="mix" sink="Earpiece" sources="primary output"/>
                 <route type="mix" sink="Speaker" sources="primary output"/>
                 <route type="mix" sink="Wired Headset" sources="primary output"/>
                 <route type="mix" sink="Wired Headphones" sources="primary output"/>
                 <route type="mix" sink="primary input" sources="Built-In Mic,Wired Headset Mic"/>
+                <!-- merge3 r3: inputs are MONO only (the codec capture path is 1 ch; 2 ch fails hw_params with EINVAL, attended
+                     audio5 25 Sep); AudioFlinger up-mixes for stereo clients. The HAL opens pcmC0D1c (MultiMedia2) for input. -->
             </routes>
         </module>
         <!-- r29: the APEX VINTF fragment declares IModule/default, /r_submix and /bluetooth; audioserver waits for every
@@ -86,9 +98,20 @@
                 <route type="mix" sink="r_submix input" sources="Remote Submix In"/>
             </routes>
         </module>
+        <!-- bt-audio (29 Sep 2026, docs/android-bt-audio-20260929.md): software data paths only (no DSP/SoC BT audio on the
+             mainline q6 stack). A2DP: "a2dp output" -> BluetoothAudio provider (created in this HAL process by
+             ModuleBluetooth) -> BT stack SBC/AAC/LDAC encoder -> HCI ACL. HFP/SCO: bluetooth.sco.managed_by_audio=true +
+             bluetooth.hfp.software_datapath.enabled=true (audio/bluetooth/bt-audio.mk): the SCO devices below open
+             HFP_SOFTWARE_{EN,DE}CODING_DATAPATH sessions and the stack carries the PCM (CVSD) / mSBC / LC3 frames over HCI
+             SCO on the UART (WCN3990 has no usable PCM/slimbus link to the ADSP here). SCO mix ports are dynamic: the
+             profile (8/16/32 kHz mono 16 bit) comes from the negotiated codec at connection. Cellular calls stay on the
+             ADSP voice path (no Telephony Rx/Tx bridge yet), so they are NOT carried to a BT headset; VoIP/communication
+             audio, SCO mic and call control are. LE audio is off (no BLE ports). -->
         <module name="bluetooth" halVersion="2.0">
             <mixPorts>
                 <mixPort name="a2dp output" role="source"/>
+                <mixPort name="hfp output" role="source"/>
+                <mixPort name="hfp input" role="sink"/>
                 <mixPort name="hearing aid output" role="source">
                     <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
                              samplingRates="24000 16000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
@@ -108,12 +131,32 @@
                              samplingRates="44100 48000 88200 96000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
                 </devicePort>
                 <devicePort tagName="BT Hearing Aid Out" type="AUDIO_DEVICE_OUT_HEARING_AID" role="sink"/>
+                <devicePort tagName="BT SCO" type="AUDIO_DEVICE_OUT_BLUETOOTH_SCO" role="sink">
+                    <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="8000 16000 32000" channelMasks="AUDIO_CHANNEL_OUT_MONO"/>
+                </devicePort>
+                <devicePort tagName="BT SCO Headset" type="AUDIO_DEVICE_OUT_BLUETOOTH_SCO_HEADSET" role="sink">
+                    <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="8000 16000 32000" channelMasks="AUDIO_CHANNEL_OUT_MONO"/>
+                </devicePort>
+                <devicePort tagName="BT SCO Car Kit" type="AUDIO_DEVICE_OUT_BLUETOOTH_SCO_CARKIT" role="sink">
+                    <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="8000 16000 32000" channelMasks="AUDIO_CHANNEL_OUT_MONO"/>
+                </devicePort>
+                <devicePort tagName="BT SCO Headset Mic" type="AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET" role="source">
+                    <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="8000 16000 32000" channelMasks="AUDIO_CHANNEL_IN_MONO"/>
+                </devicePort>
             </devicePorts>
             <routes>
                 <route type="mix" sink="BT A2DP Out" sources="a2dp output"/>
                 <route type="mix" sink="BT A2DP Headphones" sources="a2dp output"/>
                 <route type="mix" sink="BT A2DP Speaker" sources="a2dp output"/>
                 <route type="mix" sink="BT Hearing Aid Out" sources="hearing aid output"/>
+                <route type="mix" sink="BT SCO" sources="hfp output"/>
+                <route type="mix" sink="BT SCO Headset" sources="hfp output"/>
+                <route type="mix" sink="BT SCO Car Kit" sources="hfp output"/>
+                <route type="mix" sink="hfp input" sources="BT SCO Headset Mic"/>
             </routes>
         </module>
     </modules>

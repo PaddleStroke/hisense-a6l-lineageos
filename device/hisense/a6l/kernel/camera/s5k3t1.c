@@ -19,6 +19,8 @@
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/units.h>
 #include <media/v4l2-cci.h>
 #include <media/v4l2-ctrls.h>
@@ -946,6 +948,70 @@ static void sns_log_frame_count(struct sns *s)
 		 ret ? "READ_ERROR" : (fc1 != fc0 ? "SENSOR_STREAMING" : "SENSOR_NOT_COUNTING"), ret);
 }
 
+/*
+ * A6L camfix11: sensor-side knobs for the CSI RX hunt.
+ * a6l_regs = "addr=val[,addr=val...]" (hex, 8-bit writes) applied after the mode table, before stream on.
+ * a6l_rd (default 1) logs the CSI-relevant registers the sensor actually holds (A6L_SNS_RD) before stream on:
+ * data format 0x0112/0x0113, lanes 0x0114, frame/line length, output size, binning, requested link rate 0x0820..
+ */
+static char *a6l_regs = "";
+module_param(a6l_regs, charp, 0644);
+MODULE_PARM_DESC(a6l_regs, "A6L camfix11: extra 8-bit register writes after the mode table, \"addr=val,...\" hex (empty = none)");
+static bool a6l_rd = true;
+module_param(a6l_rd, bool, 0644);
+MODULE_PARM_DESC(a6l_rd, "A6L camfix11: log CSI-relevant sensor registers before stream on (default 1)");
+
+static const u16 a6l_rd_regs[] = {
+	0x0112, 0x0113, 0x0114, 0x0340, 0x0341, 0x0342, 0x0343, 0x0344, 0x0345, 0x0346, 0x0347,
+	0x034c, 0x034d, 0x034e, 0x034f, 0x0900, 0x0901, 0x0820, 0x0821, 0x0822, 0x0823, 0x0808,
+};
+
+static int a6l_sns_extra(struct sns *s)
+{
+	char *buf, *p, *tok;
+	int ret = 0, n = 0;
+
+	if (a6l_regs && a6l_regs[0]) {
+		buf = kstrdup(a6l_regs, GFP_KERNEL);
+		if (!buf)
+			return -ENOMEM;
+		p = buf;
+		while ((tok = strsep(&p, ",; ")) != NULL) {
+			char *eq = strchr(tok, '=');
+			u32 a, v;
+			int r = 0;
+
+			if (!*tok || !eq)
+				continue;
+			*eq = 0;
+			if (kstrtou32(tok, 16, &a) || kstrtou32(eq + 1, 16, &v) || a > 0xffff || v > 0xff) {
+				dev_warn(s->dev, "A6L_SNS_REGS bad entry '%s'\n", tok);
+				continue;
+			}
+			cci_write(s->regmap, CCI_REG8(a), v, &r);
+			dev_info(s->dev, "A6L_SNS_REGS w %04x=%02x (i2c %d)\n", a, v, r);
+			if (r)
+				ret = r;
+			n++;
+		}
+		kfree(buf);
+	}
+	if (a6l_rd) {
+		char line[400];
+		int len = 0, i, r = 0;
+
+		line[0] = 0;
+		for (i = 0; i < ARRAY_SIZE(a6l_rd_regs); i++) {
+			u64 v = 0;
+
+			cci_read(s->regmap, CCI_REG8(a6l_rd_regs[i]), &v, &r);
+			len += scnprintf(line + len, sizeof(line) - len, " %04x=%02llx", a6l_rd_regs[i], v);
+		}
+		dev_info(s->dev, "A6L_SNS_RD %ux%u extra %d%s (i2c %d)\n", s->mode->width, s->mode->height, n, line, r);
+	}
+	return ret;
+}
+
 static int sns_enable_streams(struct v4l2_subdev *sd,
 			      struct v4l2_subdev_state *state, u32 pad,
 			      u64 streams_mask)
@@ -964,6 +1030,10 @@ static int sns_enable_streams(struct v4l2_subdev *sd,
 		goto error;
 
 	ret = __v4l2_ctrl_handler_setup(s->sd.ctrl_handler);
+	if (ret)
+		goto error;
+
+	ret = a6l_sns_extra(s); /* camfix11 */
 	if (ret)
 		goto error;
 

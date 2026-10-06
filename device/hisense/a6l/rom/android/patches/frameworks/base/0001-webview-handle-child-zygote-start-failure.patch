@@ -1,0 +1,48 @@
+From: A6L port maintainers
+Subject: [PATCH] webview: handle child zygote startup failure without killing system_server
+
+connectToZygoteIfNeededLocked catches failed preload/connection attempts and
+clears sZygote. Return null to the best-effort startup caller instead of
+dereferencing the cleared child. Actual WebView process launches explicitly
+report an unavailable zygote through the existing process-start error path.
+Keep subsequent retry behavior and the original preload timeout unchanged.
+
+--- a/core/java/android/webkit/WebViewZygote.java
++++ b/core/java/android/webkit/WebViewZygote.java
+@@ -17,5 +17,6 @@
+ package android.webkit;
+ 
++import android.annotation.Nullable;
+ import android.content.pm.PackageInfo;
+ import android.os.Build;
+ import android.os.ChildZygoteProcess;
+@@ -50,12 +51,13 @@
+     @GuardedBy("sLock")
+     private static PackageInfo sPackage;
+ 
++    @Nullable
+     public static ZygoteProcess getProcess() {
+         synchronized (sLock) {
+             if (sZygote != null) return sZygote.getZygoteProcessAsManaged();
+ 
+             connectToZygoteIfNeededLocked();
+-            return sZygote.getZygoteProcessAsManaged();
++            return sZygote == null ? null : sZygote.getZygoteProcessAsManaged();
+         }
+     }
+ 
+--- a/core/java/android/os/Process.java
++++ b/core/java/android/os/Process.java
+@@ -824,7 +824,11 @@
+                                                   @Nullable String[] zygoteArgs) {
+         // Webview zygote can't access app private data files, so doesn't need to know its data
+         // info.
+-        return WebViewZygote.getProcess()
++        final ZygoteProcess webViewZygote = WebViewZygote.getProcess();
++        if (webViewZygote == null) {
++            throw new IllegalStateException("WebView zygote is unavailable");
++        }
++        return webViewZygote
+                 .start(
+                         processClass,
+                         niceName,

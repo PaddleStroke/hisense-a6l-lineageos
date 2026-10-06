@@ -1,0 +1,193 @@
+From e816af8d11b09858c5a43495fbd9e6a6a334343e Mon Sep 17 00:00:00 2001
+From: a6l <a6l@local>
+Date: Tue, 29 Sep 2026 23:20:51 +0200
+Subject: [PATCH 101/104] a6l 0101 software_isp: swstats sharpness (focus
+ measure)
+
+---
+ .../internal/software_isp/swisp_stats.h       | 10 +++++
+ .../internal/software_isp/swstats_cpu.h       | 14 +++++++
+ src/libcamera/software_isp/swstats_cpu.cpp    | 42 +++++++++++++++++++
+ 3 files changed, 66 insertions(+)
+
+diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
+index d9d0d9b..7181a44 100644
+--- a/include/libcamera/internal/software_isp/swisp_stats.h
++++ b/include/libcamera/internal/software_isp/swisp_stats.h
+@@ -43,6 +43,16 @@ struct SwIspStats {
+ 	 * \brief A histogram of luminance values of all the sampled pixels
+ 	 */
+ 	Histogram yHistogram;
++	/**
++	 * \brief A6L focus measure: sum of the squared differences of the
++	 * averaged green of consecutive sampled 2x2 blocks, centre half x half
++	 * of the window (RAW10 CSI-2 packed only, 0 otherwise)
++	 */
++	uint64_t sharpness;
++	/**
++	 * \brief Number of differences accumulated in sharpness
++	 */
++	uint32_t sharpnessCount;
+ };
+ 
+ } /* namespace libcamera */
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index 5518709..c8be7c7 100644
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -67,6 +67,7 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
++		setSharpRow(y, statsBufferIndex);
+ 		(this->*stats0_)(src, stats_[statsBufferIndex]);
+ 	}
+ 
+@@ -79,6 +80,7 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
++		setSharpRow(y, statsBufferIndex);
+ 		(this->*stats2_)(src, stats_[statsBufferIndex]);
+ 	}
+ 
+@@ -89,6 +91,17 @@ private:
+ 	using processFrameFn = void (SwStatsCpu::*)(MappedFrameBuffer &in);
+ 
+ 	int setupStandardBayerOrder(BayerFormat::Order order);
++
++	/* A6L AF: the sharpness statistic only uses the centre half of the window rows */
++	void setSharpRow(unsigned int y, unsigned int statsBufferIndex)
++	{
++		const unsigned int ry = y - window_.y;
++		sharpRow_[statsBufferIndex] = ry >= window_.height / 4 && ry < window_.height * 3 / 4;
++	}
++	bool sharpRow(const SwIspStats &stats) const
++	{
++		return sharpRow_[&stats - stats_.data()];
++	}
+ 	/* Bayer 8 bpp unpacked */
+ 	void statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats);
+ 	/* Bayer 10 bpp unpacked */
+@@ -122,6 +135,7 @@ private:
+ 	unsigned int sumShift_;
+ 
+ 	std::vector<SwIspStats> stats_;
++	std::vector<uint8_t> sharpRow_;
+ 	SharedMemObject<SwIspStats> sharedStats_;
+ 	Benchmark bench_;
+ };
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 7fb77ce..222a533 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -276,6 +276,13 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
+ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
+ 	const unsigned int widthInBytes = window_.width * 5 / 4;
++	/* A6L AF: centre half of the columns, on the centre half of the rows */
++	const bool sharp = sharpRow(stats);
++	const unsigned int sx0 = widthInBytes / 4 / 5 * 5;
++	const unsigned int sx1 = widthInBytes * 3 / 4 / 5 * 5;
++	int prevG = -1;
++	uint64_t sharpSum = 0;
++	uint32_t sharpCount = 0;
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -290,11 +297,21 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 		g2 = src1[x];
+ 		r = src1[x + 1];
+ 		g = (g + g2) / 2;
++		if (sharp && x >= sx0 && x < sx1) {
++			if (prevG >= 0) {
++				const int d = static_cast<int>(g) - prevG;
++				sharpSum += static_cast<uint64_t>(d * d);
++				sharpCount++;
++			}
++			prevG = g;
++		}
+ 		/* Data is already 8 bits, divide by 1 */
+ 		SWSTATS_ACCUMULATE_LINE_STATS(1)
+ 	}
+ 
+ 	SWSTATS_FINISH_LINE_STATS()
++	stats.sharpness += sharpSum;
++	stats.sharpnessCount += sharpCount;
+ }
+ 
+ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+@@ -302,6 +319,13 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
+ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
+ 	const unsigned int widthInBytes = window_.width * 5 / 4;
++	/* A6L AF: centre half of the columns, on the centre half of the rows */
++	const bool sharp = sharpRow(stats);
++	const unsigned int sx0 = widthInBytes / 4 / 5 * 5;
++	const unsigned int sx1 = widthInBytes * 3 / 4 / 5 * 5;
++	int prevG = -1;
++	uint64_t sharpSum = 0;
++	uint32_t sharpCount = 0;
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -316,11 +340,21 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 		r = src1[x];
+ 		g2 = src1[x + 1];
+ 		g = (g + g2) / 2;
++		if (sharp && x >= sx0 && x < sx1) {
++			if (prevG >= 0) {
++				const int d = static_cast<int>(g) - prevG;
++				sharpSum += static_cast<uint64_t>(d * d);
++				sharpCount++;
++			}
++			prevG = g;
++		}
+ 		/* Data is already 8 bits, divide by 1 */
+ 		SWSTATS_ACCUMULATE_LINE_STATS(1)
+ 	}
+ 
+ 	SWSTATS_FINISH_LINE_STATS()
++	stats.sharpness += sharpSum;
++	stats.sharpnessCount += sharpCount;
+ }
+ 
+ void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+@@ -392,6 +426,8 @@ void SwStatsCpu::startFrame(uint32_t frame)
+ 	for (auto &s : stats_) {
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		s.yHistogram.fill(0);
++		s.sharpness = 0;
++		s.sharpnessCount = 0;
+ 	}
+ }
+ 
+@@ -409,8 +445,12 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
+ 	if (valid) {
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		sharedStats_->yHistogram.fill(0);
++		sharedStats_->sharpness = 0;
++		sharedStats_->sharpnessCount = 0;
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sum_ += s.sum_;
++			sharedStats_->sharpness += s.sharpness;
++			sharedStats_->sharpnessCount += s.sharpnessCount;
+ 			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
+ 		}
+@@ -469,6 +509,7 @@ int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int stat
+ {
+ 	stride_ = inputCfg.stride;
+ 	stats_.resize(statsBufferCount);
++	sharpRow_.assign(statsBufferCount, 0);
+ 
+ 	BayerFormat bayerFormat =
+ 		BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
+@@ -589,6 +630,7 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
+ 		/* linePointers[0] is not used by any stats0_ functions */
+ 		linePointers[1] = src;
+ 		linePointers[2] = src + stride_;
++		setSharpRow(window_.y + y, 0);
+ 		(this->*stats0_)(linePointers, stats_[0]);
+ 		src += stride_ * 2;
+ 	}

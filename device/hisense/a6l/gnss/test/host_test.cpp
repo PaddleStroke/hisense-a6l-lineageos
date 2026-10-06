@@ -3,6 +3,7 @@
 // mapping, and the full client/engine state machine against the in-process fake modem.
 // Build: g++ -std=c++17 -O1 -g -pthread -I../lib host_test.cpp ../lib/*.cpp -o host_test && ./host_test
 #include <atomic>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -452,7 +453,641 @@ static void testXtra() {
     eng.end();
 }
 
+// misc2 (25 Sep 2026): byte-exact wire image vs the stock struct layout, and the error handling fixed after the
+// 25 Sep attended run (request error 3 = QMI_ERR_INTERNAL, 94 = QMI_ERR_NOT_SUPPORTED).
+static void testXtraWireAndErrors() {
+    std::vector<uint8_t> file(1500);
+    for (size_t i = 0; i < file.size(); i++) file[i] = uint8_t(i ^ 0x5a);
+    auto parts = loc::buildXtraParts(file);
+    CHECK(parts.size() == 2);
+    parts[0].txn = 0x1234;
+    auto w = qmi::encode(parts[0]);
+    // QMI header: type 0 (request), txn, msg 0x0035, payload length
+    size_t tlvLen = (3 + 4) + (3 + 2) + (3 + 2) + (3 + 2 + 1024) + (3 + 4);
+    CHECK(w.size() == 7 + tlvLen);
+    CHECK(w[0] == 0x00 && w[1] == 0x34 && w[2] == 0x12 && w[3] == 0x35 && w[4] == 0x00);
+    CHECK(w[5] == (tlvLen & 0xff) && w[6] == (tlvLen >> 8));
+    const uint8_t hdr[] = {0x01, 0x04, 0x00, 0xdc, 0x05, 0x00, 0x00,   // totalSize 1500
+                           0x02, 0x02, 0x00, 0x02, 0x00,               // totalParts 2
+                           0x03, 0x02, 0x00, 0x01, 0x00,               // partNum 1
+                           0x04, 0x02, 0x04, 0x00, 0x04};              // partData: TLV len 1026, u16 count 1024
+    CHECK(w.size() > 7 + sizeof(hdr) && memcmp(w.data() + 7, hdr, sizeof(hdr)) == 0);
+    CHECK(w[7 + sizeof(hdr)] == file[0] && w[7 + sizeof(hdr) + 1023] == file[1023]);
+    const uint8_t tail[] = {0x10, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};  // formatType XTRA (stock: valid=1, 0)
+    CHECK(memcmp(w.data() + w.size() - sizeof(tail), tail, sizeof(tail)) == 0);
+    CHECK(std::string(loc::qmiErrorName(3)) == "INTERNAL" && std::string(loc::qmiErrorName(94)) == "NOT_SUPPORTED");
+    CHECK(!loc::qmiErrorIsLayout(3) && !loc::qmiErrorIsLayout(94) && loc::qmiErrorIsLayout(1));
+
+    auto fake = std::make_shared<FakeModem>();
+    std::atomic<int> failFirst{0};
+    fake->onRequest = [&](FakeModem& f, const qmi::Message& r) {
+        qmi::Message ind;
+        ind.type = qmi::kIndication;
+        ind.msgId = r.msgId;
+        if (r.msgId == loc::kInjectPredictedOrbits) {
+            {
+                std::lock_guard<std::mutex> lk(f.mu);
+                if (f.errors.count(r.msgId)) {
+                    if (failFirst > 0 && --failFirst == 0) f.errors.erase(r.msgId);
+                    return;   // error response: no indication
+                }
+            }
+            uint16_t n = 0;
+            r.getU16(0x03, &n);
+            ind.add(0x01, qmi::Writer().u32(0));
+            ind.add(0x10, qmi::Writer().u16(n));
+        } else if (r.msgId == loc::kGetPredictedOrbitsSource) {
+            ind.add(0x01, qmi::Writer().u32(0));
+            ind.add(0x10, qmi::Writer().u32(307200).u32(512));   // modem asks for smaller parts
+        } else if (r.msgId == loc::kGetPredictedOrbitsValidity) {
+            ind.add(0x01, qmi::Writer().u32(0));
+            ind.add(0x10, qmi::Writer().u64(1442700000ull).u16(168));
+        } else {
+            return;
+        }
+        f.inject(ind);
+    };
+    XRec rec;
+    EngineConfig cfg;
+    GnssEngine eng([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); }, &rec, cfg, nullptr);
+    eng.begin();
+    CHECK(fake->waitFor([&] { return eng.serviceUp(); }, 2000));
+    // 1) INTERNAL once, then OK: retried WITH formatType, in modem-sized parts (512 -> 3 parts)
+    {
+        std::lock_guard<std::mutex> lk(fake->mu);
+        fake->errors[loc::kInjectPredictedOrbits] = 3;
+    }
+    failFirst = 1;
+    eng.injectXtra(file);
+    CHECK(fake->waitFor([&] { return rec.done != 0; }, 8000));
+    CHECK(rec.done == 1);
+    CHECK(fake->count(loc::kInjectPredictedOrbits) == 1 + 3);
+    {
+        std::lock_guard<std::mutex> lk(fake->mu);
+        bool allFmt = true;
+        for (auto& r : fake->requests)
+            if (r.msgId == loc::kInjectPredictedOrbits && !r.find(0x10)) allFmt = false;
+        CHECK(allFmt);
+    }
+    // 2) INTERNAL always: 3 attempts, never without formatType, FAILED with the error name
+    rec.done = 0;
+    {
+        std::lock_guard<std::mutex> lk(fake->mu);
+        fake->errors[loc::kInjectPredictedOrbits] = 3;
+    }
+    failFirst = 0;
+    size_t before = fake->count(loc::kInjectPredictedOrbits);
+    eng.injectXtra(file);
+    CHECK(fake->waitFor([&] { return rec.done != 0; }, 12000));
+    CHECK(rec.done == 2);
+    CHECK(fake->count(loc::kInjectPredictedOrbits) == before + 3);
+    {
+        std::lock_guard<std::mutex> lk(fake->mu);
+        bool allFmt = true;
+        for (auto& r : fake->requests)
+            if (r.msgId == loc::kInjectPredictedOrbits && !r.find(0x10)) allFmt = false;
+        CHECK(allFmt);
+    }
+    // 3) MALFORMED (layout) once: retried WITHOUT formatType
+    rec.done = 0;
+    {
+        std::lock_guard<std::mutex> lk(fake->mu);
+        fake->errors[loc::kInjectPredictedOrbits] = 1;
+    }
+    failFirst = 1;
+    before = fake->count(loc::kInjectPredictedOrbits);
+    eng.injectXtra(file);
+    CHECK(fake->waitFor([&] { return rec.done != 0; }, 8000));
+    CHECK(rec.done == 1);
+    {
+        std::lock_guard<std::mutex> lk(fake->mu);
+        const qmi::Message* last = nullptr;
+        for (auto& r : fake->requests)
+            if (r.msgId == loc::kInjectPredictedOrbits) last = &r;
+        CHECK(last && !last->find(0x10));
+    }
+    CHECK(fake->count(loc::kInjectPredictedOrbits) == before + 1 + 3);
+    eng.end();
+}
+
+// r5 review F10: no blocklist capability without a modem-side exclusion; USED_IN_FIX comes from the report only
+static void testCapabilities() {
+    CHECK(!(kHalCapabilities & kCapSatelliteBlocklist));
+    CHECK(!kModemSatelliteExclusion);
+    CHECK((kHalCapabilities & kCapScheduling) != 0);
+    loc::Sv a, b;
+    a.valid = loc::kSvValidSystem | loc::kSvValidId | loc::kSvValidSnr;
+    a.system = loc::kSysGps;
+    a.svId = 7;
+    a.snr = 30;
+    b = a;
+    b.svId = 9;
+    auto out = toAndroidSvs({a, b}, {7});
+    CHECK(out.size() == 2);
+    if (out.size() == 2) {
+        CHECK((out[0].svFlag & kSvUsedInFix) != 0);
+        CHECK((out[1].svFlag & kSvUsedInFix) == 0);
+    }
+}
+
+// r5 review F22: GnssLocation.altitudeMeters is WGS84 ellipsoid height; MSL (TLV 0x1B) is never reported as such.
+static void testAltitudeDatum() {
+    auto base = sampleFix(1790236800000ull);
+    base.hasVertUnc = true;
+    base.vertUnc = 6;
+    auto ell = base;   // ellipsoid only
+    ell.hasAltEllipsoid = true;
+    ell.altEllipsoid = 170;
+    auto a = toAndroidLocation(ell, 0);
+    CHECK((a.flags & kHasAltitude) && a.altitudeMeters == 170 && (a.flags & kHasVerticalAccuracy));
+    auto msl = base;   // MSL only: omitted, lat/long still usable, no vertical accuracy
+    msl.hasAltMsl = true;
+    msl.altMsl = 123;
+    a = toAndroidLocation(msl, 0);
+    CHECK(!(a.flags & kHasAltitude) && !(a.flags & kHasVerticalAccuracy) && a.altitudeMeters == 0);
+    CHECK((a.flags & kHasLatLong) && a.latitudeDegrees == 45.0 && (a.flags & kHasHorizontalAccuracy));
+    auto both = ell;   // both: ellipsoid wins
+    both.hasAltMsl = true;
+    both.altMsl = 123;
+    a = toAndroidLocation(both, 0);
+    CHECK((a.flags & kHasAltitude) && a.altitudeMeters == 170);
+    a = toAndroidLocation(base, 0);   // neither
+    CHECK(!(a.flags & (kHasAltitude | kHasVerticalAccuracy)) && (a.flags & kHasLatLong));
+    auto assumed = both;   // assumed altitude (TLV 0x2D) is not a measurement
+    assumed.altitudeAssumed = true;
+    a = toAndroidLocation(assumed, 0);
+    CHECK(!(a.flags & (kHasAltitude | kHasVerticalAccuracy)));
+    auto nan = ell;
+    nan.altEllipsoid = NAN;
+    CHECK(!(toAndroidLocation(nan, 0).flags & kHasAltitude));
+    // wire: MSL-only report parses as MSL, maps without altitude; NMEA GGA still carries MSL
+    auto w = loc::makePositionInd(msl);
+    loc::Fix p;
+    CHECK(loc::parsePosition(w, &p) && p.hasAltMsl && !p.hasAltEllipsoid && !(toAndroidLocation(p, 0).flags & kHasAltitude));
+    CHECK(nmea::gga(msl).find(",123.0,M,") != std::string::npos);
+    // r5 review F22 follow-up: synthetic GGA field 9 = MSL height only, field 11 = separation only when both are known
+    auto ggaAlt = [](const loc::Fix& f) {   // returns "alt|sep" (fields 9 and 11)
+        auto g = nmea::gga(f);
+        std::vector<std::string> v;
+        size_t a = 0, b;
+        while ((b = g.find(',', a)) != std::string::npos) { v.push_back(g.substr(a, b - a)); a = b + 1; }
+        return nmea::valid(g) && v.size() > 12 && v[10] == "M" && v[12] == "M" ? v[9] + "|" + v[11] : std::string("BAD");
+    };
+    CHECK(ggaAlt(ell) == "|");              // ellipsoid-only: no MSL invented from ellipsoid height, no zero separation
+    CHECK(ggaAlt(base) == "|");             // neither
+    CHECK(ggaAlt(msl) == "123.0|");         // MSL-only: height, separation unknown
+    auto bothN = ell;
+    bothN.altEllipsoid = 80;
+    bothN.hasAltMsl = true;
+    bothN.altMsl = 35;
+    CHECK(ggaAlt(bothN) == "35.0|45.0");    // both: positive control
+    auto zero = bothN;                      // genuinely known zeros are emitted
+    zero.altEllipsoid = 0;
+    zero.altMsl = 0;
+    CHECK(ggaAlt(zero) == "0.0|0.0");
+    CHECK(ggaAlt(assumed) == "|");          // assumed altitude (2D fix) is not a measurement
+    auto nanMsl = bothN;
+    nanMsl.altMsl = NAN;
+    CHECK(ggaAlt(nanMsl) == "|");
+    CHECK(ggaAlt(nan) == "|");
+    CHECK(toAndroidLocation(ell, 0).altitudeMeters == 170 && nmea::valid(nmea::rmc(ell)));   // other outputs unchanged
+}
+
+// r5 review F21: transient configuration/START failures with LOC present are retried (capped backoff) without a
+// location toggle; stop during backoff cancels the retry; unsupported optional commands do not block.
+static void testTransientConfigStart() {
+    EngineConfig cfg;
+    cfg.retryMinMs = 200;
+    cfg.retryMaxMs = 400;
+    for (int mode = 0; mode < 3; mode++) {
+        // 0: REG_EVENTS INTERNAL once, 1: START INTERNAL once, 2: SET_OPERATION_MODE INTERNAL once
+        auto fake = std::make_shared<FakeModem>();
+        uint16_t id = mode == 0 ? loc::kRegEvents : mode == 1 ? loc::kStart : loc::kSetOperationMode;
+        fake->errors[id] = 3;
+        Rec rec;
+        GnssEngine eng([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); }, &rec, cfg, nullptr);
+        eng.begin();
+        CHECK(fake->waitFor([&] { return eng.serviceUp() && fake->count(mode == 1 ? uint16_t(loc::kSetNmeaTypes) : id) >= 1; }, 2000));
+        eng.setActive(true);
+        if (mode == 1) CHECK(fake->waitFor([&] { return fake->count(loc::kStart) >= 1; }, 2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        CHECK(!eng.sessionRunning());
+        if (mode != 1) CHECK(fake->count(loc::kStart) == 0);   // no START on an unregistered/unconfigured client
+        {
+            std::lock_guard<std::mutex> l(fake->mu);
+            fake->errors.clear();
+        }
+        CHECK(fake->waitFor([&] { return eng.sessionRunning(); }, 1500));
+        CHECK(fake->count(loc::kStart) == (mode == 1 ? 2u : 1u));
+        if (mode != 1) CHECK(fake->count(id) >= 2);
+        // registration applied -> position delivery without toggling location
+        fake->inject(loc::makePositionInd(sampleFix(1790236800000ull)));
+        CHECK(fake->waitFor([&] { return rec.nFix() == 1; }, 2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
+        CHECK(fake->count(loc::kStart) == (mode == 1 ? 2u : 1u));   // no duplicate sessions
+        eng.end();
+    }
+    // stop during backoff cancels the retry
+    {
+        auto fake = std::make_shared<FakeModem>();
+        fake->errors[loc::kStart] = 3;
+        EngineConfig c3 = cfg;
+        c3.retryMinMs = 800;
+        c3.retryMaxMs = 800;
+        GnssEngine eng([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); }, nullptr, c3,
+                       nullptr);
+        eng.begin();
+        CHECK(fake->waitFor([&] { return eng.serviceUp(); }, 2000));
+        eng.setActive(true);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStart) >= 1; }, 2000));
+        eng.setActive(false);
+        {
+            std::lock_guard<std::mutex> l(fake->mu);
+            fake->errors.clear();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        CHECK(fake->count(loc::kStart) == 1 && !eng.sessionRunning() && fake->count(loc::kStop) == 0);
+        eng.end();
+    }
+    // permanent error: capped number of retries; NOT_SUPPORTED operation mode is optional
+    {
+        auto fake = std::make_shared<FakeModem>();
+        fake->errors[loc::kStart] = 0x19;
+        fake->errors[loc::kSetOperationMode] = 0x5E;
+        EngineConfig c2 = cfg;
+        c2.retryMinMs = 50;
+        c2.retryMaxMs = 100;
+        c2.maxStartRetries = 3;
+        GnssEngine eng([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); }, nullptr, c2,
+                       nullptr);
+        eng.begin();
+        CHECK(fake->waitFor([&] { return eng.serviceUp(); }, 2000));
+        eng.setActive(true);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStart) == 4; }, 2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        CHECK(fake->count(loc::kStart) == 4 && !eng.sessionRunning());
+        eng.setActive(true);   // explicit start re-arms the retries
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStart) >= 5; }, 2000));
+        eng.end();
+    }
+}
+
+// r5 review F33: XTRA success only with a valid, correlated confirmation for every part.
+static void testXtraConfirmations() {
+    std::vector<uint8_t> file(2500);
+    for (size_t i = 0; i < file.size(); i++) file[i] = uint8_t(i * 7 + 1);
+    // mode: 0 valid, 1 wrong part (99), 2 empty indication, 3 missing indication for part 2, 4 explicit error part 3,
+    //       5 stale + duplicate + malformed before each valid one, 6 error status without part number
+    for (int mode = 0; mode < 7; mode++) {
+        auto fake = std::make_shared<FakeModem>();
+        fake->onRequest = [mode](FakeModem& f, const qmi::Message& r) {
+            qmi::Message ind;
+            ind.type = qmi::kIndication;
+            ind.msgId = r.msgId;
+            if (r.msgId == loc::kGetPredictedOrbitsSource || r.msgId == loc::kGetPredictedOrbitsValidity) {
+                ind.add(0x01, qmi::Writer().u32(0));
+                f.inject(ind);
+                return;
+            }
+            if (r.msgId != loc::kInjectPredictedOrbits) return;
+            uint16_t n = 0;
+            r.getU16(0x03, &n);
+            auto mk = [&](uint32_t st, int pn) {
+                qmi::Message m;
+                m.type = qmi::kIndication;
+                m.msgId = loc::kInjectPredictedOrbits;
+                m.add(0x01, qmi::Writer().u32(st));
+                if (pn >= 0) m.add(0x10, qmi::Writer().u16(uint16_t(pn)));
+                return m;
+            };
+            if (mode == 1) f.inject(mk(0, 99));
+            else if (mode == 2) f.inject(ind);
+            else if (mode == 3 && n == 2) return;
+            else if (mode == 4 && n == 3) f.inject(mk(2, 3));
+            else if (mode == 5) {
+                if (n > 1) f.inject(mk(0, n - 1));   // duplicate of the previous part
+                f.inject(mk(0, n + 1));              // out of order
+                f.inject(ind);                       // malformed
+                f.inject(mk(0, n));
+            } else if (mode == 6 && n == 2) f.inject(mk(4, -1));
+            else f.inject(mk(0, n));
+        };
+        XRec rec;
+        EngineConfig cfg;
+        cfg.xtraPartTimeoutMs = 300;
+        GnssEngine eng([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); }, &rec, cfg, nullptr);
+        eng.begin();
+        CHECK(fake->waitFor([&] { return eng.serviceUp(); }, 2000));
+        eng.injectXtra(file);
+        CHECK(fake->waitFor([&] { return rec.done != 0; }, 3000));
+        bool wantOk = mode == 0 || mode == 5;
+        CHECK(rec.done == (wantOk ? 1 : 2));
+        size_t wantParts = (mode == 1 || mode == 2) ? 1 : (mode == 3 || mode == 6) ? 2 : 3;   // stops at the bad part
+        CHECK(fake->count(loc::kInjectPredictedOrbits) == wantParts);
+        {
+            std::lock_guard<std::mutex> l(rec.mu);
+            if (wantOk) CHECK(rec.detail.find("all parts acknowledged") != std::string::npos);
+            if (mode == 1 || mode == 2 || mode == 3) CHECK(rec.detail.find("no valid confirmation") != std::string::npos);
+        }
+        eng.end();
+    }
+}
+
+// r5 review F34: a stop is not queued behind an assistance transfer; the transfer itself continues.
+// r5 review round6 (29 Sep 2026): F52 rejected STOP, F53 single fix, F54 pending deletion
+static uint32_t lastStartRecurrence(FakeModem& f) {
+    std::lock_guard<std::mutex> l(f.mu);
+    uint32_t v = 0;
+    for (auto& r : f.requests)
+        if (r.msgId == loc::kStart) r.getU32(0x10, &v);
+    return v;
+}
+static int firstIndex(FakeModem& f, uint16_t id, size_t from = 0) {
+    std::lock_guard<std::mutex> l(f.mu);
+    for (size_t i = from; i < f.requests.size(); i++)
+        if (f.requests[i].msgId == id) return int(i);
+    return -1;
+}
+static qmi::Message sessionStateInd(uint32_t v) {
+    qmi::Message m;
+    m.type = qmi::kIndication;
+    m.msgId = loc::kIndFixSessionState;
+    m.add(0x01, qmi::Writer().u32(v));
+    return m;
+}
+static void testRound6() {
+    auto mk = [](std::shared_ptr<FakeModem> fake, int retryMin, Rec* rec) {
+        EngineConfig cfg;
+        cfg.retryMinMs = retryMin;
+        cfg.retryMaxMs = retryMin * 2;
+        return std::make_unique<GnssEngine>([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); },
+                                            rec, cfg, nullptr);
+    };
+    auto setErr = [](FakeModem& f, uint16_t id, uint16_t e) {
+        std::lock_guard<std::mutex> l(f.mu);
+        if (e) f.errors[id] = e; else f.errors.erase(id);
+    };
+    {   // F52: rejected STOP keeps the session, recovers by bounded retry, no extra STOP afterwards
+        auto fake = std::make_shared<FakeModem>();
+        Rec rec;
+        auto eng = mk(fake, 50, &rec);
+        eng->begin();
+        CHECK(fake->waitFor([&] { return eng->serviceUp() && fake->count(loc::kSetNmeaTypes) >= 1; }, 2000));
+        eng->setActive(true);
+        CHECK(fake->waitFor([&] { return eng->sessionRunning(); }, 2000));
+        setErr(*fake, loc::kStop, 3);
+        eng->setActive(false);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStop) >= 1; }, 1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        CHECK(eng->sessionRunning());   // not applied: still running (or unknown)
+        setErr(*fake, loc::kStop, 0);
+        CHECK(fake->waitFor([&] { return !eng->sessionRunning(); }, 1500));
+        size_t n = fake->count(loc::kStop);
+        CHECK(n >= 2);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        CHECK(fake->count(loc::kStop) == n && fake->count(loc::kStart) == 1);
+        eng->end();
+        CHECK(fake->count(loc::kStop) == n);   // nothing left to clean up
+    }
+    {   // F52: rejected STOP, then shutdown before the retry: cleanup STOP is sent
+        auto fake = std::make_shared<FakeModem>();
+        Rec rec;
+        auto eng = mk(fake, 5000, &rec);
+        eng->begin();
+        CHECK(fake->waitFor([&] { return eng->serviceUp() && fake->count(loc::kSetNmeaTypes) >= 1; }, 2000));
+        eng->setActive(true);
+        CHECK(fake->waitFor([&] { return eng->sessionRunning(); }, 2000));
+        setErr(*fake, loc::kStop, 3);
+        eng->setActive(false);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStop) == 1; }, 1000));
+        setErr(*fake, loc::kStop, 0);
+        eng->end();
+        CHECK(fake->count(loc::kStop) == 2);
+    }
+    {   // F52: stop (rejected) then start again while the retry is pending: stays running, no START/STOP churn
+        auto fake = std::make_shared<FakeModem>();
+        Rec rec;
+        auto eng = mk(fake, 50, &rec);
+        eng->begin();
+        CHECK(fake->waitFor([&] { return eng->serviceUp() && fake->count(loc::kSetNmeaTypes) >= 1; }, 2000));
+        eng->setActive(true);
+        CHECK(fake->waitFor([&] { return eng->sessionRunning(); }, 2000));
+        setErr(*fake, loc::kStop, 3);
+        eng->setActive(false);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStop) == 1; }, 1000));
+        eng->setActive(true);
+        setErr(*fake, loc::kStop, 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        CHECK(eng->sessionRunning() && fake->count(loc::kStop) == 1 && fake->count(loc::kStart) == 1);
+        // F52 related: the modem reports our session finished while it is wanted -> restarted (capped retry)
+        fake->inject(sessionStateInd(loc::kSessionFinished));
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStart) == 2; }, 1500));
+        CHECK(fake->waitFor([&] { return eng->sessionRunning(); }, 500));
+        // a finished indication after an accepted stop changes nothing
+        eng->setActive(false);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStop) == 2 && !eng->sessionRunning(); }, 1000));
+        fake->inject(sessionStateInd(loc::kSessionFinished));
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(fake->count(loc::kStart) == 2 && fake->count(loc::kStop) == 2);
+        eng->end();
+    }
+    {   // F52: a malformed-request answer is not retried blindly
+        auto fake = std::make_shared<FakeModem>();
+        Rec rec;
+        auto eng = mk(fake, 50, &rec);
+        eng->begin();
+        CHECK(fake->waitFor([&] { return eng->serviceUp() && fake->count(loc::kSetNmeaTypes) >= 1; }, 2000));
+        eng->setActive(true);
+        CHECK(fake->waitFor([&] { return eng->sessionRunning(); }, 2000));
+        setErr(*fake, loc::kStop, 0x30);
+        eng->setActive(false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        CHECK(fake->count(loc::kStop) == 1 && eng->sessionRunning());
+        eng->end();
+    }
+    {   // F53: single vs periodic recurrence on the wire; single completes after one fix and is not restarted
+        auto fake = std::make_shared<FakeModem>();
+        Rec rec;
+        auto eng = mk(fake, 50, &rec);
+        eng->begin();
+        CHECK(fake->waitFor([&] { return eng->serviceUp() && fake->count(loc::kSetNmeaTypes) >= 1; }, 2000));
+        eng->setPositionMode(1000, false);
+        eng->setActive(true);
+        CHECK(fake->waitFor([&] { return eng->sessionRunning(); }, 2000));
+        CHECK(lastStartRecurrence(*fake) == loc::kRecurrencePeriodic);
+        fake->inject(loc::makePositionInd(sampleFix(1790236800000ull)));
+        fake->inject(loc::makePositionInd(sampleFix(1790236801000ull)));
+        CHECK(fake->waitFor([&] { return rec.nFix() == 2; }, 1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(eng->sessionRunning() && fake->count(loc::kStop) == 0);   // periodic keeps running
+        eng->setActive(false);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStop) == 1; }, 1000));
+        eng->setPositionMode(1000, true);
+        eng->setActive(true);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStart) == 2; }, 1000));
+        CHECK(lastStartRecurrence(*fake) == loc::kRecurrenceSingle);
+        fake->inject(loc::makePositionInd(sampleFix(1790236802000ull)));
+        CHECK(fake->waitFor([&] { return !eng->sessionRunning() && fake->count(loc::kStop) == 2; }, 1000));
+        CHECK(rec.nFix() == 3);
+        fake->serverEvent(false);   // service loss + return must not restart the completed single fix
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        fake->serverEvent(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        CHECK(fake->count(loc::kStart) == 2 && !eng->sessionRunning());
+        eng->setActive(false);   // Android's stop after the fix: nothing to stop
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(fake->count(loc::kStop) == 2);
+        eng->setActive(true);    // a new start request = a new single fix
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStart) == 3; }, 1000));
+        CHECK(lastStartRecurrence(*fake) == loc::kRecurrenceSingle);
+        eng->setActive(false);   // cancelled before a fix
+        CHECK(fake->waitFor([&] { return fake->count(loc::kStop) == 3 && !eng->sessionRunning(); }, 1000));
+        eng->end();
+    }
+    {   // F54: deletion requested while LOC is absent stays pending and precedes the next START; rejection is final
+        auto fake = std::make_shared<FakeModem>();
+        fake->serviceAtOpen = false;
+        Rec rec;
+        auto eng = mk(fake, 50, &rec);
+        eng->begin();
+        CHECK(fake->waitFor([&] { std::lock_guard<std::mutex> l(fake->mu); return fake->opens >= 1; }, 2000));
+        eng->deleteAll();
+        eng->setActive(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(fake->count(loc::kDeleteAssistData) == 0 && fake->count(loc::kStart) == 0 && eng->deletePending());
+        fake->serverEvent(true);
+        CHECK(fake->waitFor([&] { return eng->sessionRunning(); }, 2000));
+        int d = firstIndex(*fake, loc::kDeleteAssistData), st = firstIndex(*fake, loc::kStart);
+        CHECK(d >= 0 && st > d && !eng->deletePending());
+        CHECK(fake->count(loc::kDeleteAssistData) == 1);
+        setErr(*fake, loc::kDeleteAssistData, 3);   // rejected: reported, not retried, not blocking
+        eng->deleteAll();
+        CHECK(fake->waitFor([&] { return fake->count(loc::kDeleteAssistData) == 2; }, 1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(!eng->deletePending() && fake->count(loc::kDeleteAssistData) == 2);
+        eng->end();
+    }
+}
+
+static void testStopDuringXtra() {
+    std::vector<uint8_t> file(2500);
+    for (size_t i = 0; i < file.size(); i++) file[i] = uint8_t(i * 7 + 1);
+    for (int mode = 0; mode < 3; mode++) {
+        // 0: stop while waiting for part 1's indication, 1: stop during the INTERNAL retry backoff,
+        // 2: stop then start again during the wait (session must end up running, no extra START/STOP churn)
+        auto fake = std::make_shared<FakeModem>();
+        std::atomic<bool> hold{true};
+        fake->onRequest = [&hold](FakeModem& f, const qmi::Message& r) {
+            qmi::Message ind;
+            ind.type = qmi::kIndication;
+            ind.msgId = r.msgId;
+            if (r.msgId == loc::kGetPredictedOrbitsSource || r.msgId == loc::kGetPredictedOrbitsValidity) {
+                ind.add(0x01, qmi::Writer().u32(0));
+                f.inject(ind);
+            } else if (r.msgId == loc::kInjectPredictedOrbits && !hold) {
+                uint16_t n = 0;
+                r.getU16(0x03, &n);
+                ind.add(0x01, qmi::Writer().u32(0));
+                ind.add(0x10, qmi::Writer().u16(n));
+                f.inject(ind);
+            }
+        };
+        XRec rec;
+        EngineConfig cfg;
+        cfg.xtraPartTimeoutMs = 5000;
+        GnssEngine eng([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); }, &rec, cfg, nullptr);
+        eng.begin();
+        CHECK(fake->waitFor([&] { return eng.serviceUp(); }, 2000));
+        eng.setActive(true);
+        CHECK(fake->waitFor([&] { return eng.sessionRunning(); }, 2000));
+        if (mode == 1) {
+            std::lock_guard<std::mutex> l(fake->mu);
+            fake->errors[loc::kInjectPredictedOrbits] = 3;
+        }
+        eng.injectXtra(file);
+        CHECK(fake->waitFor([&] { return fake->count(loc::kInjectPredictedOrbits) >= 1; }, 2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        eng.setActive(false);
+        if (mode == 2) eng.setActive(true);
+        if (mode < 2) {
+            CHECK(fake->waitFor([&] { return fake->count(loc::kStop) == 1; }, 300));
+            CHECK(!eng.sessionRunning());
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            CHECK(eng.sessionRunning() && fake->count(loc::kStop) == 0 && fake->count(loc::kStart) == 1);
+        }
+        // the transfer is not aborted by the stop: let it complete
+        {
+            std::lock_guard<std::mutex> l(fake->mu);
+            fake->errors.clear();
+        }
+        hold = false;
+        if (mode == 0) {   // part 1 got no indication: that transfer attempt fails at its deadline, not earlier
+            CHECK(fake->waitFor([&] { return rec.done != 0; }, 7000));
+            CHECK(rec.done == 2);
+        } else if (mode == 1) {
+            CHECK(fake->waitFor([&] { return rec.done != 0; }, 7000));
+            CHECK(rec.done == 1);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(fake->count(loc::kStop) == (mode < 2 ? 1u : 0u));   // queued stop task does not repeat STOP
+        CHECK(fake->count(loc::kStart) == 1);                     // no stale restart
+        CHECK(eng.sessionRunning() == (mode == 2));
+        eng.end();
+    }
+}
+
+// r5 review F64: UTC assistance queued behind blocking work is advanced by the queue delay (CLOCK_BOOTTIME reference)
+static void testQueuedTimeInjection() {
+    uint64_t o = 0;
+    CHECK(GnssEngine::advanceUtc(1000, 50, 80, &o) && o == 1030);
+    CHECK(!GnssEngine::advanceUtc(1000, 90, 80, &o));                  // future reference
+    CHECK(!GnssEngine::advanceUtc(-1, 50, 80, &o));                    // invalid UTC
+    CHECK(!GnssEngine::advanceUtc(INT64_MAX - 5, 0, 10, &o));          // overflow
+    auto fake = std::make_shared<FakeModem>();
+    std::atomic<bool> holdPos{true};
+    fake->onRequest = [&holdPos](FakeModem&, const qmi::Message& r) {   // runs on the engine worker
+        if (r.msgId == loc::kInjectPosition && holdPos) std::this_thread::sleep_for(std::chrono::milliseconds(350));
+    };
+    Rec rec;
+    EngineConfig cfg;
+    GnssEngine eng([fake] { return std::unique_ptr<Transport>(new FakeModemTransport(fake)); }, &rec, cfg, nullptr);
+    eng.begin();
+    CHECK(fake->waitFor([&] { return eng.serviceUp(); }, 2000));
+    auto lastUtc = [&](uint64_t* utc, uint32_t* unc) {
+        std::lock_guard<std::mutex> l(fake->mu);
+        for (auto it = fake->requests.rbegin(); it != fake->requests.rend(); ++it)
+            if (it->msgId == loc::kInjectUtcTime) return it->getU64(0x01, utc) && it->getU32(0x02, unc);
+        return false;
+    };
+    // reviewer case: worker busy in an earlier position assistance for ~350 ms, then UTC 1800000000000 +/- 1 ms
+    eng.injectLocation(45.0, 5.0, 1000.f);
+    CHECK(fake->waitFor([&] { return fake->count(loc::kInjectPosition) == 1; }, 2000));
+    int64_t t0 = GnssEngine::bootMs();
+    eng.injectTime(1800000000000ull, 1);
+    CHECK(fake->waitFor([&] { return fake->count(loc::kInjectUtcTime) == 1; }, 3000));
+    int64_t waited = GnssEngine::bootMs() - t0;
+    uint64_t utc = 0;
+    uint32_t unc = 0;
+    CHECK(lastUtc(&utc, &unc) && unc == 1);
+    int64_t adv = int64_t(utc - 1800000000000ull);
+    CHECK(adv >= 250 && adv <= waited + 2);   // advanced by the queue delay, never beyond the observed wait
+    printf("  queued UTC: waited %lld ms, encoded UTC advanced %lld ms\n", (long long)waited, (long long)adv);
+    holdPos = false;
+    // HAL tuple (Android sampled 1000 ms ago on elapsedRealtime), immediate injection
+    eng.injectTime(int64_t(1800000005000ll), 7, GnssEngine::bootMs() - 1000);
+    CHECK(fake->waitFor([&] { return fake->count(loc::kInjectUtcTime) == 2; }, 2000));
+    CHECK(lastUtc(&utc, &unc) && unc == 7 && utc >= 1800000006000ull && utc <= 1800000006100ull);
+    // unusable samples are discarded, not injected
+    eng.injectTime(int64_t(1800000005000ll), 7, GnssEngine::bootMs() + 60000);
+    eng.injectTime(int64_t(-5), 7, GnssEngine::bootMs());
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    CHECK(fake->count(loc::kInjectUtcTime) == 2);
+    eng.end();
+}
+
 int main() {
+    testCapabilities();
     testCodec();
     testPositionWire();
     testSvWire();
@@ -462,6 +1097,13 @@ int main() {
     testStartError();
     testNoServiceTimeout();
     testXtra();
+    testXtraWireAndErrors();
+    testAltitudeDatum();
+    testTransientConfigStart();
+    testXtraConfirmations();
+    testStopDuringXtra();
+    testRound6();
+    testQueuedTimeInjection();
     printf("A6L_GNSS_HOST_TESTS %s pass=%d fail=%d\n", gFail ? "FAIL" : "PASS", gPass, gFail);
     return gFail ? 1 : 0;
 }

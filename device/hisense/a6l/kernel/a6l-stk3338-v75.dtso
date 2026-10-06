@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// A6L FRONT ambient light + proximity: Sensortek STK3338 (stk agent, 25 Sep 2026; replaces candidate S1 semantics).
+// Stock DT (stock-00.dts:9323): i2c@c1b6000 (blsp_i2c6), reg 0x47, compatible "stk,stk3x3x", IRQ TLMM gpio71 falling
+// with pull-up (stk3338_int_pin), vdd = pm660l L3, vio = pm660 L13. The stock driver ignores reg and probes 0x67
+// first, then 0x47 (see docs/stk-20260925.md). Driver: stk3338_a6l.ko (device/hisense/a6l/kernel/stk3338).
+// Applies on a base that already has candidate S1 (label front_als = light-sensor@47, compatible sensortek,stk3335,
+// vdd a6l_vreg_l3b): it re-labels the node for stk3338_a6l and adds the vio supply.
+// IF THE ATTENDED PROBE SHOWS THE CHIP AT 0x67: also set reg = <0x67> here (or move the node to light-sensor@67 in
+// the base DT source) and load the driver with addr_fallback=0.
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/interrupt-controller/irq.h>
+
+&tlmm {
+	a6l_stk3338_int: a6l-stk3338-int-state {
+		pins = "gpio71";
+		function = "gpio";
+		drive-strength = <6>;
+		bias-pull-up;
+	};
+};
+
+&front_als {
+	/* merge2 25 Sep: attended stk T2 found the chip at 0x67 (PID 0x58), as the stock driver's first try */
+	reg = <0x67>;
+	compatible = "sensortek,stk3338";
+	pinctrl-names = "default";
+	pinctrl-0 = <&a6l_stk3338_int>;
+	interrupts-extended = <&tlmm 71 IRQ_TYPE_EDGE_FALLING>;
+	vdd-supply = <&a6l_vreg_l3b>;	/* pm660l L3 (base: 3.0 V fixed; stock 2.80-2.95 V; chip range 1.7-3.6 V) */
+	vio-supply = <&a6l_vreg_l13a>;	/* pm660 L13 1.8 V (already always-on in the base) */
+	proximity-near-level = <600>;	/* merge2: = ps_thd_high (hysteresis 600/300; lamp IR gave 95-150, covered ~5000, open ~38) */
+};

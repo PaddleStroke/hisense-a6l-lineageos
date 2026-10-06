@@ -58,10 +58,18 @@ std::string gga(const loc::Fix& f) {
     struct tm tm;
     int cs;
     utcParts(f.utcMs, &tm, &cs);
-    char body[160];
-    float alt = f.hasAltMsl ? f.altMsl : (f.hasAltEllipsoid ? f.altEllipsoid : 0.f);
-    float sep = (f.hasAltMsl && f.hasAltEllipsoid) ? f.altEllipsoid - f.altMsl : 0.f;
-    snprintf(body, sizeof(body), "GPGGA,%02d%02d%02d.%02d,%s,%s,1,%02zu,%.1f,%.1f,M,%.1f,M,,", tm.tm_hour, tm.tm_min,
+    char body[192];
+    // r5 review F22 follow-up (28 Sep 2026): GGA field 9 is mean-sea-level (orthometric) height and field 11 the geoid
+    // separation (ellipsoid - MSL). Ellipsoid height is never substituted for MSL and an unknown separation is not 0:
+    // each field is emitted only when its datum(s) are known, finite and not an assumed (2D-fix) altitude; otherwise it
+    // is left empty (the unit letter stays, as receivers do). RMC and the Android location are unaffected.
+    bool real = !f.altitudeAssumed;
+    bool msl = real && f.hasAltMsl && std::isfinite(f.altMsl);
+    bool ell = real && f.hasAltEllipsoid && std::isfinite(f.altEllipsoid);
+    char alt[24] = "", sep[24] = "";
+    if (msl) snprintf(alt, sizeof(alt), "%.1f", f.altMsl);
+    if (msl && ell) snprintf(sep, sizeof(sep), "%.1f", double(f.altEllipsoid) - double(f.altMsl));
+    snprintf(body, sizeof(body), "GPGGA,%02d%02d%02d.%02d,%s,%s,1,%02zu,%.1f,%s,M,%s,M,,", tm.tm_hour, tm.tm_min,
              tm.tm_sec, cs, coord(f.latitude, true).c_str(), coord(f.longitude, false).c_str(), f.svUsed.size(),
              f.hasDop ? f.hdop : 0.f, alt, sep);
     return finish(body);

@@ -1,0 +1,20 @@
+# A6L RTC offset keeper (r5 bug hunt round2 gnss-time R1, 29 Sep 2026; timekeep/timekeep.h for the why).
+# The PM660 RTC is read-only for the AP (rtc-pm8xxx without allow-set-time / offset cell): Android's RTC write fails and
+# the wall clock falls back to the raw PMIC counter at every boot. The restore step runs once before zygote (clock =
+# RTC + offset stored by the previous boot); the watcher stores the offset again whenever the clock is set.
+on post-fs-data
+    mkdir /data/vendor/a6l_time 0700 system system
+    exec_start vendor.a6l_timekeep_restore
+
+service vendor.a6l_timekeep_restore /vendor/bin/a6l_timekeep --restore-only --min-utc ${ro.build.date.utc}
+    user system
+    group system
+    capabilities SYS_TIME
+    oneshot
+    disabled
+
+# No SYS_TIME: it only records offsets (its own restore attempt is a no-op once the clock was set).
+service vendor.a6l_timekeep /vendor/bin/a6l_timekeep --min-utc ${ro.build.date.utc}
+    class main
+    user system
+    group system

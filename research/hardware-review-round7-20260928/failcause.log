@@ -1,0 +1,10 @@
+F58 active_call_lost_with_VOICE_service last_call_fail_cause=16(NORMAL_CLEARING)
+[244307.703] I ctl: server DMS(2) inst 0 at 0:100
+[244307.703] I ctl: server UIM(11) inst 0 at 0:101
+[244307.703] I ctl: server NAS(3) inst 0 at 0:102
+[244307.703] I ctl: server WMS(5) inst 0 at 0:103
+[244307.703] I ctl: server VOICE(9) inst 0 at 0:104
+[244307.703] I ctl: server WDS(1) inst 0 at 0:105
+[244307.703] I ctl: server WDA(26) inst 0 at 0:106
+[244307.706] W UIM EF_ICCID read failed (qmi-error SIM_FILE_NOT_FOUND), trying DMS
+[244307.742] W ctl: service VOICE gone

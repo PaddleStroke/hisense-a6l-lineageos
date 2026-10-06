@@ -1,0 +1,97 @@
+From 338a470be87dfeab80b840740b1f5b5807d65b6c Mon Sep 17 00:00:00 2001
+From: a6l <a6l@local>
+Date: Tue, 29 Sep 2026 19:42:35 +0200
+Subject: [PATCH] a6l 0007 dma_buf_allocator: system heap first,
+ default_cma_region, LIBCAMERA_DMA_HEAP override
+
+t37: libcamera picked /dev/dma_heap/reserved (the 32 MB default CMA area) for the SoftISP output buffers and
+full-resolution capture failed (cma alloc failed, -EBUSY). The buffers are CPU-only: prefer the system heap,
+know the Linux >= 6.17 default CMA heap name, and allow LIBCAMERA_DMA_HEAP to force a provider.
+---
+ src/libcamera/dma_buf_allocator.cpp | 43 +++++++++++++++++++++++++++--
+ 1 file changed, 41 insertions(+), 2 deletions(-)
+
+diff --git a/src/libcamera/dma_buf_allocator.cpp b/src/libcamera/dma_buf_allocator.cpp
+index 49c6791..bef1e0d 100644
+--- a/src/libcamera/dma_buf_allocator.cpp
++++ b/src/libcamera/dma_buf_allocator.cpp
+@@ -9,6 +9,7 @@
+ #include "libcamera/internal/dma_buf_allocator.h"
+ 
+ #include <array>
++#include <string>
+ #include <fcntl.h>
+ #include <sys/ioctl.h>
+ #include <sys/mman.h>
+@@ -23,6 +24,7 @@
+ #include <libcamera/base/log.h>
+ #include <libcamera/base/memfd.h>
+ #include <libcamera/base/shared_fd.h>
++#include <libcamera/base/utils.h>
+ 
+ #include <libcamera/framebuffer.h>
+ 
+@@ -40,14 +42,24 @@ struct DmaBufAllocatorInfo {
+ };
+ #endif
+ 
+-static constexpr std::array<DmaBufAllocatorInfo, 4> providerInfos = { {
++static constexpr std::array<DmaBufAllocatorInfo, 5> providerInfos = { {
+ 	/*
++	 * A6L: prefer the system heap. The SoftISP output and the Android HAL
++	 * internal buffers are only touched by the CPU (and by IOMMU-backed
++	 * consumers), so they need no physically contiguous memory, and the
++	 * default CMA area is small (32 MB, CONFIG_CMA_SIZE_MBYTES): upstream's
++	 * CMA-first order picked /dev/dma_heap/reserved on the A6L and failed
++	 * after 3 buffers at 2880x2156 ABGR8888 (t37, 29 Sep 2026).
++	 *
+ 	 * /dev/dma_heap/linux,cma is the CMA dma-heap. When the cma heap size is
+ 	 * specified on the kernel command line, this gets renamed to "reserved".
++	 * Linux >= 6.17 names the default CMA heap "default_cma_region" (and also
++	 * exports the same area under its CMA name, "reserved").
+ 	 */
++	{ DmaBufAllocator::DmaBufAllocatorFlag::SystemHeap, "/dev/dma_heap/system" },
+ 	{ DmaBufAllocator::DmaBufAllocatorFlag::CmaHeap, "/dev/dma_heap/linux,cma" },
++	{ DmaBufAllocator::DmaBufAllocatorFlag::CmaHeap, "/dev/dma_heap/default_cma_region" },
+ 	{ DmaBufAllocator::DmaBufAllocatorFlag::CmaHeap, "/dev/dma_heap/reserved" },
+-	{ DmaBufAllocator::DmaBufAllocatorFlag::SystemHeap, "/dev/dma_heap/system" },
+ 	{ DmaBufAllocator::DmaBufAllocatorFlag::UDmaBuf, "/dev/udmabuf" },
+ } };
+ 
+@@ -96,6 +108,33 @@ LOG_DEFINE_CATEGORY(DmaBufAllocator)
+  */
+ DmaBufAllocator::DmaBufAllocator(DmaBufAllocatorFlags type)
+ {
++	/*
++	 * A6L: LIBCAMERA_DMA_HEAP=<heap name>|udmabuf|<absolute node path> tries
++	 * that provider first (if its type is one of the requested types).
++	 */
++	const char *forced = utils::secure_getenv("LIBCAMERA_DMA_HEAP");
++	if (forced && *forced) {
++		std::string node = forced[0] == '/' ? std::string(forced)
++			: std::string(forced) == "udmabuf" ? std::string("/dev/udmabuf")
++			: std::string("/dev/dma_heap/") + forced;
++		DmaBufAllocatorFlag ftype = node == "/dev/udmabuf" ? DmaBufAllocatorFlag::UDmaBuf
++			: node.rfind("/dev/dma_heap/system", 0) == 0 ? DmaBufAllocatorFlag::SystemHeap
++			: DmaBufAllocatorFlag::CmaHeap;
++		if (type & ftype) {
++			int fd = ::open(node.c_str(), O_RDWR | O_CLOEXEC, 0);
++			if (fd < 0 && errno == EACCES)
++				fd = ::open(node.c_str(), O_RDONLY | O_CLOEXEC, 0);
++			if (fd >= 0) {
++				LOG(DmaBufAllocator, Debug) << "Using " << node << " (LIBCAMERA_DMA_HEAP)";
++				providerHandle_ = UniqueFD(fd);
++				type_ = ftype;
++				return;
++			}
++			LOG(DmaBufAllocator, Warning)
++				<< "LIBCAMERA_DMA_HEAP: failed to open " << node << ": " << strerror(errno);
++		}
++	}
++
+ 	for (const auto &info : providerInfos) {
+ 		if (!(type & info.type))
+ 			continue;
+-- 
+2.43.0
+

@@ -24,6 +24,7 @@ class FakeTransport : public qmi::Transport {
     bool open() override;
     void close() override;
     uint32_t localNode() const override { return 1; }
+    uint32_t localPort() const override { return mPort; }
     bool send(const Addr& to, const std::vector<uint8_t>& data) override;
     int recv(Addr* from, std::vector<uint8_t>* data, int timeoutMs) override;
     void deliver(const Addr& from, std::vector<uint8_t> data);
@@ -54,6 +55,14 @@ class FakeModem {
     void indicate(uint32_t svc, Message ind);
     std::vector<std::pair<uint32_t, Message>> requests();  // log of received requests
 
+    // volte2: AP-hosted services (a client transport sent NEW_SERVER to the name service). The fake
+    // modem can then act as a QMI *client* of that service from port kModemClientPort.
+    static constexpr uint32_t kModemClientPort = 4242;
+    bool published(uint32_t svc, uint32_t* instanceWord = nullptr);
+    bool modemRequest(uint32_t svc, Message req);           // modem client -> AP server
+    std::optional<Message> waitModemClientMsg(int timeoutMs);  // AP server -> modem client
+    void modemClientGone(uint32_t svc, bool bye = false);   // DEL_CLIENT (or BYE) to the AP server
+
     // called by FakeTransport
     void attach(FakeTransport* t);
     void detach(FakeTransport* t);
@@ -68,6 +77,9 @@ class FakeModem {
     uint32_t mNextPort = 100;
     uint32_t mNextClientPort = 5000;
     Handler mHandler;
+    std::map<uint32_t, std::pair<FakeTransport*, uint32_t>> mPublished;  // svc -> (transport, inst word)
+    std::deque<Message> mToModemClient;
+    std::condition_variable mModemCv;
     friend class FakeTransport;
 };
 

@@ -1,0 +1,16 @@
+# A6L USB gadget HAL (android-usb, 29 Sep 2026): android.hardware.usb.gadget-service.a6l in the AOSP
+# hal_usb_gadget_default domain. AOSP private hal_usb_gadget.te already grants configfs (dirs, files, links) and
+# functionfs dir read/search; added here: inotify on the FunctionFS mounts, the UDC class (bind + soft_connect,
+# a6l_manual_usb gate; current_speed), sys.usb.controller, and the takeover property.
+allow hal_usb_gadget_default functionfs:dir { watch watch_reads };
+allow hal_usb_gadget_default sysfs:dir r_dir_perms;
+allow hal_usb_gadget_default sysfs:lnk_file read;
+allow hal_usb_gadget_default sysfs_udc:dir r_dir_perms;
+allow hal_usb_gadget_default sysfs_udc:lnk_file read;
+allow hal_usb_gadget_default sysfs_udc:file rw_file_perms;
+get_prop(hal_usb_gadget_default, usb_control_prop)
+set_prop(hal_usb_gadget_default, vendor_a6l_usb_prop)
+
+# init.a6l.usb.rc: early adb (before the HAL) writes soft_connect; the managed/hal flags
+allow vendor_init sysfs_udc:file w_file_perms;
+set_prop(vendor_init, vendor_a6l_usb_prop)

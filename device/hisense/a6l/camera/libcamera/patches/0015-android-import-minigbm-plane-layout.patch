@@ -1,0 +1,358 @@
+From: A6L port maintainers
+Subject: [PATCH] android: import minigbm planes and copy aligned NV12 output
+
+Minigbm handles carry dup plane FDs and optionally a metadata FD. Import the
+validated image layout instead of treating every descriptor as an image plane.
+Use internal ISP buffers and the actual destination stride for NV12; import
+JPEG BLOB as its own output format. Reject bad layouts without killing provider.
+
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -792,6 +792,22 @@
+ 		}
+ 	}
+ 
++	/*
++	 * A6L's software ISP writes its configured packed stride. minigbm NV12
++	 * uses Venus row/scanline alignment, so produce into internal buffers
++	 * and let the YUV processor copy to each Android buffer's actual layout.
++	 */
++	for (auto &streamConfig : streamConfigs) {
++		if (streamConfig.config.pixelFormat != formats::NV12)
++			continue;
++		for (auto &stream : streamConfig.streams) {
++			if (stream.type == CameraStream::Type::Direct) {
++				stream.type = CameraStream::Type::Internal;
++				stream.stream->usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
++			}
++		}
++	}
++
+ 	sortCamera3StreamConfigs(streamConfigs, jpegStream);
+ 	for (const auto &streamConfig : streamConfigs) {
+ 		config->addConfiguration(streamConfig.config);
+@@ -894,15 +910,16 @@
+ {
+ 	CameraBuffer buf(camera3buffer, pixelFormat, size, PROT_READ);
+ 	if (!buf.isValid()) {
+-		LOG(HAL, Fatal) << "Failed to create CameraBuffer";
++		LOG(HAL, Error) << "Failed to create CameraBuffer";
+ 		return nullptr;
+ 	}
+ 
+ 	std::vector<FrameBuffer::Plane> planes(buf.numPlanes());
+ 	for (size_t i = 0; i < buf.numPlanes(); ++i) {
+-		SharedFD fd{ camera3buffer->data[i] };
++		const size_t fdIndex = camera3buffer->numFds == 1 ? 0 : i;
++		SharedFD fd{ camera3buffer->data[fdIndex] };
+ 		if (!fd.isValid()) {
+-			LOG(HAL, Fatal) << "No valid fd";
++			LOG(HAL, Error) << "No valid fd";
+ 			return nullptr;
+ 		}
+ 
+diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
+--- a/src/android/camera_stream.cpp
++++ b/src/android/camera_stream.cpp
+@@ -182,9 +182,11 @@
+ 		streamBuffer->fence.reset();
+ 	}
+ 
+-	const StreamConfiguration &output = configuration();
++	const PixelFormat outFormat =
++		cameraDevice_->capabilities()->toPixelFormat(camera3Stream_->format);
++	const Size outSize(camera3Stream_->width, camera3Stream_->height);
+ 	streamBuffer->dstBuffer = std::make_unique<CameraBuffer>(
+-		*streamBuffer->camera3Buffer, output.pixelFormat, output.size,
++		*streamBuffer->camera3Buffer, outFormat, outSize,
+ 		PROT_READ | PROT_WRITE);
+ 	if (!streamBuffer->dstBuffer->isValid()) {
+ 		LOG(HAL, Error) << "Failed to create destination buffer";
+diff --git a/src/android/mm/cros_gralloc_handle.h b/src/android/mm/cros_gralloc_handle.h
+new file mode 100644
+--- /dev/null
++++ b/src/android/mm/cros_gralloc_handle.h
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#ifndef CROS_GRALLOC_HANDLE_H
++#define CROS_GRALLOC_HANDLE_H
++
++#include <cstdint>
++#include <cutils/native_handle.h>
++
++#define DRV_MAX_PLANES 4
++#define DRV_MAX_FDS (DRV_MAX_PLANES + 1)
++
++struct cros_gralloc_handle : public native_handle_t {
++	/*
++	 * File descriptors must immediately follow the native_handle_t base and used file
++	 * descriptors must be packed at the beginning of this array to work with
++	 * native_handle_clone().
++	 *
++	 * This field contains 'num_planes' plane file descriptors followed by an optional metadata
++	 * reserved region file descriptor if 'reserved_region_size' is greater than zero.
++	 */
++	int32_t fds[DRV_MAX_FDS];
++	uint32_t strides[DRV_MAX_PLANES];
++	uint32_t offsets[DRV_MAX_PLANES];
++	uint32_t sizes[DRV_MAX_PLANES];
++	uint32_t id;
++	uint32_t width;
++	uint32_t height;
++	uint32_t format; /* DRM format */
++	uint32_t tiling;
++	uint64_t format_modifier;
++	uint64_t use_flags; /* Buffer creation flags */
++	uint32_t magic;
++	uint32_t pixel_stride;
++	int32_t droid_format;
++	int64_t usage; /* Android usage. */
++	uint32_t num_planes;
++	uint64_t reserved_region_size;
++	uint64_t total_size; /* Total allocation size */
++} __attribute__((packed));
++
++typedef const struct cros_gralloc_handle *cros_gralloc_handle_t;
++
++#endif
+diff --git a/src/android/mm/generic_camera_buffer.cpp b/src/android/mm/generic_camera_buffer.cpp
+--- a/src/android/mm/generic_camera_buffer.cpp
++++ b/src/android/mm/generic_camera_buffer.cpp
+@@ -8,9 +8,13 @@
+ #include "../camera_buffer.h"
+ 
+ #include <sys/mman.h>
++#include <limits>
++
++#include "cros_gralloc_handle.h"
+ #include <unistd.h>
+ 
+ #include <libcamera/base/log.h>
++#include <libcamera/formats.h>
+ 
+ #include "libcamera/internal/formats.h"
+ #include "libcamera/internal/mapped_framebuffer.h"
+@@ -41,6 +45,7 @@
+ 
+ private:
+ 	struct PlaneInfo {
++		int fd;
+ 		unsigned int stride;
+ 		unsigned int offset;
+ 		unsigned int size;
+@@ -62,12 +67,71 @@
+ 	: fd_(-1), flags_(flags), bufferLength_(-1), mapped_(false)
+ {
+ 	error_ = 0;
++	if (!camera3Buffer || camera3Buffer->numFds < 0 || camera3Buffer->numFds > 1024 ||
++	    camera3Buffer->numInts < 0 || camera3Buffer->numInts > 1024) {
++		error_ = -EINVAL;
++		return;
++	}
+ 
+ 	const auto &info = PixelFormatInfo::info(pixelFormat);
+ 	if (!info.isValid()) {
+ 		error_ = -EINVAL;
+ 		LOG(HAL, Error) << "Invalid pixel format: " << pixelFormat;
+ 		return;
++	}
++
++	/*
++	 * A6L uses minigbm gralloc4. Plane FDs can be distinct dup() aliases;
++	 * the last FD may instead describe a metadata region. Import the
++	 * validated native layout, never interpret metadata as an image plane.
++	 */
++	constexpr uint32_t minigbmMagic = 0xABCDDCBA;
++	const size_t handleBytes = sizeof(native_handle_t) +
++		(static_cast<size_t>(camera3Buffer->numFds) + camera3Buffer->numInts) * sizeof(int);
++	if (camera3Buffer->version == sizeof(native_handle_t) &&
++	    camera3Buffer->numFds >= 0 && camera3Buffer->numInts >= 0 &&
++	    handleBytes == sizeof(cros_gralloc_handle)) {
++		const auto *hnd = reinterpret_cast<const cros_gralloc_handle *>(camera3Buffer);
++		if (hnd->magic == minigbmMagic) {
++			const bool blob = pixelFormat == formats::MJPEG &&
++					  hnd->droid_format == HAL_PIXEL_FORMAT_BLOB;
++			const uint32_t r8 = 'R' | ('8' << 8) | (' ' << 16) | (' ' << 24);
++			if (!hnd->num_planes || hnd->num_planes > DRV_MAX_PLANES ||
++			    static_cast<uint32_t>(hnd->numFds) != hnd->num_planes +
++								(hnd->reserved_region_size > 0) ||
++			    hnd->num_planes != info.numPlanes() || hnd->format_modifier ||
++			    (blob ? hnd->format != r8 :
++			     hnd->format != pixelFormat.fourcc() ||
++			     hnd->width != size.width || hnd->height != size.height)) {
++				error_ = -EINVAL;
++				LOG(HAL, Error) << "Unsupported minigbm plane layout/format";
++				return;
++			}
++			for (unsigned int i = 0; i < hnd->num_planes; ++i) {
++				const off_t length = hnd->fds[i] < 0 ? -1 :
++					lseek(hnd->fds[i], 0, SEEK_END);
++				const uint64_t end = static_cast<uint64_t>(hnd->offsets[i]) + hnd->sizes[i];
++				const uint64_t minimumLength =
++					static_cast<uint64_t>(info.planeSize(size.height, i, 1u)) * hnd->strides[i];
++				if (length < 0 || !hnd->sizes[i] || end > static_cast<uint64_t>(length) ||
++				    (!blob && (hnd->strides[i] < info.stride(size.width, i, 1u) ||
++					       hnd->strides[i] > std::numeric_limits<int>::max() ||
++					       hnd->sizes[i] < minimumLength))) {
++					error_ = -EINVAL;
++					LOG(HAL, Error) << "Invalid minigbm plane " << i
++							<< " fd/stride/offset/size";
++					return;
++				}
++				planeInfo_.push_back({ hnd->fds[i], hnd->strides[i],
++						      hnd->offsets[i], hnd->sizes[i] });
++			}
++			fd_ = hnd->fds[0];
++			bufferLength_ = blob ? hnd->sizes[0] : lseek(fd_, 0, SEEK_END);
++			LOG(HAL, Debug) << "Imported minigbm " << hnd->num_planes
++				       << " planes, stride " << hnd->strides[0]
++				       << ", metadata FD " << (hnd->reserved_region_size > 0);
++			return;
++		}
+ 	}
+ 
+ 	/*
+@@ -108,11 +172,13 @@
+ 	for (unsigned int i = 0; i < numPlanes; ++i) {
+ 		const unsigned int planeSize = info.planeSize(size, i);
+ 
++		planeInfo_[i].fd = fd_;
+ 		planeInfo_[i].stride = info.stride(size.width, i, 1u);
+ 		planeInfo_[i].offset = offset;
+ 		planeInfo_[i].size = planeSize;
+ 
+-		if (bufferLength_ < offset + planeSize) {
++		if (static_cast<uint64_t>(bufferLength_) < static_cast<uint64_t>(offset) + planeSize) {
++			error_ = -EINVAL;
+ 			LOG(HAL, Error) << "Plane " << i << " is out of buffer:"
+ 					<< " plane offset=" << offset
+ 					<< ", plane size=" << planeSize
+@@ -179,18 +245,17 @@
+ 	ASSERT(fd_ != -1);
+ 	ASSERT(bufferLength_ >= 0);
+ 
+-	void *address = mmap(nullptr, bufferLength_, flags_, MAP_SHARED, fd_, 0);
+-	if (address == MAP_FAILED) {
+-		error_ = -errno;
+-		LOG(HAL, Error) << "Failed to mmap plane";
+-		return;
+-	}
+-	maps_.emplace_back(static_cast<uint8_t *>(address), bufferLength_);
+-
+ 	planes_.reserve(planeInfo_.size());
+ 	for (const auto &info : planeInfo_) {
+-		planes_.emplace_back(
+-			static_cast<uint8_t *>(address) + info.offset, info.size);
++		const size_t length = static_cast<size_t>(info.offset) + info.size;
++		void *address = mmap(nullptr, length, flags_, MAP_SHARED, info.fd, 0);
++		if (address == MAP_FAILED) {
++			error_ = -errno;
++			LOG(HAL, Error) << "Failed to mmap plane";
++			return;
++		}
++		maps_.emplace_back(static_cast<uint8_t *>(address), length);
++		planes_.emplace_back(static_cast<uint8_t *>(address) + info.offset, info.size);
+ 	}
+ 
+ 	mapped_ = true;
+diff --git a/src/android/mm/minigbm-LICENSE b/src/android/mm/minigbm-LICENSE
+new file mode 100644
+--- /dev/null
++++ b/src/android/mm/minigbm-LICENSE
+@@ -0,0 +1,27 @@
++// Copyright (c) 2017 The Chromium OS Authors. All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//    * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//    * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//    * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+diff --git a/src/android/yuv/post_processor_yuv.cpp b/src/android/yuv/post_processor_yuv.cpp
+--- a/src/android/yuv/post_processor_yuv.cpp
++++ b/src/android/yuv/post_processor_yuv.cpp
+@@ -77,9 +77,9 @@
+ 				    sourceStride_[1],
+ 				    crop_.width, crop_.height,
+ 				    destination->plane(0).data(),
+-				    destinationStride_[0],
++				    destination->stride(0),
+ 				    destination->plane(1).data(),
+-				    destinationStride_[1],
++				    destination->stride(1),
+ 				    destinationSize_.width,
+ 				    destinationSize_.height,
+ 				    libyuv::FilterMode::kFilterBilinear);
+@@ -117,16 +117,14 @@
+ 			<< sourceLength_[1] << "}";
+ 		return false;
+ 	}
+-	if (destination.plane(0).size() < destinationLength_[0] ||
+-	    destination.plane(1).size() < destinationLength_[1]) {
+-		LOG(YUV, Error)
+-			<< "The destination planes lengths are too small, actual size: {"
+-			<< destination.plane(0).size() << ", "
+-			<< destination.plane(1).size()
+-			<< "}, expected size: {"
+-			<< sourceLength_[0] << ", "
+-			<< sourceLength_[1] << "}";
+-		return false;
++	const PixelFormatInfo &nv12Info = PixelFormatInfo::info(formats::NV12);
++	for (unsigned int i = 0; i < 2; ++i) {
++		const unsigned int stride = destination.stride(i);
++		if (stride < nv12Info.stride(destinationSize_.width, i, 1) ||
++		    destination.plane(i).size() < nv12Info.planeSize(destinationSize_.height, i, stride)) {
++			LOG(YUV, Error) << "Invalid destination plane " << i << " stride/length";
++			return false;
++		}
+ 	}
+ 
+ 	return true;
+@@ -155,11 +153,8 @@
+ 	const PixelFormatInfo &nv12Info = PixelFormatInfo::info(formats::NV12);
+ 	for (unsigned int i = 0; i < 2; i++) {
+ 		sourceStride_[i] = inCfg.stride;
+-		destinationStride_[i] = nv12Info.stride(destinationSize_.width, i, 1);
+ 
+ 		sourceLength_[i] = nv12Info.planeSize(sourceSize_.height, i,
+ 						      sourceStride_[i]);
+-		destinationLength_[i] = nv12Info.planeSize(destinationSize_.height, i,
+-							   destinationStride_[i]);
+ 	}
+ }
+diff --git a/src/android/yuv/post_processor_yuv.h b/src/android/yuv/post_processor_yuv.h
+--- a/src/android/yuv/post_processor_yuv.h
++++ b/src/android/yuv/post_processor_yuv.h
+@@ -30,7 +30,5 @@
+ 	libcamera::Size destinationSize_;
+ 	libcamera::Rectangle crop_; /* A6L: source area with the destination aspect ratio */
+ 	unsigned int sourceLength_[2] = {};
+-	unsigned int destinationLength_[2] = {};
+ 	unsigned int sourceStride_[2] = {};
+-	unsigned int destinationStride_[2] = {};
+ };

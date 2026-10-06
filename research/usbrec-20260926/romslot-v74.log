@@ -1,0 +1,85 @@
+backup boot 55ad4747ea8d83a3
+backup dtbo c5b6ecb44bcb8aa8
+backup misc 30e14955ebf13522
+backup metadata e5b844cc57f57094
+backup modemst1 2f2871a118541a58
+backup modemst2 728aafe1de36f30b
+backup fsg 5647f05ec1895894
+backup fsc 5f70bf18a0860070
+backup persist 84f1492a3e12262e
+backup recovery 24ede49b0f34b10f
+backup vendor 0f1872abd9eb4f20
+backup system aed74f64bfc1b30b
+backup userdata-head 6421a08a31d05825
+backup userdata-tail f94f87f59d5b468b
+written boot
+written dtbo
+written vendor
+written system
+written metadata-zero
+written userdata-zero
+readback ok boot
+readback ok dtbo
+readback ok vendor
+readback ok system
+readback ok metadata-zero
+readback ok userdata-zero
+PASS install_full
+backup boot 7cb90fe6bc66e2c9
+backup dtbo 6925112258af276a
+backup misc 30e14955ebf13522
+backup metadata e5b844cc57f57094
+backup modemst1 2f2871a118541a58
+backup modemst2 728aafe1de36f30b
+backup fsg 5647f05ec1895894
+backup fsc 5f70bf18a0860070
+backup persist 84f1492a3e12262e
+backup recovery 24ede49b0f34b10f
+backup vendor 500ea7de0cc112d5
+backup system 6e53f167cee12031
+backup userdata-head ef7988a66dad2d0e
+backup userdata-tail f94f87f59d5b468b
+PASS reinstall_refused_without_flag
+restored boot
+restored dtbo
+restored vendor
+restored system
+restored misc
+restored metadata
+restored modemst1
+restored modemst2
+restored userdata-zero
+restored userdata-footer-zero
+readback ok boot
+readback ok dtbo
+readback ok vendor
+readback ok system
+readback ok misc
+readback ok metadata
+readback ok modemst1
+readback ok modemst2
+readback ok userdata-zero
+readback ok userdata-footer-zero
+PASS restore_full_byte_identical
+PASS bad_gpt_no_write
+PASS bad_payload_no_usb
+backup boot 55ad4747ea8d83a3
+backup dtbo c5b6ecb44bcb8aa8
+backup misc 30e14955ebf13522
+backup metadata e5b844cc57f57094
+backup modemst1 2f2871a118541a58
+backup modemst2 728aafe1de36f30b
+backup fsg 5647f05ec1895894
+backup fsc 5f70bf18a0860070
+backup persist 84f1492a3e12262e
+backup recovery 24ede49b0f34b10f
+backup vendor 0f1872abd9eb4f20
+backup system aed74f64bfc1b30b
+backup userdata-head 3979ac2d6f7ee704
+backup userdata-tail 074029609c958e7d
+written boot
+PASS transfer_failure_no_retry_no_power
+PASS tampered_backup_refused
+PASS xml_guard
+ROM_V1_FLASH_TESTS PASS {"install_full": "pass", "reinstall_refused_without_flag": "pass", "restore_full_byte_identical": "pass", "bad_gpt_no_write": "pass", "bad_payload_no_usb": "pass", "transfer_failure_no_retry_no_power": "pass", "tampered_backup_refused": "pass", "xml_guard": "pass"}
+ROM_V3_RECOVERY_SLOT PASS {"recovery_image_sha256": "24ede49b0f34b10f216617cb007c757e495fa2df1b6cd1ddd0afd63f9819da62", "engine_label": "v74-diagnostic", "flash_tests": {"install_full": "pass", "reinstall_refused_without_flag": "pass", "restore_full_byte_identical": "pass", "bad_gpt_no_write": "pass", "bad_payload_no_usb": "pass", "transfer_failure_no_retry_no_power": "pass", "tampered_backup_refused": "pass", "xml_guard": "pass"}, "recovery_slot_unchanged_after_install_and_restore": true}

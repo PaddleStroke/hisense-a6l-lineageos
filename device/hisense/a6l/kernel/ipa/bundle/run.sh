@@ -1,5 +1,12 @@
 #!/system/bin/sh
 # ATTENDED ONLY, V74 diagnostic recovery. ipa2fix agent, bundle v75/ipa2b (24 Sep 2026): IPA v2.6L via ipa2-lite, STEP-LOGGED.
+# data2 agent, bundle v75/ipa3 (25 Sep 2026): a6l_diag is runtime-PM safe + AP pipes only (the MODE=status reset),
+#   data3 agent, bundle v75/ipa4 (25 Sep 2026 evening): MODE=data uses the bundled static a6l-net (raw-socket ping bound
+#   to the call interface, host routes by ioctl, UDP DNS query, TCP/HTTP HEAD) because the recovery has no ip/route and
+#   toybox ping needs ping_group_range; IPv6 off on the IPA/rmnet netdevs (their RS/MLD were the tx_drop 3); ipa_lan0 UP
+#   so the IPA status of every AP TX packet is decoded into dmesg (A6L_IPA_ST); counters before/after. See docs/data3-20260925.md.
+#   MODE=status no longer dumps registers (DIAG=1 to add the safe dump), new MODE=dataformat (no RF: QMI DPM open port
+#   + WDA data format), a6l-qmi shipped in the bundle (DPM before WDA: fixes WDA INVALID_OPERATION). See docs/data2-20260925.md.
 # The first v75/ipa2 MODE=load reset the phone with no log. This bundle walks the probe one hardware phase at a time.
 #
 # BEFORE ANY MODE=load, on the laptop (in ~/A6L-usb-20260915), start the kernel-log stream; it is the only log that
@@ -23,11 +30,14 @@
 #            IPA_PARAMS="..." extra ipa2_lite params (e.g. clk_hz=75000000 comp_cfg=0x1)
 #   status   after Pierre started radio2 (RF, by hand): QMI handshake lines, rmnet_ipa0, register snapshot.
 #   data     RF (needs A6L_RF_APPROVED=1, typed by Pierre): see v75/ipa2 (unchanged).
-#   diag     register snapshot only (a6l_diag sysfs; only when the driver is bound).
+#   dataformat NO RF, after radio2 (modem up): a6l-qmi dataformat = QMI DPM open port (hw data port embedded/1, pipes 4/5)
+#            + WDA get/set data format -> A6L_QMI_DATAFORMAT_PASS. Knobs (exported env): A6L_DPM=0, A6L_WDA_UL/DL=5|7|0 ...
+#   diag     register snapshot only (a6l_diag sysfs; only when the driver is bound). data2: the driver resumes the IPA
+#            (runtime PM) or refuses; AP pipes 2-5 only unless DIAG_PIPES=0x.. (modem pipes may be XPU-protected: unsafe).
 #   There is no "off" once fully probed: removing ipa2_lite shuts the modem down (driver remove path). Reboot instead.
 set -u
 D=${D:-$(dirname "$0")}
-Q=${Q:-/tmp/ril/a6l-qmi}
+Q=${Q:-$D/a6l-qmi}; [ -f "$Q" ] || Q=/tmp/ril/a6l-qmi
 MODE=${MODE:-load}
 [ "$(tr -d '\0' < /proc/device-tree/chosen/hisense,a6l-controls 2>/dev/null)" = v71 ] || { echo "A6L_HW_FAIL wrong image"; exit 2; }
 # manual per-file hash check (toybox sha256sum has no -c/--ignore-missing); missing files are skipped
@@ -37,9 +47,23 @@ bad=0; while read -r h f; do f=${f#\*}; case "$f" in *SHA256SUMS) continue;; esa
 MARK="A6L_IPA2B_$$"; echo "$MARK" > /dev/kmsg
 klog() { dmesg | sed -n "/$MARK/,\$p"; }
 mss_state() { for r in /sys/class/remoteproc/remoteproc*; do [ "$(cat $r/name 2>/dev/null)" = 4080000.remoteproc ] && cat $r/state; done; }
-faults() { dmesg | grep -ciE "Unhandled context fault|smmu.*fault|Internal error|Oops|BUG:|A6L_IPA.*fail"; }
+# data3: the anoc2 "failed to request context IRQ" line is known and harmless (docs/data2 section 3): not a fault
+# fixes-20260927: the same event also prints "error -EINVAL: request_irq(25) arm_smmu_context_fault ... arm-smmu-context-fault",
+# which matched "smmu.*fault" and made ipa3/ipa4 report LOAD_FAIL on a good load (27 Sep): both IRQ-request lines are ignored.
+SMMU_IRQ_NOISE='request context IRQ|request_irq\([0-9]+\) arm_smmu_context_fault'
+faults() { dmesg | grep -iE "Unhandled context fault|smmu.*fault|Internal error|Oops|BUG:|A6L_IPA.*fail" | grep -viEc "$SMMU_IRQ_NOISE"; }
 DEV=/sys/bus/platform/devices/14780000.ipa
-diag() { cat $DEV/a6l_diag 2>/dev/null || echo "  (no a6l_diag: driver not bound)"; }
+rpm() { echo "rpm=$(cat $DEV/power/runtime_status 2>/dev/null) control=$(cat $DEV/power/control 2>/dev/null)"; }
+diag() {
+  [ -e $DEV/a6l_diag ] || { echo "  (no a6l_diag: driver not bound)"; return; }
+  DP=/sys/module/ipa2_lite/parameters/diag_pipes
+  [ -e $DP ] || { echo "  (old ipa2_lite without the runtime-PM-safe a6l_diag: dump skipped, it reset the phone)"; return; }
+  [ -n "${DIAG_PIPES:-}" ] && echo "$DIAG_PIPES" > $DP
+  echo "  $(rpm) diag_pipes=$(cat $DP)"; cat $DEV/a6l_diag 2>/dev/null; }
+cnt() { echo "  -- counters $1"
+  if [ -x "$D/a6l-net" ]; then "$D/a6l-net" stats rmnet_ipa0 ${IF:-rmnet_data0} ipa_lan0
+  else for i in rmnet_ipa0 ${IF:-rmnet_data0} ipa_lan0; do echo "$i rx $(cat /sys/class/net/$i/statistics/rx_packets) tx $(cat /sys/class/net/$i/statistics/tx_packets) rx_drop $(cat /sys/class/net/$i/statistics/rx_dropped) tx_drop $(cat /sys/class/net/$i/statistics/tx_dropped)"; done; fi
+  [ -e $DEV/a6l_diag ] && [ -e /sys/module/ipa2_lite/parameters/diag_pipes ] && grep -E "^(irq_stts|pipe  [245])" $DEV/a6l_diag | sed "s/^/  $1 /"; }
 ipalog() { dmesg | grep -E "A6L_IPA|ipa2-lite|14780000\.ipa|rmnet|arm-smmu.*(fault|0x19c0)" | tail -n ${1:-40}; }
 case "$MODE" in
 load)
@@ -92,20 +116,34 @@ load)
 status)
   echo "modem: $(mss_state)"
   ipalog 40
-  for s in "modem IPA QMI service up" "INIT_DRIVER response OK" "uC INIT_COMPLETED" "INIT_COMPLETE indication sent" "modem PRESENT"; do
+  for s in "modem IPA QMI service up" "modem INIT_DRIVER response OK" "uC INIT_COMPLETED" "INIT_COMPLETE indication sent" "modem PRESENT"; do
     dmesg | grep -q "A6L_IPA $s" && echo "  [x] $s" || echo "  [ ] $s"; done
   ls /sys/class/net/ | tr '\n' ' '; echo
   if dmesg | grep -q "A6L_IPA modem PRESENT"; then echo "A6L_IPA2_MODEM_READY rmnet_ipa0 attached (mtu $(cat /sys/class/net/rmnet_ipa0/mtu))"
   else echo "A6L_IPA2_MODEM_NOT_READY (handshake incomplete; see the unchecked steps above)"; fi
-  diag;;
+  echo "  ipa $(rpm)"
+  [ "${DIAG:-0}" = 1 ] && diag;;
+dataformat)
+  [ -x "$Q" ] || chmod 755 "$Q" 2>/dev/null; [ -x "$Q" ] || { echo "A6L_HW_FAIL no a6l-qmi at $Q"; exit 4; }
+  dmesg | grep -q "A6L_IPA modem PRESENT" || echo "  WARNING: IPA handshake not complete (MODE=status)"
+  "$Q" dataformat 2>&1 | grep -v "^WARNING: linker"
+  ipalog 5;;
 data)
   [ "${A6L_RF_APPROVED:-0}" = 1 ] || { echo "A6L_IPA2_REFUSED data needs A6L_RF_APPROVED=1 (Pierre's explicit go)"; exit 3; }
   [ -x "$Q" ] || chmod 755 "$Q" 2>/dev/null; [ -x "$Q" ] || { echo "A6L_HW_FAIL no a6l-qmi at $Q (push the ril bundle to /tmp/ril)"; exit 4; }
   dmesg | grep -q "A6L_IPA modem PRESENT" || echo "  WARNING: IPA handshake not complete (MODE=status); trying anyway"
   grep -q "^rmnet " /proc/modules || insmod "$D/modules/rmnet.ko" || { echo "A6L_HW_FAIL insmod rmnet"; exit 4; }
+  # data3: no IPv6 autoconf noise (RS/MLD) on the IPA netdevs and on rmnet_data* created from now on (IPV6=1 keeps it)
+  if [ "${IPV6:-0}" != 1 ]; then for c in default rmnet_ipa0 ipa_lan0; do { echo 1 > /proc/sys/net/ipv6/conf/$c/disable_ipv6; } 2>/dev/null; done; fi
+  { echo "0 2147483647" > /proc/sys/net/ipv4/ping_group_range; } 2>/dev/null  # toybox ping fallback (SOCK_DGRAM ICMP)
+  [ -e /sys/module/ipa2_lite/parameters/status_log ] || echo "  WARNING: ipa2_lite without status_log (not the ipa4 build): no A6L_IPA_ST decode"
+  { echo "${DUMP:-1}" > /sys/module/ipa2_lite/parameters/dump; } 2>/dev/null
+  { echo "${STATUS_LOG:-64}" > /sys/module/ipa2_lite/parameters/status_log; } 2>/dev/null
+  ifconfig ipa_lan0 up 2>/dev/null || ip link set ipa_lan0 up 2>/dev/null   # EP2: receives the IPA status/exception packets
   ip link set rmnet_ipa0 up 2>/dev/null || ifconfig rmnet_ipa0 up
   L=/tmp/ipa2-data-$$.txt; KEEP=${KEEP:-60}
   echo "A6L_IPA2_STEP a6l-qmi data '${APN:-}' v4 $KEEP"
+  echo "  ipa $(rpm)"
   "$Q" data "${APN:-}" v4 "$KEEP" > $L 2>&1 &
   QP=$!
   n=0; while [ $n -lt 45 ] && ! grep -qE "A6L_QMI_DATA_UP|A6L_QMI_DATA_FAIL" $L; do sleep 1; n=$((n+1)); done
@@ -118,20 +156,33 @@ data)
   DNS=$(echo "$up" | sed -n 's/.*dns=\[\([^] ]*\).*/\1/p')
   echo "A6L_IPA2_CALL if=$IF addr=$ADDR gw=$GW dns=$DNS"
   case "$ADDR" in */*) ;; *) ADDR="$ADDR/32";; esac
-  ip addr add "$ADDR" dev "$IF" 2>/dev/null || ifconfig "$IF" "${ADDR%/*}" netmask 255.255.255.255 up
-  ip link set "$IF" up 2>/dev/null
-  # only the test destinations go through the modem (Wi-Fi/USB routes untouched)
-  for h in "$DNS" 1.1.1.1; do [ -n "$h" ] && { ip route add "$h/32" dev "$IF" 2>/dev/null || route add -host "$h" dev "$IF"; }; done
-  ip addr show "$IF" 2>/dev/null; ip route 2>/dev/null | grep "$IF"
+  N=$D/a6l-net; [ -x "$N" ] || chmod 755 "$N" 2>/dev/null
+  if [ -x "$N" ]; then "$N" addr "$IF" "$ADDR"
+  else ip addr add "$ADDR" dev "$IF" 2>/dev/null || ifconfig "$IF" "${ADDR%/*}" netmask 255.255.255.255 up; fi
+  ifconfig "$IF" up 2>/dev/null
+  # only the test destinations go through the modem (Wi-Fi/USB routes untouched); a6l-net also binds to $IF
+  TGT="$DNS ${TARGETS:-1.1.1.1 8.8.8.8}"
+  for h in $TGT; do [ -n "$h" ] && { [ -x "$N" ] && "$N" route "$h/32" "$IF" || ip route add "$h/32" dev "$IF" 2>/dev/null || route add -host "$h" dev "$IF"; }; done
+  grep "$IF" /proc/net/route
+  cnt before
   pass=0
-  [ -n "$DNS" ] && { ping -c 4 -W 3 -I "$IF" "$DNS" && pass=1; }
-  ping -c 4 -W 3 -I "$IF" 1.1.1.1 && pass=1
-  if command -v nslookup > /dev/null && [ -n "$DNS" ]; then nslookup lineageos.org "$DNS" && echo "A6L_IPA2_DNS_PASS" || echo "A6L_IPA2_DNS_FAIL"; fi
-  for i in rmnet_ipa0 "$IF"; do echo "$i rx $(cat /sys/class/net/$i/statistics/rx_packets) tx $(cat /sys/class/net/$i/statistics/tx_packets) rx_drop $(cat /sys/class/net/$i/statistics/rx_dropped) tx_drop $(cat /sys/class/net/$i/statistics/tx_dropped)"; done
-  echo "ipa_lan0 rx $(cat /sys/class/net/ipa_lan0/statistics/rx_packets 2>/dev/null) drop $(cat /sys/class/net/ipa_lan0/statistics/rx_dropped 2>/dev/null)"
-  diag | head -12
-  ipalog 15
-  [ $pass = 1 ] && echo "A6L_IPA2_PING_PASS mobile data passes packets" || echo "A6L_IPA2_PING_FAIL (IP but no packets: compare tx/rx counters and a6l_diag rd/wr offsets of pipes 4/5)"
+  if [ -x "$N" ]; then
+    for h in $TGT; do "$N" ping "$IF" "$h" 3 2 && pass=1; done
+    [ -n "$DNS" ] && { "$N" dns "$IF" "$DNS" lineageos.org 5 && echo "A6L_IPA2_DNS_PASS" || echo "A6L_IPA2_DNS_FAIL"; }
+    "$N" http "$IF" 1.1.1.1 80 one.one.one.one && echo "A6L_IPA2_TCP_PASS" || echo "A6L_IPA2_TCP_FAIL"
+  else
+    echo "  (no a6l-net: toybox ping with ping_group_range)"
+    for h in $TGT; do ping -c 3 -W 3 -I "$IF" "$h" && pass=1; done
+  fi
+  sleep 1
+  cnt after
+  { echo 0 > /sys/module/ipa2_lite/parameters/dump; } 2>/dev/null
+  diag | head -8
+  echo "  -- IPA status of the AP TX packets (A6L_IPA_ST: src 4 = AP TX; dst = pipe chosen by the modem filter/route; exc = exception)"
+  dmesg | grep -E "A6L_IPA_ST|A6L_IPA qmi" | tail -n 40
+  echo "  -- packet dumps (dump=1)"; dmesg | grep -E "^.{0,20}(TX|RX) EP" | tail -n 30
+  ipalog 10
+  [ $pass = 1 ] && echo "A6L_IPA2_PING_PASS mobile data passes packets" || echo "A6L_IPA2_PING_FAIL (IP but no packets: compare the before/after counters, pipe 4/5 rd/wr and the A6L_IPA_ST lines)"
   echo "waiting for a6l-qmi to stop the call (KEEP=$KEEP s)"; wait $QP; tail -n 2 $L;;
 diag) echo "modem: $(mss_state)"; diag; ipalog 20;;
 *) echo "A6L_HW_FAIL unknown MODE"; exit 7;;

@@ -9,3 +9,7 @@ allow a6l_audio_route audio_device:chr_file rw_file_perms;
 r_dir_file(a6l_audio_route, proc_asound)
 # /vendor/etc/mixer_paths_a6l.xml
 allow a6l_audio_route vendor_configs_file:file r_file_perms;
+# rom-v2 (merge): follows vendor.a6l.voice.active (in-call routing; type from radio/sepolicy)
+get_prop(a6l_audio_route, vendor_a6l_voice_prop)
+# r5 review F7: follows Android's call devices (vendor.a6l.audio.call_out / call_in, set by the audio HAL)
+get_prop(a6l_audio_route, vendor_a6l_audio_prop)

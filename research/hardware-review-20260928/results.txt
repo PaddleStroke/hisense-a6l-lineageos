@@ -1,0 +1,9 @@
+SDP T=50: input_limit=500000 source_budget=500000
+SDP T=460: input_limit=500000 source_budget=500000
+SDP T=250: input_limit=500000 source_budget=500000
+RESTART normal, previously suspended: status=1
+SUSPEND WRITE FAILURE then node recovery: status=0 (0 means suspend retried and applied)
+LATE_START activate=0 enabled=1 retry_ms=2001
+READ_FAILURE retry_pending=1 poll_nfds=1 poll_timeout=1000
+FIXED both sensor readiness/recovery defects (F4): late node retried, read-error retry bounds poll
+Sensor harness completed with ASan/UBSan; no sanitizer diagnostics.

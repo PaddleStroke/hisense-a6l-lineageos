@@ -21,16 +21,18 @@ PRODUCT_PACKAGES += \
     wificond \
     iw
 $(call soong_config_set,wpa_supplicant,platform_version,$(PLATFORM_VERSION))
-$(call soong_config_set,wpa_supplicant,nl80211_driver,CONFIG_DRIVER_NL80211_QCA)
+# r5 review fix F5: vendor Wi-Fi HAL + plain nl80211 supplicant (no QCA vendor commands), wifi/wifi-hal.mk
+$(call inherit-product, device/hisense/a6l/wifi/wifi-hal.mk)
 
 # --- Bluetooth (HCI_CHANNEL_USER on hci0, WCN3990 via serdev hci_uart QCA) ---
 PRODUCT_PACKAGES += \
     android.hardware.bluetooth-service.default
 
-# --- sensors: AIDL multihal + IIO sub-HAL (device/google/trout, see doc) ---
+# --- sensors: AIDL multihal + sensors.a6l via LineageOS sensors@2.0-subhal-impl-1.0 (senshal, 26 Sep: trout IIO
+# sub-HAL removed, it cannot read the SMGR devices; docs/senshal-20260926.md) ---
 PRODUCT_PACKAGES += \
-    android.hardware.sensors-service.multihal \
-    android.hardware.sensors@2.1-Google-IIO-Subhal
+    android.hardware.sensors-service.multihal
+$(call inherit-product, device/hisense/a6l/hals/sensors/stk3338/stk3338.mk)
 
 # --- lights, health, power, thermal, USB ---
 PRODUCT_PACKAGES += \
@@ -51,7 +53,6 @@ PRODUCT_COPY_FILES += \
     device/hisense/a6l/hals/wifi/p2p_supplicant.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/p2p_supplicant.conf \
     device/hisense/a6l/hals/wifi/p2p_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/p2p_supplicant_overlay.conf \
     device/hisense/a6l/hals/sensors/hals.conf:$(TARGET_COPY_OUT_VENDOR)/etc/sensors/hals.conf \
-    device/hisense/a6l/hals/sensors/sensor_hal_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/sensors/sensor_hal_configuration.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml \

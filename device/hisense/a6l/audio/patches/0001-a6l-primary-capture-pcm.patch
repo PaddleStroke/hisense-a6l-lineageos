@@ -1,0 +1,15 @@
+--- a/audio/aidl/default/primary/StreamPrimary.cpp	2026-09-25 21:51:13.611029707 +0200
++++ b/audio/aidl/default/primary/StreamPrimary.cpp	2026-09-25 21:51:13.630513243 +0200
+@@ -152,6 +152,12 @@
+         const bool useStubDriver = devices.empty() || useStubStream(mIsInput, devices[0]);
+         std::lock_guard l(mLock);
+         mAlsaDeviceId = useStubDriver ? kStubDeviceId : getCardAndDeviceId(devices);
++        // Hisense A6L (merge3 r3): media capture runs on its own DPCM front end (MultiMedia2 = pcmC0D1c); playback
++        // stays on MultiMedia1 (pcmC0D0p). Only when the device address does not name a CARD_x_DEV_y itself.
++        if (mIsInput && !useStubDriver && mAlsaDeviceId == kDefaultCardAndDeviceId) {
++            mAlsaDeviceId.second = ::android::base::GetIntProperty<int>(
++                    "ro.vendor.a6l.audio.capture_pcm", mAlsaDeviceId.second, 0, 31);
++        }
+     }
+     if (!devices.empty()) {
+         auto streamDataProcessor = getContext().getStreamDataProcessor().lock();

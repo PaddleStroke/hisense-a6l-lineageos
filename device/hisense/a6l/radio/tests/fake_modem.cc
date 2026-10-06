@@ -54,6 +54,8 @@ void FakeModem::detach(FakeTransport* t) {
         it = (*it == t) ? mClients.erase(it) : it + 1;
     for (auto it = mLookups.begin(); it != mLookups.end();)
         it = (it->first == t) ? mLookups.erase(it) : it + 1;
+    for (auto it = mPublished.begin(); it != mPublished.end();)  // volte2
+        it = (it->second.first == t) ? mPublished.erase(it) : std::next(it);
 }
 
 static std::vector<uint8_t> ctrl(uint32_t cmd, uint32_t svc, uint32_t inst, uint32_t node,
@@ -116,7 +118,14 @@ std::vector<std::pair<uint32_t, Message>> FakeModem::requests() {
 void FakeModem::fromClient(FakeTransport* t, const Addr& to, const std::vector<uint8_t>& data) {
     if (to.port == kPortCtrl) {
         CtrlPacket p;
-        if (!CtrlPacket::decode(data, &p) || p.cmd != kCtrlNewLookup) return;
+        if (!CtrlPacket::decode(data, &p)) return;
+        if (p.cmd == kCtrlNewServer || p.cmd == kCtrlDelServer) {  // volte2: AP-hosted service
+            std::lock_guard<std::mutex> l(mLock);
+            if (p.cmd == kCtrlNewServer) mPublished[p.service] = {t, p.instance};
+            else mPublished.erase(p.service);
+            return;
+        }
+        if (p.cmd != kCtrlNewLookup) return;
         std::vector<std::vector<uint8_t>> out;
         {
             std::lock_guard<std::mutex> l(mLock);
@@ -127,6 +136,13 @@ void FakeModem::fromClient(FakeTransport* t, const Addr& to, const std::vector<u
             out.push_back(ctrl(kCtrlNewServer, 0, 0, 0, 0));
         }
         for (auto& d : out) t->deliver(Addr{1, kPortCtrl}, d);
+        return;
+    }
+    if (to.node == kModemNode && to.port == kModemClientPort) {  // volte2: to the modem's client
+        auto m = Message::decode(data);
+        std::lock_guard<std::mutex> l(mLock);
+        if (m) mToModemClient.push_back(*m);
+        mModemCv.notify_all();
         return;
     }
     uint32_t svc = 0;
@@ -149,6 +165,51 @@ void FakeModem::fromClient(FakeTransport* t, const Addr& to, const std::vector<u
     resp->txn = m->txn;
     resp->msgId = m->msgId;
     t->deliver(to, resp->encode());
+}
+
+bool FakeModem::published(uint32_t svc, uint32_t* instanceWord) {
+    std::lock_guard<std::mutex> l(mLock);
+    auto it = mPublished.find(svc);
+    if (it == mPublished.end()) return false;
+    if (instanceWord) *instanceWord = it->second.second;
+    return true;
+}
+
+bool FakeModem::modemRequest(uint32_t svc, Message req) {
+    FakeTransport* t = nullptr;
+    {
+        std::lock_guard<std::mutex> l(mLock);
+        auto it = mPublished.find(svc);
+        if (it == mPublished.end()) return false;
+        t = it->second.first;
+    }
+    req.type = MsgType::Request;
+    t->deliver(Addr{kModemNode, kModemClientPort}, req.encode());
+    return true;
+}
+
+std::optional<Message> FakeModem::waitModemClientMsg(int timeoutMs) {
+    std::unique_lock<std::mutex> l(mLock);
+    mModemCv.wait_for(l, std::chrono::milliseconds(timeoutMs), [&] { return !mToModemClient.empty(); });
+    if (mToModemClient.empty()) return std::nullopt;
+    Message m = mToModemClient.front();
+    mToModemClient.pop_front();
+    return m;
+}
+
+void FakeModem::modemClientGone(uint32_t svc, bool bye) {
+    FakeTransport* t = nullptr;
+    {
+        std::lock_guard<std::mutex> l(mLock);
+        auto it = mPublished.find(svc);
+        if (it == mPublished.end()) return;
+        t = it->second.first;
+    }
+    CtrlPacket p;
+    p.cmd = bye ? kCtrlBye : kCtrlDelClient;
+    p.node = kModemNode;
+    p.port = kModemClientPort;
+    t->deliver(Addr{1, kPortCtrl}, p.encode());
 }
 
 Message okResponse(uint16_t msgId) {

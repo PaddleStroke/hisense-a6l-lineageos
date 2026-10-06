@@ -1,0 +1,2 @@
+F49 driver_name=a6l_gpio_vibrator present=0 on_400ms_success=1 capability_queries=0 FF_uploads=0 FF_writes=0
+F49 control_name=qti-haptics present=1 FF_uploads=1 FF_writes=1

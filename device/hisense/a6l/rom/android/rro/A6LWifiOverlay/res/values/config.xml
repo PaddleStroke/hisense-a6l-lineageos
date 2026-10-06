@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hisense A6L Wi-Fi resources (overlays-carrier-updater, 29 Sep 2026). com.android.wifi.resources lives in the Wi-Fi APEX:
+     a static DEVICE_PACKAGE_OVERLAYS entry never reaches it, hence this RRO (overlayable policy odm|product|system|vendor).
+     Radio: WCN3990 (ath10k_snoc), 2.4 + 5 GHz 802.11ac, no 6 GHz; regulatory domain FR from /vendor/firmware/regulatory.db.
+     Stock (Android 9 framework-res) had config_wifi_dual_band_support=true and softap ACS=true (qcacld driver ACS). -->
+<resources>
+    <!-- AOSP default false = the framework treats the device as 2.4 GHz only (5 GHz band hidden in SoftAP, band logic). -->
+    <bool translatable="false" name="config_wifi5ghzSupport">true</bool>
+    <!-- SoftAP: 2.4 and 5 GHz (hostapd over nl80211, plain supplicant/hostapd of wifi/wifi-hal.mk). No 6 GHz, no bridged
+         (dual) AP: ath10k_snoc exposes a single AP interface combination. -->
+    <bool translatable="false" name="config_wifiSoftap24ghzSupported">true</bool>
+    <bool translatable="false" name="config_wifiSoftap5ghzSupported">true</bool>
+    <bool translatable="false" name="config_wifiSoftap6ghzSupported">false</bool>
+    <bool translatable="false" name="config_wifiBridgedSoftApSupported">false</bool>
+    <!-- ACS stays OFF (default): stock used the qcacld driver ACS; with ath10k it would be hostapd's survey-based ACS, not
+         validated here. The framework picks the channel instead (attended test: 5 GHz hotspot comes up on a non-DFS channel). -->
+    <bool translatable="false" name="config_wifi_softap_acs_supported">false</bool>
+    <!-- Connected MAC randomization stays OFF (default) until the attended test shows ath10k takes a new MAC on a down
+         interface; with it off Android uses the factory MAC for every network (privacy note in the doc). -->
+    <bool translatable="false" name="config_wifi_connected_mac_randomization_supported">false</bool>
+</resources>

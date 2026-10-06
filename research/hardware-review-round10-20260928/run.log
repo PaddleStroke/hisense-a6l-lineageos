@@ -1,0 +1,5 @@
+F64 queue_delay_ms=351 UTC_advanced_ms=0 advertised_uncertainty_ms=1
+F64 later_request_positive_control supplied_UTC_and_uncertainty_encoded=1
+F22_NMEA ellipsoid_only=80 GGA_MSL=80.0 GGA_geoid=0.0
+F22_NMEA no_altitude GGA_MSL=0.0 GGA_geoid=0.0
+F22_NMEA both_datums_positive_control GGA_MSL=35.0 GGA_geoid=45.0

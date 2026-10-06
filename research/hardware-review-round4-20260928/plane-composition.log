@@ -1,0 +1,3 @@
+alpha=0 expected_black=0 actual=255
+rotation=180 expected=255,128,64,0 actual=0,64,128,255
+coverage alpha=128 expected_about=100 actual=200 metadata_queries=0

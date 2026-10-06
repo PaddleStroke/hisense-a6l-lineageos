@@ -1,0 +1,20 @@
+--- a/device/hisense/a6l/camera/run-camera.sh
++++ b/device/hisense/a6l/camera/run-camera.sh
+@@ -20,7 +20,7 @@
+ #                 (ICC_AVG/ICC_PEAK kBps, default 2000000/4000000), 8 bus-error recovery (W1C + WM reload), 16 RDI
+ #                 line-based WM (stock), 32 frame-based burst 3, 64 stock RDI UB 192, 128 per-SOF progress probe (WM=4)
+ #                 PDUMP=<n> SOFs the probe logs (default 40)
+-#   MODE=sweep: one bars capture per entry of VARS (name:v6[:icc_avg:icc_peak]) with WM=${WM:-4}, progress probe on,
++#   MODE=sweep: one bars capture per entry of VARS (name:v6[:icc_avg:icc_peak]) with WM=${WM:-6}, progress probe on,
+ #                 table in /tmp/cam-<sensor>-sweep.sum; params go back to the defaults at the end
+ #   A kernel oops in an earlier run blocks bars/live (reboot first): the camss state is then undefined.
+ # Markers: "A6L_CAM <STEP>_PASS/_FAIL". Nothing here writes flash/eMMC.
+@@ -176,7 +176,7 @@
+   ;;
+ sweep)
+   # camfix6: one attended session -> which stock-parity setting makes the RDI WM finish frames
+-  mknodes; MODE=bars; SUM=/tmp/cam-$SENSOR-sweep.sum; TAB=/tmp/cam-$SENSOR-sweep.tab; : > $SUM; WM=${WM:-4}
++  mknodes; MODE=bars; SUM=/tmp/cam-$SENSOR-sweep.sum; TAB=/tmp/cam-$SENSOR-sweep.tab; : > $SUM; WM=${WM:-6}
+   P=/sys/module/qcom_camss/parameters; LB=$(( ${W:-2880} * 5 / 4 ))
+   printf '%-9s %-5s %-18s %-5s %-15s %-14s %-4s %s\n' variant v6 sof/done/be/first dones scan_lines_s0/s1 max_lines/frame rec capture > $TAB
+   for e in ${VARS:-base:0 vbif:1 ub1904:2 ub192:64 icc:4 iccmax:4:6000000:8000000 recov:8 burst3:32 line:16 fix6:15 fix6line:31}; do

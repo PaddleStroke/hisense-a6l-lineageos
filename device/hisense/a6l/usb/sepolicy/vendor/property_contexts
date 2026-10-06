@@ -1,0 +1,3 @@
+# A6L USB (android-usb, 29 Sep 2026): vendor.a6l.usb.managed (init: gadget owned by this ROM, not the RAM container),
+# vendor.a6l.usb.hal (gadget HAL took over from the init early-adb rules). Longer than rom/sepolicy's vendor.a6l.
+vendor.a6l.usb.             u:object_r:vendor_a6l_usb_prop:s0

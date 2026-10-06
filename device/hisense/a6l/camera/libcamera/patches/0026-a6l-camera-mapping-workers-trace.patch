@@ -1,0 +1,375 @@
+--- /dev/null
++++ b/include/libcamera/internal/a6l_frame_mapping_cache.h
+@@ -0,0 +1,115 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <list>
++#include <limits>
++#include <memory>
++#include <sys/types.h>
++#include <unistd.h>
++#include <vector>
++
++#include <libcamera/framebuffer.h>
++#include "libcamera/internal/mapped_framebuffer.h"
++
++namespace libcamera {
++/* Confined to the serialized Debayer thread. CPU ownership is still managed
++ * separately by a per-frame DmaSyncer; a live mapping does not grant access.
++ * Equal numeric FDs are safe keys only because every entry retains SharedFD
++ * ownership. Neither FrameBuffer pointers nor image/metadata are retained. */
++class A6LFrameMappingCache
++{
++public:
++	class Entry {
++	public:
++		const MappedFrameBuffer &mapping() const { return *mapping_; }
++	private:
++		friend class A6LFrameMappingCache;
++		Entry(const FrameBuffer &buffer, MappedFrameBuffer::MapFlags flags)
++			: planes_(buffer.planes().begin(), buffer.planes().end()),
++			  mapping_(std::make_unique<MappedFrameBuffer>(&buffer, flags)) {}
++		bool matches(const FrameBuffer &buffer) const
++		{
++			const auto planes = buffer.planes();
++			if (planes.size() != planes_.size())
++				return false;
++			for (size_t i = 0; i < planes.size(); ++i)
++				if (planes[i].fd != planes_[i].fd ||
++				    planes[i].offset != planes_[i].offset ||
++				    planes[i].length != planes_[i].length)
++					return false;
++			return true;
++		}
++		/* Declaration order ensures mapping is destroyed before FD owners. */
++		std::vector<FrameBuffer::Plane> planes_;
++		std::unique_ptr<MappedFrameBuffer> mapping_;
++	};
++	using Lease = std::shared_ptr<const Entry>;
++
++	explicit A6LFrameMappingCache(MappedFrameBuffer::MapFlags flags,
++				    size_t capacity = 8)
++		: flags_(flags), capacity_(capacity) {}
++
++	Lease get(const FrameBuffer &buffer, bool *hit = nullptr)
++	{
++		if (hit)
++			*hit = false;
++		/* DMA-BUF sizes are immutable, but preserve current bounds checking
++		 * for generic test/import descriptors too. Never reuse a shrunken
++		 * or invalid backing allocation. This does not guess dup aliases. */
++		if (!validBacking(buffer)) {
++			for (auto it = entries_.begin(); it != entries_.end();)
++				if ((*it)->matches(buffer))
++					it = entries_.erase(it);
++				else
++					++it;
++			return {};
++		}
++		for (auto it = entries_.begin(); it != entries_.end(); ++it) {
++			if ((*it)->matches(buffer)) {
++				auto entry = *it;
++				entries_.splice(entries_.begin(), entries_, it);
++				if (hit)
++					*hit = true;
++				return entry;
++			}
++		}
++		std::shared_ptr<Entry> entry(new Entry(buffer, flags_));
++		if (!entry->mapping().isValid())
++			return {};
++		if (capacity_) {
++			entries_.push_front(entry);
++			while (entries_.size() > capacity_)
++				entries_.pop_back();
++		}
++		/* The current job's lease remains valid even if an entry is evicted.
++		 * The serialized owner must release its leases before session clear. */
++		return entry;
++	}
++	void clear() { entries_.clear(); }
++	size_t size() const { return entries_.size(); }
++private:
++	static bool validBacking(const FrameBuffer &buffer)
++	{
++		const auto planes = buffer.planes();
++		if (planes.empty())
++			return false;
++		for (size_t i = 0; i < planes.size(); ++i) {
++			const auto &plane = planes[i];
++			if (!plane.fd.isValid())
++				return false;
++			/* The retained mapper adds these unsigned-int fields before
++			 * promoting. Reject its arithmetic overflow before mapping. */
++			const uint64_t end = static_cast<uint64_t>(plane.offset) + plane.length;
++			if (end > std::numeric_limits<unsigned int>::max())
++				return false;
++			const off_t length = lseek(plane.fd.get(), 0, SEEK_END);
++			if (length < 0 || end > static_cast<uint64_t>(length))
++				return false;
++		}
++		return true;
++	}
++	const MappedFrameBuffer::MapFlags flags_;
++	const size_t capacity_;
++	std::list<std::shared_ptr<Entry>> entries_;
++};
++} /* namespace libcamera */
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -35,6 +35,7 @@
+ 
+ #include "libcamera/internal/camera.h"
+ #include "libcamera/internal/a6l_quality_debug.h"
++#include "libcamera/internal/a6l_stage_profile.h"
+ #include "libcamera/internal/a6l_sensor_control_guard.h"
+ #include "libcamera/internal/raw10_fov.h"
+ #include "libcamera/internal/framebuffer.h"
+@@ -1044,7 +1045,15 @@
+ 			tryCompleteRequest(request);
+ 	} else {
+ 		/* Queue the input buffer back for capture. */
+-		video_->queueBuffer(buffer);
++		A6LStageProfile profile(a6lStageProfileEnabled(qualityFrame_));
++		const uint64_t begin = profile.start();
++		const int ret = video_->queueBuffer(buffer);
++		profile.add(A6LStageProfile::Total, begin);
++		if (profile.enabled())
++			LOG(SimplePipeline, Info) << "A6L_STAGE_CAPTURE_REQUEUE frame_hint=" << qualityFrame_
++				<< " sensor_sequence=" << buffer->metadata().sequence
++				<< " mono_ns=" << a6lQualityMonotonicNs()
++				<< " queue_call_ns=" << profile.ns(A6LStageProfile::Total) << " ret=" << ret;
+ 	}
+ }
+ 
+--- a/src/libcamera/software_isp/debayer.cpp
++++ b/src/libcamera/software_isp/debayer.cpp
+@@ -10,6 +10,8 @@
+  */
+ 
+ #include "debayer.h"
++
++#include "libcamera/internal/a6l_quality_debug.h"
+ 
+ namespace libcamera {
+ 
+@@ -279,7 +281,8 @@
+  * \fn void Debayer::dmaSyncBegin(DebayerParams &params)
+  * \brief Common CPU/GPU Dma Sync Buffer begin
+  */
+-void Debayer::dmaSyncBegin(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input, FrameBuffer *output)
++void Debayer::dmaSyncBegin(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input, FrameBuffer *output,
++			   uint32_t profileFrame, bool profile)
+ {
+ 	/* CPU access synchronization applies to the whole dma-buf, not one
+ 	 * image plane. Internal NV12 planes share a SharedFD; synchronize that
+@@ -312,8 +315,17 @@
+ 	}
+ 
+ 	dmaSyncers.reserve(dmaSyncers.size() + accesses.size());
+-	for (const Access &access : accesses)
++	for (const Access &access : accesses) {
++		const uint64_t begin = profile ? a6lQualityMonotonicNs() : 0;
+ 		dmaSyncers.emplace_back(access.fd, access.type);
++		if (profile) {
++			const uint64_t end = a6lQualityMonotonicNs();
++			LOG(Debayer, Info) << "A6L_STAGE_DMA_START frame=" << profileFrame
++				<< " fd=" << access.fd.get() << " access_type=" << static_cast<int>(access.type)
++				<< " start_mono_ns=" << begin
++				<< " elapsed_ns=" << (end - begin);
++		}
++	}
+ }
+ 
+ /**
+--- a/src/libcamera/software_isp/debayer.h
++++ b/src/libcamera/software_isp/debayer.h
+@@ -86,7 +86,8 @@
+ 	virtual Size patternSize(PixelFormat inputFormat) = 0;
+ 
+ protected:
+-	void dmaSyncBegin(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input, FrameBuffer *output);
++	void dmaSyncBegin(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input, FrameBuffer *output,
++			  uint32_t profileFrame = 0, bool profile = false);
+ 	static bool isStandardBayerOrder(BayerFormat::Order order);
+ };
+ 
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -19,6 +19,7 @@
+ #include <linux/dma-buf.h>
+ 
+ #include <libcamera/base/thread.h>
++#include <libcamera/base/utils.h>
+ 
+ #include <libcamera/formats.h>
+ 
+@@ -691,6 +692,10 @@
+ 			  const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
+ 			  bool ccmEnabled)
+ {
++	/* configure is an idle transition; never retain an earlier allocation. */
++	inputMappings_.clear();
++	outputMappings_.clear();
++
+ 	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0)
+ 		return -EINVAL;
+ 
+@@ -1225,10 +1230,26 @@
+ 	bench_.startFrame();
+ 	A6LStageProfile stage(a6lStageProfileEnabled(frame));
+ 	const uint64_t stageStart = stage.start();
++	uint64_t statsEmitNs = 0, outputEmitNs = 0, inputEmitNs = 0;
++	const unsigned int profileSequence = stage.enabled() ? input->metadata().sequence : 0;
++	/* Declared before mapping leases: this runs after their destructors.
++	 * Emission timing is not the queued receiver's execution time. */
++	auto returnProfile = utils::scope_exit{ [&]() {
++		if (stage.enabled()) {
++			const uint64_t end = a6lQualityMonotonicNs();
++			LOG(Debayer, Info) << "A6L_STAGE_ISP_RETURN frame=" << frame
++				<< " mono_ns=" << end
++				<< " sensor_sequence=" << profileSequence
++				<< " whole_before_return_log_ns=" << (end - stageStart)
++				<< " stats_emit_ns=" << statsEmitNs
++				<< " output_emit_ns=" << outputEmitNs
++				<< " input_emit_ns=" << inputEmitNs;
++		}
++	} };
+ 
+ 	std::vector<DmaSyncer> dmaSyncers;
+ 
+-	stage.measure(A6LStageProfile::DmaBegin, true, [&] { dmaSyncBegin(dmaSyncers, input, output); });
++	stage.measure(A6LStageProfile::DmaBegin, true, [&] { dmaSyncBegin(dmaSyncers, input, output, frame, stage.enabled()); });
+ 
+ 	stage.measure(A6LStageProfile::Lut, true, [&] { updateLookupTables(params); });
+ 
+@@ -1247,10 +1268,10 @@
+ 	};
+ 
+ 	const uint64_t mapStart = stage.start();
+-	MappedFrameBuffer in(input, MappedFrameBuffer::MapFlag::Read);
+-	MappedFrameBuffer out(output, MappedFrameBuffer::MapFlag::Write);
++	const auto inputMapping = inputMappings_.get(*input);
++	const auto outputMapping = outputMappings_.get(*output);
+ 	stage.add(A6LStageProfile::Map, mapStart);
+-	if (!in.isValid() || !out.isValid()) {
++	if (!inputMapping || !outputMapping) {
+ 		LOG(Debayer, Error) << "mmap-ing buffer(s) failed";
+ 		fail();
+ 		return;
+@@ -1258,6 +1279,9 @@
+ 
+ 	/* Identity bypass must retain the scaler's actual mapped-plane bounds
+ 	 * check. This requirement is reset for every non-FOV configuration. */
++	const MappedFrameBuffer &in = inputMapping->mapping();
++	const MappedFrameBuffer &out = outputMapping->mapping();
++
+ 	if (rawFovInputBytes_ && in.planes()[0].size() < rawFovInputBytes_) {
+ 		LOG(Debayer, Error) << "RAW10 FOV mapped input too small";
+ 		fail();
+@@ -1348,9 +1372,18 @@
+ 	 *
+ 	 * \todo Pass real bufferId once stats buffer passing is changed.
+ 	 */
++	const uint64_t statsStart = stage.start();
+ 	stats_->finishFrame(frame, 0);
++	if (stage.enabled())
++		statsEmitNs = a6lQualityMonotonicNs() - statsStart;
++	const uint64_t outputStart = stage.start();
+ 	outputBufferReady.emit(output);
++	if (stage.enabled())
++		outputEmitNs = a6lQualityMonotonicNs() - outputStart;
++	const uint64_t inputStart = stage.start();
+ 	inputBufferReady.emit(input);
++	if (stage.enabled())
++		inputEmitNs = a6lQualityMonotonicNs() - inputStart;
+ }
+ 
+ int DebayerCpu::start()
+@@ -1368,6 +1401,11 @@
+ 
+ 	for (auto &thread : threads_)
+ 		thread->wait();
++
++	/* SoftwareIsp.stop invokes this after the serialized process finishes,
++	 * before the pipeline releases its V4L2 capture allocations. */
++	inputMappings_.clear();
++	outputMappings_.clear();
+ }
+ 
+ SizeRange DebayerCpu::sizes(PixelFormat inputFormat, const Size &inputSize)
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -22,6 +22,7 @@
+ #include <libcamera/camera_manager.h>
+ 
+ #include "libcamera/internal/bayer_format.h"
++#include "libcamera/internal/a6l_frame_mapping_cache.h"
+ #include "libcamera/internal/raw10_fov.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
+ #include "libcamera/internal/software_isp/swstats_cpu.h"
+@@ -162,11 +163,13 @@
+ 	bool rawFovActive_ = false;
+ 	size_t rawFovInputBytes_ = 0;
+ 	std::unique_ptr<SwStatsCpu> stats_;
++	A6LFrameMappingCache inputMappings_{ MappedFrameBuffer::MapFlag::Read };
++	A6LFrameMappingCache outputMappings_{ MappedFrameBuffer::MapFlag::Write };
+ 	unsigned int xShift_; /* Offset of 0/1 applied to window_.x */
+ 
+ 	static constexpr unsigned int kMinThreads = 1;
+ 	static constexpr unsigned int kMaxThreads = 8;
+-	static constexpr unsigned int kDefaultThreads = 6;
++	static constexpr unsigned int kDefaultThreads = 8;
+ 
+ 	/* Packed RAW10/NV12: each worker retains its own scratch/stats slot. */
+ 	bool dynamicRows_ = false;
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -24,6 +24,7 @@
+ #include <libcamera/stream.h>
+ 
+ #include "libcamera/internal/bayer_format.h"
++#include "libcamera/internal/a6l_stage_profile.h"
+ #include "libcamera/internal/camera_lens.h"
+ #include "libcamera/internal/camera_sensor.h"
+ #include "libcamera/internal/framebuffer.h"
+@@ -484,9 +485,18 @@
+ 	if (!statsOwnership_.begin(job.frame, job.output))
+ 		return;
+ 	pendingProcessing_.pop_front();
++	A6LStageProfile profile(a6lStageProfileEnabled(job.frame));
++	const uint64_t begin = profile.start();
++	const unsigned int sequence = profile.enabled() ? job.input->metadata().sequence : 0;
+ 	ipa_->computeParams(job.frame);
+ 	debayer_->invokeMethod(&Debayer::process, ConnectionTypeQueued,
+ 			       job.frame, job.input, job.output, debayerParams_);
++	profile.add(A6LStageProfile::Total, begin);
++	if (profile.enabled())
++		LOG(SoftwareIsp, Info) << "A6L_STAGE_ISP_QUEUE frame=" << job.frame
++			<< " mono_ns=" << a6lQualityMonotonicNs()
++			<< " sensor_sequence=" << sequence
++			<< " params_and_enqueue_ns=" << profile.ns(A6LStageProfile::Total);
+ }
+ 
+ void SoftwareIsp::statsConsumed(uint32_t frame, const ControlList &metadata)
+@@ -495,8 +505,17 @@
+ 	 * reuse the frame number. This callback must not ACK that new job. */
+ 	if (!statsOwnership_.acknowledge(frame))
+ 		return;
+-	metadataReady.emit(frame, metadata);
+-	processNext();
++	A6LStageProfile profile(a6lStageProfileEnabled(frame));
++	const uint64_t begin = profile.start();
++	profile.measure(A6LStageProfile::Map, true, [&] { metadataReady.emit(frame, metadata); });
++	profile.measure(A6LStageProfile::WorkerWait, true, [&] { processNext(); });
++	profile.add(A6LStageProfile::Total, begin);
++	if (profile.enabled())
++		LOG(SoftwareIsp, Info) << "A6L_STAGE_IPA_ACK frame=" << frame
++			<< " mono_ns=" << a6lQualityMonotonicNs()
++			<< " metadata_callback_ns=" << profile.ns(A6LStageProfile::Map)
++			<< " process_next_ns=" << profile.ns(A6LStageProfile::WorkerWait)
++			<< " after_ack_ns=" << profile.ns(A6LStageProfile::Total);
+ }
+ 
+ void SoftwareIsp::saveIspParams()

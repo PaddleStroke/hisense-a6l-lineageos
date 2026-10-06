@@ -1,0 +1,611 @@
+{
+  "passed": true,
+  "scope": "Offline exact captured ABL routines; no phone access",
+  "limits": "Synthetic UEFI memory/PMIC/rollback fixtures; not whole BootLinux or physical kernel execution.",
+  "candidate_sha256": "8ecb8e9e4c5289cfe63c23eb32b749178935a6588673cea3a1b1ebee3c94b304",
+  "header": {
+    "status": "0x0",
+    "image_size": 21323776,
+    "page_size": 4096,
+    "unexpected_calls": []
+  },
+  "overlay": {
+    "base_sha256": "aceadcb790ded3f4b6da770263000eb2f6031f19fb8ff85d521a70346b98637e",
+    "overlay_sha256": "de56fe4e520f26202ecc46e3c220444c82df899f43e42f37a7516c4f25d37e6e",
+    "logs": [],
+    "returned_blob": true,
+    "output_bytes": 78793,
+    "output_sha256": "2cdfb2e7fe95d1b9f075d5a617d5e7133c3ed46ec2acf7f044b5c8f5ca06d0db",
+    "only_changes": [
+      "root qcom,board-id selection metadata",
+      "chosen diagnostic marker"
+    ]
+  },
+  "overlay_negative_controls": {
+    "missing_main_symbols": {
+      "base_sha256": "9530a513e7a8b8f8fa8aa6f8b0f39be2bd42970cb067ae739e009cf64040b987",
+      "overlay_sha256": "837b46eef6baf0d6aaa79234aa5c0fe4ffcf442aced2e77fa6b4846bc0e6756c",
+      "logs": [
+        "ERROR: %s():",
+        "Bad main_symbols in ufdt_overlay_do_fixups\n",
+        "ERROR: %s():",
+        "failed to perform fixups in overlay\n"
+      ],
+      "returned_blob": false
+    },
+    "missing_overlay_fixups": {
+      "base_sha256": "aceadcb790ded3f4b6da770263000eb2f6031f19fb8ff85d521a70346b98637e",
+      "overlay_sha256": "837b46eef6baf0d6aaa79234aa5c0fe4ffcf442aced2e77fa6b4846bc0e6756c",
+      "logs": [
+        "ERROR: %s():",
+        "Bad overlay_fixups in ufdt_overlay_do_fixups\n",
+        "ERROR: %s():",
+        "failed to perform fixups in overlay\n"
+      ],
+      "returned_blob": false
+    }
+  },
+  "stock_overlay_positive_control": {
+    "base_sha256": "ef0b93babaa97992003f3edb0795f8c4c44993a73d1b98fb9e494e8131100030",
+    "overlay_sha256": "28a2b6df0e0cc8525b11bd81ac75dc505dd54b292488b874134167055e474c60",
+    "logs": [],
+    "returned_blob": true,
+    "output_bytes": 345034,
+    "output_sha256": "838ecb132de59ded39ea8969f0fc1225e669d3342e749f5f7875ff518e24f80a"
+  },
+  "stock_overlay_reference_difference": "Old captured ufdt additionally applies three root properties: qcom,board-id, model, compatible.",
+  "fixups": {
+    "input_sha256": "2cdfb2e7fe95d1b9f075d5a617d5e7133c3ed46ec2acf7f044b5c8f5ca06d0db",
+    "fixture_events": [
+      "synthetic two-bank RAM fixture",
+      "GetVariable: DisplaySplashBufferInfo",
+      "optional LocateProtocol unavailable: a5bc5231deea3d43862ec01cdc291f44"
+    ],
+    "returned": true,
+    "status": "0x0",
+    "pc": "0x1800fff0",
+    "output_bytes": 78658,
+    "memory_reg": {
+      "/memory@80000000": [
+        0,
+        2147483648,
+        0,
+        2147483648,
+        1,
+        0,
+        1,
+        0
+      ]
+    },
+    "chosen_bootargs": "rdinit=/init panic=15 loglevel=8\u0000",
+    "initrd_start": [
+      0,
+      2214592512
+    ],
+    "initrd_end": [
+      0,
+      2214723584
+    ]
+  },
+  "decompression": {
+    "returned": true,
+    "status": "0x0",
+    "stopped_pc": "0x1800fff0",
+    "elapsed_seconds": 1.411,
+    "gzip_end_offset": 12385895,
+    "decompressed_bytes": 29878784,
+    "sha256": "0d7d2eb6692b0439a43306ce6f8e26b07334fe21897b8774f99317921fd5acf7"
+  },
+  "selectors": [
+    {
+      "soc": {
+        "pmic_fixture": [
+          "0x1001b",
+          "0x101011a",
+          "0x0",
+          "0x0"
+        ],
+        "pmic_queries": [],
+        "returned": true,
+        "selected": true,
+        "pointer": "0x4bcfe67",
+        "overlay_not_needed": false,
+        "selected_offset": 12385895,
+        "selected_bytes": 78432,
+        "selected_sha256": "aceadcb790ded3f4b6da770263000eb2f6031f19fb8ff85d521a70346b98637e"
+      },
+      "board": {
+        "pmic_fixture": [
+          "0x1001b",
+          "0x101011a",
+          "0x0",
+          "0x0"
+        ],
+        "pmic_queries": [
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16843034
+          },
+          {
+            "getter": "0x11f48",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16843034
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16843034
+          },
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16843034
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16843034
+          }
+        ],
+        "returned": true,
+        "selected": true,
+        "pointer": "0x4000040",
+        "overlay_not_needed": false,
+        "selected_offset": 64,
+        "selected_bytes": 361,
+        "selected_sha256": "de56fe4e520f26202ecc46e3c220444c82df899f43e42f37a7516c4f25d37e6e"
+      }
+    },
+    {
+      "soc": {
+        "pmic_fixture": [
+          "0x1001b",
+          "0x201011a",
+          "0x0",
+          "0x0"
+        ],
+        "pmic_queries": [],
+        "returned": true,
+        "selected": true,
+        "pointer": "0x4bcfe67",
+        "overlay_not_needed": false,
+        "selected_offset": 12385895,
+        "selected_bytes": 78432,
+        "selected_sha256": "aceadcb790ded3f4b6da770263000eb2f6031f19fb8ff85d521a70346b98637e"
+      },
+      "board": {
+        "pmic_fixture": [
+          "0x1001b",
+          "0x201011a",
+          "0x0",
+          "0x0"
+        ],
+        "pmic_queries": [
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 33620250
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 33620250
+          },
+          {
+            "getter": "0x11f48",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 33620250
+          },
+          {
+            "getter": "0x11f48",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 33620250
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 33620250
+          },
+          {
+            "getter": "0x11f48",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 3,
+            "value": 0
+          }
+        ],
+        "returned": true,
+        "selected": true,
+        "pointer": "0x4000040",
+        "overlay_not_needed": false,
+        "selected_offset": 64,
+        "selected_bytes": 361,
+        "selected_sha256": "de56fe4e520f26202ecc46e3c220444c82df899f43e42f37a7516c4f25d37e6e"
+      }
+    },
+    {
+      "soc": {
+        "pmic_fixture": [
+          "0x1001b",
+          "0x102001a",
+          "0x0",
+          "0x0"
+        ],
+        "pmic_queries": [],
+        "returned": true,
+        "selected": true,
+        "pointer": "0x4bcfe67",
+        "overlay_not_needed": false,
+        "selected_offset": 12385895,
+        "selected_bytes": 78432,
+        "selected_sha256": "aceadcb790ded3f4b6da770263000eb2f6031f19fb8ff85d521a70346b98637e"
+      },
+      "board": {
+        "pmic_fixture": [
+          "0x1001b",
+          "0x102001a",
+          "0x0",
+          "0x0"
+        ],
+        "pmic_queries": [
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16908314
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16908314
+          },
+          {
+            "getter": "0x11f48",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16908314
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16908314
+          },
+          {
+            "getter": "0x11f48",
+            "index": 0,
+            "value": 27
+          },
+          {
+            "getter": "0x12160",
+            "index": 0,
+            "value": 65563
+          },
+          {
+            "getter": "0x11f48",
+            "index": 1,
+            "value": 26
+          },
+          {
+            "getter": "0x12160",
+            "index": 1,
+            "value": 16908314
+          },
+          {
+            "getter": "0x11f48",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 2,
+            "value": 0
+          },
+          {
+            "getter": "0x11f48",
+            "index": 3,
+            "value": 0
+          },
+          {
+            "getter": "0x12160",
+            "index": 3,
+            "value": 0
+          }
+        ],
+        "returned": true,
+        "selected": true,
+        "pointer": "0x4000040",
+        "overlay_not_needed": false,
+        "selected_offset": 64,
+        "selected_bytes": 361,
+        "selected_sha256": "de56fe4e520f26202ecc46e3c220444c82df899f43e42f37a7516c4f25d37e6e"
+      }
+    }
+  ],
+  "avb": {
+    "returned": true,
+    "result": 5,
+    "pc": "0x1800fff0",
+    "wall_timeout_reached": false,
+    "slot_data_present": true,
+    "loaded_partitions": [
+      {
+        "name": "recovery",
+        "bytes": 67108864,
+        "sha256": "8ecb8e9e4c5289cfe63c23eb32b749178935a6588673cea3a1b1ebee3c94b304"
+      }
+    ],
+    "callbacks": [
+      {
+        "callback": "read",
+        "partition": "vbmeta",
+        "offset": 0,
+        "bytes": 65536
+      },
+      {
+        "callback": "public_key"
+      },
+      {
+        "callback": "read_rollback"
+      },
+      {
+        "callback": "size",
+        "partition": "recovery"
+      },
+      {
+        "callback": "read",
+        "partition": "recovery",
+        "offset": 0,
+        "bytes": 67108864
+      },
+      {
+        "callback": "guid",
+        "partition": "system"
+      },
+      {
+        "callback": "guid",
+        "partition": "boot"
+      },
+      {
+        "callback": "guid",
+        "partition": "vbmeta"
+      }
+    ],
+    "log_fragments": [
+      "/root/work2/workspace/Snapdragon2017_SPF_3_0_HLTE730T_IR1/Snapdragon2017_SPF_3_0/HLTE730T/HLTE730T_IR1/HLTE730T/android/bootable/bootloader/edk2/QcomModulePkg/Library/avb/libavb/avb_slot_verify.c:457: DEBUG: Loading vbmeta struct from partition 'vbmeta",
+      "/root/work2/workspace/Snapdragon2017_SPF_3_0_HLTE730T_IR1/Snapdragon2017_SPF_3_0/HLTE730T/HLTE730T_IR1/HLTE730T/android/bootable/bootloader/edk2/QcomModulePkg/Library/avb/libavb/avb_slot_verify.c:652: ERROR: vbmeta: Public key used to sign data rejected.\n",
+      "/root/work2/workspace/Snapdragon2017_SPF_3_0_HLTE730T_IR1/Snapdragon2017_SPF_3_0/HLTE730T/HLTE730T_IR1/HLTE730T/android/bootable/bootloader/edk2/QcomModulePkg/Library/avb/libavb/avb_slot_verify.c:731: DEBUG: vbmeta: VERIFICATION_DISABLED bit is set.\n",
+      "/root/work2/workspace/Snapdragon2017_SPF_3_0_HLTE730T_IR1/Snapdragon2017_SPF_3_0/HLTE730T/HLTE730T_IR1/HLTE730T/android/bootable/bootloader/edk2/QcomModulePkg/Library/avb/libavb/avb_slot_verify.c:342: DEBUG: recovery: Loading entire partition.\n"
+    ],
+    "fixtures": {
+      "unlocked": true,
+      "stored_rollback_indices": 0,
+      "public_key_accepted": false,
+      "guid": "Fixed placeholder for command-line construction",
+      "sha256": "Firmware service wrappers use Python hashlib; byte inputs/digests are unchanged",
+      "host_primitives": "Arena allocation/free, memory copy/set, logging/basename and SafeStack pointer"
+    }
+  },
+  "avb_interpretation": "Result 5 is allowed by captured unlocked continue mask 0x39; fresh live vbmeta fixture matches backup.",
+  "v75usb_ramdisk": {
+    "passed": true,
+    "changed": [
+      "system/etc/init/hw/init.rc"
+    ],
+    "added": [
+      "system/bin/a6l_usb_watchdog.sh"
+    ],
+    "kernel_dt_identical_to_v74": true
+  }
+}

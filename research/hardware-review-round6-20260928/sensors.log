@@ -1,0 +1,5 @@
+PROX_ENABLE_FAILED activate_rc=0 valid_event_fd=1 interrupt_enable=0 after_12_poll_calls_and_2.5_seconds
+PROX_IDLE_WAIT timeout=-1 (unbounded; see exact kernel poll contract test)
+I sensors.a6l: motion: map accel +y+x-z gyro +y+x-z mag +y+x-z, mag unit auto, magcal on (bias none)
+I sensors.a6l: A6L sensors: front STK3338 /tmp/a6l-review6-fe19yctk/fake-sys/iio:device7
+W sensors.a6l: proximity interrupt enable: Is a directory

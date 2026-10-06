@@ -1,0 +1,52 @@
+--- /dev/null
++++ b/src/com/android/launcher3/util/A6lEinkAnimations.java
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: Apache-2.0
++package com.android.launcher3.util;
++import java.lang.reflect.Method;
++/** A6L transient display policy; the ordinary LCD path is untouched. */
++public final class A6lEinkAnimations {
++    private static Method sGet;
++    private A6lEinkAnimations() { }
++    public static boolean disabled() {
++        try {
++            if (sGet == null) sGet = Class.forName("android.os.SystemProperties")
++                    .getMethod("getBoolean", String.class, boolean.class);
++            return (Boolean) sGet.invoke(null, "sys.a6l.eink.no_animations", false);
++        } catch (ReflectiveOperationException | RuntimeException e) { return false; }
++    }
++}
+--- a/src/com/android/launcher3/PagedView.java
++++ b/src/com/android/launcher3/PagedView.java
+@@ -1784,6 +1784,7 @@
+     }
+ 
+     protected boolean snapToPage(int whichPage, int delta, int duration, boolean immediate) {
++        immediate |= com.android.launcher3.util.A6lEinkAnimations.disabled();
+         if (mFirstLayout) {
+             setCurrentPage(whichPage);
+             return false;
+--- a/quickstep/src/com/android/quickstep/util/RectFSpringAnim.java
++++ b/quickstep/src/com/android/quickstep/util/RectFSpringAnim.java
+@@ -203,6 +203,21 @@
+      * @param velocityPxPerMs Velocity of swipe in px/ms.
+      */
+     public void start(Context context, @Nullable DeviceProfile profile, PointF velocityPxPerMs) {
++        if (com.android.launcher3.util.A6lEinkAnimations.disabled()) {
++            setCanRelease(false);
++            mAnimsStarted = true;
++            mRectXAnimEnded = mRectYAnimEnded = mRectScaleAnimEnded = false;
++            for (Animator.AnimatorListener listener : mAnimatorListeners) {
++                listener.onAnimationStart(null);
++            }
++            mCurrentCenterX = mTargetRect.centerX();
++            mCurrentY = getTrackedYFromRect(mTargetRect);
++            mCurrentScaleProgress = 1f;
++            onUpdate();
++            mRectXAnimEnded = mRectYAnimEnded = mRectScaleAnimEnded = true;
++            maybeOnEnd();
++            return;
++        }
+         // Only tell caller that we ended if both x and y animations have ended.
+         OnAnimationEndListener onXEndListener = ((animation, canceled, centerX, velocityX) -> {
+             mRectXAnimEnded = true;

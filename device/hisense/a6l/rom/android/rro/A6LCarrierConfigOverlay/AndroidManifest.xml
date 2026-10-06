@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hisense A6L (overlays-carrier-updater, 29 Sep 2026): runtime resource overlay for com.android.carrierconfig. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.lineageos.a6l.overlay.carrierconfig">
+    <overlay android:targetPackage="com.android.carrierconfig" android:isStatic="true" android:priority="100" />
+    <application android:hasCode="false" />
+</manifest>

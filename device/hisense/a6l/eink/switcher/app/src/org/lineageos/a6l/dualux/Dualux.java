@@ -12,10 +12,20 @@ final class Dualux {
     static final String TAG = "A6LDualux";
     // written by a6l_dualux (vendor_dualux_prop, read-only here)
     static final String P_STATE = "vendor.dualux.state";            // lcd | eink | eink-asleep
+    static final String PREPARE = "vendor.dualux.prepare"; // daemon: token + target
+    static final String P_READY = "sys.a6l.dualux.ready";
+    static final String P_THEME_SYNC = "sys.a6l.dualux.theme_sync";
+    static final String APPEARANCE = "sys.a6l.dualux.appearance";
+    static final String WALLPAPER_READY = "sys.a6l.dualux.wallpaper_ready";
+    static final String WALLPAPER_SYNC = "sys.a6l.dualux.wallpaper_sync";
+    static final String THEME_READY = "sys.a6l.dualux.theme_ready";
+    static final String FRAME_READY = "sys.a6l.dualux.frame_ready";
+    static final String NO_ANIMATIONS = "sys.a6l.eink.no_animations";
+    static final String GESTURE_SLOP = "sys.a6l.eink.gesture_slop";
     // written here (vendor_dualux_ctl_prop)
     static final String P_REQ = "sys.a6l.dualux.req";                // "<seq> eink|lcd|toggle|clear"
     static final String P_REFRESH = "persist.sys.a6l.eink.refresh";  // auto|quality|partial|fast|fastest (mirror, live)
-    static final String P_CLEAR_EVERY = "persist.sys.a6l.eink.clear_every"; // full clear every N clean updates (0 = never)
+    static final String P_CLEAR_EVERY = "persist.sys.a6l.eink.clear_every"; // forced page refresh every N updates (0 = never)
     static final String P_CONTRAST = "persist.sys.a6l.eink.contrast";   // 0..100 (mirror, live)
     static final String P_FL_ENABLE = "persist.sys.a6l.dualux.fl_enable";
     static final String P_FL_MAX = "persist.sys.a6l.dualux.fl_max_pct";
@@ -23,7 +33,7 @@ final class Dualux {
     static final String P_EKEY = "persist.sys.a6l.dualux.eink_key";  // sleep | clear
     static final String P_MIRROR_LCD = "persist.sys.a6l.dualux.mirror_in_lcd";
     static final String P_PER_SCREEN = "persist.sys.a6l.dualux.per_screen";
-    static final String[] MODES = {"auto", "quality", "partial", "fast", "fastest"};
+    static final String[] MODES = {"stock", "auto", "quality", "partial", "fast", "fastest"};
     static final int DEFAULT_CLEAR_EVERY = 10;   // a6l_eink.rc default (--clear-every 10)
 
     private static Method sGet, sSet;
@@ -63,9 +73,11 @@ final class Dualux {
     }
 
     static String refreshMode() {
+        // persist.vendor.eink.reading is vendor_internal (system_app may not read it): unset/unknown = auto, which is
+        // also what the mirror applies when persist.sys.a6l.eink.refresh is unset and .reading is 0 (the build default)
         String m = get(P_REFRESH, "");
-        if (m.isEmpty()) m = "1".equals(get("persist.vendor.eink.reading", "0")) ? "partial" : "auto";
-        return m;
+        for (String k : MODES) if (k.equals(m)) return m;
+        return "stock";
     }
 
     static String nextMode(String m) {
@@ -75,6 +87,7 @@ final class Dualux {
 
     static int modeLabel(String m) {
         switch (m) {
+            case "stock": return R.string.mode_stock;
             case "quality": return R.string.mode_quality;
             case "partial": return R.string.mode_partial;
             case "fast": return R.string.mode_fast;
@@ -83,10 +96,15 @@ final class Dualux {
         }
     }
 
-    static String shortName(String m) {
+    /** Short, translated mode name for the Quick Settings subtitle. */
+    static int shortLabel(String m) {
         switch (m) {
-            case "partial": return "Reading";
-            default: return Character.toUpperCase(m.charAt(0)) + m.substring(1);
+            case "stock": return R.string.short_stock;
+            case "quality": return R.string.short_quality;
+            case "partial": return R.string.short_partial;
+            case "fast": return R.string.short_fast;
+            case "fastest": return R.string.short_fastest;
+            default: return R.string.short_auto;
         }
     }
 }

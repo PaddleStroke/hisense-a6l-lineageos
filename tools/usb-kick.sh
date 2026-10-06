@@ -11,16 +11,20 @@
 #   tools/usb-kick.sh xhci-rebind --force   rebind the whole xHCI controller (drops every device on it; last resort)
 #
 # PORT defaults to the established phone port 3-2 (root hub bus 3, port 2); override with PORT=x-y.
+# EDL safety (bug hunt round2 install-tools, 29 Sep 2026): reset / port-cycle / uhubctl / kick / xhci-rebind REFUSE while a
+# rom-v1 EDL worker/coordinator runs (a port reset during a Firehose program = partially written partition), and while a
+# phone is enumerated in EDL 9008 (override only with A6L_KICK_EDL_OK=1 when no flash is running). status/wait never refuse.
 # Honest limits: in the "not attached" failure the PHONE never pulls D+ up, so a host-side reset only helps if it
 # really removes VBUS (uhubctl on a hub with per-port power switching, or unplugging the cable). The logical
 # port-cycle is harmless and cheap, so it is tried first. On this laptop the ports sit on AMD xHCI root hubs,
 # which usually do NOT switch VBUS; an external USB2 hub with per-port power switching (uhubctl-compatible) makes
 # the uhubctl mode real.
 set -u
+SYSFS=${A6L_SYSFS:-/sys}   # test override (tools/tests/test-usb-kick.sh)
 PORT=${PORT:-3-2}
 BUS=${PORT%%-*}; PNUM=${PORT##*-}
-HUBIF=/sys/bus/usb/devices/$BUS-0:1.0
-[ "${PORT#*.}" != "$PORT" ] && HUBIF=/sys/bus/usb/devices/${PORT%.*}:1.0   # port behind an external hub, e.g. 3-2.4
+HUBIF=$SYSFS/bus/usb/devices/$BUS-0:1.0
+[ "${PORT#*.}" != "$PORT" ] && HUBIF=$SYSFS/bus/usb/devices/${PORT%.*}:1.0   # port behind an external hub, e.g. 3-2.4
 PORTDIR=$HUBIF/usb$BUS-port$PNUM
 [ "${PORT#*.}" != "$PORT" ] && PORTDIR=$HUBIF/${PORT%.*}-port${PORT##*.}
 KNOWN='109b:911f 109b:f001 18d1:d00d 18d1:4ee7 1d6b:0104 05c6:9008'
@@ -28,7 +32,7 @@ KNOWN='109b:911f 109b:f001 18d1:d00d 18d1:4ee7 1d6b:0104 05c6:9008'
 say() { echo "[usb-kick $(date +%T)] $*"; }
 
 dev_on_port() { # prints "vid:pid product" of what is enumerated on PORT
-    d=/sys/bus/usb/devices/$PORT
+    d=$SYSFS/bus/usb/devices/$PORT
     [ -e "$d/idVendor" ] || { echo none; return; }
     echo "$(cat $d/idVendor):$(cat $d/idProduct) $(cat $d/product 2>/dev/null) serial=$(cat $d/serial 2>/dev/null) speed=$(cat $d/speed)"
 }
@@ -53,9 +57,9 @@ status() {
     else
         echo "  port dir $PORTDIR not found"
     fi
-    echo "  controller: $(readlink -f /sys/bus/usb/devices/usb$BUS 2>/dev/null)"
+    echo "  controller: $(readlink -f $SYSFS/bus/usb/devices/usb$BUS 2>/dev/null)"
     echo "  other phone-like devices anywhere:"
-    for d in /sys/bus/usb/devices/*; do
+    for d in $SYSFS/bus/usb/devices/*; do
         [ -e "$d/idVendor" ] || continue
         id="$(cat $d/idVendor):$(cat $d/idProduct)"
         case " $KNOWN " in *" $id "*) echo "    ${d##*/} $id $(mode_name $id)";; esac
@@ -65,10 +69,23 @@ status() {
     command -v uhubctl >/dev/null && { echo "  uhubctl view:"; uhubctl 2>&1 | sed 's/^/    /' | head -20; } || echo "  uhubctl: not installed (sudo apt install uhubctl)"
 }
 
+edl_guard() { # edl_guard ACTION -> 1 (refuse) while an EDL flash may be running
+    if pgrep -f 'Write-LaptopRomV1\.py|Run-LaptopRom(Install|Restore)-v1\.py|edl\.py' >/dev/null 2>&1; then
+        say "REFUSED $1: a rom-v1 EDL worker/coordinator is running (a USB reset now would interrupt a Firehose transfer)"; return 1
+    fi
+    for d in $SYSFS/bus/usb/devices/*; do
+        [ -e "$d/idVendor" ] || continue
+        if [ "$(cat $d/idVendor):$(cat $d/idProduct)" = 05c6:9008 ] && [ "${A6L_KICK_EDL_OK:-0}" != 1 ]; then
+            say "REFUSED $1: EDL 9008 device on ${d##*/} (flash/backup session?). If NO flash runs: A6L_KICK_EDL_OK=1 $0 $1"; return 1
+        fi
+    done
+    return 0
+}
+
 wait_recovery() { # wait_recovery SEC -> 0 when 1d6b:0104 appears on any port
     t=${1:-60}; i=0
     while [ $i -lt $t ]; do
-        for d in /sys/bus/usb/devices/*; do
+        for d in $SYSFS/bus/usb/devices/*; do
             [ -e "$d/idVendor" ] || continue
             [ "$(cat $d/idVendor):$(cat $d/idProduct)" = 1d6b:0104 ] && { say "recovery enumerated on ${d##*/} after ${i}s"; return 0; }
         done
@@ -79,7 +96,7 @@ wait_recovery() { # wait_recovery SEC -> 0 when 1d6b:0104 appears on any port
 }
 
 do_reset() {
-    d=/sys/bus/usb/devices/$PORT
+    d=$SYSFS/bus/usb/devices/$PORT
     if [ ! -e "$d/busnum" ]; then
         say "nothing enumerated on $PORT: usbreset needs a device; use port-cycle / replug instead"; return 1
     fi
@@ -107,13 +124,13 @@ uhub() {
 
 xhci_rebind() {
     [ "${1:-}" = --force ] || { say "xhci-rebind drops EVERY device on this controller; re-run with --force"; return 1; }
-    pci=$(basename "$(readlink -f /sys/bus/usb/devices/usb$BUS/..)")
+    pci=$(basename "$(readlink -f $SYSFS/bus/usb/devices/usb$BUS/..)")
     say "devices that will drop with controller $pci:"
-    for u in /sys/bus/pci/devices/$pci/usb*; do lsusb -s "$(cat $u/busnum):" 2>/dev/null; done
+    for u in $SYSFS/bus/pci/devices/$pci/usb*; do lsusb -s "$(cat $u/busnum):" 2>/dev/null; done
     printf 'type YES to rebind %s: ' "$pci"; read -r a; [ "$a" = YES ] || return 1
-    echo "$pci" | sudo tee /sys/bus/pci/drivers/xhci_hcd/unbind >/dev/null
+    echo "$pci" | sudo tee $SYSFS/bus/pci/drivers/xhci_hcd/unbind >/dev/null
     sleep 3
-    echo "$pci" | sudo tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null
+    echo "$pci" | sudo tee $SYSFS/bus/pci/drivers/xhci_hcd/bind >/dev/null
     say "rebound $pci"
 }
 
@@ -121,16 +138,18 @@ cmd=${1:-status}; shift 2>/dev/null || true
 case "$cmd" in
 status) status ;;
 wait) wait_recovery "${1:-60}" ;;
-reset) do_reset ;;
-port-cycle) port_cycle && wait_recovery 30 ;;
-uhubctl) uhub && wait_recovery 40 ;;
+reset) edl_guard reset || exit 3; do_reset ;;
+port-cycle) edl_guard port-cycle || exit 3; port_cycle && wait_recovery 30 ;;
+uhubctl) edl_guard uhubctl || exit 3; uhub && wait_recovery 40 ;;
 kick)
     wait_recovery "${1:-40}" && exit 0
+    edl_guard kick || exit 3
     port_cycle && wait_recovery 30 && exit 0
+    edl_guard kick || exit 3
     command -v uhubctl >/dev/null && uhub && wait_recovery 40 && exit 0
     say "host side cannot fix it: unplug the USB-C cable AT THE PHONE, wait 5 s, plug it back, then: $0 wait 60"
     say "(the V75-usb recovery re-attaches by itself within ~2 min; on V74 a long-press Power restart is the fallback)"
     exit 1 ;;
-xhci-rebind) xhci_rebind "${1:-}" ;;
-*) sed -n '2,20p' "$0"; exit 2 ;;
+xhci-rebind) edl_guard xhci-rebind || exit 3; xhci_rebind "${1:-}" ;;
+*) sed -n '2,24p' "$0"; exit 2 ;;
 esac

@@ -1,0 +1,15 @@
+[binaries]
+c = '/home/a6l/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang'
+cpp = '/home/a6l/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang++'
+ar = '/home/a6l/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+strip = '/home/a6l/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+pkg-config = 'pkg-config'
+[properties]
+pkg_config_libdir = '/home/a6l/libcamera-work/sysroot/lib/pkgconfig'
+[built-in options]
+cpp_link_args = ['-static-libstdc++']
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'armv8-a'
+endian = 'little'

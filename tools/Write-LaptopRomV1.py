@@ -46,6 +46,17 @@ class Guard:
         self.reads = allowed_reads()
         self.programs = set()
         self.power = None
+        # bug hunt round2 install-tools (29 Sep 2026): FirehoseDevice.program() used to register whatever range it was asked
+        # to program right before sending it, so the program allowlist could never reject anything. The mode's full plan is
+        # now fixed ONCE before the first write (set_plan) and a program must be both in the plan and the current transfer.
+        self.plan = None
+
+    def set_plan(self, ranges):
+        if self.plan is not None:
+            raise ValueError('Program plan already fixed for this run')
+        ranges = frozenset((int(a), int(b)) for a, b in ranges)
+        L.check_plan([('plan', a, b) for a, b in ranges])
+        self.plan = ranges
 
     def check(self, data):
         root = ET.fromstring(data)
@@ -64,7 +75,7 @@ class Guard:
             if tag == 'read' and geometry not in self.reads:
                 raise ValueError('Read outside the planned regions: %s' % (geometry,))
             if tag == 'program':
-                if geometry not in self.programs:
+                if self.plan is None or geometry not in self.plan or geometry not in self.programs:
                     raise ValueError('Program outside the registered plan: %s' % (geometry,))
                 if set(node.attrib) != {'SECTOR_SIZE_IN_BYTES', 'num_partition_sectors', 'physical_partition_number', 'start_sector'}:
                     raise ValueError('Unexpected program attributes')
@@ -91,6 +102,8 @@ class FirehoseDevice:
             raise E.StopRun('Final read acknowledgment missing: %d+%d' % (start, sectors))
 
     def program(self, start, sectors, stream):
+        if self.guard.plan is None or (start, sectors) not in self.guard.plan:
+            raise E.StopRun('Program outside the fixed plan (nothing sent): %d+%d' % (start, sectors))
         self.guard.programs = {(start, sectors)}
         cdc = self.fh.cdc
 
@@ -126,6 +139,17 @@ class FirehoseDevice:
         self.guard.power = None
         if not (bool(response.resp) and attributes.get('value') == 'ACK'):
             raise E.StopRun('Power action was not explicitly acknowledged')
+
+
+def plan_for_mode(mode, images, userdata='zero'):
+    """Every (start, sectors) this run may program, from the layout module only (never from a capture/manifest)."""
+    if mode == 'install':
+        return {(st, n) for _, st, n in L.install_writes({k: v[1] for k, v in images.items()})}
+    plan = {(st, n) for _, st, n in L.restore_writes(set(L.ROM_MAY_WRITE))}
+    if userdata == 'original':
+        regions = L.backup_regions()
+        plan |= {regions['userdata-head'], regions['userdata-tail']}
+    return plan
 
 
 def load_images():
@@ -239,6 +263,9 @@ def main():
         # readbacks re-read exactly the programmed ranges: allow those reads too
         guard.reads |= {(st, n) for _, st, n in L.install_writes({k: v[1] for k, v in images.items()})}
         guard.reads |= {(st, n) for _, st, n in L.restore_writes(set(L.ROM_MAY_WRITE))}
+        guard.set_plan(plan_for_mode(args.mode, images, args.userdata))
+        report['program_plan'] = sorted(guard.plan)
+        save()
         if args.mode == 'install':
             E.run_install(dev, args.output, images, pins['stock'] | {'rom-' + k: v['sha256_partition'] for k, v in pins['images'].items() if 'sha256_partition' in v},
                           kit_expected, report, save, allow_nonstock=args.allow_nonstock)

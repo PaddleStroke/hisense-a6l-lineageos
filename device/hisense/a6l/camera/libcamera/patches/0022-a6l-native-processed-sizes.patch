@@ -1,0 +1,86 @@
+--- a/src/android/camera_capabilities.cpp
++++ b/src/android/camera_capabilities.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "camera_capabilities.h"
++#include "native_raw10_sizes.h"
+ 
+ #include <algorithm>
+ #include <array>
+@@ -539,6 +540,21 @@
+ 		cameraResolutions.push_back(derivedSize);
+ 	}
+ 	cameraResolutions.push_back(maxRes);
++
++	/* Preserve discrete A6L sensor-native processed sizes. Halving the
++	 * largest debayer output loses the sampling border (5752/2=2876,
++	 * whereas the 2880-wide binned mode produces 2872 visible columns).
++	 * initializeYUVResolutions() below validates every size exactly for
++	 * each Android processed format; JPEG retains that exact YUV size. */
++	const auto model = camera_->properties().get(properties::Model);
++	std::unique_ptr<CameraConfiguration> rawConfig =
++		camera_->generateConfiguration({ StreamRole::Raw });
++	if (model && rawConfig && !rawConfig->empty()) {
++		for (const Size &native : a6lNativeRaw10Sizes(*model, rawConfig->at(0).formats())) {
++			cameraResolutions.push_back(native);
++			LOG(HAL, Debug) << "A6L sensor-native resolution candidate: " << native;
++		}
++	}
+ 
+ 	/* Remove duplicated entries from the list of supported resolutions. */
+ 	std::sort(cameraResolutions.begin(), cameraResolutions.end());
+--- /dev/null
++++ b/src/android/native_raw10_sizes.h
+@@ -0,0 +1,51 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <algorithm>
++#include <string_view>
++#include <vector>
++
++#include <libcamera/stream.h>
++#include "libcamera/internal/bayer_format.h"
++#include "libcamera/internal/raw10_fov.h"
++
++namespace libcamera {
++
++/* A6L CPU software-ISP native candidates. Every candidate must still pass the
++ * HAL's existing exact processed-format validation before it is advertised. */
++inline std::vector<Size> a6lNativeRaw10Sizes(std::string_view model,
++                                          const StreamFormats &formats)
++{
++    if (model != "imx576" && model != "imx576_a6l" &&
++        model != "hi846" && model != "s5k3t1")
++        return {};
++
++    std::vector<Size> sizes;
++    for (const PixelFormat &format : formats.pixelformats()) {
++        const BayerFormat bayer = BayerFormat::fromPixelFormat(format);
++        if (bayer.bitDepth != 10 || bayer.packing != BayerFormat::Packing::CSI2)
++            continue;
++        const SizeRange range = formats.range(format);
++        /* StreamFormats uses zero steps for a discrete collection. A single
++         * discrete size has min==max. Do not manufacture sensor modes from a
++         * continuous range's generated standard-size list. */
++        if (range.min != range.max && (range.hStep || range.vStep))
++            continue;
++        for (const Size &raw : formats.sizes(format)) {
++            constexpr unsigned int border = 2 * Raw10FovResampler::border;
++            if (raw.width <= border || raw.width > 16384 || raw.height > 16384)
++                continue;
++            const Size native(raw.width - border, raw.height);
++            Raw10FovResampler layout;
++            if (!layout.configure(raw.width, raw.height, raw.width * 5 / 4,
++                                  native.width, native.height) || !layout.identity())
++                continue;
++            sizes.push_back(native);
++        }
++    }
++    std::sort(sizes.begin(), sizes.end());
++    sizes.erase(std::unique(sizes.begin(), sizes.end()), sizes.end());
++    return sizes;
++}
++
++} /* namespace libcamera */

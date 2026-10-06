@@ -46,17 +46,14 @@ void halLog(int level, const std::string& msg) {
 }  // namespace
 
 // --------------------------------------------------------------------------------------------- configuration
+// r5 review F10 (28 Sep 2026): IGnssConfiguration.setBlocklist requires the satellites to be excluded from the
+// position SOLUTION. Our QMI LOC client (lib/loc_v02.h) has no constellation-control / blacklist-SV request, so the
+// modem cannot be told; clearing USED_IN_FIX in the reports only (the old behaviour) misreported the fix. The
+// capability is no longer advertised, an empty list (nothing to exclude) is trivially honoured, anything else is refused.
 ScopedAStatus A6lGnssConfiguration::setBlocklist(const std::vector<BlocklistedSource>& blocklist) {
-    std::lock_guard<std::mutex> lk(mMutex);
-    mBlocked.clear();
-    for (const auto& b : blocklist) mBlocked.emplace(int(b.constellation), b.svid);
-    ALOGI("blocklist: %zu entries", mBlocked.size());
-    return ScopedAStatus::ok();
-}
-
-bool A6lGnssConfiguration::isBlocklisted(int constellation, int svid) const {
-    std::lock_guard<std::mutex> lk(mMutex);
-    return mBlocked.count({constellation, svid}) || mBlocked.count({constellation, 0});
+    if (blocklist.empty()) return ScopedAStatus::ok();
+    ALOGW("blocklist of %zu source(s) refused: modem-side satellite exclusion not supported", blocklist.size());
+    return unsupported();
 }
 
 // ----------------------------------------------------------------------------------------------------- debug
@@ -163,7 +160,9 @@ ScopedAStatus Gnss::setCallback(const std::shared_ptr<IGnssCallback>& callback) 
         std::lock_guard<std::mutex> lk(mMutex);
         mCallback = callback;
     }
-    int caps = IGnssCallback::CAPABILITY_SCHEDULING | IGnssCallback::CAPABILITY_SATELLITE_BLOCKLIST;
+    static_assert(int(::a6l::kCapScheduling) == int(IGnssCallback::CAPABILITY_SCHEDULING));
+    static_assert(int(::a6l::kCapSatelliteBlocklist) == int(IGnssCallback::CAPABILITY_SATELLITE_BLOCKLIST));
+    int caps = ::a6l::kHalCapabilities;  // r5 F10: no SATELLITE_BLOCKLIST
     if (!callback->gnssSetCapabilitiesCb(caps).isOk()) ALOGE("gnssSetCapabilitiesCb failed");
     IGnssCallback::GnssSystemInfo info;
     info.yearOfHw = 2017;
@@ -216,10 +215,12 @@ ScopedAStatus Gnss::stop() {
 
 ScopedAStatus Gnss::injectTime(int64_t timeMs, int64_t timeReferenceMs, int32_t uncertaintyMs) {
     // timeReferenceMs = elapsedRealtime() when timeMs was sampled
-    int64_t utc = timeMs + (clockMs(CLOCK_BOOTTIME) - timeReferenceMs);
-    ALOGI("injectTime utc=%" PRId64 " unc=%d", utc, uncertaintyMs);
+    // r5 review F64: the (timeMs, timeReferenceMs) tuple is handed to the engine unchanged; it is advanced by the
+    // elapsed CLOCK_BOOTTIME on the worker immediately before INJECT_UTC_TIME (queue delay included).
+    ALOGI("injectTime utc=%" PRId64 " (at boot %" PRId64 ", now %" PRId64 ") unc=%d", timeMs, timeReferenceMs,
+          clockMs(CLOCK_BOOTTIME), uncertaintyMs);
     ensureEngine();
-    mEngine->injectTime(uint64_t(utc), uint32_t(std::max<int32_t>(uncertaintyMs, 0)));
+    mEngine->injectTime(timeMs, uint32_t(std::max<int32_t>(uncertaintyMs, 0)), timeReferenceMs);
     return ScopedAStatus::ok();
 }
 
@@ -235,19 +236,41 @@ ScopedAStatus Gnss::injectLocation(const GnssLocation& l) {
 
 ScopedAStatus Gnss::injectBestLocation(const GnssLocation& l) { return injectLocation(l); }
 
+// r5 review round6 F54 (29 Sep 2026): every flag means "the next start must not reuse this information". Only the QMI
+// deleteAllFlag request (DELETE_ASSIST_DATA 0x44 TLV 0x01) is implemented and verified here, so ANY non-empty subset of
+// the defined flags is applied as a full deletion - a deliberate superset (next acquisition is a cold start, XTRA is
+// dropped too and re-injected by the framework's PSDS download) instead of an acknowledged no-op. 0 = nothing to
+// delete; bits outside the AIDL enum only -> ILLEGAL_ARGUMENT. The engine keeps the request pending across service
+// absence and applies it before the next START.
 ScopedAStatus Gnss::deleteAidingData(IGnss::GnssAidingData flags) {
-    ALOGI("deleteAidingData 0x%x", int(flags));
+    using D = IGnss::GnssAidingData;
+    const int f = int(flags);
+    const int known = int(D::EPHEMERIS) | int(D::ALMANAC) | int(D::POSITION) | int(D::TIME) | int(D::IONO) |
+                      int(D::UTC) | int(D::HEALTH) | int(D::SVDIR) | int(D::SVSTEER) | int(D::SADATA) | int(D::RTI) |
+                      int(D::CELLDB_INFO);
+    if (f == 0) {
+        ALOGI("deleteAidingData 0x0: nothing to delete");
+        return ScopedAStatus::ok();
+    }
+    if (f != int(D::ALL) && !(f & known)) {
+        ALOGW("deleteAidingData 0x%x: no defined flag", f);
+        return ScopedAStatus::fromExceptionCode(EX_ILLEGAL_ARGUMENT);
+    }
+    ALOGI("deleteAidingData 0x%x -> %s", f, f == int(D::ALL) ? "all" : "all (superset: selective deletion not mapped)");
     ensureEngine();
-    // QMI LOC supports fine-grained deletion; only "all" is mapped (cold start), which is what GnssLogger/tests use.
-    if (int(flags) == int(IGnss::GnssAidingData::ALL)) mEngine->deleteAll();
+    mEngine->deleteAll();
     return ScopedAStatus::ok();
 }
 
+// r5 review round6 F53: recurrence is honoured (QMI START fixRecurrence SINGLE, one-result completion in the engine).
+// mode (STANDALONE/MS_BASED) and lowPowerMode are not applied: this ROM has no SUPL path (standalone + XTRA) and does
+// not advertise low-power capability.
 ScopedAStatus Gnss::setPositionMode(const IGnss::PositionModeOptions& o) {
     ALOGI("setPositionMode mode=%d recurrence=%d interval=%d lowPower=%d", int(o.mode), int(o.recurrence),
           o.minIntervalMs, o.lowPowerMode);
     ensureEngine();
-    mEngine->setInterval(uint32_t(std::max(1000, o.minIntervalMs)));
+    const bool single = o.recurrence == IGnss::GnssPositionRecurrence::RECURRENCE_SINGLE;
+    mEngine->setPositionMode(uint32_t(std::max(1000, o.minIntervalMs)), single);
     return ScopedAStatus::ok();
 }
 
@@ -331,9 +354,7 @@ void Gnss::onSvs(const std::vector<::a6l::loc::Sv>& svs, const std::vector<uint1
         i.elevationDegrees = s.elevationDegrees;
         i.azimuthDegrees = s.azimuthDegrees;
         i.carrierFrequencyHz = int64_t(s.carrierFrequencyHz);
-        i.svFlag = s.svFlag;
-        if (mConfiguration->isBlocklisted(s.constellation, s.svid))
-            i.svFlag &= ~int(IGnssCallback::GnssSvFlags::USED_IN_FIX);
+        i.svFlag = s.svFlag;  // r5 F10: USED_IN_FIX exactly as the modem's position report says
         GnssSignalType st;
         st.constellation = i.constellation;
         st.carrierFrequencyHz = s.carrierFrequencyHz;

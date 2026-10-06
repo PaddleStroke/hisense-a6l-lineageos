@@ -1,0 +1,4 @@
+# A6L AF test (run-af.sh MODE=cont): AfMode Continuous (2) from the first frame
+frames:
+  - 0:
+      AfMode: 2

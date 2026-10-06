@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A6L (r5 review fix F5): dynamic vendor HAL for the AOSP AIDL Wi-Fi HAL (WifiLegacyHalFactory, kVendorHalsDescPath).
+     Used because the linked libwifi-hal-fallback returns WIFI_ERROR_NOT_SUPPORTED (BOARD_WLAN_DEVICE unset). -->
+<WifiVendorHal version="1">
+    <path>/vendor/lib64/libwifi-hal-a6l.so</path>
+    <primary>1</primary>
+</WifiVendorHal>

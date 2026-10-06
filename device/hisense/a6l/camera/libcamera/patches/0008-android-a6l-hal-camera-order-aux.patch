@@ -1,0 +1,168 @@
+From: A6L <a6l@localhost>
+Subject: [PATCH] android: A6L deterministic camera IDs (camera_hal.yaml "order") and "aux" cameras
+
+libcamera assigns Android camera IDs in sensor probe order, which is not stable on the A6L
+(t37: imx576, hi846, s5k3t1 on one boot). Cameras found during CameraManager::start() are
+now added sorted by the optional HAL configuration key "order"; a camera marked "aux: true"
+is only exposed after a non-aux camera with the same facing, so the hi846 wide camera can
+never be Android camera 0 nor the torch owner (first BACK camera).
+---
+diff --git a/src/android/camera_hal_config.cpp b/src/android/camera_hal_config.cpp
+index 3631cb7..d370a3c 100644
+--- a/src/android/camera_hal_config.cpp
++++ b/src/android/camera_hal_config.cpp
+@@ -6,6 +6,7 @@
+  */
+ #include "camera_hal_config.h"
+ 
++#include <optional>
+ #include <stdlib.h>
+ #include <string>
+ 
+@@ -106,6 +107,26 @@ int CameraHalConfig::Private::parseCameraConfigData(const std::string &cameraId,
+ 	if (parseRotation(cameraObject, cameraConfigData))
+ 		return -EINVAL;
+ 
++	/* A6L: optional property "order" (non-negative integer) */
++	if (cameraObject.contains("order")) {
++		int32_t order = cameraObject["order"].get<int32_t>(-1);
++		if (order < 0) {
++			LOG(HALConfig, Error) << "Invalid order for " << cameraId;
++			return -EINVAL;
++		}
++		cameraConfigData.order = order;
++	}
++
++	/* A6L: optional property "aux" (boolean) */
++	if (cameraObject.contains("aux")) {
++		std::optional<bool> aux = cameraObject["aux"].get<bool>();
++		if (!aux) {
++			LOG(HALConfig, Error) << "Invalid aux for " << cameraId;
++			return -EINVAL;
++		}
++		cameraConfigData.aux = *aux;
++	}
++
+ 	return 0;
+ }
+ 
+diff --git a/src/android/camera_hal_config.h b/src/android/camera_hal_config.h
+index a4bedb6..a6ef848 100644
+--- a/src/android/camera_hal_config.h
++++ b/src/android/camera_hal_config.h
+@@ -15,6 +15,10 @@
+ struct CameraConfigData {
+ 	int facing = -1;
+ 	int rotation = -1;
++	/* A6L: optional HAL camera ID order (lower = smaller Android ID) */
++	int order = -1;
++	/* A6L: auxiliary camera, never the first camera of its facing */
++	bool aux = false;
+ };
+ 
+ class CameraHalConfig final : public libcamera::Extensible
+diff --git a/src/android/camera_hal_manager.cpp b/src/android/camera_hal_manager.cpp
+index a7a2571..ee1b7b1 100644
+--- a/src/android/camera_hal_manager.cpp
++++ b/src/android/camera_hal_manager.cpp
+@@ -7,6 +7,10 @@
+ 
+ #include "camera_hal_manager.h"
+ 
++#include <algorithm>
++#include <limits>
++#include <set>
++
+ #include <libcamera/base/log.h>
+ 
+ #include <libcamera/camera.h>
+@@ -69,6 +73,8 @@ int CameraHalManager::init()
+ 		return ret;
+ 	}
+ 
++	addPendingCameras();
++
+ 	return 0;
+ }
+ 
+@@ -97,6 +103,49 @@ CameraHalManager::open(unsigned int id, const hw_module_t *hardwareModule)
+ 	return { camera, 0 };
+ }
+ 
++/*
++ * A6L: add the cameras found at start-up in HAL configuration order: cameras
++ * with an "order" entry first (ascending), then the others in enumeration
++ * order. An "aux" camera is only exposed after a non-aux camera with the same
++ * facing, so it can never be the default (first) camera of that facing, nor
++ * the torch owner (the provider gives the torch to the first BACK camera).
++ */
++void CameraHalManager::addPendingCameras()
++{
++	std::vector<std::shared_ptr<Camera>> pending;
++
++	{
++		MutexLocker locker(mutex_);
++		pending = std::move(pendingCameras_);
++		pendingCameras_.clear();
++		startDone_ = true;
++	}
++
++	auto rank = [this](const std::shared_ptr<Camera> &cam) {
++		const CameraConfigData *cfg = halConfig_.cameraConfigData(cam->id());
++		return cfg && cfg->order >= 0 ? cfg->order : std::numeric_limits<int>::max();
++	};
++	std::stable_sort(pending.begin(), pending.end(),
++			 [&](const std::shared_ptr<Camera> &a, const std::shared_ptr<Camera> &b) {
++				 return rank(a) < rank(b);
++			 });
++
++	std::set<int> mainFacings;
++	for (const std::shared_ptr<Camera> &cam : pending) {
++		const CameraConfigData *cfg = halConfig_.cameraConfigData(cam->id());
++		if (cfg && cfg->aux && !mainFacings.count(cfg->facing)) {
++			LOG(HAL, Warning)
++				<< "Auxiliary camera " << cam->id()
++				<< " not exposed: no main camera with the same facing";
++			continue;
++		}
++		if (cfg && !cfg->aux)
++			mainFacings.insert(cfg->facing);
++
++		cameraAdded(cam);
++	}
++}
++
+ void CameraHalManager::cameraAdded(std::shared_ptr<Camera> cam)
+ {
+ 	unsigned int id;
+@@ -105,6 +154,12 @@ void CameraHalManager::cameraAdded(std::shared_ptr<Camera> cam)
+ 
+ 	MutexLocker locker(mutex_);
+ 
++	/* A6L: during CameraManager::start(), defer to addPendingCameras(). */
++	if (!startDone_) {
++		pendingCameras_.push_back(cam);
++		return;
++	}
++
+ 	/*
+ 	 * Each camera is assigned a unique integer ID when it is seen for the
+ 	 * first time. If the camera has been seen before, the previous ID is
+diff --git a/src/android/camera_hal_manager.h b/src/android/camera_hal_manager.h
+index e2d4eac..7e13a60 100644
+--- a/src/android/camera_hal_manager.h
++++ b/src/android/camera_hal_manager.h
+@@ -63,4 +63,13 @@ private:
+ 
+ 	unsigned int numInternalCameras_;
+ 	unsigned int nextExternalCameraId_;
++
++	/*
++	 * A6L: cameras found while the camera manager starts are held here and
++	 * added in the order given by the HAL configuration ("order"), so the
++	 * Android IDs do not depend on the sensor probe order.
++	 */
++	bool startDone_ LIBCAMERA_TSA_GUARDED_BY(mutex_) = false;
++	std::vector<std::shared_ptr<libcamera::Camera>> pendingCameras_ LIBCAMERA_TSA_GUARDED_BY(mutex_);
++	void addPendingCameras();
+ };

@@ -1,0 +1,26 @@
+FATAL_QRTR_READ cached_service=1 down_events=0 request_timeout=1 start_again=1 opens=1
+DATA mode=0 ok=1 addresses=1 create=1 up=2 mtu=1 start_requests=1
+DATA mode=1 ok=1 addresses=0 create=1 up=2 mtu=0 start_requests=1
+DATA mode=2 ok=1 addresses=1 create=1 up=2 mtu=1 start_requests=1
+DATA mode=3 ok=1 addresses=1 create=1 up=2 mtu=1 start_requests=1
+REPRODUCED QMI fatal-read stall and data false-success cases; normal data path traced.
+FAILED_RADIO_OFF accepted=0 reported_on=0 actual_modem_online=1
+VOICE_SERVICE_LOST ready=1 voice_active=1 cached_calls=1
+VOICE_SERVICE_RETURN register_before=1 register_after=1
+REPRODUCED failed power-off state mismatch and isolated VOICE recovery failure.
+GNSS_TRANSIENT mode=0 attempts_before=1 attempts_after=1 session=1 desired_on=1
+GNSS_TRANSIENT mode=1 attempts_before=1 attempts_after=1 session=0 desired_on=1
+MSL_ONLY_FIX android_has_altitude=1 reported_ellipsoid_altitude=123.0
+REPRODUCED GNSS retry failures and MSL-as-ellipsoid mapping.
+A6L_Q6VOICED daemon card 0 dev 0 prop /tmp/a6l-review-pass2-e_3a5cjk/active outprop vendor.a6l.audio.call_out socket NO (mute requests unavailable)
+A6L_Q6VOICED OPEN_FAIL (see kernel log: A6L_Q6VOICE / q6voice / q6cvp / q6mvm)
+A6L_Q6VOICED OPEN_FAIL (see kernel log: A6L_Q6VOICE / q6voice / q6cvp / q6mvm)
+A6L_Q6VOICED OPEN_FAIL (see kernel log: A6L_Q6VOICE / q6voice / q6cvp / q6mvm)
+A6L_Q6VOICED OPEN_FAIL (see kernel log: A6L_Q6VOICE / q6voice / q6cvp / q6mvm)
+A6L_Q6VOICED OPEN_FAIL (see kernel log: A6L_Q6VOICE / q6voice / q6cvp / q6mvm)
+VOICE_RETRY active_iterations=12 open_attempts=5 loop_exit=0
+REPRODUCED retry exhaustion: remaining active iterations never attempt PCM open.
+A6L_DUALUX power key grabbed (Android does not see it)
+NO_UINPUT ui=-1 power_grabbed=1
+SYN_DROPPED power_down=1 injected_down=1
+REPRODUCED unavailable-uinput grab and lost-key-state recovery defects.

@@ -1,0 +1,151 @@
+--- a/frameworks/av/media/codec2/sfplugin/utils/Codec2BufferUtils.cpp
++++ b/frameworks/av/media/codec2/sfplugin/utils/Codec2BufferUtils.cpp
+@@ -35,6 +35,7 @@
+ #include <C2Debug.h>
+ 
+ #include "Codec2BufferUtils.h"
++#include "A6lRgbToI420.h"
+ 
+ namespace android {
+ 
+@@ -657,6 +658,11 @@
+     uint8_t zeroLvl =  colorRange == C2Color::RANGE_FULL ? 0 : 16;
+     uint8_t maxLvlLuma =  colorRange == C2Color::RANGE_FULL ? 255 : 235;
+     uint8_t maxLvlChroma =  colorRange == C2Color::RANGE_FULL ? 255 : 240;
++
++#if defined(__aarch64__)
++    if (a6lTryRgbToI420(dstY, dstU, dstV, dstStride, src, weights,
++                      zeroLvl, maxLvlLuma, maxLvlChroma)) return OK;
++#endif
+ 
+ #define CLIP3(min,v,max) (((v) < (min)) ? (min) : (((max) > (v)) ? (v) : (max)))
+     for (size_t y = 0; y < src.crop().height; ++y) {
+--- /dev/null
++++ b/frameworks/av/media/codec2/sfplugin/utils/A6lRgbToI420.h
+@@ -0,0 +1,126 @@
++// SPDX-License-Identifier: Apache-2.0
++#pragma once
++
++#if defined(__aarch64__)
++#include <arm_neon.h>
++#include <stddef.h>
++#include <stdint.h>
++
++namespace android {
++
++// Exactly the retained signed matrix arithmetic: no rounded shifts or averaging.
++inline uint8x8_t a6lRgbDot8(uint8x8_t r, uint8x8_t g, uint8x8_t b,
++                          const int16_t *w, int32_t offset, int32_t minimum,
++                          int32_t maximum) {
++    const uint16x8_t rr = vmovl_u8(r), gg = vmovl_u8(g), bb = vmovl_u8(b);
++    if (offset != 128) {
++        // Retained Y coefficients are nonnegative and sum to at most256:
++        // every partial sum is at most65280, so unsigned16 arithmetic is exact.
++        uint16x8_t sum = vmulq_n_u16(rr, uint16_t(w[0]));
++        sum = vmlaq_n_u16(sum, gg, uint16_t(w[1]));
++        sum = vmlaq_n_u16(sum, bb, uint16_t(w[2]));
++        sum = vaddq_u16(vshrq_n_u16(sum, 8), vdupq_n_u16(uint16_t(offset)));
++        sum = vminq_u16(vmaxq_u16(sum, vdupq_n_u16(uint16_t(minimum))),
++                        vdupq_n_u16(uint16_t(maximum)));
++        return vqmovn_u16(sum);
++    }
++    // Each retained chroma row's positive/negative coefficient sums are
++    // bounded by+/-128, so every partial sum is within+/-32640.
++    int16x8_t sum = vmulq_n_s16(vreinterpretq_s16_u16(rr), w[0]);
++    sum = vmlaq_n_s16(sum, vreinterpretq_s16_u16(gg), w[1]);
++    sum = vmlaq_n_s16(sum, vreinterpretq_s16_u16(bb), w[2]);
++    sum = vaddq_s16(vshrq_n_s16(sum, 8), vdupq_n_s16(128));
++    sum = vminq_s16(vmaxq_s16(sum, vdupq_n_s16(int16_t(minimum))),
++                    vdupq_n_s16(int16_t(maximum)));
++    return vqmovun_s16(sum);
++}
++
++inline unsigned a6lRgbClip(unsigned v, unsigned minimum, unsigned maximum) {
++    return v < minimum ? minimum : (maximum > v ? v : maximum);
++}
++
++// View is the real C2GraphicView in production. Unsupported layouts do not write.
++template<class View>
++inline bool a6lTryRgbToI420(uint8_t *dstY, uint8_t *dstU, uint8_t *dstV,
++                          size_t dstStride, const View &src,
++                          const int16_t (*weights)[3], uint8_t zero,
++                          uint8_t maxY, uint8_t maxC) {
++    const auto &layout = src.layout();
++    const size_t width = src.crop().width, height = src.crop().height;
++    // Preserve the retained scalar crop/negative-stride handling as fallback.
++    if (layout.numPlanes < 3 || layout.numPlanes > 4 || layout.rootPlanes != 1 ||
++        width != src.width() || height > src.height() || !width || !height ||
++        (width & 1) || (height & 1) ||
++        (dstStride & 1) || dstStride < width) return false;
++    const int32_t step = layout.planes[0].colInc;
++    const int32_t row = layout.planes[0].rowInc;
++    if ((step != 3 && step != 4) || row <= 0 || width > size_t(row) / unsigned(step))
++        return false;
++    uintptr_t addresses[3];
++    for (unsigned i = 0; i < 3; ++i) {
++        const auto &plane = layout.planes[i];
++        if (plane.colInc != step || plane.rowInc != row || plane.colSampling != 1 ||
++            plane.rowSampling != 1 || plane.allocatedDepth != 8 || plane.bitDepth != 8 ||
++            plane.rightShift != 0 || !src.data()[i]) return false;
++        addresses[i] = reinterpret_cast<uintptr_t>(src.data()[i]);
++    }
++    uintptr_t lowest = addresses[0];
++    if (addresses[1] < lowest) lowest = addresses[1];
++    if (addresses[2] < lowest) lowest = addresses[2];
++    unsigned offsets[3];
++    for (unsigned i = 0; i < 3; ++i) {
++        if (addresses[i] - lowest >= unsigned(step)) return false;
++        offsets[i] = unsigned(addresses[i] - lowest);
++    }
++    if (offsets[0] == offsets[1] || offsets[0] == offsets[2] || offsets[1] == offsets[2])
++        return false;
++    const uint8_t *base = reinterpret_cast<const uint8_t *>(lowest);
++    for (size_t y = 0; y < height; ++y) {
++        const uint8_t *rowBase = base + y * size_t(row);
++        size_t x = 0;
++        // Strict < leaves a following logical pixel: even unusual XRGB channel
++        // origins cannot make vld4 cross the mapped span at the right boundary.
++        for (; width - x > 16; x += 16) {
++            uint8x16_t channels[4];
++            if (step == 4) {
++                const auto v = vld4q_u8(rowBase + x * 4);
++                for (unsigned i = 0; i < 4; ++i) channels[i] = v.val[i];
++            } else {
++                const auto v = vld3q_u8(rowBase + x * 3);
++                for (unsigned i = 0; i < 3; ++i) channels[i] = v.val[i];
++            }
++            const auto r = channels[offsets[0]], g = channels[offsets[1]], b = channels[offsets[2]];
++            const auto yl = a6lRgbDot8(vget_low_u8(r), vget_low_u8(g), vget_low_u8(b),
++                                     weights[0], zero, zero, maxY);
++            const auto yh = a6lRgbDot8(vget_high_u8(r), vget_high_u8(g), vget_high_u8(b),
++                                     weights[0], zero, zero, maxY);
++            vst1q_u8(dstY + x, vcombine_u8(yl, yh));
++            if (!(y & 1)) {
++                const auto er = vget_low_u8(vuzp1q_u8(r, r));
++                const auto eg = vget_low_u8(vuzp1q_u8(g, g));
++                const auto eb = vget_low_u8(vuzp1q_u8(b, b));
++                vst1_u8(dstU + x / 2, a6lRgbDot8(er, eg, eb, weights[1], 128, zero, maxC));
++                vst1_u8(dstV + x / 2, a6lRgbDot8(er, eg, eb, weights[2], 128, zero, maxC));
++            }
++        }
++        for (; x < width; ++x) {
++            const int r = rowBase[x * size_t(step) + offsets[0]];
++            const int g = rowBase[x * size_t(step) + offsets[1]];
++            const int b = rowBase[x * size_t(step) + offsets[2]];
++            dstY[x] = a6lRgbClip(((r * weights[0][0] + g * weights[0][1] +
++                                  b * weights[0][2]) >> 8) + zero, zero, maxY);
++            if (!(x & 1) && !(y & 1)) {
++                dstU[x / 2] = a6lRgbClip(((r * weights[1][0] + g * weights[1][1] +
++                                         b * weights[1][2]) >> 8) + 128, zero, maxC);
++                dstV[x / 2] = a6lRgbClip(((r * weights[2][0] + g * weights[2][1] +
++                                         b * weights[2][2]) >> 8) + 128, zero, maxC);
++            }
++        }
++        dstY += dstStride;
++        if (!(y & 1)) { dstU += dstStride / 2; dstV += dstStride / 2; }
++    }
++    return true;
++}
++
++} // namespace android
++#endif

@@ -1,4 +1,4 @@
-# Hisense A6L radio HAL (agent ril). Always started; it publishes the AIDL services at once and
+# Hisense A6L radio HAL (agent ril; ril3 25 Sep 2026: slot2 for DSDS, published when ro.vendor.a6l.ril.slots=2). Always started; it publishes the AIDL services at once and
 # signals rilConnected only when the modem's QMI services appear on QRTR. The modem itself is
 # started by device/hisense/a6l/hals (a6l-radio.rc) only when persist.vendor.a6l.radio.enable=1.
 service vendor.radio-a6l /vendor/bin/hw/android.hardware.radio-service.a6l
@@ -9,6 +9,12 @@ service vendor.radio-a6l /vendor/bin/hw/android.hardware.radio-service.a6l
     interface aidl android.hardware.radio.network.IRadioNetwork/slot1
     interface aidl android.hardware.radio.sim.IRadioSim/slot1
     interface aidl android.hardware.radio.voice.IRadioVoice/slot1
+    interface aidl android.hardware.radio.data.IRadioData/slot2
+    interface aidl android.hardware.radio.messaging.IRadioMessaging/slot2
+    interface aidl android.hardware.radio.modem.IRadioModem/slot2
+    interface aidl android.hardware.radio.network.IRadioNetwork/slot2
+    interface aidl android.hardware.radio.sim.IRadioSim/slot2
+    interface aidl android.hardware.radio.voice.IRadioVoice/slot2
     class main
     user radio
     group radio inet misc log readproc wakelock system

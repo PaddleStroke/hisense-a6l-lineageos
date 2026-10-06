@@ -1,0 +1,36 @@
+From: A6L port maintainers
+Subject: [PATCH] bluetooth: wait for modular HCI and stop on transport failure
+
+Prevent the observed FD_SET(-1) abort after failed Linux and UART transport
+opens. Wait up to 30 seconds for the modular Bluetooth socket family; leave
+controller discovery and public-address configuration to the Linux mgmt path.
+
+--- a/bluetooth/aidl/default/BluetoothHci.cpp
++++ b/bluetooth/aidl/default/BluetoothHci.cpp
+@@ -169,6 +169,7 @@
+         if (mFd < 0) {
+             mState = HalState::READY;
+             cb->initializationComplete(Status::UNABLE_TO_OPEN_INTERFACE);
++            return;
+         }
+     }
+ 
+--- a/bluetooth/aidl/default/net_bluetooth_mgmt.cpp
++++ b/bluetooth/aidl/default/net_bluetooth_mgmt.cpp
+@@ -101,7 +101,15 @@
+     // Open and bind a socket to the bluetooth control interface in the
+     // kernel driver, used to send control commands and receive control
+     // events.
+-    int fd = socket(PF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
++    // Mainline device kernels may load Bluetooth as a module after the HAL
++    // process starts. Wait for the protocol family instead of falling back
++    // to an emulator UART before the controller can exist.
++    int fd = -1;
++    for (unsigned attempt = 0; attempt < 60; ++attempt) {
++        fd = socket(PF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
++        if (fd >= 0 || (errno != EAFNOSUPPORT && errno != EPROTONOSUPPORT)) break;
++        usleep(500000);
++    }
+     if (fd < 0) {
+         ALOGE("unable to open raw bluetooth socket: %s", strerror(errno));
+         return -1;

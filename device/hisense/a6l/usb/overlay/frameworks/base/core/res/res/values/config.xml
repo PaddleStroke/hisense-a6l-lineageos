@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hisense A6L (android-usb, 29 Sep 2026). The mainline kernel has no android_usb uevents
+     (/devices/virtual/android_usb/android0), so UsbDeviceManager must follow the UDC state in
+     /sys/class/udc/<sys.usb.controller>/state (flag enable_udc_sysfs_usb_state_update is ENABLED in this tree;
+     genfs labels version = board API 202604 > 202404). Without it the framework never sees "connected/configured":
+     no USB notification, MTP never starts. -->
+<resources>
+    <bool name="config_enableUdcSysfsUsbStateUpdate">true</bool>
+</resources>

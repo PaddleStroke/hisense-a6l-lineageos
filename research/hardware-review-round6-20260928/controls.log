@@ -1,0 +1,3 @@
+POSITION_MODE single_and_periodic_identical=1 wire_recurrence=1(periodic)
+DELETE_AIDING ephemeris_and_time_success=1 engine_deletes=0
+DELETE_AIDING all_positive_control=1

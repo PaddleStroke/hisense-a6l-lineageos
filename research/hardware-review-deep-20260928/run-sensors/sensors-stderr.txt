@@ -1,0 +1,3 @@
+I sensors.a6l: motion: map accel +y+x-z gyro +y+x-z mag +y+x-z, mag unit auto, magcal on (bias none)
+I sensors.a6l: motion: map accel +y+x-z gyro +y+x-z mag +y+x-z, mag unit auto, magcal on (bias none)
+I sensors.a6l: motion: map accel +y+x-z gyro +y+x-z mag +y+x-z, mag unit auto, magcal on (bias none)

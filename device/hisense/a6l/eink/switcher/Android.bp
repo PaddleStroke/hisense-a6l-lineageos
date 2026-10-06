@@ -34,6 +34,7 @@ cc_test_host {
 prebuilt_etc {
     name: "privapp_whitelist_org.lineageos.a6l.dualux",
     src: "app/privapp-permissions-a6l-dualux.xml",
+    filename: "privapp-permissions-a6l-dualux.xml",
     sub_dir: "permissions",
     system_ext_specific: true,
 }

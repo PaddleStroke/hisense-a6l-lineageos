@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: CC0-1.0
+# Hisense A6L imx576_a6l tuning for the libcamera simple IPA (SoftISP), AF variant (camera phase 3).
+# = device/hisense/a6l/camera/libcamera/data/imx576_a6l.yaml (phase 1/2, uncalibrated) + the Af block below.
+# Used only by the AF recovery bundle (af/libcamera/tools/build-libcamera-af.sh); the ROM keeps the phase 2 file until
+# the AF patches are merged into the ROM series.
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+  - Awb:
+  # Stock Qualcomm AWB-driven CCM decoded from libchromatix_imx576_hmct_9ak04b_default_preview.so (camera-quality-20261006).
+  # Row-major, rows = output R,G,B; columns = input R,G,B (chromatix c0..c8 RtoR,GtoR,BtoR,...);
+  # applied after black level + AWB gains, rows sum to 1 (neutral-preserving).
+  # NOTE: enabling Ccm switches debayer to the slower upstream scalar CCM path (A6L NEON prefix is !ccm only).
+  - Ccm:
+      ccms:
+        - ct: 4000   # stock TL84 (indoor default)
+          ccm: [   1.7848,  -0.8002,   0.0154,
+                  -0.2708,   1.3038,  -0.0329,
+                   0.0800,  -0.7699,   1.6899 ]
+  - Adjust:
+      # Read only with patch 0030 (adjust tuning defaults); older IPA ignores these keys (= contrast 1.0).
+      contrast: 1.2
+  - Agc:
+  # A6L camera phase 3: contrast AF on the GT9769 VCM (device/hisense/a6l/camera/af, docs/camera-af-video-20260929.md).
+  # infinityDac/macroDac = stock no-OTP actuator range (libactuator_gt9769.so initial_code 227 + 400 steps x 1 code);
+  # replace with this unit's OTP values (run-af.sh MODE=otp prints A6L_AF_OTP macro=<m> infinity=<i>) once read.
+  - Af:
+      infinityDac: 227
+      macroDac: 627
+      infinityMargin: -0.25
+      macroMargin: 0.05
+      macroDioptres: 10.0
+      defaultDioptres: 0.2
+      coarseSteps: 12
+      fineSteps: 4
+      settleFrames: 3
+      minContrast: 0.0001
+      minPeakRatio: 1.10
+      stopRatio: 0.70
+      rescanDrop: 0.65
+      rescanRise: 1.60
+      rescanCount: 3
+...

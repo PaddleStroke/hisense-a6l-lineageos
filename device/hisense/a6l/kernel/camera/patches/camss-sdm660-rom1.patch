@@ -1,0 +1,684 @@
+diff -ru orig/camss/camss-csid.c camss/camss-csid.c
+--- orig/camss/camss-csid.c	2026-09-29 15:47:24.883315314 +0200
++++ camss/camss-csid.c	2026-09-29 15:47:24.964442623 +0200
+@@ -26,6 +26,9 @@
+ #include "camss-csid-gen1.h"
+ #include "camss.h"
+ 
++/* A6L sdm660: stock runs csiK_clk_src at 310 MHz; never pick a CSID core clock level below it */
++#define A6L_CSID_MIN_HZ 200000001ULL
++
+ /* offset of CSID registers in VFE region for VFE 480 */
+ #define VFE_480_CSID_OFFSET 0x1200
+ #define VFE_480_LITE_CSID_OFFSET 0x200
+@@ -562,6 +565,8 @@
+ 			long rate;
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (csid->camss->res->version == CAMSS_660 && min_rate < A6L_CSID_MIN_HZ)
++				min_rate = A6L_CSID_MIN_HZ;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+diff -ru orig/camss/camss-csiphy.c camss/camss-csiphy.c
+--- orig/camss/camss-csiphy.c	2026-09-29 15:47:24.884835287 +0200
++++ camss/camss-csiphy.c	2026-09-29 15:47:24.965193202 +0200
+@@ -22,6 +22,71 @@
+ #include "camss-csiphy.h"
+ #include "camss.h"
+ 
++/* A6L sdm660: stock runs the CSIPHY timer at its top level (269.33 MHz) */
++#define A6L_CSIPHY_TIMER_MIN_HZ 200000001ULL
++
++/*
++ * A6L sdm660: stock CSIPHY digital clocks. Stock (sdm660-camera.dtsi, csiphy@c82{4,5,6}000) enables
++ * MMSS_CAMSS_CSIPHYk_CLK with CSIPHY_CLK_SRC at 200 MHz, MMSS_CAMSS_CPHY_CSIDk_CLK and CSIk_CLK (CSIk_CLK_SRC
++ * 310 MHz). Mainline csiphy_res_660 names none of them and never sets csiphy_clk_src, which then runs at its
++ * 19.2 MHz XO rate: the CSIPHY lane logic corrupts the byte stream (every packet an ECC event, spurious frame
++ * starts, one VFE bus error, no complete frame; A6L runs t30-t34). camss_cphy_csidK_clk's parent is
++ * camss_csiphyK_clk -> csiphy_clk_src, so setting and enabling "cphy_csidK" of the camss node gives the stock
++ * chain. Proven 29 Sep 2026 (t35): imx576 on CSIPHY0 and s5k3t1 on CSIPHY2, full frames, 0 ECC/CRC, 0 bus errors.
++ */
++#define A6L_CSIPHY_SRC_HZ 200000000UL
++#define A6L_CSI_SRC_HZ 310000000UL
++
++static struct clk *a6l_csiphy_clk_on(struct device *dev, const char *fmt, u8 id, unsigned long rate)
++{
++	struct clk *c;
++	char n[16];
++	int ret;
++
++	snprintf(n, sizeof(n), fmt, id);
++	c = clk_get(dev, n);
++	if (IS_ERR(c)) {
++		dev_warn(dev, "CSIPHY%u: no clock %s (%ld)\n", id, n, PTR_ERR(c));
++		return NULL;
++	}
++	if (clk_get_rate(c) != rate) {
++		ret = clk_set_rate(c, rate);
++		if (ret)
++			dev_warn(dev, "CSIPHY%u: %s set_rate(%lu) failed: %d\n", id, n, rate, ret);
++	}
++	ret = clk_prepare_enable(c);
++	if (ret) {
++		dev_warn(dev, "CSIPHY%u: %s enable failed: %d\n", id, n, ret);
++		clk_put(c);
++		return NULL;
++	}
++	return c;
++}
++
++static void a6l_csiphy_clk_off(struct clk **c)
++{
++	if (!*c)
++		return;
++	clk_disable_unprepare(*c);
++	clk_put(*c);
++	*c = NULL;
++}
++
++static void a6l_csiphy_stock_clocks(struct csiphy_device *csiphy, bool on)
++{
++	struct device *dev = csiphy->camss->dev;
++
++	if (csiphy->camss->res->version != CAMSS_660)
++		return;
++	if (on) {
++		csiphy->a6l_phy_clk = a6l_csiphy_clk_on(dev, "cphy_csid%u", csiphy->id, A6L_CSIPHY_SRC_HZ);
++		csiphy->a6l_csi_clk = a6l_csiphy_clk_on(dev, "csi%u", csiphy->id, A6L_CSI_SRC_HZ);
++	} else {
++		a6l_csiphy_clk_off(&csiphy->a6l_csi_clk);
++		a6l_csiphy_clk_off(&csiphy->a6l_phy_clk);
++	}
++}
++
+ #define MSM_CSIPHY_NAME "msm_csiphy"
+ 
+ static const struct csiphy_format_info formats_8x16[] = {
+@@ -157,6 +222,8 @@
+ 			long round_rate;
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (csiphy->camss->res->version == CAMSS_660 && min_rate < A6L_CSIPHY_TIMER_MIN_HZ)
++				min_rate = A6L_CSIPHY_TIMER_MIN_HZ;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+@@ -235,6 +302,8 @@
+ 			return ret;
+ 		}
+ 
++		a6l_csiphy_stock_clocks(csiphy, true);
++
+ 		enable_irq(csiphy->irq);
+ 
+ 		csiphy->res->hw_ops->reset(csiphy);
+@@ -243,6 +312,8 @@
+ 	} else {
+ 		disable_irq(csiphy->irq);
+ 
++		a6l_csiphy_stock_clocks(csiphy, false);
++
+ 		camss_disable_clocks(csiphy->nclocks, csiphy->clock);
+ 
+ 		regulator_bulk_disable(csiphy->num_supplies, csiphy->supplies);
+@@ -606,7 +677,8 @@
+ 	if (camss->res->version == CAMSS_8x16 ||
+ 	    camss->res->version == CAMSS_8x39 ||
+ 	    camss->res->version == CAMSS_8x53 ||
+-	    camss->res->version == CAMSS_8x96) {
++	    camss->res->version == CAMSS_8x96 ||
++	    camss->res->version == CAMSS_660) {
+ 		csiphy->base_clk_mux =
+ 			devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
+ 		if (IS_ERR(csiphy->base_clk_mux))
+diff -ru orig/camss/camss-csiphy.h camss/camss-csiphy.h
+--- orig/camss/camss-csiphy.h	2026-09-29 15:47:24.885132255 +0200
++++ camss/camss-csiphy.h	2026-09-29 15:47:24.965284293 +0200
+@@ -114,6 +114,8 @@
+ 	struct v4l2_mbus_framefmt fmt[MSM_CSIPHY_PADS_NUM];
+ 	const struct csiphy_subdev_resources *res;
+ 	struct csiphy_device_regs *regs;
++	struct clk *a6l_phy_clk; /* A6L sdm660: cphy_csidK at 200 MHz (stock CSIPHY digital clock) */
++	struct clk *a6l_csi_clk; /* A6L sdm660: csiK at 310 MHz (stock) */
+ };
+ 
+ struct camss_subdev_resources;
+diff -ru orig/camss/camss-vfe-4-8.c camss/camss-vfe-4-8.c
+--- orig/camss/camss-vfe-4-8.c	2026-09-29 15:47:24.888905395 +0200
++++ camss/camss-vfe-4-8.c	2026-09-29 15:47:24.968602562 +0200
+@@ -17,6 +17,27 @@
+ #include "camss-vfe.h"
+ #include "camss-vfe-gen1.h"
+ 
++/* A6L sdm660 (stock msm_vfe47_update_ping_pong_addr): WR_PING/PONG_MAX_ADDR = (addr + size) & ~0x1f.
++ * Left at 0 every burst is out of range: bus error (0xC94), no frame done. */
++static u32 a6l_wm_sz[2][8];
++void a6l_wm_set_size(struct vfe_device *vfe, u8 wm, u32 size)
++{
++	if (wm < 8)
++		a6l_wm_sz[vfe->id & 1][wm] = size;
++}
++
++static u32 a6l_wm_max(struct vfe_device *vfe, u8 wm, u32 addr)
++{
++	u64 end;
++
++	if (!addr || wm >= 8 || !a6l_wm_sz[vfe->id & 1][wm])
++		return 0;
++	end = (u64)addr + a6l_wm_sz[vfe->id & 1][wm];
++	if (end > 0xffffffffULL)
++		end = 0xffffffffULL;
++	return (u32)end & ~0x1fU;
++}
++
+ #define VFE_0_GLOBAL_RESET_CMD		0x018
+ #define VFE_0_GLOBAL_RESET_CMD_CORE	BIT(0)
+ #define VFE_0_GLOBAL_RESET_CMD_CAMIF	BIT(1)
+@@ -292,10 +313,14 @@
+ 
+ static void vfe_wm_frame_based(struct vfe_device *vfe, u8 wm, u8 enable)
+ {
+-	if (enable)
++	if (enable) {
+ 		vfe_reg_set(vfe, VFE_0_BUS_IMAGE_MASTER_n_WR_ADDR_CFG(wm),
+ 			    1 << VFE_0_BUS_IMAGE_MASTER_n_WR_ADDR_CFG_FRM_BASED_SHIFT);
+-	else
++		/* A6L (a6l_wm bit1): stock msm_vfe47_axi_cfg_wm_reg writes the ADDR_CFG value into BUFFER_CFG for frame-based WMs */
++		if (a6l_wm & 2)
++			writel_relaxed(readl_relaxed(vfe->base + VFE_0_BUS_IMAGE_MASTER_n_WR_ADDR_CFG(wm)),
++				       vfe->base + VFE_0_BUS_IMAGE_MASTER_n_WR_BUFFER_CFG(wm));
++	} else
+ 		vfe_reg_clr(vfe, VFE_0_BUS_IMAGE_MASTER_n_WR_ADDR_CFG(wm),
+ 			    1 << VFE_0_BUS_IMAGE_MASTER_n_WR_ADDR_CFG_FRM_BASED_SHIFT);
+ }
+@@ -437,12 +462,18 @@
+ {
+ 	writel_relaxed(addr,
+ 		       vfe->base + VFE_0_BUS_IMAGE_MASTER_n_WR_PING_ADDR(wm));
++	/* A6L: WR_PING_MAX_ADDR (stock) */
++	writel_relaxed(a6l_wm_max(vfe, wm, addr),
++		       vfe->base + VFE_0_BUS_IMAGE_MASTER_n_WR_PING_ADDR(wm) + 0x4);
+ }
+ 
+ static void vfe_wm_set_pong_addr(struct vfe_device *vfe, u8 wm, u32 addr)
+ {
+ 	writel_relaxed(addr,
+ 		       vfe->base + VFE_0_BUS_IMAGE_MASTER_n_WR_PONG_ADDR(wm));
++	/* A6L: WR_PONG_MAX_ADDR (stock) */
++	writel_relaxed(a6l_wm_max(vfe, wm, addr),
++		       vfe->base + VFE_0_BUS_IMAGE_MASTER_n_WR_PONG_ADDR(wm) + 0x4);
+ }
+ 
+ static int vfe_wm_get_ping_pong_status(struct vfe_device *vfe, u8 wm)
+@@ -854,7 +885,12 @@
+ 
+ static void vfe_set_cgc_override(struct vfe_device *vfe, u8 wm, u8 enable)
+ {
+-	/* empty */
++	/* A6L: stock msm_vfe47_axi_update_cgc_override (called for every stream at START/STOP) */
++	if (enable)
++		vfe_reg_set(vfe, 0x03c, BIT(wm));
++	else
++		vfe_reg_clr(vfe, 0x03c, BIT(wm));
++	wmb();
+ }
+ 
+ static void vfe_set_camif_cfg(struct vfe_device *vfe, struct vfe_line *line)
+diff -ru orig/camss/camss-vfe-gen1.c camss/camss-vfe-gen1.c
+--- orig/camss/camss-vfe-gen1.c	2026-09-29 15:47:24.889804185 +0200
++++ camss/camss-vfe-gen1.c	2026-09-29 15:47:24.970077050 +0200
+@@ -11,6 +11,158 @@
+ #include "camss-vfe.h"
+ #include "camss-vfe-gen1.h"
+ 
++#include <linux/dma-mapping.h>
++#include <linux/moduleparam.h>
++#include <linux/workqueue.h>
++#include <media/videobuf2-dma-sg.h>
++
++/*
++ * A6L sdm660 RDI write-master mode:
++ *   bit0 (1) stock-like: the WM writes every frame, a driver scratch buffer takes frames no user buffer is queued for
++ *   bit1 (2) stock frame-based BUFFER_CFG (= ADDR_CFG, msm_vfe47_axi_cfg_wm_reg)
++ *   bit2 (4) fixed ping/pong: two driver buffers, each finished frame is copied into the next queued user buffer
++ *   0 = upstream (frame-drop toggling, user buffers only)
++ * Default 6 = the mode of the 29 Sep 2026 attended PASS (t35). 3 = zero-copy (confirm run camera15 first).
++ */
++int a6l_wm = 3;
++module_param(a6l_wm, int, 0644);
++MODULE_PARM_DESC(a6l_wm, "A6L RDI write master: bit0 every frame + scratch buffer, bit1 stock frame-based BUFFER_CFG, bit2 fixed ping/pong + copy; 0 = upstream (default 3, zero-copy)");
++
++static u32 a6l_slot_addr(struct vfe_output *output, int slot, unsigned int plane)
++{
++	if (output->a6l_mode == 2)
++		return (u32)output->a6l_fix[slot & 1];
++	return output->buf[slot] ? output->buf[slot]->addr[plane] : (u32)output->a6l_scratch;
++}
++
++/* fixed mode: copy the slot the WM just finished into the next queued user buffer (process context) */
++static void a6l_fix_work(struct work_struct *work)
++{
++	struct vfe_output *output = container_of(work, struct vfe_output, a6l_work);
++	struct vfe_device *vfe = output->a6l_vfe;
++	struct camss_buffer *b = NULL;
++	struct sg_table *sgt;
++	unsigned long flags;
++	void *dst = NULL;
++	size_t n;
++	u32 seq;
++	u64 ts;
++	int slot;
++
++	spin_lock_irqsave(&vfe->output_lock, flags);
++	slot = output->a6l_copy_slot & 1;
++	seq = output->a6l_copy_seq;
++	ts = output->a6l_copy_ts;
++	if (!output->a6l_stop)
++		b = vfe_buf_get_pending(output);
++	spin_unlock_irqrestore(&vfe->output_lock, flags);
++	if (b) {
++		n = min_t(size_t, output->a6l_frame_sz, vb2_plane_size(&b->vb.vb2_buf, 0));
++		dst = vb2_plane_vaddr(&b->vb.vb2_buf, 0);
++		if (dst) {
++			memcpy(dst, output->a6l_fix_cpu[slot], n);
++			/* written through the CPU cache: clean it before vb2 invalidates for the CPU */
++			sgt = vb2_dma_sg_plane_desc(&b->vb.vb2_buf, 0);
++			if (sgt)
++				dma_sync_sgtable_for_device(vfe->camss->dev, sgt, DMA_TO_DEVICE);
++		}
++		b->vb.vb2_buf.timestamp = ts;
++		b->vb.sequence = seq;
++		vb2_buffer_done(&b->vb.vb2_buf, dst ? VB2_BUF_STATE_DONE : VB2_BUF_STATE_ERROR);
++	}
++	WRITE_ONCE(output->a6l_busy, 0);
++}
++
++static int a6l_prepare_fixed(struct vfe_device *vfe, struct vfe_output *output, size_t frame)
++{
++	size_t sz = PAGE_ALIGN(2 * frame);
++	unsigned int s;
++
++	if (output->a6l_fix_cpu[0] && output->a6l_fix_sz < sz) {
++		for (s = 0; s < 2; s++)
++			if (output->a6l_fix_cpu[s])
++				dma_free_attrs(vfe->camss->dev, output->a6l_fix_sz, output->a6l_fix_cpu[s],
++					       output->a6l_fix[s], 0);
++		output->a6l_fix_cpu[0] = output->a6l_fix_cpu[1] = NULL;
++	}
++	if (!output->a6l_fix_cpu[0]) {
++		for (s = 0; s < 2; s++) {
++			output->a6l_fix_cpu[s] = dma_alloc_attrs(vfe->camss->dev, sz, &output->a6l_fix[s],
++								 GFP_KERNEL, 0);
++			if (!output->a6l_fix_cpu[s]) {
++				dev_err(vfe->camss->dev, "VFE%u: fixed WM buffer %u (%zu bytes) alloc failed\n",
++					vfe->id, s, sz);
++				if (s) {
++					dma_free_attrs(vfe->camss->dev, sz, output->a6l_fix_cpu[0], output->a6l_fix[0], 0);
++					output->a6l_fix_cpu[0] = NULL;
++				}
++				return -ENOMEM;
++			}
++		}
++		output->a6l_fix_sz = sz;
++	}
++	if (!output->a6l_work_ok) {
++		INIT_WORK(&output->a6l_work, a6l_fix_work);
++		output->a6l_work_ok = 1;
++	}
++	output->a6l_vfe = vfe;
++	output->a6l_frame_sz = frame;
++	output->a6l_busy = 0;
++	output->a6l_stop = 0;
++	output->a6l_mode = 2;
++	return 0;
++}
++
++/* fixed mode stream-off: stop the copies */
++static void a6l_fixed_stop(struct vfe_device *vfe, struct vfe_output *output)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&vfe->output_lock, flags);
++	output->a6l_stop = 1;
++	spin_unlock_irqrestore(&vfe->output_lock, flags);
++	if (output->a6l_work_ok)
++		cancel_work_sync(&output->a6l_work);
++}
++
++/* before vfe_get_output/vfe_enable_output: sleeping allocation, outside output_lock */
++static void a6l_prepare_output(struct vfe_device *vfe, struct vfe_line *line)
++{
++	struct vfe_output *output = &line->output;
++	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
++	size_t sz = 0;
++	unsigned int i;
++
++	output->a6l_mode = 0;
++	if (line->id == VFE_LINE_PIX || vfe->camss->res->version != CAMSS_660)
++		return;
++	for (i = 0; i < pix->num_planes && i < ARRAY_SIZE(pix->plane_fmt); i++)
++		sz = max_t(size_t, sz, pix->plane_fmt[i].sizeimage);
++	if (!sz)
++		return;
++	if ((a6l_wm & 4) && !a6l_prepare_fixed(vfe, output, sz))
++		return;
++	if (!(a6l_wm & 1))
++		return;
++	sz = PAGE_ALIGN(sz);
++	if (output->a6l_scratch_cpu && output->a6l_scratch_sz < sz) {
++		dma_free_attrs(vfe->camss->dev, output->a6l_scratch_sz, output->a6l_scratch_cpu,
++			       output->a6l_scratch, DMA_ATTR_NO_KERNEL_MAPPING);
++		output->a6l_scratch_cpu = NULL;
++	}
++	if (!output->a6l_scratch_cpu) {
++		output->a6l_scratch_cpu = dma_alloc_attrs(vfe->camss->dev, sz, &output->a6l_scratch,
++							  GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
++		if (!output->a6l_scratch_cpu) {
++			dev_err(vfe->camss->dev, "VFE%u: WM scratch alloc %zu failed: upstream WM mode\n", vfe->id, sz);
++			return;
++		}
++		output->a6l_scratch_sz = sz;
++	}
++	output->a6l_mode = 1;
++}
++
++
+ /* Max number of frame drop updates per frame */
+ #define VFE_FRAME_DROP_UPDATES 2
+ #define VFE_NEXT_SOF_MS 500
+@@ -101,6 +253,8 @@
+ {
+ 	struct vfe_device *vfe = to_vfe(line);
+ 
++	if (line->output.a6l_mode == 2)
++		a6l_fixed_stop(vfe, &line->output);
+ 	vfe_disable_output(line);
+ 
+ 	vfe_put_output(line);
+@@ -127,6 +281,23 @@
+ 
+ 	output->gen1.active_buf = 0;
+ 
++	if (output->a6l_mode == 2) {
++		for (i = 0; i < 2; i++)
++			if (output->buf[i]) {
++				vfe_buf_add_pending(output, output->buf[i]);
++				output->buf[i] = NULL;
++			}
++	}
++	if (output->a6l_mode) {
++		for (i = 0; i < output->wm_num; i++) {
++			vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm_idx[i], a6l_slot_addr(output, 0, i));
++			vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm_idx[i], a6l_slot_addr(output, 1, i));
++			if (sync)
++				vfe->ops_gen1->bus_reload_wm(vfe, output->wm_idx[i]);
++		}
++		return;
++	}
++
+ 	for (i = 0; i < output->wm_num; i++) {
+ 		if (output->buf[0])
+ 			ping_addr = output->buf[0]->addr[i];
+@@ -152,6 +323,15 @@
+ 	u8 drop_period;
+ 	unsigned int i;
+ 
++	if (output->a6l_mode) {
++		for (i = 0; i < output->wm_num; i++) {
++			vfe->ops_gen1->wm_set_framedrop_period(vfe, output->wm_idx[i], 0);
++			vfe->ops_gen1->wm_set_framedrop_pattern(vfe, output->wm_idx[i], 1);
++		}
++		vfe->res->hw_ops->reg_update(vfe, container_of(output, struct vfe_line, output)->id);
++		return;
++	}
++
+ 	/* We need to toggle update period to be valid on next frame */
+ 	output->drop_update_idx++;
+ 	output->drop_update_idx %= VFE_FRAME_DROP_UPDATES;
+@@ -202,6 +382,12 @@
+ 	}
+ 	output->state = VFE_OUTPUT_IDLE;
+ 
++	/* A6L: size used for WR_PING/PONG_MAX_ADDR (RDI frame-based WMs only) */
++	for (i = 0; i < output->wm_num; i++)
++		a6l_wm_set_size(vfe, output->wm_idx[i], line->id == VFE_LINE_PIX ? 0 :
++				output->a6l_mode == 2 ? (u32)output->a6l_fix_sz :
++				line->video_out.active_fmt.fmt.pix_mp.plane_fmt[0].sizeimage);
++
+ 	output->buf[0] = vfe_buf_get_pending(output);
+ 	output->buf[1] = vfe_buf_get_pending(output);
+ 
+@@ -353,6 +539,8 @@
+ 
+ 	mutex_unlock(&vfe->stream_lock);
+ 
++	a6l_prepare_output(vfe, line);
++
+ 	ret = vfe_get_output(line);
+ 	if (ret < 0)
+ 		goto error_get_output;
+@@ -627,6 +815,48 @@
+ 	}
+ 	output = &vfe->line[vfe->wm_output_map[wm]].output;
+ 
++	if (output->a6l_mode == 2) {
++		int slot = !active_index;
++		int q = 0;
++
++		output->sequence++;
++		if (!output->a6l_stop && !output->a6l_busy && !list_empty(&output->pending_bufs)) {
++			output->a6l_busy = 1;
++			output->a6l_copy_slot = slot;
++			output->a6l_copy_seq = output->sequence - 1;
++			output->a6l_copy_ts = ts;
++			q = 1;
++		}
++		spin_unlock_irqrestore(&vfe->output_lock, flags);
++		if (q)
++			queue_work(system_highpri_wq, &output->a6l_work);
++		return;
++	}
++
++	if (output->a6l_mode) {
++		/* status bit = slot the WM writes now; the other slot just completed (= stock pingpong_bit) */
++		int slot = !active_index;
++
++		output->gen1.active_buf = active_index;
++		ready_buf = output->buf[slot];
++		if (ready_buf) {
++			ready_buf->vb.vb2_buf.timestamp = ts;
++			ready_buf->vb.sequence = output->sequence;
++		}
++		output->sequence++;
++		output->buf[slot] = vfe_buf_get_pending(output);
++		for (i = 0; i < output->wm_num; i++) {
++			if (slot)
++				vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm_idx[i], a6l_slot_addr(output, slot, i));
++			else
++				vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm_idx[i], a6l_slot_addr(output, slot, i));
++		}
++		spin_unlock_irqrestore(&vfe->output_lock, flags);
++		if (ready_buf)
++			vb2_buffer_done(&ready_buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
++		return;
++	}
++
+ 	if (output->gen1.active_buf == active_index && 0) {
+ 		dev_err_ratelimited(vfe->camss->dev,
+ 				    "Active buffer mismatch!\n");
+@@ -697,6 +927,12 @@
+ 
+ 	spin_lock_irqsave(&vfe->output_lock, flags);
+ 
++	if (output->a6l_mode && output->state != VFE_OUTPUT_OFF) {
++		vfe_buf_add_pending(output, buf);
++		spin_unlock_irqrestore(&vfe->output_lock, flags);
++		return 0;
++	}
++
+ 	vfe_buf_update_wm_on_new(vfe, output, buf, line);
+ 
+ 	spin_unlock_irqrestore(&vfe->output_lock, flags);
+diff -ru orig/camss/camss-vfe.c camss/camss-vfe.c
+--- orig/camss/camss-vfe.c	2026-09-29 15:47:24.891313789 +0200
++++ camss/camss-vfe.c	2026-09-29 15:47:24.966773368 +0200
+@@ -25,6 +25,10 @@
+ #include "camss-vfe.h"
+ #include "camss.h"
+ 
++/* A6L sdm660: stock never clocks the VFE below 404 MHz (DT vfe_clk_src levels 404/480/576 MHz); upstream
++ * picks 120 MHz for IMX576 full-res RDI and the WM0 unified buffer overflows mid-frame. */
++#define A6L_VFE_MIN_HZ 404000000ULL
++
+ #define MSM_VFE_NAME "msm_vfe"
+ 
+ /* VFE reset timeout */
+@@ -881,8 +885,17 @@
+ 	if (!vfe->genpd)
+ 		return;
+ 
++	if (!vfe->genpd_link) {
++		dev_warn(vfe->camss->dev, "VFE%u: pm_domain_off without link\n", vfe->id);
++		return;
++	}
++	if (vfe->a6l_pd_users > 1) {
++		vfe->a6l_pd_users--;
++		return;
++	}
+ 	device_link_del(vfe->genpd_link);
+ 	vfe->genpd_link = NULL;
++	vfe->a6l_pd_users = 0;
+ }
+ 
+ /*
+@@ -896,6 +909,11 @@
+ 	if (!vfe->genpd)
+ 		return 0;
+ 
++	if (vfe->genpd_link) {
++		vfe->a6l_pd_users++;
++		return 0;
++	}
++
+ 	vfe->genpd_link = device_link_add(camss->dev, vfe->genpd,
+ 					  DL_FLAG_STATELESS |
+ 					  DL_FLAG_PM_RUNTIME |
+@@ -903,6 +921,8 @@
+ 	if (!vfe->genpd_link)
+ 		return -EINVAL;
+ 
++	vfe->a6l_pd_users = 1;
++
+ 	return 0;
+ }
+ 
+@@ -985,6 +1005,8 @@
+ 			}
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (vfe->camss->res->version == CAMSS_660 && min_rate < A6L_VFE_MIN_HZ)
++				min_rate = A6L_VFE_MIN_HZ;
+ 
+ 			for (j = 0; j < clock->nfreqs; j++)
+ 				if (min_rate < clock->freq[j])
+@@ -1066,6 +1088,8 @@
+ 			}
+ 
+ 			camss_add_clock_margin(&min_rate);
++			if (vfe->camss->res->version == CAMSS_660 && min_rate < A6L_VFE_MIN_HZ)
++				min_rate = A6L_VFE_MIN_HZ;
+ 
+ 			rate = clk_get_rate(clock->clk);
+ 			if (rate < min_rate)
+diff -ru orig/camss/camss-vfe.h camss/camss-vfe.h
+--- orig/camss/camss-vfe.h	2026-09-29 15:47:24.891618040 +0200
++++ camss/camss-vfe.h	2026-09-29 15:47:24.967102737 +0200
+@@ -12,6 +12,7 @@
+ 
+ #include <linux/clk.h>
+ #include <linux/spinlock_types.h>
++#include <linux/workqueue.h>
+ #include <media/media-entity.h>
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-subdev.h>
+@@ -79,6 +80,20 @@
+ 	unsigned int sequence;
+ 
+ 	int wait_reg_update;
++	/* A6L sdm660 RDI write master (qcom_camss.a6l_wm): a6l_mode 1 = stock-like every frame + scratch buffer,
++	 * 2 = fixed driver ping/pong copied into the queued user buffer */
++	int a6l_mode;
++	dma_addr_t a6l_scratch;
++	void *a6l_scratch_cpu;
++	size_t a6l_scratch_sz;
++	void *a6l_fix_cpu[2];
++	dma_addr_t a6l_fix[2];
++	size_t a6l_fix_sz, a6l_frame_sz;
++	u32 a6l_copy_seq;
++	u64 a6l_copy_ts;
++	int a6l_copy_slot, a6l_busy, a6l_stop, a6l_work_ok;
++	struct work_struct a6l_work;
++	struct vfe_device *a6l_vfe;
+ 	struct completion sof;
+ 	struct completion reg_update;
+ };
+@@ -169,10 +184,15 @@
+ 	struct camss_video_ops video_ops;
+ 	struct device *genpd;
+ 	struct device_link *genpd_link;
++	unsigned int a6l_pd_users; /* A6L: nested pm_domain_on/off (ispif_reset) */
+ };
+ 
+ struct camss_subdev_resources;
+ 
++/* A6L sdm660 RDI write master (camss-vfe-gen1.c / camss-vfe-4-8.c) */
++extern int a6l_wm;
++void a6l_wm_set_size(struct vfe_device *vfe, u8 wm, u32 size);
++
+ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
+ 			const struct camss_subdev_resources *res, u8 id);
+ 
+diff -ru orig/camss/camss.c camss/camss.c
+--- orig/camss/camss.c	2026-09-29 15:47:24.892984955 +0200
++++ camss/camss.c	2026-09-29 15:47:24.907978100 +0200
+@@ -4692,7 +4692,8 @@
+ 
+ static int vfe_parent_dev_ops_get(struct camss *camss, int id)
+ {
+-	int ret = -EINVAL;
++	/* A6L: CSID2/3 on ISPIF SoCs have no same-index VFE (they reach VFEs through ISPIF) */
++	int ret = camss->ispif ? 0 : -EINVAL;
+ 
+ 	if (id < camss->res->vfe_num) {
+ 		struct vfe_device *vfe = &camss->vfe[id];
+@@ -5388,7 +5389,8 @@
+ 	if (camss->res->version == CAMSS_8x16 ||
+ 	    camss->res->version == CAMSS_8x39 ||
+ 	    camss->res->version == CAMSS_8x53 ||
+-	    camss->res->version == CAMSS_8x96) {
++	    camss->res->version == CAMSS_8x96 ||
++	    camss->res->version == CAMSS_660) {
+ 		camss->ispif = devm_kcalloc(dev, 1, sizeof(*camss->ispif), GFP_KERNEL);
+ 		if (!camss->ispif)
+ 			return -ENOMEM;
+@@ -5597,8 +5599,19 @@
+ 	.icc_path_num = ARRAY_SIZE(icc_res_sa8775p),
+ };
+ 
++/* A6L: DT has interconnects = <&mnoc 5 &bimc 5>, names "vfe-mem"; stock votes VFE AXI bandwidth dynamically */
++static const struct resources_icc icc_res_660[] = {
++	{
++		.name = "vfe-mem",
++		.icc_bw_tbl.avg = 1000000,
++		.icc_bw_tbl.peak = 2000000,
++	},
++};
++
+ static const struct camss_resources sdm660_resources = {
+ 	.version = CAMSS_660,
++	.icc_res = icc_res_660,
++	.icc_path_num = ARRAY_SIZE(icc_res_660),
+ 	.csiphy_res = csiphy_res_660,
+ 	.csid_res = csid_res_660,
+ 	.ispif_res = &ispif_res_660,

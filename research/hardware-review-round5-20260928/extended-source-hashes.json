@@ -1,0 +1,14 @@
+{
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/kernel/a6l-gpio-vibrator/a6l_gpio_vib.c": "164d188c007cdc12160171addff9ad7f3f128ba8c38b7a07c86ff324b707e864",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/switcher/native/a6l_dualux.c": "6b8136eff9e056f5bfba33e7c7b237657f82a55a75a6eec8474bfc10877af8e7",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/switcher/native/dualux_logic.c": "00dfe60b1f3215ef566b344d642e80046ca52bd137044bb02582591e5bee417d",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/eink/switcher/native/dualux_logic.h": "a291c6108c2a0fbabab7287c70639dafdfcbf88d748231aa0d1b134f9b12c499",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/rom.mk": "8474ebbad387b33bb4df94ec246b4c6c50e53989989354ef968c05b70a36e4ce",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/init/init.qcom.rc": "b4e70d89897869caf1bfcdea396308153e623e58fdeb5240db8534a17a585871",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/rom/bin/a6l-modules.sh": "95b158e0559b3f7fec1dcf2eed2a6a2f158d0e6efe1c4b801bbb6c9684ca65b1",
+  "/home/a6l/android/a6l-lineage24/vendor/qcom/opensource/vibrator/aidl/VibratorOL/Vibrator.cpp": "2681394ee07a97d8892e811839a18915699ceaffb3eb35242560f387212bf322",
+  "/home/a6l/android/a6l-lineage24/vendor/qcom/opensource/vibrator/aidl/Vibrator.cpp": "4c0f902a60d1e7bc778ead2f36f510cf02ed6d5042ac2a6ca90bf0b37236863f",
+  "/home/a6l/android/a6l-lineage24/vendor/qcom/opensource/vibrator/vibrator-vendor-product.mk": "67f8cf6331a15a0cd76b1a363e799fd8790f32e7036635713a0dd8da4a256373",
+  "/home/a6l/android/a6l-lineage24/system/core/healthd/BatteryMonitor.cpp": "54a134e69b56d32db2782a9f42ef3c30f11c08c6fdb3f7ecdc68fbff5b3701ce",
+  "/home/a6l/kernel/a6l-baseline-7.2/drivers/input/ff-memless.c": "17839e9ff5bc2a47fb5040bacb8511f5791d46eec8d9fd77711f755d81371035"
+}

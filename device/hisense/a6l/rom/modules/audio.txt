@@ -1,4 +1,7 @@
-# v74/audio2 order (card "Hisense A6L": pm660l codec, headset). NO TFA9894 speaker in rom-v1.
+# rom-v2 (agent merge, 25 Sep 2026) = v75/audio4 order (kvoice q6voice stack + audfix per-direction q6routing; call audio
+# proven with this q6voice stack on 24 Sep with CVD legacy = cvd_mode=0) + TFA9894 speaker (audio3: patched LPI pinctrl +
+# snd-soc-tfa98xx with the stub-codec fallback, before the machine driver). a6l-modules.sh swaps q6routing.ko for
+# q6routing-upstream.ko when persist.vendor.a6l.audio.q6routing=upstream (fallback = the 24 Sep call stack).
 qmi_helpers.ko
 qcom_pdr_msg.ko
 qcom_pd_mapper.ko
@@ -34,4 +37,11 @@ soc-usb.ko
 snd-soc-qcom-offload-utils.ko
 soundwire-bus.ko
 snd-soc-qcom-sdw.ko
+q6voice-common.ko
+q6mvm.ko
+q6cvs.ko
+q6cvp.ko
+q6voice.ko cvd_mode=0
+q6voice-dai.ko
+snd-soc-tfa98xx.ko
 snd-soc-sm8250.ko

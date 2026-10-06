@@ -2,12 +2,17 @@
 // Hisense A6L radio HAL (agent ril): IRadioNetwork, IRadioData.
 #define LOG_TAG "a6l-radio"
 #include "RadioImpl.h"
+#include "DataPolicy.h"
+#include "SimNetPolicy.h"  // r5 round5 F45/F46
+#include "TimePolicy.h"    // r5 round8 F61
 
 #include <a6lqmi/message.h>
 #include <aidl/android/hardware/radio/AccessNetwork.h>
 #include <aidl/android/hardware/radio/RadioAccessFamily.h>
 #include <aidl/android/hardware/radio/RadioConst.h>
 #include <aidl/android/hardware/radio/RadioTechnology.h>
+#include <aidl/android/hardware/radio/RadioTechnologyFamily.h>  // volte2
+#include <aidl/android/hardware/radio/data/ApnTypes.h>  // r5 F9
 #include <libminradio/network/structs.h>
 #include <libminradio/response.h>
 #include <utils/SystemClock.h>
@@ -61,12 +66,12 @@ int32_t asuFromRssi(int dbm) {
 
 // ======================================================================== network
 aidlr::RadioTechnology A6lRadioNetwork::currentRat() {
-    auto s = ModemCore::get().serving();
+    auto s = slotCore().serving();
     return s ? ratOf(*s) : RadioTechnology::UNKNOWN;
 }
 
 aidlNet::RegStateResult A6lRadioNetwork::buildRegState(bool voice) {
-    auto& core = ModemCore::get();
+    auto& core = slotCore();
     aidlNet::RegStateResult res{};
     res.regState = aidlNet::RegState::NOT_REG_MT_NOT_SEARCHING_OP;
     res.rat = RadioTechnology::UNKNOWN;
@@ -89,6 +94,12 @@ aidlNet::RegStateResult A6lRadioNetwork::buildRegState(bool voice) {
         default: res.regState = aidlNet::RegState::NOT_REG_MT_NOT_SEARCHING_OP; break;
     }
     res.rat = ratOf(*s);
+    // telephony-flows (29 Sep 2026): not registered but camped (limited service: no SIM, PIN-locked, SIM rejected)
+    // -> the *_EM state, so Android shows "emergency calls only" (flows::emergencyOnlyVariant). Voice only.
+    if (voice && s->regState != nas::kRegistered) {
+        res.regState = static_cast<aidlNet::RegState>(
+                flows::emergencyOnlyVariant(static_cast<int32_t>(res.regState), !s->radioIfs.empty()));
+    }
     if (!s->hasPlmn) return res;
     std::string mcc = s->mccStr(), mnc = s->mncStr();
     res.registeredPlmn = mcc + mnc;
@@ -167,7 +178,7 @@ aidlNet::SignalStrength A6lRadioNetwork::buildSignal(const nas::SignalInfo& s) {
 }
 
 ScopedAStatus A6lRadioNetwork::getDataRegistrationState(int32_t serial) {
-    if (!ModemCore::get().ready()) {
+    if (!slotCore().ready()) {
         respond()->getDataRegistrationStateResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE), {});
         return ok();
     }
@@ -179,7 +190,7 @@ ScopedAStatus A6lRadioNetwork::getDataRegistrationState(int32_t serial) {
 }
 
 ScopedAStatus A6lRadioNetwork::getVoiceRegistrationState(int32_t serial) {
-    if (!ModemCore::get().ready()) {
+    if (!slotCore().ready()) {
         respond()->getVoiceRegistrationStateResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE), {});
         return ok();
     }
@@ -188,7 +199,7 @@ ScopedAStatus A6lRadioNetwork::getVoiceRegistrationState(int32_t serial) {
 }
 
 ScopedAStatus A6lRadioNetwork::getSignalStrength(int32_t serial) {
-    auto& core = ModemCore::get();
+    auto& core = slotCore();
     if (!core.ready()) {
         respond()->getSignalStrengthResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE), {});
         return ok();
@@ -203,8 +214,8 @@ ScopedAStatus A6lRadioNetwork::getOperator(int32_t serial) {
         respond()->getOperatorResponse(noError(serial), "", "", "");
         return ok();
     }
-    auto on = ModemCore::get().operatorName();
-    auto s = ModemCore::get().serving();
+    auto on = slotCore().operatorName();
+    auto s = slotCore().serving();
     std::string l = !on.longName.empty() ? on.longName : (s && !s->description.empty()) ? s->description : r.registeredPlmn;
     std::string sh = !on.shortName.empty() ? on.shortName : l;
     respond()->getOperatorResponse(noError(serial), l, sh, r.registeredPlmn);
@@ -217,7 +228,11 @@ ScopedAStatus A6lRadioNetwork::getVoiceRadioTechnology(int32_t serial) {
 }
 
 ScopedAStatus A6lRadioNetwork::getNetworkSelectionMode(int32_t serial) {
-    auto r = ModemCore::get().ctl().request(qmi::kSvcNas, qmi::Message::request(nas::kGetSystemSelectionPreference));
+    if (!slotCore().bound()) {  // r5 bug hunt round2 R3: an unbound slot 2's NAS client is SIM 1's
+        respond()->getNetworkSelectionModeResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE), false);
+        return ok();
+    }
+    auto r = slotCore().ctl().request(qmi::kSvcNas, qmi::Message::request(nas::kGetSystemSelectionPreference));
     bool manual = false;
     if (r.ok())
         if (auto* v = r.msg.get(0x16); v && !v->empty()) manual = (*v)[0] == 1;
@@ -226,70 +241,138 @@ ScopedAStatus A6lRadioNetwork::getNetworkSelectionMode(int32_t serial) {
 }
 
 ScopedAStatus A6lRadioNetwork::setNetworkSelectionModeAutomatic(int32_t serial) {
-    auto r = nas::setNetworkSelection(ModemCore::get().ctl(), false, 0, 0, 0);
+    if (!slotCore().bound()) {  // r5 bug hunt round2 R3: an unbound slot 2's NAS client is SIM 1's
+        respond()->setNetworkSelectionModeAutomaticResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE));
+        return ok();
+    }
+    auto r = nas::setNetworkSelection(slotCore().ctl(), false, 0, 0, 0);
     if (r.status == qmi::Result::QmiFailure && r.qmiError == qmi::kErrNoEffect) r.status = qmi::Result::Ok;
     respond()->setNetworkSelectionModeAutomaticResponse(r.ok() ? noError(serial) : errorResponse(serial, toRadioError(r)));
     return ok();
 }
 
+// r5 round5 F46: exactly 5/6 digits; the MNC width goes to NAS (TLV 0x12) so 00101 and 001001 stay distinct.
 ScopedAStatus A6lRadioNetwork::setNetworkSelectionModeManual(int32_t serial, const std::string& opNumeric,
                                                              AccessNetwork ran) {
-    if (opNumeric.size() < 5) {
+    if (!slotCore().bound()) {  // r5 bug hunt round2 R3: an unbound slot 2's NAS client is SIM 1's
+        respond()->setNetworkSelectionModeManualResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE));
+        return ok();
+    }
+    auto plmn = policy::parsePlmn(opNumeric);
+    if (!plmn) {
+        LOG(WARNING) << "[" << serial << "] Network.setNetworkSelectionModeManual bad operator '" << opNumeric << "'";
         respond()->setNetworkSelectionModeManualResponse(errorResponse(serial, RadioError::INVALID_ARGUMENTS));
         return ok();
     }
-    uint16_t mcc = static_cast<uint16_t>(atoi(opNumeric.substr(0, 3).c_str()));
-    uint16_t mnc = static_cast<uint16_t>(atoi(opNumeric.substr(3).c_str()));
     int8_t rat = -1;
     if (ran == AccessNetwork::EUTRAN) rat = nas::kRifLte;
     else if (ran == AccessNetwork::UTRAN) rat = nas::kRifUmts;
     else if (ran == AccessNetwork::GERAN) rat = nas::kRifGsm;
-    auto r = nas::setNetworkSelection(ModemCore::get().ctl(), true, mcc, mnc, rat);
+    auto r = nas::setNetworkSelection(slotCore().ctl(), true, plmn->mcc, plmn->mnc, rat, plmn->mncThreeDigits);
+    LOG(INFO) << "[" << serial << "] Network.setNetworkSelectionModeManual " << opNumeric << " rat=" << int(rat) << ": "
+              << r.describe();
     respond()->setNetworkSelectionModeManualResponse(r.ok() ? noError(serial) : errorResponse(serial, toRadioError(r)));
     return ok();
 }
 
+// r5 round5 F45: the RadioAccessFamily bits mirrored in SimNetPolicy.h (host-tested) must match AIDL
+static_assert(policy::raf::kGsm == static_cast<int32_t>(RadioAccessFamily::GSM) &&
+              policy::raf::kGprs == static_cast<int32_t>(RadioAccessFamily::GPRS) &&
+              policy::raf::kEdge == static_cast<int32_t>(RadioAccessFamily::EDGE) &&
+              policy::raf::kUmts == static_cast<int32_t>(RadioAccessFamily::UMTS) &&
+              policy::raf::kHsdpa == static_cast<int32_t>(RadioAccessFamily::HSDPA) &&
+              policy::raf::kHsupa == static_cast<int32_t>(RadioAccessFamily::HSUPA) &&
+              policy::raf::kHspa == static_cast<int32_t>(RadioAccessFamily::HSPA) &&
+              policy::raf::kHspap == static_cast<int32_t>(RadioAccessFamily::HSPAP) &&
+              policy::raf::kLte == static_cast<int32_t>(RadioAccessFamily::LTE) &&
+              policy::raf::kLteCa == static_cast<int32_t>(RadioAccessFamily::LTE_CA),
+              "RadioAccessFamily mirror out of date");
+
+// r5 round5 F45: the getter reports what this HAL applied (the supported subset of the accepted request), else the
+// modem's mode preference; the cache is dropped when the modem restarts.
 ScopedAStatus A6lRadioNetwork::getAllowedNetworkTypesBitmap(int32_t serial) {
-    int32_t bm = mAllowedBitmap;
+    if (!slotCore().bound()) {  // r5 bug hunt round2 R3: an unbound slot 2's NAS client is SIM 1's
+        respond()->getAllowedNetworkTypesBitmapResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE), 0);
+        return ok();
+    }
+    int32_t bm = mAllowedBitmap.load();
     if (bm == 0) {
         uint16_t mm = 0;
-        if (nas::getModePreference(ModemCore::get().ctl(), &mm).ok()) {
-            if (mm & nas::kModeGsm) bm |= (int32_t)RadioAccessFamily::GSM | (int32_t)RadioAccessFamily::GPRS | (int32_t)RadioAccessFamily::EDGE;
-            if (mm & nas::kModeUmts) bm |= (int32_t)RadioAccessFamily::UMTS | (int32_t)RadioAccessFamily::HSDPA | (int32_t)RadioAccessFamily::HSUPA | (int32_t)RadioAccessFamily::HSPA | (int32_t)RadioAccessFamily::HSPAP;
-            if (mm & nas::kModeLte) bm |= (int32_t)RadioAccessFamily::LTE | (int32_t)RadioAccessFamily::LTE_CA;
+        auto r = nas::getModePreference(slotCore().ctl(), &mm);
+        if (!r.ok()) {
+            respond()->getAllowedNetworkTypesBitmapResponse(errorResponse(serial, toRadioError(r)), 0);
+            return ok();
         }
+        bm = policy::bitmapForModes(mm);
     }
     respond()->getAllowedNetworkTypesBitmapResponse(noError(serial), bm);
     return ok();
 }
 
+// r5 round5 F45: IRadioNetwork: "*only* accept the types of network provided". A request with no GSM/UMTS/LTE bit
+// (empty, NR-only, CDMA-only) is rejected without touching the modem; it is never widened to GSM+UMTS+LTE.
 ScopedAStatus A6lRadioNetwork::setAllowedNetworkTypesBitmap(int32_t serial, int32_t bm) {
-    uint16_t mm = 0;
-    auto has = [&](RadioAccessFamily f) { return (bm & static_cast<int32_t>(f)) != 0; };
-    if (has(RadioAccessFamily::GSM) || has(RadioAccessFamily::GPRS) || has(RadioAccessFamily::EDGE)) mm |= nas::kModeGsm;
-    if (has(RadioAccessFamily::UMTS) || has(RadioAccessFamily::HSDPA) || has(RadioAccessFamily::HSUPA) ||
-        has(RadioAccessFamily::HSPA) || has(RadioAccessFamily::HSPAP)) mm |= nas::kModeUmts;
-    if (has(RadioAccessFamily::LTE) || has(RadioAccessFamily::LTE_CA)) mm |= nas::kModeLte;
-    if (mm == 0) mm = nas::kModeGsm | nas::kModeUmts | nas::kModeLte;
-    auto r = nas::setModePreference(ModemCore::get().ctl(), mm);
-    LOG(INFO) << "[" << serial << "] Network.setAllowedNetworkTypesBitmap 0x" << std::hex << bm << " -> mode 0x" << mm
-              << ": " << r.describe();
-    if (r.ok()) mAllowedBitmap = bm;
+    if (!slotCore().bound()) {  // r5 bug hunt round2 R3: an unbound slot 2's NAS client is SIM 1's
+        respond()->setAllowedNetworkTypesBitmapResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE));
+        return ok();
+    }
+    auto modes = policy::allowedModes(bm);
+    if (!modes) {
+        LOG(WARNING) << "[" << serial << "] Network.setAllowedNetworkTypesBitmap 0x" << std::hex << bm
+                     << ": no GSM/UMTS/LTE bit, rejected (modem unchanged)";
+        respond()->setAllowedNetworkTypesBitmapResponse(
+                errorResponse(serial, bm == 0 ? RadioError::INVALID_ARGUMENTS : RadioError::MODE_NOT_SUPPORTED));
+        return ok();
+    }
+    auto r = nas::setModePreference(slotCore().ctl(), modes->modeMask);
+    LOG(INFO) << "[" << serial << "] Network.setAllowedNetworkTypesBitmap 0x" << std::hex << bm << " -> mode 0x"
+              << modes->modeMask << " (applied 0x" << modes->applied << "): " << r.describe();
+    if (r.ok()) mAllowedBitmap = modes->applied;
     respond()->setAllowedNetworkTypesBitmapResponse(r.ok() ? noError(serial) : errorResponse(serial, toRadioError(r)));
     return ok();
 }
 
+// volte2 (25 Sep 2026): transparent modem-centric VoLTE. The modem IMS registers by itself once
+// the AP hosts IMSDCM (a6l-imsdcm) and brings up the `ims` PDN; we only report what IMSA says.
+ScopedAStatus A6lRadioNetwork::getImsRegistrationState(int32_t serial) {
+    auto& core = slotCore();
+    if (!core.ready()) {
+        respond()->getImsRegistrationStateResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE), false,
+                                                   ::aidl::android::hardware::radio::RadioTechnologyFamily::THREE_GPP);
+        return ok();
+    }
+    auto ims = core.imsState();
+    LOG(DEBUG) << "[" << serial << "] Network.getImsRegistrationState registered=" << ims.registered()
+               << " " << ims.reg.summary();
+    respond()->getImsRegistrationStateResponse(noError(serial), ims.registered(),
+                                               ::aidl::android::hardware::radio::RadioTechnologyFamily::THREE_GPP);
+    return ok();
+}
+
+void A6lRadioNetwork::onImsChanged() { indicate()->imsNetworkStateChanged(RadioIndicationType::UNSOLICITED); }
+
 void A6lRadioNetwork::onModemReady() { indicate()->networkStateChanged(RadioIndicationType::UNSOLICITED); }
-void A6lRadioNetwork::onModemLost() { indicate()->networkStateChanged(RadioIndicationType::UNSOLICITED); }
+void A6lRadioNetwork::onModemLost() {
+    mAllowedBitmap = 0;  // r5 round5 F45: a restarted modem reports its own mode preference again
+    indicate()->networkStateChanged(RadioIndicationType::UNSOLICITED);
+}
 void A6lRadioNetwork::onNetworkChanged() {
     indicate()->networkStateChanged(RadioIndicationType::UNSOLICITED);
     indicate()->voiceRadioTechChanged(RadioIndicationType::UNSOLICITED, currentRat());
 }
 void A6lRadioNetwork::onSignalChanged() {
-    indicate()->currentSignalStrength(RadioIndicationType::UNSOLICITED, buildSignal(ModemCore::get().signal()));
+    indicate()->currentSignalStrength(RadioIndicationType::UNSOLICITED, buildSignal(slotCore().signal()));
 }
-void A6lRadioNetwork::onNitz(const std::string& nitz, int64_t) {
-    indicate()->nitzTimeReceived(RadioIndicationType::UNSOLICITED, nitz, ::android::elapsedRealtime(), 0);
+// r5 review round8 F61 (28 Sep 2026): receivedTimeMs = now (sent), ageMs = time the sample waited in the RIL since the
+// QMI indication (same CLOCK_BOOTTIME base), so Android's reference time (received - age) is the modem's delivery time.
+void A6lRadioNetwork::onNitz(const std::string& nitz, int64_t receivedMs) {
+    int64_t now = ::android::elapsedRealtime();
+    auto age = nitzAgeMs(receivedMs, now);
+    if (!age) {
+        LOG(WARNING) << "NITZ sample with invalid receipt time " << receivedMs << " (now " << now << "): dropped";
+        return;
+    }
+    indicate()->nitzTimeReceived(RadioIndicationType::UNSOLICITED, nitz, now, *age);
 }
 
 // ======================================================================== data
@@ -339,21 +422,38 @@ ScopedAStatus A6lRadioData::setupDataCall(int32_t serial, AccessNetwork accessNe
     rq.user = dp.user;
     rq.password = dp.password;
     rq.auth = static_cast<uint8_t>(static_cast<int32_t>(dp.authType) & 3);  // bit0 PAP, bit1 CHAP
-    auto s = ModemCore::get().serving();
-    bool roaming = s && s->roaming && *s->roaming;
-    auto proto = roaming ? dp.roamingProtocol : dp.protocol;
-    rq.protocol = proto == aidlData::PdpProtocolType::IPV6     ? ::a6l::radio::Protocol::V6
-                  : proto == aidlData::PdpProtocolType::IPV4V6 ? ::a6l::radio::Protocol::V4V6
-                                                               : ::a6l::radio::Protocol::V4;
-    LOG(INFO) << "[" << serial << "] Data.setupDataCall apn='" << rq.apn << "' proto=" << toString(proto)
-              << " roaming=" << roaming << "/" << roamingAllowed;
-    mExec.post([this, serial, rq] {
-        auto& core = ModemCore::get();
+    // r5 review F9 (28 Sep 2026): roamingAllowed (the user's data-roaming setting) is kept through the async path and
+    // checked against a FRESH serving system on the data executor, right before WDS Start Network. Emergency PDNs
+    // are exempt. A prohibited setup never reaches WDS and fails with DATA_ROAMING_SETTINGS_DISABLED.
+    const bool emergency =
+            (dp.supportedApnTypesBitmap & static_cast<int32_t>(aidlData::ApnTypes::EMERGENCY)) != 0;
+    const auto homeProto = dp.protocol, roamProto = dp.roamingProtocol;
+    LOG(INFO) << "[" << serial << "] Data.setupDataCall apn='" << rq.apn << "' roamingAllowed=" << roamingAllowed
+              << " emergency=" << emergency;
+    mExec.post([this, serial, rq, roamingAllowed, emergency, homeProto, roamProto]() mutable {
+        auto& core = slotCore();
         aidlData::SetupDataCallResult res{};
-        if (!core.ready()) {
+        if (!core.ready() || !core.bound()) {
             respond()->setupDataCallResponse(errorResponse(serial, RadioError::RADIO_NOT_AVAILABLE), res);
             return;
         }
+        auto s = core.serving(true);
+        bool roaming = servingIsRoaming(s);
+        if (checkDataRoaming(s, roamingAllowed, emergency) == RoamingVerdict::RejectRoaming) {
+            LOG(WARNING) << "[" << serial << "] setupDataCall refused: roaming and data roaming disabled (no WDS start)";
+            res.cause = static_cast<aidlData::DataCallFailCause>(kFailCauseDataRoamingSettingsDisabled);
+            res.suggestedRetryTime = RadioConst::VALUE_UNAVAILABLE_LONG;
+            res.active = aidlData::SetupDataCallResult::DATA_CONNECTION_STATUS_INACTIVE;
+            respond()->setupDataCallResponse(noError(serial), res);
+            return;
+        }
+        auto proto = roaming ? roamProto : homeProto;
+        rq.protocol = proto == aidlData::PdpProtocolType::IPV6     ? ::a6l::radio::Protocol::V6
+                      : proto == aidlData::PdpProtocolType::IPV4V6 ? ::a6l::radio::Protocol::V4V6
+                                                                   : ::a6l::radio::Protocol::V4;
+        LOG(INFO) << "[" << serial << "] setupDataCall proto=" << toString(proto) << " roaming=" << roaming;
+        // DSDS: the IPA port (DPM + WDA data format) belongs to slot 1's manager
+        if (core.sub() > 0) ModemCore::get(1).data().prepareFormat();
         auto o = core.data().setup(rq);
         if (!o.ok) {
             LOG(WARNING) << "[" << serial << "] setupDataCall failed cause=0x" << std::hex << o.failCause << " "
@@ -367,6 +467,10 @@ ScopedAStatus A6lRadioData::setupDataCall(int32_t serial, AccessNetwork accessNe
         }
         res = toResult(o.call);
         LOG(INFO) << "[" << serial << "] data call up: " << res.toString();
+        if (!roamingAllowed && !emergency) {
+            std::lock_guard<std::mutex> g(mRoamLock);
+            mNoRoamCids.insert(res.cid);
+        }
         setupDataCallBase(res);
         respond()->setupDataCallResponse(noError(serial), res);
     });
@@ -376,31 +480,83 @@ ScopedAStatus A6lRadioData::setupDataCall(int32_t serial, AccessNetwork accessNe
 ScopedAStatus A6lRadioData::deactivateDataCall(int32_t serial, int32_t cid, aidlData::DataRequestReason reason) {
     LOG(INFO) << "[" << serial << "] Data.deactivateDataCall cid=" << cid << " " << toString(reason);
     mExec.post([this, serial, cid] {
-        ModemCore::get().data().deactivate(cid);
+        slotCore().data().deactivate(cid);
         deactivateDataCallBase(cid);
+        {
+            std::lock_guard<std::mutex> g(mRoamLock);
+            mNoRoamCids.erase(cid);
+        }
         respond()->deactivateDataCallResponse(noError(serial));
     });
     return ok();
 }
 
+// r5 review F12 (28 Sep 2026): honest answer. Programming the LTE attach APN means rewriting a persistent modem profile
+// (WDS Modify/Create Profile + attach PDN list, as stock qcril/qdp does); the profile TLV layout and the attach profile
+// selection of this MPSS are not verified against a stock capture yet, and a wrong write survives reboots and can break
+// LTE attach. Until then the modem attaches with its own configured profile and Android is told so.
 ScopedAStatus A6lRadioData::setInitialAttachApn(int32_t serial, const std::optional<aidlData::DataProfileInfo>& dp) {
-    // The modem attaches with its own default (profile 1) for now; programming it needs WDS
-    // Modify Profile (not implemented yet).
-    LOG(INFO) << "[" << serial << "] Data.setInitialAttachApn (not programmed) apn='" << (dp ? dp->apn : "") << "'";
-    respond()->setInitialAttachApnResponse(noError(serial));
+    LOG(INFO) << "[" << serial << "] Data.setInitialAttachApn apn='" << (dp ? dp->apn : "")
+              << "': REQUEST_NOT_SUPPORTED (modem keeps its own attach profile)";
+    respond()->setInitialAttachApnResponse(errorResponse(serial, RadioError::REQUEST_NOT_SUPPORTED));
     return ok();
 }
 
 void A6lRadioData::onModemLost() {
     mExec.post([this] {
         for (auto& c : getDataCallListBase()) deactivateDataCallBase(c.cid);
+        std::lock_guard<std::mutex> g(mRoamLock);
+        mNoRoamCids.clear();
     });
 }
 
-void A6lRadioData::onDataCallLost(int cid) {
-    mExec.post([this, cid] {
-        ModemCore::get().data().deactivate(cid);
+// r5 F9: a call set up while data roaming was disallowed must not continue on a roaming network (the framework also
+// re-evaluates, but the HAL does not rely on it). Teardown is reported like a network-side loss.
+void A6lRadioData::onNetworkChanged() {
+    mExec.post([this] {
+        if (!servingIsRoaming(slotCore().serving())) return;
+        std::set<int32_t> cids;
+        {
+            std::lock_guard<std::mutex> g(mRoamLock);
+            cids.swap(mNoRoamCids);
+        }
+        for (int32_t cid : cids) {
+            LOG(WARNING) << "data call cid " << cid << " set up without roaming permission: now roaming, tearing down";
+            slotCore().data().deactivate(cid);
+            deactivateDataCallBase(cid);
+        }
+    });
+}
+
+// r5 review F28 (28 Sep 2026): the loss names (cid, generation). A loss queued behind an explicit teardown and a new
+// setup that reused the cid is ignored instead of destroying the new connection and Android's entry for it.
+void A6lRadioData::onDataCallLost(int cid, uint64_t generation) {
+    mExec.post([this, cid, generation] {
+        if (!slotCore().data().deactivateIfCurrent(cid, generation)) return;
         deactivateDataCallBase(cid);
+        std::lock_guard<std::mutex> g(mRoamLock);
+        mNoRoamCids.erase(cid);
+    });
+}
+
+// r5 review round8 F59 (28 Sep 2026): CONNECTED + reconfiguration required. The settings are re-read; changed DNS /
+// gateway / P-CSCF / MTU are published again (dataCallListChanged with the updated entry); changed addresses or
+// unusable settings tear the call down like a network loss so Android reconnects instead of keeping stale parameters.
+void A6lRadioData::onDataCallReconfigured(int cid, uint64_t generation) {
+    mExec.post([this, cid, generation] {
+        ::a6l::radio::DataCall c;
+        auto r = slotCore().data().refresh(cid, generation, &c);
+        using R = ::a6l::radio::DataCallManager::Refresh;
+        if (r == R::Updated) {
+            LOG(INFO) << "data call cid " << cid << " reconfigured by the modem: publishing new parameters";
+            setupDataCallBase(toResult(c));
+        } else if (r == R::Invalidate) {
+            LOG(WARNING) << "data call cid " << cid << " reconfiguration cannot be applied in place: tearing down";
+            if (!slotCore().data().deactivateIfCurrent(cid, generation)) return;
+            deactivateDataCallBase(cid);
+            std::lock_guard<std::mutex> g(mRoamLock);
+            mNoRoamCids.erase(cid);
+        }
     });
 }
 

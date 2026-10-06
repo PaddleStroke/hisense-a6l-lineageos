@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Physical A6L has no AVF guest relay or AF_VSOCK support. Preserve local Perfetto.
+# Installed in system_ext so this system-internal property is set by main init.
+on init && property:ro.product.vendor.device=a6l && property:traced.relay_producer_port=vsock://-1:2010
+    setprop traced.relay_producer_port ""

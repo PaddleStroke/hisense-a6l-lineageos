@@ -1,0 +1,75 @@
+# A6L debug persistent boot log (r6b boot fix, 30 Sep 2026; docs/rom-r6b-bootfix-20260930.md). Installed ONLY in
+# userdebug/eng builds by rom/debug/bootlog.mk (never in a user/release image): /vendor/bin/a6l-bootlog.sh streams the kernel
+# log and logcat into /metadata/a6l/cur (previous boot: prev/) for the bounded
+# post-boot duration in ro.vendor.a6l.bootlog.after_bc_s.
+# /metadata is mounted by mount_all (init.qcom.rc `on fs`); the A6L_STAGE markers of init.qcom.rc land in the same log.
+# Domain: su (exists only in userdebug/eng, like the debug a6l_logcat): it reads /dev/kmsg, logd (logcat -b all, uid root),
+# /proc/<pid>/stack and writes /proc/sysrq-trigger, none of which a vendor domain should be granted. Permissive build anyway.
+# r6c: started `on fs`, i.e. right after init.qcom.rc's mount_all (same trigger, this file is parsed after the imported
+# init.qcom.rc, so its action runs next) instead of at post-fs; it also streams logcat (from logd.ready), getprop/ps
+# snapshots every 30 s, under a hard size budget (see the script: /metadata has ~4.6 MiB usable, r6b's log filled it).
+on fs
+    mkdir /metadata/a6l 0770 root root
+    # r6b's single-file log could leave /metadata full (51 blocks free on the phone, aconfig's storage records empty):
+    # drop its big previous-boot copy synchronously, before aconfigd/vold run at post-fs (the script migrates the rest)
+    rm /metadata/a6l/boot-kmsg.txt.prev
+    start a6l_bootlog
+
+service a6l_bootlog /vendor/bin/a6l-bootlog.sh
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:su:s0
+
+# r6e (1 Oct 2026, docs/rom-r6e-20261001.md), debug builds only:
+#  - the kernel log readable by `adb shell` for live streaming (`adb shell dmesg -w`, toybox reads /dev/kmsg): ro.debuggable
+#    is 0 on Lineage userdebug (PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG), so no `adb root`; dmesg_restrict=0 lets the shell uid
+#    open /dev/kmsg / use syslog(2), /dev/kmsg is created 0600 by first-stage init. SELinux is permissive in this build.
+#    Set again at boot_completed in case anything rewrites it.
+#  - a6l_iowatch: IO-stall detector (heartbeat write+fsync on /metadata and /data every 5 s; A6L_IOSTALL + sysrq w/l to the
+#    kernel log when one does not complete within 15 s), /vendor/bin/a6l-iowatch.sh.
+on post-fs-data
+    write /proc/sys/kernel/dmesg_restrict 0
+    chmod 0644 /dev/kmsg
+    write /proc/sys/kernel/printk_devkmsg on
+    start a6l_iowatch
+    # Metadata is too small to guarantee previous-boot retention. This second
+    # fixed-ring pair uses private userdata and retains BOTH prior streams.
+    start a6l_bootlog_data
+
+service a6l_bootlog_data /vendor/bin/a6l-bootlog.sh
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:su:s0
+    setenv A6L_BL_DIR /data/local/tmp/a6l-bootlog
+    setenv A6L_BL_CAP_KB 4096
+    setenv A6L_BL_FREE_KB 16384
+    setenv A6L_BL_KEEP_PREV_LOGCAT 1
+    setenv A6L_BL_HEALTH_PROP vendor.a6l.bootlog.data_health
+    # Only the metadata logger owns the tracefs instance.
+    setenv A6L_BL_PM_TRACE /dev/null
+
+on property:sys.boot_completed=1
+    write /proc/sys/kernel/dmesg_restrict 0
+    chmod 0644 /dev/kmsg
+    # Debug console flushing delayed wake by7.2s. Keep full kmsg on disk while
+    # printing only emergency messages after boot; other printk fields stay put.
+    write /proc/sys/kernel/printk 1
+
+service a6l_iowatch /vendor/bin/a6l-iowatch.sh
+    user root
+    group root
+    disabled
+    seclabel u:r:su:s0
+
+# Explicit attended camera measurements; startup environment is inherited by IPA.
+# These restart triggers are packaged only in userdebug/eng. The property is
+# non-persistent and defaults off; change it with Camera closed.
+on property:debug.vendor.a6l.camera.quality_diag=1 && property:sys.boot_completed=1
+    restart vendor.camera.provider
+
+on property:debug.vendor.a6l.camera.quality_diag=0 && property:sys.boot_completed=1
+    restart vendor.camera.provider

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<!-- Hisense A6L device carrier config (overlays-carrier-updater, 29 Sep 2026). Overlays CarrierConfig's res/xml/vendor.xml,
+     which DefaultCarrierConfigService applies AFTER the per-carrier asset (Orange France = carrier id 32,
+     carrier_config_carrierid_32_Orange.xml, used unmodified: 4G icon, MMS limits, Orange VVM/app certificates).
+     A block without filter attributes applies to every SIM.
+     Device facts behind the values: no Android IMS stack is shipped (no ImsService; VoLTE is only the optional
+     modem-centric a6l-imsdcm path, persist.vendor.a6l.ril.volte, invisible to Android: calls stay "CS" for the framework);
+     framework overlay rom/r6 already sets config_device_volte/vt/wfc_ims_available=false. Carrier-level falses here keep
+     a carrier asset (or a later carrier-config update) from surfacing IMS toggles, IMS APN editing or XCAP/Ut
+     supplementary services, which would all fail without IMS. -->
+<carrier_config_list>
+    <carrier_config>
+        <boolean name="carrier_volte_available_bool" value="false" />
+        <boolean name="carrier_vt_available_bool" value="false" />
+        <boolean name="carrier_wfc_ims_available_bool" value="false" />
+        <boolean name="carrier_volte_provisioning_required_bool" value="false" />
+        <boolean name="hide_enhanced_4g_lte_bool" value="true" />
+        <boolean name="editable_enhanced_4g_lte_bool" value="false" />
+        <!-- call forwarding / barring / CLIR over CS (SS), never over Ut/XCAP (needs the IMS APN + GBA) -->
+        <boolean name="carrier_supports_ss_over_ut_bool" value="false" />
+        <boolean name="carrier_ut_provisioning_required_bool" value="false" />
+        <!-- the Orange "ims" APN stays in the database (the modem attaches it itself when VoLTE is enabled) but is hidden -->
+        <boolean name="hide_ims_apn_bool" value="true" />
+    </carrier_config>
+</carrier_config_list>

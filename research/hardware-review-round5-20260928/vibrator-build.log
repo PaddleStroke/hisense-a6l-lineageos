@@ -1,0 +1,5 @@
+In file included from /mnt/c/Users/Pierre/Desktop/A6L/research/hardware-review-round5-20260928/vibrator.cc:52:
+/tmp/a6l-review5-extended-gdaw6shc/vibrator_methods.inc: In constructor ‘InputFFDevice::InputFFDevice()’:
+/tmp/a6l-review5-extended-gdaw6shc/vibrator_methods.inc:80:23: warning: ignoring return value of ‘int fscanf(FILE*, const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   80 |                 fscanf(fp, "%u", &soc);
+      |                 ~~~~~~^~~~~~~~~~~~~~~~

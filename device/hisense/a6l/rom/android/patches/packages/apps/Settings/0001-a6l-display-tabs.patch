@@ -1,0 +1,503 @@
+diff --git a/src/com/android/settings/DisplaySettings.java b/src/com/android/settings/DisplaySettings.java
+index 842358c..434142c 100644
+--- a/src/com/android/settings/DisplaySettings.java
++++ b/src/com/android/settings/DisplaySettings.java
+@@ -19,6 +19,14 @@ package com.android.settings;
+ import android.app.settings.SettingsEnums;
+ import android.content.Context;
+ import android.os.Bundle;
++import android.os.SystemProperties;
++import android.view.LayoutInflater;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.LinearLayout;
++
++import com.android.settings.display.A6lDisplayTabs;
++import com.google.android.material.tabs.TabLayout;
+ 
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
+@@ -49,6 +57,9 @@ import java.util.List;
+ @SearchIndexable(forTarget = SearchIndexable.ALL & ~SearchIndexable.ARC)
+ public class DisplaySettings extends DashboardFragment {
+     private static final String TAG = "DisplaySettings";
++    private static final String SAVED_TAB = "a6l_display_tab";
++    private A6lDisplayTabs mDisplayTabs;
++    private int mSelectedTab;
+ 
+     private static final String KEY_HIGH_TOUCH_POLLING_RATE = "high_touch_polling_rate_enable";
+     private static final String KEY_HIGH_TOUCH_SENSITIVITY = "high_touch_sensitivity_enable";
+@@ -72,6 +83,89 @@ public class DisplaySettings extends DashboardFragment {
+     @Override
+     public void onCreate(Bundle icicle) {
+         super.onCreate(icicle);
++        if (icicle != null) mSelectedTab = icicle.getInt(SAVED_TAB, 0);
++    }
++
++    @Override
++    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedState) {
++        final View content = super.onCreateView(inflater, container, savedState);
++        if (!isA6l()) return content;
++        mDisplayTabs = new A6lDisplayTabs(getPreferenceScreen());
++        mDisplayTabs.regroup();
++        if (savedState == null) {
++            String key = getArguments() == null ? null
++                    : getArguments().getString(SettingsActivity.EXTRA_FRAGMENT_ARG_KEY);
++            if (key == null && getActivity() != null) {
++                key = getActivity().getIntent().getStringExtra(
++                        SettingsActivity.EXTRA_FRAGMENT_ARG_KEY);
++            }
++            mSelectedTab = mDisplayTabs.tabForKey(key);
++        }
++        final LinearLayout root = new LinearLayout(requireContext());
++        root.setOrientation(LinearLayout.VERTICAL);
++        final TabLayout tabs = (TabLayout) inflater.inflate(
++                R.layout.a6l_display_tabs, root, false);
++        tabs.setTabMode(TabLayout.MODE_FIXED);
++        tabs.setTabGravity(TabLayout.GRAVITY_FILL);
++        for (int title : new int[] {R.string.a6l_display_general, R.string.a6l_display_lcd,
++                R.string.a6l_display_eink}) {
++            tabs.addTab(tabs.newTab().setText(title), false);
++        }
++        root.addView(tabs, new LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
++        root.addView(content, new LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
++        tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
++            @Override
++            public void onTabSelected(TabLayout.Tab tab) {
++                mSelectedTab = tab.getPosition();
++                mDisplayTabs.select(mSelectedTab);
++                if (getListView() != null) getListView().scrollToPosition(0);
++            }
++            @Override public void onTabUnselected(TabLayout.Tab tab) { }
++            @Override public void onTabReselected(TabLayout.Tab tab) { }
++        });
++        mSelectedTab = Math.max(0, Math.min(2, mSelectedTab));
++        tabs.selectTab(tabs.getTabAt(mSelectedTab));
++        return root;
++    }
++
++    @Override
++    protected void refreshDashboardTiles(String tag) {
++        super.refreshDashboardTiles(tag);
++        if (mDisplayTabs != null) mDisplayTabs.regroup();
++    }
++
++    @Override
++    public void onResume() {
++        if (mDisplayTabs != null) {
++            mDisplayTabs.regroup();
++            mDisplayTabs.setResumed(true);
++        }
++        super.onResume();
++    }
++
++    @Override
++    public void onPause() {
++        if (mDisplayTabs != null) mDisplayTabs.setResumed(false);
++        super.onPause();
++    }
++
++    @Override
++    public void onSaveInstanceState(Bundle state) {
++        super.onSaveInstanceState(state);
++        state.putInt(SAVED_TAB, mSelectedTab);
++    }
++
++    @Override
++    public void onDestroyView() {
++        if (mDisplayTabs != null) mDisplayTabs.setResumed(false);
++        mDisplayTabs = null;
++        super.onDestroyView();
++    }
++
++    private static boolean isA6l() {
++        return !SystemProperties.get("ro.vendor.a6l.rom.build", "").isEmpty();
+     }
+ 
+     @Override
+@@ -140,7 +234,7 @@ public class DisplaySettings extends DashboardFragment {
+ 
+     @Override
+     public @Nullable String getPreferenceScreenBindingKey(@NonNull Context context) {
+-        return DisplayScreen.KEY;
++        return isA6l() ? null : DisplayScreen.KEY;
+     }
+ }
+ // LINT.ThenChange(com.android.settings.display.DisplayScreen.kt,
+diff --git a/src/com/android/settings/display/A6lDisplayTabs.java b/src/com/android/settings/display/A6lDisplayTabs.java
+new file mode 100644
+index 0000000..9332283
+--- /dev/null
++++ b/src/com/android/settings/display/A6lDisplayTabs.java
+@@ -0,0 +1,128 @@
++/* Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++package com.android.settings.display;
++
++import androidx.preference.Preference;
++import androidx.preference.PreferenceCategory;
++import androidx.preference.PreferenceGroup;
++import androidx.preference.PreferenceScreen;
++
++import com.android.settings.R;
++
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++
++/** Groups existing preference instances, retaining their controllers and availability. */
++public final class A6lDisplayTabs {
++    private static final String EINK_KEY = "a6l_eink_display";
++    private static final Set<String> LCD_APPEARANCE = new HashSet<>(Arrays.asList(
++            "dark_ui_mode", "theme"));
++    private static final Set<String> LCD_CONTROLS = new HashSet<>(Arrays.asList(
++            "screen_resolution", "display_white_balance", "max_refresh_rate",
++            "min_refresh_rate", "peak_refresh_rate", "long_screen_settings",
++            "screensaver", "vr_display_pref"));
++    private final PreferenceScreen mScreen;
++    private final PreferenceCategory[] mGroups = new PreferenceCategory[3];
++    private PreferenceCategory mAppearance;
++    private PreferenceCategory mControls;
++    private int mSelected;
++    private final A6lEinkPreferences mEink;
++    private boolean mResumed;
++
++    public A6lDisplayTabs(PreferenceScreen screen) {
++        mScreen = screen;
++        for (int i = 0; i < mGroups.length; i++) {
++            final String key = "a6l_display_tab_" + i;
++            mGroups[i] = screen.findPreference(key);
++            if (mGroups[i] == null) {
++                mGroups[i] = new PreferenceCategory(screen.getContext());
++                mGroups[i].setKey(key);
++                mGroups[i].setOrder(i);
++                // A parent solely for visibility; original category headings remain visible.
++                mGroups[i].setLayoutResource(R.layout.a6l_display_tab_group);
++                screen.addPreference(mGroups[i]);
++            }
++        }
++        // The PreferenceScreen can outlive a recreated fragment view.
++        for (String key : new String[]{"screen", "appearance", "refresh_section", "frontlight", "keys", "other"}) {
++            Preference old = mGroups[2].findPreference("a6l_eink_" + key);
++            if (old != null && old.getParent() == mGroups[2]) mGroups[2].removePreference(old);
++        }
++        mEink = new A6lEinkPreferences(mGroups[2]);
++        mAppearance = category("a6l_lcd_appearance", R.string.category_name_appearance, -180);
++        mControls = category("a6l_lcd_controls", R.string.category_name_display_controls, -150);
++    }
++
++    private PreferenceCategory category(String key, int title, int order) {
++        PreferenceCategory category = mScreen.findPreference(key);
++        if (category == null) {
++            category = new PreferenceCategory(mScreen.getContext());
++            category.setKey(key);
++            category.setTitle(title);
++            category.setOrder(order);
++            mGroups[1].addPreference(category);
++        }
++        return category;
++    }
++
++    public void regroup() {
++        final List<Preference> root = new ArrayList<>();
++        for (int i = 0; i < mScreen.getPreferenceCount(); i++) {
++            Preference pref = mScreen.getPreference(i);
++            if (pref != mGroups[0] && pref != mGroups[1] && pref != mGroups[2]) root.add(pref);
++        }
++        for (Preference pref : root) {
++            final String key = pref.getKey();
++            int tab = "category_brightness".equals(key) || "category_key_color".equals(key)
++                    ? 1 : 0;
++            move(pref, mGroups[tab]);
++        }
++        for (String key : LCD_APPEARANCE) move(mScreen.findPreference(key), mAppearance);
++        for (String key : LCD_CONTROLS) move(mScreen.findPreference(key), mControls);
++        Preference legacyEntry = mScreen.findPreference(EINK_KEY);
++        if (legacyEntry != null) {
++            move(legacyEntry, mGroups[2]);
++            legacyEntry.setVisible(false);
++        }
++        mAppearance.setVisible(hasVisibleChildren(mAppearance));
++        mControls.setVisible(hasVisibleChildren(mControls));
++        select(mSelected);
++    }
++
++    private static boolean hasVisibleChildren(PreferenceGroup group) {
++        for (int i = 0; i < group.getPreferenceCount(); i++) {
++            if (group.getPreference(i).isVisible()) return true;
++        }
++        return false;
++    }
++
++    private static void move(Preference pref, PreferenceGroup target) {
++        if (pref == null || pref.getParent() == target) return;
++        final PreferenceGroup parent = pref.getParent();
++        if (parent != null) parent.removePreference(pref);
++        target.addPreference(pref);
++    }
++
++    public int tabForKey(String key) {
++        if (key == null) return 0;
++        for (int i = 0; i < mGroups.length; i++) {
++            if (mGroups[i].findPreference(key) != null) return i;
++        }
++        return 0;
++    }
++
++    public void setResumed(boolean resumed) {
++        mResumed = resumed;
++        mEink.setActive(resumed && mSelected == 2);
++    }
++
++    public void select(int tab) {
++        mSelected = Math.max(0, Math.min(2, tab));
++        mEink.setActive(mResumed && mSelected == 2);
++        for (int i = 0; i < mGroups.length; i++) mGroups[i].setVisible(i == mSelected);
++    }
++}
+diff --git a/src/com/android/settings/display/A6lEinkPreferences.java b/src/com/android/settings/display/A6lEinkPreferences.java
+new file mode 100644
+index 0000000..7f88a1d
+--- /dev/null
++++ b/src/com/android/settings/display/A6lEinkPreferences.java
+@@ -0,0 +1,187 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++package com.android.settings.display;
++
++import android.content.Context;
++import android.content.pm.PackageManager;
++import android.content.res.Resources;
++import android.net.Uri;
++import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
++import android.util.Log;
++import android.widget.Toast;
++
++import androidx.preference.ListPreference;
++import androidx.preference.Preference;
++import androidx.preference.PreferenceCategory;
++import androidx.preference.PreferenceGroup;
++import com.android.settings.widget.SeekBarPreference;
++import com.android.settings.widget.LabeledSeekBarPreference;
++import androidx.preference.SwitchPreferenceCompat;
++
++import java.util.LinkedHashMap;
++import java.util.Map;
++
++/** Inline rear-screen controls backed by the persistent display controller. */
++final class A6lEinkPreferences {
++    private static final String PACKAGE = "org.lineageos.a6l.dualux";
++    private static final Uri URI = Uri.parse("content://" + PACKAGE + ".settings");
++    private final Context mContext;
++    private final Resources mResources;
++    private final Map<String, Preference> mValues = new LinkedHashMap<>();
++    private Preference mSwitch;
++    private Bundle mSnapshot = new Bundle();
++    private final Handler mHandler = new Handler(Looper.getMainLooper());
++    private boolean mActive;
++    private final Runnable mPoll = new Runnable() {
++        @Override public void run() {
++            if (!mActive) return;
++            refresh();
++            mHandler.postDelayed(this, 500);
++        }
++    };
++    void setActive(boolean active) {
++        if (active == mActive) return;
++        mActive = active;
++        mHandler.removeCallbacks(mPoll);
++        if (active) mHandler.post(mPoll);
++    }
++
++    A6lEinkPreferences(PreferenceGroup parent) {
++        mContext = parent.getContext();
++        try {
++            mResources = mContext.getPackageManager().getResourcesForApplication(PACKAGE);
++        } catch (PackageManager.NameNotFoundException e) {
++            throw new IllegalStateException("A6L display controller missing", e);
++        }
++        PreferenceCategory screen = section(parent, "screen", "sec_screen");
++        mSwitch = new Preference(mContext);
++        mSwitch.setKey("a6l_eink_switch");
++        mSwitch.setPersistent(false);
++        mSwitch.setOnPreferenceClickListener(p -> {
++            Bundle current = call("get", null, null);
++            if (current == null) return false;
++            mSnapshot = current;
++            call("request", isEink() ? "lcd" : "eink", null);
++            refresh();
++            return true;
++        });
++        screen.addPreference(mSwitch);
++
++        PreferenceCategory appearance = section(parent, "appearance", "sec_appearance");
++        list(appearance, "theme", "sec_appearance", new String[]{"light", "dark", "lcd"},
++                "theme_light", "theme_dark", "theme_lcd");
++        list(appearance, "wallpaper", "sec_wallpaper", new String[]{"white", "lcd"},
++                "wallpaper_white", "wallpaper_lcd");
++        PreferenceCategory refresh = section(parent, "refresh_section", "sec_refresh");
++        list(refresh, "refresh", "sec_refresh", new String[]{"auto", "quality", "partial", "fast", "fastest"},
++                "mode_auto", "mode_quality", "mode_partial", "mode_fast", "mode_fastest");
++        Preference clear = new Preference(mContext);
++        clear.setKey("a6l_eink_clear");
++        clear.setTitle(text("clear_now"));
++        clear.setOnPreferenceClickListener(p -> { call("request", "clear", null); return true; });
++        refresh.addPreference(clear);
++        slider(refresh, "clear_every", "clear_interval", 30);
++        slider(refresh, "contrast", "contrast_title", 100);
++        PreferenceCategory light = section(parent, "frontlight", "sec_frontlight");
++        toggle(light, "fl_enable", "fl_enable");
++        slider(light, "fl_max", "fl_limit", 100);
++        list(light, "fl_gamma", "fl_curve", new String[]{"1", "2"}, "fl_linear", "fl_curve");
++        PreferenceCategory keys = section(parent, "keys", "sec_keys");
++        list(keys, "ekey", "sec_keys", new String[]{"sleep", "clear"}, "ekey_sleep", "ekey_clear");
++        PreferenceCategory other = section(parent, "other", "sec_other");
++        toggle(other, "mirror_lcd", "mirror_in_lcd");
++        toggle(other, "per_screen", "per_screen");
++        refresh();
++    }
++
++    private String text(String name, Object... args) {
++        int id = mResources.getIdentifier(name, "string", PACKAGE);
++        if (id == 0) throw new IllegalStateException("Missing A6L string: " + name);
++        return mResources.getString(id, args);
++    }
++    private PreferenceCategory section(PreferenceGroup parent, String key, String title) {
++        PreferenceCategory category = new PreferenceCategory(mContext);
++        category.setKey("a6l_eink_" + key);
++        category.setTitle(text(title));
++        parent.addPreference(category);
++        return category;
++    }
++    private void bind(PreferenceGroup parent, Preference pref, String key) {
++        pref.setKey("a6l_eink_" + key);
++        pref.setPersistent(false);
++        pref.setOnPreferenceChangeListener((p, value) -> {
++            Bundle args = new Bundle();
++            args.putString("value", value instanceof Boolean ? ((Boolean) value ? "1" : "0") : value.toString());
++            Bundle result = call("set", key, args);
++            if (result == null) return false;
++            mSnapshot = result;
++            updateSummaries();
++            return true;
++        });
++        mValues.put(key, pref);
++        parent.addPreference(pref);
++    }
++    private void list(PreferenceGroup parent, String key, String title, String[] values, String... labels) {
++        ListPreference pref = new ListPreference(mContext);
++        pref.setTitle(text(title));
++        CharSequence[] entries = new CharSequence[labels.length];
++        for (int i = 0; i < entries.length; i++) entries[i] = text(labels[i]);
++        pref.setEntries(entries);
++        pref.setEntryValues(values);
++        pref.setSummaryProvider(ListPreference.SimpleSummaryProvider.getInstance());
++        bind(parent, pref, key);
++    }
++    private void slider(PreferenceGroup parent, String key, String title, int max) {
++        SeekBarPreference pref = new LabeledSeekBarPreference(mContext, null);
++        pref.setTitle(text(title));
++        pref.setMin(0);
++        pref.setMax(max);
++        pref.setDefaultValue(0);
++        pref.setContinuousUpdates(false);
++        bind(parent, pref, key);
++    }
++    private void toggle(PreferenceGroup parent, String key, String title) {
++        SwitchPreferenceCompat pref = new SwitchPreferenceCompat(mContext);
++        pref.setTitle(text(title));
++        bind(parent, pref, key);
++    }
++    private Bundle call(String method, String arg, Bundle args) {
++        try {
++            return mContext.getContentResolver().call(URI, method, arg, args);
++        } catch (RuntimeException e) {
++            Log.w("A6lEinkPreferences", "Controller unavailable", e);
++            Toast.makeText(mContext, text("settings_unavailable"), Toast.LENGTH_SHORT).show();
++            return null;
++        }
++    }
++    private boolean isEink() { return mSnapshot.getString("state", "").startsWith("eink"); }
++    void refresh() {
++        Bundle snapshot = call("get", null, null);
++        if (snapshot == null) return;
++        mSnapshot = snapshot;
++        for (Map.Entry<String, Preference> item : mValues.entrySet()) {
++            String value = snapshot.getString(item.getKey(), "");
++            Preference pref = item.getValue();
++            if (pref instanceof ListPreference) ((ListPreference) pref).setValue(value);
++            else if (pref instanceof SwitchPreferenceCompat) ((SwitchPreferenceCompat) pref).setChecked("1".equals(value));
++            else if (pref instanceof SeekBarPreference) {
++                try { ((SeekBarPreference) pref).setProgress(Integer.parseInt(value)); }
++                catch (NumberFormatException e) { Log.w("A6lEinkPreferences", "Invalid numeric setting", e); }
++            }
++        }
++        mSwitch.setTitle(text(isEink() ? "switch_to_lcd" : "switch_to_eink"));
++        mSwitch.setEnabled(!snapshot.getString("state", "").isEmpty());
++        updateSummaries();
++    }
++    private void updateSummaries() {
++        Preference interval = mValues.get("clear_every");
++        int n = 10;
++        try { n = Integer.parseInt(mSnapshot.getString("clear_every", "10")); }
++        catch (NumberFormatException ignored) { }
++        interval.setSummary(n == 0 ? text("clear_never") : text("clear_every", n));
++        for (String key : new String[]{"contrast", "fl_max"}) {
++            mValues.get(key).setSummary(mSnapshot.getString(key, "0") + "%");
++        }
++    }
++}
+diff --git a/res/layout/a6l_display_tab_group.xml b/res/layout/a6l_display_tab_group.xml
+new file mode 100644
+index 0000000..85bb0e1
+--- /dev/null
++++ b/res/layout/a6l_display_tab_group.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<View xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent" android:layout_height="0dp"
++    android:importantForAccessibility="no" />
+diff --git a/res/layout/a6l_display_tabs.xml b/res/layout/a6l_display_tabs.xml
+new file mode 100644
+index 0000000..c5ddee4
+--- /dev/null
++++ b/res/layout/a6l_display_tabs.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright (C) 2026 The LineageOS Project; SPDX-License-Identifier: Apache-2.0 -->
++<com.google.android.material.tabs.TabLayout
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    android:theme="@style/Theme.TabTheme"
++    style="@style/SettingsLibTabsStyle"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content" />
+diff --git a/res/values/a6l_display_tabs.xml b/res/values/a6l_display_tabs.xml
+new file mode 100644
+index 0000000..fa79692
+--- /dev/null
++++ b/res/values/a6l_display_tabs.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="a6l_display_general">General</string>
++    <string name="a6l_display_lcd">LCD</string>
++    <string name="a6l_display_eink">E-ink</string>
++</resources>
+diff --git a/res/values-fr/a6l_display_tabs.xml b/res/values-fr/a6l_display_tabs.xml
+new file mode 100644
+index 0000000..7befcd0
+--- /dev/null
++++ b/res/values-fr/a6l_display_tabs.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="a6l_display_general">Général</string>
++    <string name="a6l_display_lcd">LCD</string>
++    <string name="a6l_display_eink">E-ink</string>
++</resources>

@@ -1,0 +1,12 @@
+[
+  {
+    "test": "voice",
+    "exit_code": 0,
+    "stdout": "F55 TTY_FULL_HCO_VCO success=1 getter_echoes_request=1 modem_requests=0\nF56 DTMF_stop_rejected HAL_success=1 fake_continuous_tone=1 cleanup_retries=0\nF56 explicit_stop_positive_control tone=0\nF57 reject_with_only_held_call success=1 broad_release_request=1 no_call_id=1 fake_held_released=1\nF57 incoming_call_positive_control targeted_END_CALL=1\n"
+  },
+  {
+    "test": "failcause",
+    "exit_code": 0,
+    "stdout": "F58 active_call_lost_with_VOICE_service last_call_fail_cause=16(NORMAL_CLEARING)\n"
+  }
+]

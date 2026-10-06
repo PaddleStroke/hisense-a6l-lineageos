@@ -11,6 +11,11 @@ def r(path):
     except FileNotFoundError: return ""
 BL = R + "/sys/class/backlight/backlight"; FL = R + "/sys/class/leds/epd-backlight"; DRM = R + "/sys/class/drm/card0-DSI-1"
 for p in (R, P): subprocess.run(["rm", "-rf", p]); os.makedirs(p)
+if os.path.exists(W + "/uinput.bin"): os.unlink(W + "/uinput.bin")
+def uevents():  # r5 pass2 F20: what was actually written to the (fake) uinput keyboard: [(code, value)] of EV_KEY
+    try: b = open(W + "/uinput.bin", "rb").read()
+    except FileNotFoundError: return []
+    return [(c, v) for (_, _, t, c, v) in struct.iter_unpack("llHHi", b) if t == 1]
 w(BL + "/max_brightness", 4095); w(BL + "/brightness", 2000); w(BL + "/bl_power", 4); w(BL + "/scale", "non-linear")  # 4 = left over by a crashed instance
 w(FL + "/max_brightness", 255); w(FL + "/brightness", 0)
 w(DRM + "/modes", "1080x2340"); w(DRM + "/dpms", "On")
@@ -21,7 +26,7 @@ for f in ("key", "power"):
     os.mkfifo(p)
 log = open(os.path.join(W, "dualux.log"), "w")
 d = subprocess.Popen([BIN, "--sysroot", R, "--prop-dir", P, "--key-dev", W + "/key.fifo", "--power-dev", W + "/power.fifo",
-                      "--front-dev", "none", "--no-uinput", "--exit-after", "30"], stdout=log, stderr=subprocess.STDOUT)
+                      "--front-dev", "none", "--fake-uinput", W + "/uinput.bin", "--exit-after", "30"], stdout=log, stderr=subprocess.STDOUT)
 time.sleep(0.3)
 kf = open(W + "/key.fifo", "wb", buffering=0); pf = open(W + "/power.fifo", "wb", buffering=0)
 def ev(f, code, val):
@@ -60,6 +65,7 @@ check(prop("vendor.eink.clear_req") == str(int(n0) + 1) and r(W + "/dualux.log")
 press(pf, 116, 600)
 lg = r(W + "/dualux.log")
 check("inject POWER (long press handed to Android) down" in lg and "inject POWER up" in lg, "power long press re-injected")
+check(uevents()[-2:] == [(116, 1), (116, 0)], "power long press delivered to the uinput keyboard (%s)" % uevents()[-2:])
 check(prop("vendor.dualux.state") == "eink", "still e-ink after the power long press")
 press(pf, 116, 120)
 check(prop("vendor.dualux.state") == "lcd" and prop("persist.vendor.eink.mode") == "off", "power short on e-ink -> LCD")

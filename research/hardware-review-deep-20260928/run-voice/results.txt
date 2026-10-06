@@ -1,0 +1,4 @@
+DIAL_CLIR requested=restrict qmi_arguments=number,emergency_only sent=1
+EMERGENCY_TEST isTesting=1 modem_dial_requests=1 emergency=1
+EMERGENCY_ROUTING requested=normal first_request_emergency=1
+EMERGENCY_FALLBACK requested=emergency failed_first=1 second_request_emergency=0

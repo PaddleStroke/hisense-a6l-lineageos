@@ -1,0 +1,35 @@
+// A6L thermal HAL (completeness audit r6 prep, 29 Sep 2026). Visible only when rom/r6/r6.mk adds this namespace.
+soong_namespace {
+}
+
+cc_binary {
+    name: "android.hardware.thermal-service.a6l",
+    relative_install_path: "hw",
+    vendor: true,
+    init_rc: ["android.hardware.thermal-service.a6l.rc"],
+    vintf_fragments: ["android.hardware.thermal-service.a6l.xml"],
+    srcs: [
+        "main.cpp",
+        "Thermal.cpp",
+        "thermal_logic.cpp",
+        "cooling_logic.cpp",
+    ],
+    static_libs: ["android.hardware.thermal-V3-ndk"],
+    shared_libs: [
+        "libbase",
+        "libbinder_ndk",
+        "liblog",
+    ],
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ],
+    required: ["thermal-a6l.conf"],
+}
+
+prebuilt_etc {
+    name: "thermal-a6l.conf",
+    src: "thermal-a6l.conf",
+    vendor: true,
+}

@@ -1,0 +1,11 @@
+# agent power (26 Sep 2026): software JEITA / input-current guard for the qcom_smbx charger (a6l-chg-guard.sh).
+# Only when the charger driver is enabled (persist.vendor.a6l.charger=1), after the misc+charger module group.
+service a6l_chg_guard /vendor/bin/a6l-chg-guard.sh
+    user root
+    group root
+    disabled
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+on property:init.svc.a6l_modules_misc=stopped && property:persist.vendor.a6l.charger=1
+    start a6l_chg_guard

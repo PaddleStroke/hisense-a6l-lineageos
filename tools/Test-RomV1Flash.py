@@ -193,6 +193,11 @@ def t_guard():
     g = w.Guard()
     ok = [L.program_xml(*L.PARTITIONS['boot'])]
     g.programs = {tuple(L.PARTITIONS['boot'])}
+    try:
+        g.check(ok[0]); raise AssertionError('program accepted without a fixed plan')
+    except ValueError:
+        pass
+    g.set_plan({tuple(L.PARTITIONS['boot'])})
     assert g.check(ok[0]) == 'program'
     bad = [L.program_xml(L.PARTITIONS['boot'][0] + 1, L.PARTITIONS['boot'][1]), L.program_xml(*L.PARTITIONS['recovery']),
            L.program_xml(*L.PARTITIONS['modemst1']), '<data><erase/></data>', '<data><patch/></data>',

@@ -1,0 +1,16 @@
+r6 defaults (completeness audit 29 Sep 2026) - PIERRE DECIDES, not applied by apply-r6.sh unless --defaults.
+charger=1: the charger group (qcom_smbx with the stock FCC/ICL/float limits + a6l-chg-guard software JEITA) loads at
+boot and in off-mode charging. With charger=0 the PMIC charges on bootloader/hardware defaults only: no stock limits,
+no software JEITA, no QC3 fast charge (H48/H49; rom/modules/charger.txt). Radio/ADB defaults stay in 0001-release-defaults.patch.
+camera stays 0 until the camera provider exists.
+--- a/device/hisense/a6l/rom/rom.mk	2026-09-29 13:30:44.031621548 +0000
++++ b/device/hisense/a6l/rom/rom.mk	2026-09-29 13:30:44.031621548 +0000
+@@ -62,7 +62,7 @@
+ # =====================================================================================================================
+ PRODUCT_VENDOR_PROPERTIES += \
+     ro.vendor.a6l.rom.variant=v2 \
+-    persist.vendor.a6l.charger=0 \
++    persist.vendor.a6l.charger=1 \
+     persist.vendor.a6l.ipa=1 \
+     persist.vendor.a6l.camera=0 \
+     persist.vendor.a6l.audio.q6routing=perdir \

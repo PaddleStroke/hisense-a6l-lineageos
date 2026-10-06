@@ -1,0 +1,7 @@
+# r5 review F7 (28 Sep 2026): set by the audio HAL (tree patch audio/patches/0002), read by a6l-audio-route / a6l-q6voiced
+vendor.a6l.audio.call_    u:object_r:vendor_a6l_audio_prop:s0
+# r5 review F62: ordinary playback/capture devices (every mode), same writer/readers
+vendor.a6l.audio.media_   u:object_r:vendor_a6l_audio_prop:s0
+# btcall (29 Sep 2026): BT headset call bridge switches (persist.vendor.a6l.btcall.{bridge,dl_pcm,ul_pcm,dl_ctl,ul_ctl,
+# cvp_mute}); read by the audio HAL (patch 0004), a6l-q6voiced and a6l-audio-route; set by hand (attended tests)
+persist.vendor.a6l.btcall.   u:object_r:vendor_a6l_audio_prop:s0

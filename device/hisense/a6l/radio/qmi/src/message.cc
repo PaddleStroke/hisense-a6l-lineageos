@@ -45,6 +45,8 @@ std::string errorName(uint16_t err) {
         case kErrInformationUnavailable: return "INFORMATION_UNAVAILABLE";
         case kErrSimFileNotFound: return "SIM_FILE_NOT_FOUND";
         case kErrAccessDenied: return "ACCESS_DENIED";
+        case kErrHardwareRestricted: return "HARDWARE_RESTRICTED";
+        case kErrAckNotSent: return "ACK_NOT_SENT";
         case kErrIncompatibleState: return "INCOMPATIBLE_STATE";
         case kErrFdnRestrict: return "FDN_RESTRICT";
         case kErrNoRadio: return "NO_RADIO";

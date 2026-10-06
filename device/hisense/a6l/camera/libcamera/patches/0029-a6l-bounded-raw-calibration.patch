@@ -1,0 +1,406 @@
+--- /dev/null
++++ b/include/libcamera/internal/a6l_raw10_diagnostic.h
+@@ -0,0 +1,118 @@
++#pragma once
++
++// Isolated calibration analyzer, NOT integrated into the camera pipeline.
++// Input must already be protected by its existing READ lease/sync lifetime.
++#include <array>
++#include <cstddef>
++#include <cstdint>
++#include <span>
++
++namespace a6l::calibration {
++enum class Colour : unsigned { R, Gr, Gb, B };
++enum class Order : unsigned { BGGR, GBRG, GRBG, RGGB };
++
++struct Channel {
++    std::array<uint32_t, 1024> histogram{};
++    uint64_t count = 0, sum = 0, sumSquares = 0;
++    uint32_t saturated = 0, nearSaturated = 0;
++    uint16_t minimum = 1023, maximum = 0;
++    void add(uint16_t value)
++    {
++        ++histogram[value]; ++count; sum += value;
++        sumSquares += uint64_t(value) * value;
++        saturated += value == 1023;
++        nearSaturated += value >= 1019;
++        if (value < minimum) minimum = value;
++        if (value > maximum) maximum = value;
++    }
++    uint16_t percentile(unsigned percent) const
++    {
++        if (!count || percent > 100) return 0;
++        const uint64_t target = (count * percent + 99) / 100;
++        uint64_t seen = 0;
++        for (unsigned i = 0; i < histogram.size(); ++i) {
++            seen += histogram[i];
++            if (seen >= (target ? target : 1)) return i;
++        }
++        return 1023;
++    }
++};
++struct Region {
++    std::array<Channel, 4> channels{};
++    unsigned x = 0, y = 0, width = 0, height = 0;
++};
++struct Report {
++    // At most128x128 Bayer cells in the global grid; center/corners each32x32.
++    // Regions have distinct statistics; overlapping tiles aren't merged.
++    Region grid;
++    std::array<Region, 5> tiles{};
++    unsigned stepXCells = 0, stepYCells = 0;
++    uint64_t requiredBytes = 0;
++};
++
++inline Colour colourAt(Order order, unsigned x, unsigned y)
++{
++    // Gr/Gb name the green on the row containing R/B respectively.
++    constexpr Colour patterns[4][4] = {
++        {Colour::B, Colour::Gb, Colour::Gr, Colour::R},
++        {Colour::Gb, Colour::B, Colour::R, Colour::Gr},
++        {Colour::Gr, Colour::R, Colour::B, Colour::Gb},
++        {Colour::R, Colour::Gr, Colour::Gb, Colour::B}
++    };
++    return patterns[static_cast<unsigned>(order)][(y & 1) * 2 + (x & 1)];
++}
++
++inline uint16_t unpack(std::span<const uint8_t> input, unsigned stride,
++                       unsigned x, unsigned y)
++{
++    const size_t base = size_t(y) * stride + size_t(x / 4) * 5;
++    return uint16_t(input[base + x % 4]) * 4 +
++           ((input[base + 4] >> (2 * (x % 4))) & 3);
++}
++
++inline bool analyze(std::span<const uint8_t> input, unsigned width,
++                    unsigned height, unsigned stride, Order order, Report &out)
++{
++    // Bounded validation precedes every read. Reject unknown layouts rather
++    // than interpreting generic RAW, padding, optical black or sensor crop.
++    if (static_cast<unsigned>(order) > 3 || width < 4 || width % 4 ||
++        height < 2 || height % 2 || width > 8192 || height > 8192)
++        return false;
++    const uint64_t rowBytes = uint64_t(width / 4) * 5;
++    const uint64_t required = uint64_t(height - 1) * stride + rowBytes;
++    if (stride < rowBytes || required > input.size()) return false;
++    // Only overwrite the caller's report after validating its input contract.
++    out = Report{};
++    out.requiredBytes = required;
++    out.grid.width = width; out.grid.height = height;
++    const unsigned cellsX = width / 2, cellsY = height / 2;
++    out.stepXCells = (cellsX + 127) / 128;
++    out.stepYCells = (cellsY + 127) / 128;
++    auto cell = [&](Region &region, unsigned x, unsigned y) {
++        for (unsigned dy = 0; dy < 2; ++dy)
++            for (unsigned dx = 0; dx < 2; ++dx)
++                region.channels[static_cast<unsigned>(colourAt(order, x + dx, y + dy))]
++                    .add(unpack(input, stride, x + dx, y + dy));
++    };
++    for (unsigned cy = 0; cy < cellsY; cy += out.stepYCells)
++        for (unsigned cx = 0; cx < cellsX; cx += out.stepXCells)
++            cell(out.grid, cx * 2, cy * 2);
++    const unsigned tw = width < 32 ? width : 32;
++    const unsigned th = height < 32 ? height : 32;
++    const unsigned right = width - tw, bottom = height - th;
++    const unsigned centerX = ((width - tw) / 2) & ~1U;
++    const unsigned centerY = ((height - th) / 2) & ~1U;
++    const unsigned origins[5][2] = {
++        {centerX, centerY}, {0, 0}, {right, 0}, {0, bottom}, {right, bottom}
++    };
++    for (unsigned i = 0; i < out.tiles.size(); ++i) {
++        Region &tile = out.tiles[i];
++        tile.x = origins[i][0]; tile.y = origins[i][1];
++        tile.width = tw; tile.height = th;
++        for (unsigned y = tile.y; y < tile.y + th; y += 2)
++            for (unsigned x = tile.x; x < tile.x + tw; x += 2)
++                cell(tile, x, y);
++    }
++    return true;
++}
++} // namespace a6l::calibration
+--- /dev/null
++++ b/include/libcamera/internal/a6l_raw_calibration.h
+@@ -0,0 +1,69 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++#include <array>
++#include <cstdint>
++#include <optional>
++#include "libcamera/internal/a6l_raw10_diagnostic.h"
++namespace libcamera {
++struct A6lRawCalibrationChannel {
++ uint64_t count = 0, sum = 0, sumSquares = 0;
++ uint32_t saturated = 0, nearSaturated = 0;
++ uint16_t minimum = 0, maximum = 0, p01 = 0, p50 = 0, p99 = 0;
++};
++struct A6lRawCalibrationRegion {
++ uint32_t x = 0, y = 0, width = 0, height = 0;
++ std::array<A6lRawCalibrationChannel, 4> channels{};
++};
++struct A6lRawCalibrationSummary {
++ uint32_t sensorSequence = 0, width = 0, height = 0, stride = 0, order = 0;
++ uint64_t sessionGeneration = 0, sensorTimestampNs = 0, requiredBytes = 0;
++ uint32_t stepXCells = 0, stepYCells = 0;
++ std::array<A6lRawCalibrationRegion, 6> regions{};
++};
++inline A6lRawCalibrationSummary a6lSummarizeRaw(const a6l::calibration::Report &r)
++{
++ A6lRawCalibrationSummary out;
++ out.requiredBytes = r.requiredBytes;
++ out.stepXCells = r.stepXCells; out.stepYCells = r.stepYCells;
++ for (unsigned i = 0; i < out.regions.size(); ++i) {
++  const auto &src = i == 0 ? r.grid : r.tiles[i - 1]; auto &dst = out.regions[i];
++  dst.x = src.x; dst.y = src.y; dst.width = src.width; dst.height = src.height;
++  for (unsigned c = 0; c < 4; ++c) {
++   const auto &v = src.channels[c]; auto &s = dst.channels[c];
++   s.count = v.count; s.sum = v.sum; s.sumSquares = v.sumSquares;
++   s.saturated = v.saturated; s.nearSaturated = v.nearSaturated;
++   s.minimum = v.minimum; s.maximum = v.maximum;
++   s.p01 = v.percentile(1); s.p50 = v.percentile(50); s.p99 = v.percentile(99);
++  }
++ }
++ return out;
++}
++class A6lRawCalibrationInbox {
++public:
++ static constexpr uint32_t kFrame = 176;
++ uint64_t start() {
++  pending_.reset(); accepted_ = false; running_ = true;
++  // Overflow disables this diagnostic instead of recycling a session token.
++  if (generation_ == UINT64_MAX) { running_ = false; return 0; }
++  return ++generation_;
++ }
++ void halt() { running_ = false; pending_.reset(); }
++ uint64_t generation() const { return running_ ? generation_ : 0; }
++ bool accept(uint64_t generation, uint32_t frame, const A6lRawCalibrationSummary &summary) {
++  if (!running_ || !generation || generation != generation_ || frame != kFrame || accepted_)
++   return false;
++  pending_ = Pending{ generation, frame, summary };
++  pending_->summary.sessionGeneration = generation; accepted_ = true; return true;
++ }
++ std::optional<A6lRawCalibrationSummary> take(uint32_t frame) {
++  if (!running_ || !pending_ || pending_->generation != generation_ || pending_->frame != frame)
++   return std::nullopt;
++  auto summary = std::move(pending_->summary); pending_.reset(); return summary;
++ }
++private:
++ struct Pending { uint64_t generation; uint32_t frame; A6lRawCalibrationSummary summary; };
++ uint64_t generation_ = 0;
++ bool running_ = false, accepted_ = false;
++ std::optional<Pending> pending_;
++};
++} // namespace libcamera
+--- a/include/libcamera/internal/software_isp/software_isp.h
++++ b/include/libcamera/internal/software_isp/software_isp.h
+@@ -29,6 +29,7 @@
+ #include <libcamera/ipa/soft_ipa_proxy.h>
+ 
+ #include "libcamera/internal/camera_sensor.h"
++#include "libcamera/internal/a6l_raw_calibration.h"
+ #include "libcamera/internal/dma_buf_allocator.h"
+ #include "libcamera/internal/pipeline_handler.h"
+ #include "libcamera/internal/shared_mem_object.h"
+@@ -82,6 +83,7 @@
+ 			 const std::map<const Stream *, FrameBuffer *> &outputs);
+ 
+ 	void process(uint32_t frame, FrameBuffer *input, FrameBuffer *output);
++	std::optional<A6lRawCalibrationSummary> takeRawCalibration(uint32_t frame) { return rawCalibration_.take(frame); }
+ 
+ 	Signal<FrameBuffer *> inputBufferReady;
+ 	Signal<FrameBuffer *> outputBufferReady;
+@@ -91,6 +93,7 @@
+ 	Signal<const ControlList &> setLensControls;
+ 
+ private:
++	void rawCalibrationReady(uint32_t frame, uint64_t generation, A6lRawCalibrationSummary summary);
+ 	void saveIspParams();
+ 	void processNext();
+ 	void statsConsumed(uint32_t frame, const ControlList &metadata);
+@@ -105,6 +108,8 @@
+ 	DmaBufAllocator dmaHeap_;
+ 	bool ccmEnabled_;
+ 	bool isolatedStopped_ = false;
++	bool rawCalibrationA6l_ = false;
++	A6lRawCalibrationInbox rawCalibration_;
+ 
+ 	std::unique_ptr<ipa::soft::IPAProxySoft> ipa_;
+ 	struct PendingProcess {
+--- a/src/libcamera/software_isp/debayer.h
++++ b/src/libcamera/software_isp/debayer.h
+@@ -25,6 +25,7 @@
+ #include "libcamera/internal/software_isp/benchmark.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
+ #include "libcamera/internal/a6l_native_raw_mmap.h"
++#include "libcamera/internal/a6l_raw_calibration.h"
+ 
+ namespace libcamera {
+ 
+@@ -59,6 +60,8 @@
+ 
+ 	unsigned int frameSize() { return outputConfig_.frameSize; }
+ 
++	void setRawCalibrationGeneration(uint64_t generation) { rawCalibrationGeneration_ = generation; }
++	Signal<uint32_t, uint64_t, A6lRawCalibrationSummary> rawCalibrationReady;
+ 	Signal<FrameBuffer *> inputBufferReady;
+ 	Signal<FrameBuffer *> outputBufferReady;
+ 
+@@ -87,6 +90,7 @@
+ 	virtual Size patternSize(PixelFormat inputFormat) = 0;
+ 
+ protected:
++	uint64_t rawCalibrationGeneration_ = 0;
+ 	void dmaSyncBegin(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input, FrameBuffer *output,
+ 			  uint32_t profileFrame = 0, bool profile = false);
+ 	bool dmaSyncNativeRawRead(std::vector<DmaSyncer> &dmaSyncers, FrameBuffer *input,
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -165,6 +165,7 @@
+ 	size_t rawFovInputBytes_ = 0;
+ 	std::unique_ptr<SwStatsCpu> stats_;
+ 	A6LNativeRawVerifier nativeVerifier_;
++	BayerFormat rawCalibrationFormat_;
+ 	Size nativeVerifyInputSize_;
+ 	unsigned int nativeVerifyInputStride_ = 0;
+ 	A6LFrameMappingCache inputMappings_{ MappedFrameBuffer::MapFlag::Read };
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -696,6 +696,7 @@
+ 	inputMappings_.clear();
+ 	outputMappings_.clear();
+ 
++	rawCalibrationFormat_ = BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
+ 	nativeVerifyInputSize_ = inputCfg.size;
+ 	nativeVerifyInputStride_ = inputCfg.stride;
+ 	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0)
+@@ -1299,6 +1300,25 @@
+ 		return;
+ 	}
+ 
++	std::optional<A6lRawCalibrationSummary> rawCalibration;
++	if (frame == A6lRawCalibrationInbox::kFrame && rawCalibrationGeneration_ &&
++	    a6lQualityDebug(frame) && rawCalibrationFormat_.packing == BayerFormat::Packing::CSI2 &&
++	    rawCalibrationFormat_.bitDepth == 10 && rawCalibrationFormat_.order <= BayerFormat::RGGB) {
++		/* Original sensor plane under READ ownership, before resize/child workers. */
++		auto report = std::make_unique<a6l::calibration::Report>();
++		if (a6l::calibration::analyze(std::span<const uint8_t>(rawSpan.data(), rawSpan.size()),
++			nativeVerifyInputSize_.width, nativeVerifyInputSize_.height, nativeVerifyInputStride_,
++			static_cast<a6l::calibration::Order>(rawCalibrationFormat_.order), *report)) {
++			rawCalibration = a6lSummarizeRaw(*report);
++			rawCalibration->width = nativeVerifyInputSize_.width;
++			rawCalibration->height = nativeVerifyInputSize_.height;
++			rawCalibration->stride = nativeVerifyInputStride_;
++			rawCalibration->order = rawCalibrationFormat_.order;
++			rawCalibration->sensorSequence = input->metadata().sequence;
++			rawCalibration->sensorTimestampNs = input->metadata().timestamp;
++		}
++	}
++
+ 	const auto nativeSnapshot = native ? nativeVerifier_.begin(rawSpan)
+ 		: std::optional<A6LNativeRawVerifier::Snapshot>();
+ 	const uint8_t *rawInput = rawSpan.data();
+@@ -1405,6 +1425,10 @@
+ 	 *
+ 	 * \todo Pass real bufferId once stats buffer passing is changed.
+ 	 */
++	/* Owned numbers only; queued delivery precedes stats/output callbacks.
++	 * No RAW access follows the READ lease reset above. */
++	if (rawCalibration && metadata.status == FrameMetadata::FrameSuccess)
++		rawCalibrationReady.emit(frame, rawCalibrationGeneration_, *rawCalibration);
+ 	const uint64_t statsStart = stage.start();
+ 	stats_->finishFrame(frame, 0);
+ 	if (stage.enabled())
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -141,6 +141,10 @@
+ 	if (!debayer_)
+ 		debayer_ = std::make_unique<DebayerCpu>(std::move(stats), cm);
+ 
++	const std::string &rawModel = sensor->model();
++	rawCalibrationA6l_ = rawModel == "imx576" || rawModel == "imx576_a6l" ||
++		rawModel == "s5k3t1" || rawModel == "hi846";
++	debayer_->rawCalibrationReady.connect(this, &SoftwareIsp::rawCalibrationReady);
+ 	debayer_->inputBufferReady.connect(this, &SoftwareIsp::inputReady);
+ 	debayer_->outputBufferReady.connect(this, &SoftwareIsp::outputReady);
+ 
+@@ -310,6 +314,7 @@
+ 	if (isolatedStopped_)
+ 		return -EPIPE;
+ 
++	rawCalibration_.halt();
+ 	int ret = ipa_->configure(configInfo);
+ 	if (ret < 0)
+ 		return ret;
+@@ -417,6 +422,9 @@
+ 		return ret;
+ 
+ 	ispWorkerThread_.start();
++	const uint64_t generation = rawCalibration_.start();
++	debayer_->invokeMethod(&Debayer::setRawCalibrationGeneration, ConnectionTypeBlocking,
++			       rawCalibrationA6l_ ? generation : uint64_t(0));
+ 
+ 	ret = debayer_->invokeMethod(&Debayer::start, ConnectionTypeBlocking);
+ 	if (!ret)
+@@ -433,6 +441,7 @@
+ void SoftwareIsp::stop()
+ {
+ 	/* No callback may start another producer while draining this session. */
++	rawCalibration_.halt();
+ 	statsOwnership_.halt();
+ 	debayer_->invokeMethod(&Debayer::stop,
+ 			       ConnectionTypeBlocking);
+@@ -518,6 +527,13 @@
+ 			<< " after_ack_ns=" << profile.ns(A6LStageProfile::Total);
+ }
+ 
++void SoftwareIsp::rawCalibrationReady(uint32_t frame, uint64_t generation,
++				      A6lRawCalibrationSummary summary)
++{
++	if (statsOwnership_.matches(frame))
++		rawCalibration_.accept(generation, frame, summary);
++}
++
+ void SoftwareIsp::saveIspParams()
+ {
+ 	debayerParams_ = *sharedParams_;
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -1036,6 +1036,38 @@
+ 	if (info->metadataRequired && !info->metadataProcessed)
+ 		return;
+ 
++	/* Numeric calibration belongs only to this successful terminal request.
++	 * Error/cancelled buffers consume and discard it; stop clears the inbox
++	 * before any queued worker/IPA callback is drained. */
++	if (swIsp_ && request->sequence() == A6lRawCalibrationInbox::kFrame) {
++		auto summary = swIsp_->takeRawCalibration(request->sequence());
++		const bool success = !request->buffers().empty() &&
++			std::all_of(request->buffers().begin(), request->buffers().end(),
++				[](const auto &item) { return item.second->metadata().status == FrameMetadata::FrameSuccess; });
++		if (summary && success) {
++			const auto &s = *summary;
++			LOG(SimplePipeline, Info) << "A6L_RAW10_CALIBRATION frame=" << info->frame
++				<< " session=" << s.sessionGeneration << " camera=" << request->_d()->camera()->id()
++				<< " sensor_sequence=" << s.sensorSequence
++				<< " sensor_timestamp_ns=" << s.sensorTimestampNs << " raw=" << Size(s.width, s.height)
++				<< " stride=" << s.stride << " bayer_order=" << s.order
++				<< " step_cells=" << s.stepXCells << ',' << s.stepYCells
++				<< " raw_units=0..1023 controls_frame_effective_unproved=1";
++			for (unsigned r = 0; r < s.regions.size(); ++r) {
++				const auto &region = s.regions[r];
++				for (unsigned c = 0; c < region.channels.size(); ++c) {
++					const auto &v = region.channels[c];
++					LOG(SimplePipeline, Info) << "A6L_RAW10_CHANNEL frame=" << info->frame
++						<< " sensor_sequence=" << s.sensorSequence << " region=" << r << " channel=" << c
++						<< " rect=" << Rectangle(region.x, region.y, region.width, region.height)
++						<< " count=" << v.count << " sum=" << v.sum << " sum_squares=" << v.sumSquares
++						<< " min=" << v.minimum << " max=" << v.maximum
++						<< " p01=" << v.p01 << " p50=" << v.p50 << " p99=" << v.p99
++						<< " saturated1023=" << v.saturated << " near1019=" << v.nearSaturated;
++				}
++			}
++		}
++	}
+ 	frameInfo_.destroy(info->frame);
+ 	pipe()->completeRequest(request);
+ }

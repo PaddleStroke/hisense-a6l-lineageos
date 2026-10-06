@@ -1,0 +1,3 @@
+# r5 review fixes (28 Sep 2026) for the AOSP AIDL example audio HAL (hal_audio_default, tree patch audio/patches/0002):
+# F7 publishes Android's call devices; F6 setMicMute goes to a6l-q6voiced (socket rule in kvoice/q6voiced/sepolicy).
+set_prop(hal_audio_default, vendor_a6l_audio_prop)

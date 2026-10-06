@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A6L framework overlay (r6, completeness audit 29 Sep 2026). Static overlay (DEVICE_PACKAGE_OVERLAYS, like audio/overlay). -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- USB state (config_enableUdcSysfsUsbStateUpdate) is in device/hisense/a6l/usb/overlay (android-usb). -->
+
+    <!-- Auto-brightness from the FRONT STK3338 light sensor (sensors.a6l, proven attended stk T2). Curve = the STOCK A6L curve
+         (Hisense Android 9 framework-res, firmware/extracted/system/system/framework/framework-res.apk, aapt2 dump:
+         31 lux levels / 32 backlight values, same panel + WLED, 0..255 scale scaled to 4095 steps by the lights HAL);
+         replaced the r6 first-cut curve (overlays-carrier-updater, 29 Sep 2026). Stock lux came from the stock sensor HAL:
+         check the sensors.a6l lux against a reference in the attended auto-brightness walk (dark room / office / window /
+         sunlight) before retuning. N lux levels -> N+1 backlight values. -->
+    <bool name="config_automatic_brightness_available">true</bool>
+    <integer-array name="config_autoBrightnessLevels">
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+        <item>7</item>
+        <item>8</item>
+        <item>9</item>
+        <item>10</item>
+        <item>11</item>
+        <item>13</item>
+        <item>15</item>
+        <item>16</item>
+        <item>19</item>
+        <item>21</item>
+        <item>24</item>
+        <item>87</item>
+        <item>176</item>
+        <item>281</item>
+        <item>445</item>
+        <item>652</item>
+        <item>852</item>
+        <item>1076</item>
+        <item>1373</item>
+        <item>1793</item>
+        <item>2365</item>
+        <item>3064</item>
+        <item>3955</item>
+        <item>5282</item>
+        <item>7123</item>
+        <item>9534</item>
+    </integer-array>
+    <integer-array name="config_autoBrightnessLcdBacklightValues">
+        <item>3</item>
+        <item>6</item>
+        <item>7</item>
+        <item>8</item>
+        <item>9</item>
+        <item>10</item>
+        <item>11</item>
+        <item>12</item>
+        <item>14</item>
+        <item>15</item>
+        <item>17</item>
+        <item>18</item>
+        <item>21</item>
+        <item>24</item>
+        <item>27</item>
+        <item>31</item>
+        <item>35</item>
+        <item>40</item>
+        <item>46</item>
+        <item>53</item>
+        <item>64</item>
+        <item>74</item>
+        <item>83</item>
+        <item>93</item>
+        <item>105</item>
+        <item>122</item>
+        <item>141</item>
+        <item>159</item>
+        <item>183</item>
+        <item>217</item>
+        <item>252</item>
+        <item>255</item>
+    </integer-array>
+    <integer name="config_lightSensorWarmupTime">200</integer>
+
+    <!-- VoLTE/VT/WFC: Orange refuses the device model (docs/volte*-2026092x.md); the IMS stack is not shipped. Explicit
+         false so no carrier config can surface a VoLTE toggle that cannot work. -->
+    <bool name="config_device_volte_available">false</bool>
+    <bool name="config_device_vt_available">false</bool>
+    <bool name="config_device_wfc_ims_available">false</bool>
+
+    <!-- No notification LED is known on this unit (H61 open): do not offer the LED setting. -->
+    <bool name="config_intrusiveNotificationLed">false</bool>
+</resources>

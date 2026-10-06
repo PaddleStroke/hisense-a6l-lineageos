@@ -1,10 +1,26 @@
 # kvoice: holds the VoiceMMode1 PCM pair open while vendor.a6l.voice.active=1 (set by the RIL / call manager when a call
 # is ACTIVE, cleared when it ends). -r also toggles the q6voice DSP routes; analog routing stays with a6l-audio-route.
+# r5 review (28 Sep 2026): the voice RX port follows vendor.a6l.audio.call_out (speakerphone = TERT_MI2S/TFA9894) and the
+# daemon owns the uplink mute ("VoiceMMode1 TX Mute") behind /dev/socket/a6l_q6voiced.
 service vendor.a6l-q6voiced /vendor/bin/a6l-q6voiced -r daemon vendor.a6l.voice.active
     class hal
     user audioserver
     group audio
-    disabled
+    # r5 (F6): mute requests from the radio HAL (user radio) and the audio HAL (audioserver); one line per connection
+    socket a6l_q6voiced stream 0660 audioserver radio
+    # r5 bug hunt round2 A2 (29 Sep 2026): started with class hal (no longer disabled until sys.boot_completed), so the
+    # socket exists before system_server: AudioService's boot-time voice volume / mic mute reach the daemon (the audio
+    # policy caches the voice volume and never resends an unchanged value). The daemon waits for the card itself.
 
 on property:sys.boot_completed=1
     start vendor.a6l-q6voiced
+
+# volte3 (26 Sep 2026): VoLTE audio session switch, OFF unless persist.vendor.a6l.voice.session_switch=1.
+# The radio HAL sets vendor.a6l.voice.domain=ims|cs before vendor.a6l.voice.active=1; init writes q6mvm's
+# mmode1_session before a6l-q6voiced opens the PCMs (MVM session created once per call). Only needed if the modem's
+# LTE voice VSID differs from the CS one (a6l-qmi ims-status: A6L_VOLTE3_AUDIO_SESSION lte=volte).
+on property:vendor.a6l.voice.domain=ims && property:persist.vendor.a6l.voice.session_switch=1
+    write /sys/module/q6mvm/parameters/mmode1_session ${persist.vendor.a6l.voice.session_ims:-volte}
+
+on property:vendor.a6l.voice.domain=cs && property:persist.vendor.a6l.voice.session_switch=1
+    write /sys/module/q6mvm/parameters/mmode1_session ${persist.vendor.a6l.voice.session_cs:-default}

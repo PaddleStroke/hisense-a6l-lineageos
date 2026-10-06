@@ -1,0 +1,36 @@
+--- a/drivers/bluetooth/btqca.c
++++ b/drivers/bluetooth/btqca.c
+@@ -13,6 +13,10 @@
+ 
+ #include "btqca.h"
+ 
++static bool a6l_enable_msft;
++module_param_named(enable_msft, a6l_enable_msft, bool, 0644);
++MODULE_PARM_DESC(enable_msft, "A6L: enable the Microsoft HCI extension on WCN399x/WCN6750 (default off)");
++
+ int qca_read_soc_version(struct hci_dev *hdev, struct qca_btsoc_version *ver,
+ 			 enum qca_btsoc_type soc_type)
+ {
+@@ -975,7 +979,14 @@
+ 
+ 	/* WCN399x and WCN6750 supports the Microsoft vendor extension with 0xFD70 as the
+ 	 * VsMsftOpCode.
++	 * A6L (27 Sep 2026): the WCN3990 firmware of the Hisense A6L (crbtfw21.tlv) answers with vendor
++	 * events the MSFT code cannot parse ("Malformed MSFT vendor event" in every scan). Nothing on the
++	 * phone uses the MSFT extension (LE monitor offload), so it is off unless enable_msft=1.
+ 	 */
++	if (!a6l_enable_msft) {
++		bt_dev_info(hdev, "A6L: MSFT extension disabled (btqca.enable_msft=0)");
++		goto a6l_skip_msft;
++	}
+ 	switch (soc_type) {
+ 	case QCA_WCN3950:
+ 	case QCA_WCN3988:
+@@ -988,6 +999,7 @@
+ 	default:
+ 		break;
+ 	}
++a6l_skip_msft:
+ 
+ 	/* Perform HCI reset */
+ 	err = qca_send_reset(hdev);

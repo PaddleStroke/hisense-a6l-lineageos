@@ -1,0 +1,5 @@
+A6L_Q6VOICED open /dev/snd/pcmC0D0c: No such device
+A6L_Q6VOICED open /dev/snd/pcmC0D0c: No such device
+A6L_Q6VOICED open /dev/snd/pcmC0D0c: No such device
+A6L_Q6VOICED open /dev/snd/pcmC0D0c: No such device
+A6L_Q6VOICED open /dev/snd/pcmC0D0c: No such device

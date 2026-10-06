@@ -1,0 +1,147 @@
+A6L_VOLTE5_START mode=activate Sun Nov 14 21:10:16 UTC 1971 modem=running ipa=bound log=/tmp/volte5-logs/volte5-activate-211016.txt
+A6L_VOLTE5_STEP pdc activate (volte4 script, gates inside)
+A6L_VOLTE4_START mode=activate Sun Nov 14 21:10:22 UTC 1971 modem=running log=/tmp/volte4-logs/volte4-activate-211022.txt
+A6L_VOLTE4_GATE rmtfs pid=2023 RAM mode ( /tmp/radio2/bin/rmtfs -o /tmp/rmtfs -v  )
+A6L_VOLTE4_GATE ram copy /tmp/rmtfs/modem_fs1 bytes=2097152
+A6L_VOLTE4_GATE ram copy /tmp/rmtfs/modem_fs2 bytes=2097152
+A6L_VOLTE4_GATES_PASS (write)
+A6L_VOLTE4_STEP activate: pre-state
+A6L_VOLTE4_CMD qmicli -d qrtr://0 --pdc-list-configs=software
+  | Total configurations: 5
+  | Configuration 1:
+  | 	Description: ROW_Commercial
+  | 	Type:        software
+  | 	Size:        45828
+  | 	Status:      Active
+  | 	Version:     0x8030808
+  | 	ID:          7A:F5:2E:AA:D0:94:B6:61:7F:D1:63:CA:73:70:86:33:64:60:1F:22
+  | 
+  | Configuration 2:
+  | 	Description: VoLTE_OPNMKT_CT
+  | 	Type:        software
+  | 	Size:        69008
+  | 	Status:      Inactive
+  | 	Version:     0x80413E1
+  | 	ID:          83:ED:83:7E:B5:FB:5C:ED:4C:92:40:C6:39:00:67:B8:0A:91:2C:7A
+  | 
+  | Configuration 3:
+  | 	Description: France-Commercial-Orange
+  | 	Type:        software
+  | 	Size:        50348
+  | 	Status:      Inactive
+  | 	Version:     0x8040B20
+  | 	ID:          96:5D:8D:76:6F:9A:C0:E6:98:CA:5D:44:33:39:5A:31:52:6D:2D:8D
+  | 
+  | Configuration 4:
+  | 	Description: VoLTE-CU
+  | 	Type:        software
+  | 	Size:        50116
+  | 	Status:      Inactive
+  | 	Version:     0x8041560
+  | 	ID:          F8:9B:25:12:50:F5:60:49:B2:E0:AC:CB:10:84:2D:57:1D:F3:81:92
+  | 
+  | Configuration 5:
+  | 	Description: Volte_OpenMkt-Commercial-CMCC
+  | 	Type:        software
+  | 	Size:        52772
+  | 	Status:      Inactive
+  | 	Version:     0x8032010
+  | 	ID:          8A:E9:D9:E3:DF:C2:B1:39:02:4B:C8:CA:E9:10:60:CA:BD:29:24:81
+  | 
+A6L_VOLTE4_QMICLI_RC 0 (1s)
+A6L_VOLTE4_CFG src=qmicli desc='ROW_Commercial' size=45828 status=Active version=0x8030808 id=7af52eaad094b6617fd163ca7370863364601f22
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE_OPNMKT_CT' size=69008 status=Inactive version=0x80413E1 id=83ed837eb5fb5ced4c9240c6390067b80a912c7a
+A6L_VOLTE4_CFG src=qmicli desc='France-Commercial-Orange' size=50348 status=Inactive version=0x8040B20 id=965d8d766f9ac0e698ca5d4433395a31526d2d8d
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE-CU' size=50116 status=Inactive version=0x8041560 id=f89b251250f56049b2e0accb10842d571df38192
+A6L_VOLTE4_CFG src=qmicli desc='Volte_OpenMkt-Commercial-CMCC' size=52772 status=Inactive version=0x8032010 id=8ae9d9e3dfc2b139024bc8cae91060cabd292481
+  probe| A6L_VOLTE_IMS_SVC 33 IMSA(ims-application) absent
+  probe| A6L_VOLTE_PDC_ACTIVE type=HW none
+  probe| A6L_VOLTE_PDC_ACTIVE type=SW id=7af52eaad094b6617fd163ca7370863364601f22
+  probe| A6L_VOLTE_PDC_INFO type=SW id=7af52eaad094b6617fd163ca7370863364601f22 size=45828 version=0x08030808 desc='ROW_Commercial'
+  probe| A6L_VOLTE_PDC_LIST SW count=5
+  probe| A6L_VOLTE_PDC_INFO type=SW id=7af52eaad094b6617fd163ca7370863364601f22 size=45828 version=0x08030808 desc='ROW_Commercial'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=83ed837eb5fb5ced4c9240c6390067b80a912c7a size=69008 version=0x080413e1 desc='VoLTE_OPNMKT_CT'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=965d8d766f9ac0e698ca5d4433395a31526d2d8d size=50348 version=0x08040b20 desc='France-Commercial-Orange'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=f89b251250f56049b2e0accb10842d571df38192 size=50116 version=0x08041560 desc='VoLTE-CU'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=8ae9d9e3dfc2b139024bc8cae91060cabd292481 size=52772 version=0x08032010 desc='Volte_OpenMkt-Commercial-CMCC'
+A6L_VOLTE4_STATE tag=pre-act qmicli_total=5 active='ROW_Commercial' active_id=7af52eaad094b6617fd163ca7370863364601f22 pending_id=none orange_id=965d8d766f9ac0e698ca5d4433395a31526d2d8d row_listed=1
+A6L_VOLTE4_STEP activate: select+activate 965d8d766f9ac0e698ca5d4433395a31526d2d8d (modem will restart)
+A6L_VOLTE4_EFS tag=pre-orange ram/modem_fs1 sha256=4c6bcae641aff4b9
+A6L_VOLTE4_EFS tag=pre-orange ram/modem_fs2 sha256=99c412e3d7267224
+A6L_VOLTE4_EFS tag=pre-orange real/modemst1 sha256=77bdccd50ad12f1d (read-only)
+A6L_VOLTE4_EFS tag=pre-orange real/modemst2 sha256=aac97d2795a7c6ce (read-only)
+A6L_VOLTE4_CMD qmicli -d qrtr://0 --pdc-activate-config=software,965d8d766f9ac0e698ca5d4433395a31526d2d8d
+  | [qrtr://0] Successfully requested config activation
+A6L_VOLTE4_QMICLI_RC 0 (1s)
+A6L_VOLTE4_SSR seen=0 after 45s state=running recovery=enabled
+A6L_VOLTE4_NOTE modem did not restart within 45 s (28 Sep: this modem applies the SW config without an SSR)
+A6L_VOLTE4_DAEMON rmtfs pid=2023
+A6L_VOLTE4_DAEMON tqftpserv pid=2024
+A6L_VOLTE4_WATCH 60s (no restart): new_fatal=0 state=running
+A6L_VOLTE4_CMD qmicli -d qrtr://0 --pdc-list-configs=software
+  | Total configurations: 5
+  | Configuration 1:
+  | 	Description: VoLTE_OPNMKT_CT
+  | 	Type:        software
+  | 	Size:        69008
+  | 	Status:      Inactive
+  | 	Version:     0x80413E1
+  | 	ID:          83:ED:83:7E:B5:FB:5C:ED:4C:92:40:C6:39:00:67:B8:0A:91:2C:7A
+  | 
+  | Configuration 2:
+  | 	Description: France-Commercial-Orange
+  | 	Type:        software
+  | 	Size:        50348
+  | 	Status:      Active
+  | 	Version:     0x8040B20
+  | 	ID:          96:5D:8D:76:6F:9A:C0:E6:98:CA:5D:44:33:39:5A:31:52:6D:2D:8D
+  | 
+  | Configuration 3:
+  | 	Description: ROW_Commercial
+  | 	Type:        software
+  | 	Size:        45828
+  | 	Status:      Inactive
+  | 	Version:     0x8030808
+  | 	ID:          7A:F5:2E:AA:D0:94:B6:61:7F:D1:63:CA:73:70:86:33:64:60:1F:22
+  | 
+  | Configuration 4:
+  | 	Description: VoLTE-CU
+  | 	Type:        software
+  | 	Size:        50116
+  | 	Status:      Inactive
+  | 	Version:     0x8041560
+  | 	ID:          F8:9B:25:12:50:F5:60:49:B2:E0:AC:CB:10:84:2D:57:1D:F3:81:92
+  | 
+  | Configuration 5:
+  | 	Description: Volte_OpenMkt-Commercial-CMCC
+  | 	Type:        software
+  | 	Size:        52772
+  | 	Status:      Inactive
+  | 	Version:     0x8032010
+  | 	ID:          8A:E9:D9:E3:DF:C2:B1:39:02:4B:C8:CA:E9:10:60:CA:BD:29:24:81
+  | 
+A6L_VOLTE4_QMICLI_RC 0 (1s)
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE_OPNMKT_CT' size=69008 status=Inactive version=0x80413E1 id=83ed837eb5fb5ced4c9240c6390067b80a912c7a
+A6L_VOLTE4_CFG src=qmicli desc='France-Commercial-Orange' size=50348 status=Active version=0x8040B20 id=965d8d766f9ac0e698ca5d4433395a31526d2d8d
+A6L_VOLTE4_CFG src=qmicli desc='ROW_Commercial' size=45828 status=Inactive version=0x8030808 id=7af52eaad094b6617fd163ca7370863364601f22
+A6L_VOLTE4_CFG src=qmicli desc='VoLTE-CU' size=50116 status=Inactive version=0x8041560 id=f89b251250f56049b2e0accb10842d571df38192
+A6L_VOLTE4_CFG src=qmicli desc='Volte_OpenMkt-Commercial-CMCC' size=52772 status=Inactive version=0x8032010 id=8ae9d9e3dfc2b139024bc8cae91060cabd292481
+  probe| A6L_VOLTE_IMS_SVC 33 IMSA(ims-application) PRESENT
+  probe| A6L_VOLTE_PDC_ACTIVE type=HW none
+  probe| A6L_VOLTE_PDC_ACTIVE type=SW id=965d8d766f9ac0e698ca5d4433395a31526d2d8d
+  probe| A6L_VOLTE_PDC_INFO type=SW id=965d8d766f9ac0e698ca5d4433395a31526d2d8d size=50348 version=0x08040b20 desc='France-Commercial-Orange'
+  probe| A6L_VOLTE_PDC_LIST SW count=5
+  probe| A6L_VOLTE_PDC_INFO type=SW id=83ed837eb5fb5ced4c9240c6390067b80a912c7a size=69008 version=0x080413e1 desc='VoLTE_OPNMKT_CT'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=965d8d766f9ac0e698ca5d4433395a31526d2d8d size=50348 version=0x08040b20 desc='France-Commercial-Orange'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=7af52eaad094b6617fd163ca7370863364601f22 size=45828 version=0x08030808 desc='ROW_Commercial'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=f89b251250f56049b2e0accb10842d571df38192 size=50116 version=0x08041560 desc='VoLTE-CU'
+  probe| A6L_VOLTE_PDC_INFO type=SW id=8ae9d9e3dfc2b139024bc8cae91060cabd292481 size=52772 version=0x08032010 desc='Volte_OpenMkt-Commercial-CMCC'
+A6L_VOLTE4_STATE tag=post-orange qmicli_total=5 active='France-Commercial-Orange' active_id=965d8d766f9ac0e698ca5d4433395a31526d2d8d pending_id=none orange_id=965d8d766f9ac0e698ca5d4433395a31526d2d8d row_listed=1
+A6L_VOLTE4_EFS tag=post-orange ram/modem_fs1 sha256=9e7d56d1b2d71282
+A6L_VOLTE4_EFS tag=post-orange ram/modem_fs2 sha256=99c412e3d7267224
+A6L_VOLTE4_EFS tag=post-orange real/modemst1 sha256=77bdccd50ad12f1d (read-only)
+A6L_VOLTE4_EFS tag=post-orange real/modemst2 sha256=aac97d2795a7c6ce (read-only)
+A6L_VOLTE4_ACTIVATE_PASS active='France-Commercial-Orange' id=965d8d766f9ac0e698ca5d4433395a31526d2d8d restart=no (applied in place; modem stable 60s)
+A6L_VOLTE4_DONE mode=activate result=OK log=/tmp/volte4-logs/volte4-activate-211022.txt
+A6L_VOLTE5_PDC_activate_OK ACTIVATE_PASS active='France-Commercial-Orange' id=965d8d766f9ac0e698ca5d4433395a31526d2d8d restart=no (applied in place; modem stable 60s)
+A6L_VOLTE5_DONE mode=activate result=OK log=/tmp/volte5-logs/volte5-activate-211016.txt

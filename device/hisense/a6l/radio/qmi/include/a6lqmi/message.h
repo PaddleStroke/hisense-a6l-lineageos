@@ -53,6 +53,8 @@ enum QmiError : uint16_t {  // values verified against libqmi qmi-errors.h
     kErrInformationUnavailable = 74,
     kErrSimFileNotFound = 80,
     kErrAccessDenied = 82,
+    kErrHardwareRestricted = 83,
+    kErrAckNotSent = 84,  // WMS Send Ack: RP-ACK/NACK not delivered (resp TLV 0x10 = cause)
     kErrIncompatibleState = 90,
     kErrFdnRestrict = 91,
     kErrNoRadio = 93,

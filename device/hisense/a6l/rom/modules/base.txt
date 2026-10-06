@@ -1,0 +1,18 @@
+# r5 bug hunt boot-init (29 Sep 2026): kernel features Android userspace needs that the V67 Image builds as MODULES
+# (phone-kernel-v67-candidate-20260919/config: CONFIG_FUSE_FS=m, CONFIG_UHID=m) and that no other group loaded.
+# Loaded first by a6l-modules.sh display (early-init), long before vold/system_server/the Bluetooth stack start.
+#  - fuse: vold MountUserFuse opens /dev/fuse for /storage/emulated (MediaProvider FUSE daemon) and for every public
+#    volume (microSD); without it no user storage is mounted.
+#  - uhid: /dev/uhid (ueventd 0660 uhid uhid) = the Bluetooth stack's HID host (BT keyboards/mice/gamepads);
+#    without the module the node never exists.
+fuse.ko
+uhid.ko
+# kernel-gaps (29 Sep 2026, docs/kernel-gaps-20260929.md): ACK-only kernel features, out-of-tree ports (V67 and r5 builds).
+#  - xt_quota2: netd BandwidthController "-m quota2" rules (data warning/limit, global alert) + NFLOG alerts; must be in before
+#    netd/system_server install the rules (no modprobe on Android, STATIC_USERMODEHELPER on r5). QEMU-tested, not phone-tested.
+#  - uid_sys_stats: /proc/uid_cputime, /proc/uid_io, /proc/uid_procstat (BatteryStats per-UID user/sys time, storaged per-UID io).
+xt_quota2.ko
+uid_sys_stats.ko
+# cpufreq-watchdog (29 Sep 2026, docs/cpufreq-watchdog-20260929.md): APSS hardware watchdog (H64). Probe only reads the block;
+# nothing is armed until watchdogd opens /dev/watchdog (opt-in persist.vendor.a6l.watchdog=1, after boot_completed).
+qcom-wdt.ko

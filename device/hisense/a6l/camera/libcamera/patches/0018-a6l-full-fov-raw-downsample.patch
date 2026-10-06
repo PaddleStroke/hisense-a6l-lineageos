@@ -1,0 +1,271 @@
+--- /dev/null
++++ b/include/libcamera/internal/raw10_fov.h
+@@ -0,0 +1,128 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++#pragma once
++
++#include <algorithm>
++#include <cmath>
++#include <cstddef>
++#include <cstdint>
++#include <limits>
++#include <span>
++#include <vector>
++
++namespace libcamera {
++
++/* Preserve Bayer phase when resizing: interpolate R/G/G/B on separate lattices.
++ * This is a geometry correction, not calibrated hardware binning or a tone curve.
++ */
++class Raw10FovResampler
++{
++public:
++	struct Crop { unsigned int x, y, width, height; };
++	struct Sample { unsigned int low, high, fraction; };
++	static constexpr unsigned int border = 4;
++	static constexpr unsigned int unit = 65536;
++
++	bool configure(unsigned int iw, unsigned int ih, unsigned int inputStride,
++		       unsigned int ow, unsigned int oh)
++	{
++		valid_ = false;
++		if (iw < 12 || ih < 2 || iw > 16384 || ih > 16384 || iw % 4 || ih % 2 || !ow || !oh || ow % 4 || oh % 2 ||
++		    ow > iw - 2 * border || oh > ih || inputStride < uint64_t(iw) * 5 / 4 ||
++		    uint64_t(inputStride) * ih > std::min<uint64_t>(std::numeric_limits<size_t>::max(), 256 * 1024 * 1024))
++			return false;
++		inputWidth_ = iw; inputHeight_ = ih; inputStride_ = inputStride;
++		width_ = ow + 2 * border; height_ = oh;
++		stride_ = ((width_ * 5 / 4 + 63) / 64) * 64;
++		if (uint64_t(stride_) * height_ > 64 * 1024 * 1024)
++			return false;
++		unsigned int cw = iw - 2 * border, ch = ih;
++		if (uint64_t(cw) * oh > uint64_t(ow) * ch)
++			cw = (uint64_t(ch) * ow / oh) & ~3u;
++		else
++			ch = (uint64_t(cw) * oh / ow) & ~1u;
++		if (cw < ow || ch < oh)
++			return false;
++		crop_ = { ((iw - cw) / 2) & ~3u, ((ih - ch) / 2) & ~1u, cw, ch };
++		x_.resize(width_); y_.resize(height_);
++		for (unsigned int x = 0; x < width_; ++x)
++			x_[x] = axis(crop_.x + (double(int64_t(x) - border) + 0.5) * cw / ow - 0.5, x & 1, iw);
++		for (unsigned int y = 0; y < height_; ++y)
++			y_[y] = axis(crop_.y + (double(y) + 0.5) * ch / oh - 0.5, y & 1, ih);
++		valid_ = true;
++		return true;
++	}
++
++	bool process(std::span<const uint8_t> input, std::span<uint8_t> output) const
++	{
++		if (!valid_ || input.size() < uint64_t(inputStride_) * (inputHeight_ - 1) + uint64_t(inputWidth_) * 5 / 4 ||
++		    output.size() < uint64_t(stride_) * height_)
++			return false;
++		for (unsigned int y = 0; y < height_; ++y) {
++			uint8_t *dst = output.data() + size_t(y) * stride_;
++			const Sample &sy = y_[y];
++			const uint8_t *row0 = input.data() + size_t(sy.low) * inputStride_;
++			const uint8_t *row1 = input.data() + size_t(sy.high) * inputStride_;
++			for (unsigned int x = 0; x < width_; x += 4) {
++				uint8_t lowBits = 0;
++				for (unsigned int phase = 0; phase < 4; ++phase) {
++					const Sample &sx = x_[x + phase];
++					uint64_t top = uint64_t(read(row0, sx.low)) * (unit - sx.fraction) + uint64_t(read(row0, sx.high)) * sx.fraction;
++					uint64_t bottom = uint64_t(read(row1, sx.low)) * (unit - sx.fraction) + uint64_t(read(row1, sx.high)) * sx.fraction;
++					uint16_t value = (top * (unit - sy.fraction) + bottom * sy.fraction + (uint64_t(1) << 31)) >> 32;
++					dst[phase] = value >> 2;
++					lowBits |= (value & 3) << (phase * 2);
++				}
++				dst[4] = lowBits;
++				dst += 5;
++			}
++		}
++		return true;
++	}
++
++	unsigned int width() const { return width_; }
++	unsigned int height() const { return height_; }
++	unsigned int stride() const { return stride_; }
++	size_t bytes() const { return size_t(stride_) * height_; }
++	Crop crop() const { return crop_; }
++
++	/* Among supported adequate modes, prefer less aspect cropping, then fewer pixels. */
++	static bool preferMode(unsigned int w, unsigned int h, unsigned int bestW, unsigned int bestH,
++			       unsigned int outW, unsigned int outH)
++	{
++		if (!h || !bestH || !outW || !outH ||
++		    std::max({w, h, bestW, bestH, outW, outH}) > 16384)
++			return uint64_t(w) * h < uint64_t(bestW) * bestH;
++		uint64_t a = uint64_t(w) * outH, b = uint64_t(h) * outW;
++		uint64_t c = uint64_t(bestW) * outH, d = uint64_t(bestH) * outW;
++		uint64_t error = a > b ? a - b : b - a;
++		uint64_t bestError = c > d ? c - d : d - c;
++		if (error * bestH != bestError * h)
++			return error * bestH < bestError * h;
++		return uint64_t(w) * h < uint64_t(bestW) * bestH;
++	}
++
++private:
++	static Sample axis(double coordinate, unsigned int phase, unsigned int extent)
++	{
++		double index = (coordinate - phase) / 2;
++		int64_t low = int64_t(std::floor(index)) * 2 + phase;
++		unsigned int maximum = extent - 2 + phase;
++		if (low < phase)
++			return { phase, phase, 0 };
++		if (uint64_t(low) + 2 > maximum)
++			return { maximum, maximum, 0 };
++		return { unsigned(low), unsigned(low + 2), unsigned(std::llround((index - std::floor(index)) * unit)) };
++	}
++	static uint16_t read(const uint8_t *row, unsigned int x)
++	{
++		const uint8_t *group = row + size_t(x / 4) * 5;
++		return uint16_t(group[x % 4]) * 4 + ((group[4] >> (2 * (x % 4))) & 3);
++	}
++	bool valid_ = false;
++	unsigned int inputWidth_ = 0, inputHeight_ = 0, inputStride_ = 0;
++	unsigned int width_ = 0, height_ = 0, stride_ = 0;
++	Crop crop_{};
++	std::vector<Sample> x_, y_;
++};
++
++} /* namespace libcamera */
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -21,6 +21,7 @@
+ #include <libcamera/camera_manager.h>
+ 
+ #include "libcamera/internal/bayer_format.h"
++#include "libcamera/internal/raw10_fov.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
+ #include "libcamera/internal/software_isp/swstats_cpu.h"
+ 
+@@ -155,6 +156,9 @@
+ 	debayerFn debayer2_;
+ 	debayerFn debayer3_;
+ 	Rectangle window_;
++	Raw10FovResampler rawFov_;
++	std::vector<uint8_t> rawFovBuffer_;
++	bool rawFovActive_ = false;
+ 	std::unique_ptr<SwStatsCpu> stats_;
+ 	unsigned int xShift_; /* Offset of 0/1 applied to window_.x */
+ 
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -662,7 +662,32 @@
+ 	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0)
+ 		return -EINVAL;
+ 
+-	if (stats_->configure(inputCfg, threads_.size()) != 0)
++	/* A6L RAW10/NV12: scale the largest aspect-matched sensor area, not a
++	 * 1:1 center slice. Four Bayer phases are interpolated separately.
++	 * Reserve the existing packed-RAW interpolation border in the temporary.
++	 */
++	StreamConfiguration effectiveInput = inputCfg;
++	rawFovActive_ = outputCfgs.size() == 1 &&
++		outputCfgs[0].get().pixelFormat == formats::NV12 &&
++		inputConfig_.bpp == 10 && inputConfig_.patternSize == Size(4, 2);
++	if (rawFovActive_) {
++		const Size &size = outputCfgs[0].get().size;
++		if (!rawFov_.configure(inputCfg.size.width, inputCfg.size.height,
++				      inputCfg.stride, size.width, size.height))
++			return -EINVAL;
++		rawFovBuffer_.resize(rawFov_.bytes());
++		effectiveInput.size = Size(rawFov_.width(), rawFov_.height());
++		effectiveInput.stride = rawFov_.stride();
++		effectiveInput.frameSize = rawFov_.bytes();
++		const auto crop = rawFov_.crop();
++		LOG(Debayer, Info) << "A6L_FOV input=" << inputCfg.size
++			<< " crop=" << Rectangle(crop.x, crop.y, crop.width, crop.height)
++			<< " output=" << size << " raw_temporary=" << effectiveInput.size;
++	} else {
++		rawFovBuffer_.clear();
++	}
++
++	if (stats_->configure(effectiveInput, threads_.size()) != 0)
+ 		return -EINVAL;
+ 
+ 	const Size &statsPatternSize = stats_->patternSize();
+@@ -674,7 +699,7 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	inputConfig_.stride = inputCfg.stride;
++	inputConfig_.stride = effectiveInput.stride;
+ 
+ 	if (outputCfgs.size() != 1) {
+ 		LOG(Debayer, Error)
+@@ -713,9 +738,9 @@
+ 	 */
+ 	params_.gamma = 1.0;
+ 
+-	window_.x = ((inputCfg.size.width - outputCfg.size.width) / 2) &
++	window_.x = ((effectiveInput.size.width - outputCfg.size.width) / 2) &
+ 		    ~(inputConfig_.patternSize.width - 1);
+-	window_.y = ((inputCfg.size.height - outputCfg.size.height) / 2) &
++	window_.y = ((effectiveInput.size.height - outputCfg.size.height) / 2) &
+ 		    ~(inputConfig_.patternSize.height - 1);
+ 	window_.width = outputCfg.size.width;
+ 	window_.height = outputCfg.size.height;
+@@ -1162,6 +1187,20 @@
+ 		return;
+ 	}
+ 
++	const uint8_t *rawInput = in.planes()[0].data();
++	if (rawFovActive_) {
++		const uint64_t resampleStart = qualityStart ? a6lQualityMonotonicNs() : 0;
++		if (!rawFov_.process(std::span<const uint8_t>(rawInput, in.planes()[0].size()), rawFovBuffer_)) {
++			LOG(Debayer, Error) << "RAW10 FOV source/destination bounds invalid";
++			metadata.status = FrameMetadata::FrameError;
++			return;
++		}
++		if (resampleStart)
++			LOG(Debayer, Info) << "A6L_QUALITY_RAW_RESAMPLE frame=" << frame
++				<< " elapsed_us=" << (a6lQualityMonotonicNs() - resampleStart) / 1000
++				<< " raw_temporary_bytes=" << rawFov_.bytes();
++		rawInput = rawFovBuffer_.data();
++	}
+ 	stats_->startFrame(frame);
+ 
+ 	workPendingMutex_.lock();
+@@ -1186,7 +1225,7 @@
+ 	for (auto &thread : threads_)
+ 		thread->invokeMethod(&DebayerCpuThread::process,
+ 				     ConnectionTypeQueued, frame,
+-				     in.planes()[0].data(), out.planes()[0].data(), outUV);
++				     rawInput, out.planes()[0].data(), outUV);
+ 
+ 	{
+ 		MutexLocker locker(workPendingMutex_);
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -29,11 +29,13 @@
+ #include <libcamera/color_space.h>
+ #include <libcamera/control_ids.h>
+ #include <libcamera/geometry.h>
++#include <libcamera/formats.h>
+ #include <libcamera/pixel_format.h>
+ #include <libcamera/stream.h>
+ 
+ #include "libcamera/internal/camera.h"
+ #include "libcamera/internal/a6l_quality_debug.h"
++#include "libcamera/internal/raw10_fov.h"
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/camera_lens.h"
+ #include "libcamera/internal/camera_manager.h"
+@@ -1283,7 +1285,15 @@
+ 		    maxOutputSize.height >= maxProcessedStreamSize.height &&
+ 		    captureSize.width >= maxRawStreamSize.width &&
+ 		    captureSize.height >= maxRawStreamSize.height) {
+-			if (!pipeConfig_ || captureSize < pipeConfig_->captureSize)
++			const auto bayer = BayerFormat::fromPixelFormat(pipeConfig->captureFormat);
++			const bool fovScaling = data_->swIsp_ && !rawCount &&
++				config_[0].pixelFormat == formats::NV12 && bayer.bitDepth == 10 &&
++				bayer.packing == BayerFormat::Packing::CSI2;
++			if (!pipeConfig_ || (fovScaling ?
++				Raw10FovResampler::preferMode(captureSize.width, captureSize.height,
++					pipeConfig_->captureSize.width, pipeConfig_->captureSize.height,
++					maxProcessedStreamSize.width, maxProcessedStreamSize.height) :
++				captureSize < pipeConfig_->captureSize))
+ 				pipeConfig_ = pipeConfig;
+ 		}
+ 

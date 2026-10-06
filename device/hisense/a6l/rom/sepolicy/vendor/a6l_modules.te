@@ -1,0 +1,45 @@
+# /vendor/bin/a6l-modules.sh display|adsp|misc|bootinfo (services a6l_modules_*, a6l_bootinfo). Written from reading the
+# script (release-prep 27 Sep 2026); complete with `dmesg | grep avc | grep a6l_modules` from the first permissive install.
+type a6l_modules, domain;
+init_daemon_domain(a6l_modules)
+
+# /vendor/bin/sh + toybox (grep, sed, cat, sleep, ls, readlink, mkdir, chown, chmod, insmod)
+allow a6l_modules vendor_shell_exec:file rx_file_perms;
+allow a6l_modules vendor_toolbox_exec:file rx_file_perms;
+allow a6l_modules kmsg_device:chr_file { write append getattr };     # stdio_to_kmsg
+
+# modules: /vendor/lib/modules + lists /vendor/etc/a6l/modules/*.txt
+allow a6l_modules self:capability { sys_module chown fowner };   # dac_override/dac_read_search: neverallowed for vendor domains
+allow a6l_modules vendor_kernel_modules:system module_load;
+r_dir_file(a6l_modules, vendor_kernel_modules)
+allow a6l_modules vendor_configs_file:dir r_dir_perms;
+allow a6l_modules vendor_configs_file:file r_file_perms;
+allow a6l_modules proc_modules:file r_file_perms;
+r_dir_file(a6l_modules, proc_asound)
+
+# remoteproc start (ADSP), connector status (e-ink off), i2c new_device (TMD3702 on c176000 = sysfs_a6l_epd), IIO chown
+allow a6l_modules { sysfs sysfs_a6l_remoteproc sysfs_a6l_drm sysfs_a6l_epd sysfs_a6l_iio sysfs_leds sysfs_a6l_power_supply }:dir r_dir_perms;
+allow a6l_modules { sysfs sysfs_a6l_remoteproc sysfs_a6l_drm sysfs_a6l_epd sysfs_a6l_iio sysfs_leds sysfs_a6l_power_supply }:lnk_file read;
+allow a6l_modules { sysfs_a6l_remoteproc sysfs_a6l_drm sysfs_a6l_epd }:file rw_file_perms;
+allow a6l_modules { sysfs sysfs_leds sysfs_a6l_power_supply }:file r_file_perms;
+# r5 bug hunt power (29 Sep 2026): charger/FG power_supply nodes are now sysfs_batteryinfo (genfs_contexts); misc/offcharge log them
+r_dir_file(a6l_modules, sysfs_batteryinfo)
+allow a6l_modules sysfs_a6l_iio:file { r_file_perms setattr };
+allow a6l_modules iio_device:chr_file { getattr setattr };
+allow a6l_modules sysfs_dt_firmware_android:file r_file_perms;
+
+# /dev/a6l/eink-mode (hand-off to a6l_epdd)
+type_transition a6l_modules device:dir a6l_dev_file "a6l";
+allow a6l_modules device:dir { add_name write search };
+allow a6l_modules a6l_dev_file:dir create_dir_perms;
+allow a6l_modules a6l_dev_file:file create_file_perms;
+allow a6l_epdd a6l_dev_file:dir r_dir_perms;
+allow a6l_epdd a6l_dev_file:file r_file_perms;
+
+# properties: feature gates, lease-socket probe. Setting persist.graphics.egl is NEVERALLOWED for vendor domains
+# (graphics_config_writable_prop: system/sepolicy/private/gpuservice.te) -> r5 F11: the script only publishes the boot-scoped
+# vendor.a6l.gpu=mesa|angle and init.qcom.rc (vendor_init) copies it into persist.graphics.egl at post-fs-data.
+get_prop(a6l_modules, vendor_a6l_prop)
+set_prop(a6l_modules, vendor_a6l_prop)
+get_prop(a6l_modules, vendor_a6l_ro_prop)
+get_prop(a6l_modules, vendor_default_prop)

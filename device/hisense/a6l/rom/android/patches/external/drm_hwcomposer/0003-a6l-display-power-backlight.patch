@@ -1,0 +1,77 @@
+From: A6L port maintainers
+Subject: [PATCH] hwc: blank the independent backlight with display power
+
+The A6L LCD remains lit after CRTC shutdown because WLED is independently
+controlled. Blank it on power-off, retain brightness updates while off, and
+restore the requested value on wake. SysfsBacklightController retains the
+existing dualux hold, so waking the compositor cannot light the front LCD
+while the rear e-ink screen is selected.
+
+--- a/hwc/HwcDisplay.h
++++ b/hwc/HwcDisplay.h
+@@ -398,6 +398,8 @@
+   std::unique_ptr<DisplayConfigurationResultReporter> config_result_reporter_;
+ 
+   std::unique_ptr<BacklightController> backlight_controller_;
++  std::optional<float> last_brightness_;
++  bool display_power_off_ = false;
+ };
+ 
+ }  // namespace android::drm_hwcomposer
+--- a/hwc/HwcDisplay.cpp
++++ b/hwc/HwcDisplay.cpp
+@@ -606,10 +606,27 @@
+   }
+   bool enabled = mode != PowerMode::kOff;
+ 
++  // CRTC DPMS does not control the independent WLED backlight on the A6L.
++  // Preserve brightness while blanked, including updates received while off.
++  auto update_backlight = [this, enabled]() {
++    display_power_off_ = !enabled;
++    if (HasBacklight()) {
++      if (!enabled) {
++        backlight_controller_->SetBrightness(std::nullopt);
++      } else if (last_brightness_) {
++        backlight_controller_->SetBrightness(last_brightness_);
++      }
++    }
++  };
++  if (!enabled) {
++    update_backlight();
++  }
++
+   // If the request is to enable the display, the CRTC is not active, and an
+   // active config is set, try to reconfigure the pipeline with SetConfig.
+   if (enabled) {
+     if (GetPipe().atomic_commit_sink->IsActive()) {
++      update_backlight();
+       return HwcDisplay::Error::kNone;
+     }
+ 
+@@ -637,6 +654,9 @@
+   // update will try to set it to active again.
+   if (!commit_success && !enabled) {
+     return HwcDisplay::Error::kBadParameter;
++  }
++  if (enabled) {
++    update_backlight();
+   }
+   return HwcDisplay::Error::kNone;
+ }
+@@ -1486,8 +1506,15 @@
+   if (!HasBacklight()) {
+     return false;
+   }
++  if (brightness > 1.0F) {
++    return false;
++  }
++  if (brightness >= 0.0F) {
++    last_brightness_ = brightness;
++  }
+   return backlight_controller_->SetBrightness(
+-      brightness >= 0.0F ? std::optional<float>(brightness) : std::nullopt);
++      !display_power_off_ && brightness >= 0.0F
++          ? std::optional<float>(brightness) : std::nullopt);
+ }
+ 
+ void HwcDisplay::LogModesOnHotplug() {

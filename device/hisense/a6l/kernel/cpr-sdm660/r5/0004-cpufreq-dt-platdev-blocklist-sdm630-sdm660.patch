@@ -1,0 +1,11 @@
+--- a/drivers/cpufreq/cpufreq-dt-platdev.c	2026-09-29 20:27:59.129369868 +0200
++++ b/drivers/cpufreq/cpufreq-dt-platdev.c	2026-09-29 20:27:59.140354576 +0200
+@@ -168,6 +168,8 @@
+ 	{ .compatible = "qcom,sc7280", },
+ 	{ .compatible = "qcom,sc8180x", },
+ 	{ .compatible = "qcom,sc8280xp", },
++	{ .compatible = "qcom,sdm630", },
++	{ .compatible = "qcom,sdm660", },
+ 	{ .compatible = "qcom,sdm670", },
+ 	{ .compatible = "qcom,sdm845", },
+ 	{ .compatible = "qcom,sdx75", },

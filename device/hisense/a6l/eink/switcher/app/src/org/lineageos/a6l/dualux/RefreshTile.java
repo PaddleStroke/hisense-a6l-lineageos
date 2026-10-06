@@ -18,7 +18,7 @@ public class RefreshTile extends TileService {
         if (t == null) return;
         t.setState(Tile.STATE_ACTIVE);
         t.setLabel(getString(R.string.tile_refresh));
-        t.setSubtitle(Dualux.shortName(Dualux.refreshMode()));
+        t.setSubtitle(getString(Dualux.shortLabel(Dualux.refreshMode())));
         t.updateTile();
     }
 }

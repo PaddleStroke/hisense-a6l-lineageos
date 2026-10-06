@@ -1,0 +1,59 @@
+A6L_VOLTE5_START mode=verify Sun Nov 14 21:14:13 UTC 1971 modem=running ipa=bound log=/tmp/volte5-logs/volte5-verify-211413.txt
+A6L_VOLTE5_IPA bound
+A6L_VOLTE5_STEP 1 PDC active config
+  probe| A6L_VOLTE_IMS_SVC 18 IMSS(ims-settings) PRESENT
+  probe| A6L_VOLTE_IMS_SVC 33 IMSA(ims-application) PRESENT
+  probe| A6L_VOLTE_IMS_SVC 770 IMSDCM(AP-hosted by imsdatadaemon) absent
+  probe| A6L_VOLTE_NAS_SYSINFO lte_srv_status=0 true=0 (2=full service)
+  probe| A6L_VOLTE_NAS_SYSINFO ims_voice_support=absent
+  probe| A6L_VOLTE_NAS_SYSINFO lte_voice_domain=absent
+A6L_VOLTE5_PDC tag=pre active='France-Commercial-Orange' id=965d8d766f9ac0e698ca5d4433395a31526d2d8d
+A6L_VOLTE5_STEP 2 SIM PIN
+A6L_QMI_VERIFY_PIN refused: no primary SIM app (gw_primary=0xffff), PIN not sent
+A6L_VOLTE5_STEP a6l-imsdcm --imsa (770 server, IMSS=enable, sub=0, mux=9)
+  dcm| A6L_IMSDCM_PUBLISHED service=770 idl=1.15 instance_word=0x1 mux=9 profile=modem
+  dcm| A6L_IMSDCM_IMSS PRESENT after 0 s (mode=enable)
+  dcm| A6L_IMSDCM_IMSS bind sub=0: ok
+  dcm| A6L_IMSDCM_IMSS get ims_service_enabled=1 volte=1 vt=0 wifi=0
+  dcm| A6L_IMSDCM_IMSS enable: already on (no write)
+  dcm| A6L_IMSDCM_IMSS RESULT ims_service_enabled=1 wrote=no
+  dcm| A6L_IMSDCM_IMSA PRESENT (service 33 published) after 0 s
+  dcm| A6L_IMSDCM_IMSA bind sub=0: ok
+  dcm| A6L_IMSDCM_IMSA register indications: ok
+  dcm| A6L_IMSDCM_IMSA reg status=not-registered err=0
+  dcm| A6L_IMSDCM_IMSA services voice=- sms=- vt=- ut=unavailable
+A6L_VOLTE5_STEP 3 online
+A6L_QMI_SET_OPMODE ok -> 0
+A6L_QMI_SERVING reg=searching cs=2 ps=2 rat=umts roaming=yes plmn=20801 '' lac=-1 tac=-1 cid=-1
+  WARNING: not PS-attached after 60 s (continuing)
+A6L_VOLTE5_STEP 4 wait for IMS registration (<= 240 s)
+  dcm| A6L_IMSDCM_REQ LINK_ADDR port=9099 family=v6 addr=fe80::64c1:f4b5:70f5:aae6 -> ok
+  dcm| A6L_IMSDCM_REQ from=0:114 0x002e REGISTER_APP_STATE app=1 instance=0 -> ok (stock behaviour) type=0 txn=2 msg=0x002e [10]01 [11]00000000
+  dcm| A6L_IMSDCM_REQ from=0:114 0x0034 SERVICE_ENABLE_STATUS rcs_mask=0x0 -> ok (stock behaviour) type=0 txn=3 msg=0x0034 [01]0000000000000000
+  dcm| A6L_IMSDCM_IMSS PRESENT after 0 s (mode=enable)
+  dcm| A6L_IMSDCM_IMSS bind sub=0: ok
+  dcm| A6L_IMSDCM_IMSS get ims_service_enabled=1 volte=1 vt=0 wifi=0
+  dcm| A6L_IMSDCM_IMSS enable: already on (no write)
+  dcm| A6L_IMSDCM_IMSS RESULT ims_service_enabled=1 wrote=no
+  dcm| A6L_IMSDCM_IMSA PRESENT (service 33 published) after 0 s
+  dcm| A6L_IMSDCM_IMSA bind sub=0: ok
+  dcm| A6L_IMSDCM_IMSA register indications: ok
+  dcm| A6L_IMSDCM_IMSA reg status=not-registered err=0
+  dcm| A6L_IMSDCM_IMSA services voice=- sms=- vt=- ut=unavailable
+A6L_VOLTE5_REG registered=0 after 245s
+A6L_VOLTE5_STEP 5 status
+A6L_VOLTE3_IMSA now imsa=present registered=0 voice=0 reg=[status=not-registered err=0] services=[voice=- sms=- vt=- ut=unavailable]
+A6L_VOLTE3_NAS now ok lte_ims_voice=-1 lte_voice_domain=-1(0 none,1 IMS,2 1X,3 CS)
+A6L_VOLTE3_AUDIO_SESSION now lte=mmode1 cs=mmode1
+  probe| A6L_VOLTE_IMS_SVC 18 IMSS(ims-settings) PRESENT
+  probe| A6L_VOLTE_IMS_SVC 33 IMSA(ims-application) PRESENT
+  probe| A6L_VOLTE_IMS_SVC 770 IMSDCM(AP-hosted by imsdatadaemon) PRESENT
+  probe| A6L_VOLTE_NAS_SYSINFO ims_voice_support=absent
+  probe| A6L_VOLTE_NAS_SYSINFO lte_voice_domain=absent
+  probe| A6L_VOLTE_IMSA_REG_STATUS res=1 err=70
+  probe| A6L_VOLTE_IMSA_REG_STATUS tlv=0x02 len=4 01004600
+  probe| A6L_VOLTE_IMSS_SERVICES_ENABLED res=1 err=70
+  probe| A6L_VOLTE_IMSS_SERVICES_ENABLED tlv=0x02 len=4 01004600
+A6L_VOLTE5_RESULT imss=1,wrote=no imsa=present bound=yes dcm_requests=3 pdp_activate=0 pdp_up=0 registered=no voice=- lte_voice_domain=-1 (logs /tmp/volte5-logs)
+A6L_VOLTE5_NOTE a6l-imsdcm keeps running (IMS PDN up); next: MODE=call, or MODE=stop
+A6L_VOLTE5_DONE mode=verify result=OK log=/tmp/volte5-logs/volte5-verify-211413.txt

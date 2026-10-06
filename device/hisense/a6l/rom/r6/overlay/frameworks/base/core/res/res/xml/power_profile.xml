@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A6L power profile (r6 first cut, 29 Sep 2026). Only battery.capacity is measured (3800 mAh fuel-gauge profile
+     4101451_hisense_hlte730t_3800mah, docs/power-20260926.md); every current is a typical SDM660-class estimate in mA,
+     to be replaced by a measured profile (fuel gauge current_now per state, attended). cpufreq is not merged yet (H52):
+     one speed per cluster (stock maxima), cores 0-3 = Kryo 260 efficiency, 4-7 = performance. -->
+<device name="Android">
+    <item name="battery.capacity">3800</item>
+    <item name="ambient.on">20</item>
+    <item name="screen.on">60</item>
+    <item name="screen.full">250</item>
+    <item name="wifi.on">1</item>
+    <item name="wifi.active">60</item>
+    <item name="wifi.scan">60</item>
+    <item name="wifi.controller.idle">0</item>
+    <item name="wifi.controller.rx">100</item>
+    <item name="wifi.controller.tx">200</item>
+    <item name="wifi.controller.voltage">3700</item>
+    <item name="bluetooth.controller.idle">0</item>
+    <item name="bluetooth.controller.rx">10</item>
+    <item name="bluetooth.controller.tx">20</item>
+    <item name="bluetooth.controller.voltage">3700</item>
+    <item name="modem.controller.sleep">0</item>
+    <item name="modem.controller.idle">3</item>
+    <item name="modem.controller.rx">100</item>
+    <array name="modem.controller.tx">
+        <value>150</value>
+        <value>200</value>
+        <value>250</value>
+        <value>300</value>
+        <value>400</value>
+    </array>
+    <item name="modem.controller.voltage">3700</item>
+    <item name="radio.active">150</item>
+    <item name="radio.scanning">50</item>
+    <array name="radio.on">
+        <value>4</value>
+        <value>3</value>
+    </array>
+    <item name="gps.on">40</item>
+    <item name="audio">40</item>
+    <item name="video">80</item>
+    <item name="camera.flashlight">150</item>
+    <item name="camera.avg">500</item>
+    <item name="cpu.suspend">4</item>
+    <item name="cpu.idle">8</item>
+    <item name="cpu.active">20</item>
+    <array name="cpu.clusters.cores">
+        <value>4</value>
+        <value>4</value>
+    </array>
+    <array name="cpu.core_speeds.cluster0">
+        <value>1843200</value>
+    </array>
+    <array name="cpu.core_power.cluster0">
+        <value>120</value>
+    </array>
+    <array name="cpu.core_speeds.cluster1">
+        <value>2208000</value>
+    </array>
+    <array name="cpu.core_power.cluster1">
+        <value>350</value>
+    </array>
+    <item name="cpu.cluster_power.cluster0">10</item>
+    <item name="cpu.cluster_power.cluster1">20</item>
+</device>

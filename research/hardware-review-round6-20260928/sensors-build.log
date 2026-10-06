@@ -1,0 +1,31 @@
+In file included from /mnt/c/Users/Pierre/Desktop/A6L/research/hardware-review-round6-20260928/sensors.c:12:
+/tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/sensors_a6l.c: In function ‘find_iio’:
+/tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/sensors_a6l.c:123:54: warning: ‘%s’ directive output may be truncated writing up to 255 bytes into a region of size 191 [-Wformat-truncation=]
+  123 |                 snprintf(c->sys, sizeof(c->sys), "%s/%s", a6l_sysroot(), e->d_name);
+      |                                                      ^~
+In file included from /usr/include/stdio.h:980,
+                 from /tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/sensors_a6l.c:29:
+In function ‘snprintf’,
+    inlined from ‘find_iio’ at /tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/sensors_a6l.c:123:3:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:54:10: note: ‘__builtin___snprintf_chk’ output 2 or more bytes (assuming 257) into a destination of size 192
+   54 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   55 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   56 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+/tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/a6l_motion.c: In function ‘find_iio’:
+/tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/a6l_motion.c:296:62: warning: ‘%s’ directive output may be truncated writing up to 255 bytes into a region of size 191 [-Wformat-truncation=]
+  296 |                         snprintf(d->sys, sizeof(d->sys), "%s/%s", a6l_sysroot(), e->d_name);
+      |                                                              ^~
+In file included from /usr/include/stdio.h:980,
+                 from /tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/a6l_motion.c:28:
+In function ‘snprintf’,
+    inlined from ‘find_iio’ at /tmp/a6l-review6-fe19yctk/hals/sensors/stk3338/a6l_motion.c:296:4:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:54:10: note: ‘__builtin___snprintf_chk’ output 2 or more bytes (assuming 257) into a destination of size 192
+   54 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   55 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   56 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~

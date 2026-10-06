@@ -1,0 +1,66 @@
+--- /sessions/rcw-01a79tm94nqlddlz33icnjbb/mnt/A6L/firmware/extracted/ipa-20260924/ipa2b/run.sh	2026-09-24 13:48:21.425493700 +0000
++++ bundle/run.sh	2026-09-25 11:31:05.475583800 +0000
+@@ -1,5 +1,8 @@
+ #!/system/bin/sh
+ # ATTENDED ONLY, V74 diagnostic recovery. ipa2fix agent, bundle v75/ipa2b (24 Sep 2026): IPA v2.6L via ipa2-lite, STEP-LOGGED.
++# data2 agent, bundle v75/ipa3 (25 Sep 2026): a6l_diag is runtime-PM safe + AP pipes only (the MODE=status reset),
++#   MODE=status no longer dumps registers (DIAG=1 to add the safe dump), new MODE=dataformat (no RF: QMI DPM open port
++#   + WDA data format), a6l-qmi shipped in the bundle (DPM before WDA: fixes WDA INVALID_OPERATION). See docs/data2-20260925.md.
+ # The first v75/ipa2 MODE=load reset the phone with no log. This bundle walks the probe one hardware phase at a time.
+ #
+ # BEFORE ANY MODE=load, on the laptop (in ~/A6L-usb-20260915), start the kernel-log stream; it is the only log that
+@@ -23,11 +26,14 @@
+ #            IPA_PARAMS="..." extra ipa2_lite params (e.g. clk_hz=75000000 comp_cfg=0x1)
+ #   status   after Pierre started radio2 (RF, by hand): QMI handshake lines, rmnet_ipa0, register snapshot.
+ #   data     RF (needs A6L_RF_APPROVED=1, typed by Pierre): see v75/ipa2 (unchanged).
+-#   diag     register snapshot only (a6l_diag sysfs; only when the driver is bound).
++#   dataformat NO RF, after radio2 (modem up): a6l-qmi dataformat = QMI DPM open port (hw data port embedded/1, pipes 4/5)
++#            + WDA get/set data format -> A6L_QMI_DATAFORMAT_PASS. Knobs (exported env): A6L_DPM=0, A6L_WDA_UL/DL=5|7|0 ...
++#   diag     register snapshot only (a6l_diag sysfs; only when the driver is bound). data2: the driver resumes the IPA
++#            (runtime PM) or refuses; AP pipes 2-5 only unless DIAG_PIPES=0x.. (modem pipes may be XPU-protected: unsafe).
+ #   There is no "off" once fully probed: removing ipa2_lite shuts the modem down (driver remove path). Reboot instead.
+ set -u
+ D=${D:-$(dirname "$0")}
+-Q=${Q:-/tmp/ril/a6l-qmi}
++Q=${Q:-$D/a6l-qmi}; [ -f "$Q" ] || Q=/tmp/ril/a6l-qmi
+ MODE=${MODE:-load}
+ [ "$(tr -d '\0' < /proc/device-tree/chosen/hisense,a6l-controls 2>/dev/null)" = v71 ] || { echo "A6L_HW_FAIL wrong image"; exit 2; }
+ # manual per-file hash check (toybox sha256sum has no -c/--ignore-missing); missing files are skipped
+@@ -39,7 +45,13 @@
+ mss_state() { for r in /sys/class/remoteproc/remoteproc*; do [ "$(cat $r/name 2>/dev/null)" = 4080000.remoteproc ] && cat $r/state; done; }
+ faults() { dmesg | grep -ciE "Unhandled context fault|smmu.*fault|Internal error|Oops|BUG:|A6L_IPA.*fail"; }
+ DEV=/sys/bus/platform/devices/14780000.ipa
+-diag() { cat $DEV/a6l_diag 2>/dev/null || echo "  (no a6l_diag: driver not bound)"; }
++rpm() { echo "rpm=$(cat $DEV/power/runtime_status 2>/dev/null) control=$(cat $DEV/power/control 2>/dev/null)"; }
++diag() {
++  [ -e $DEV/a6l_diag ] || { echo "  (no a6l_diag: driver not bound)"; return; }
++  DP=/sys/module/ipa2_lite/parameters/diag_pipes
++  [ -e $DP ] || { echo "  (old ipa2_lite without the runtime-PM-safe a6l_diag: dump skipped, it reset the phone)"; return; }
++  [ -n "${DIAG_PIPES:-}" ] && echo "$DIAG_PIPES" > $DP
++  echo "  $(rpm) diag_pipes=$(cat $DP)"; cat $DEV/a6l_diag 2>/dev/null; }
+ ipalog() { dmesg | grep -E "A6L_IPA|ipa2-lite|14780000\.ipa|rmnet|arm-smmu.*(fault|0x19c0)" | tail -n ${1:-40}; }
+ case "$MODE" in
+ load)
+@@ -97,7 +109,13 @@
+   ls /sys/class/net/ | tr '\n' ' '; echo
+   if dmesg | grep -q "A6L_IPA modem PRESENT"; then echo "A6L_IPA2_MODEM_READY rmnet_ipa0 attached (mtu $(cat /sys/class/net/rmnet_ipa0/mtu))"
+   else echo "A6L_IPA2_MODEM_NOT_READY (handshake incomplete; see the unchecked steps above)"; fi
+-  diag;;
++  echo "  ipa $(rpm)"
++  [ "${DIAG:-0}" = 1 ] && diag;;
++dataformat)
++  [ -x "$Q" ] || chmod 755 "$Q" 2>/dev/null; [ -x "$Q" ] || { echo "A6L_HW_FAIL no a6l-qmi at $Q"; exit 4; }
++  dmesg | grep -q "A6L_IPA modem PRESENT" || echo "  WARNING: IPA handshake not complete (MODE=status)"
++  "$Q" dataformat 2>&1 | grep -v "^WARNING: linker"
++  ipalog 5;;
+ data)
+   [ "${A6L_RF_APPROVED:-0}" = 1 ] || { echo "A6L_IPA2_REFUSED data needs A6L_RF_APPROVED=1 (Pierre's explicit go)"; exit 3; }
+   [ -x "$Q" ] || chmod 755 "$Q" 2>/dev/null; [ -x "$Q" ] || { echo "A6L_HW_FAIL no a6l-qmi at $Q (push the ril bundle to /tmp/ril)"; exit 4; }
+@@ -106,6 +124,7 @@
+   ip link set rmnet_ipa0 up 2>/dev/null || ifconfig rmnet_ipa0 up
+   L=/tmp/ipa2-data-$$.txt; KEEP=${KEEP:-60}
+   echo "A6L_IPA2_STEP a6l-qmi data '${APN:-}' v4 $KEEP"
++  echo "  ipa $(rpm)"
+   "$Q" data "${APN:-}" v4 "$KEEP" > $L 2>&1 &
+   QP=$!
+   n=0; while [ $n -lt 45 ] && ! grep -qE "A6L_QMI_DATA_UP|A6L_QMI_DATA_FAIL" $L; do sleep 1; n=$((n+1)); done

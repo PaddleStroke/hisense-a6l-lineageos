@@ -1,0 +1,55 @@
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -211,7 +211,7 @@
+ public:
+ 	void create(Request *request, bool metadataRequested);
+ 	void destroy(uint32_t frame);
+-	void clear();
++	std::vector<Request *> takeRequests();
+ 
+ 	SimpleFrameInfo *find(uint32_t frame);
+ 
+@@ -231,9 +231,15 @@
+ 	frameInfo_.erase(frame);
+ }
+ 
+-void SimpleFrames::clear()
+-{
++std::vector<Request *> SimpleFrames::takeRequests()
++{
++	std::vector<Request *> requests;
++	requests.reserve(frameInfo_.size());
++	for (const auto &[frame, info] : frameInfo_)
++		requests.push_back(info.request);
++	/* Detach before cancellations can synchronously invoke callbacks. */
+ 	frameInfo_.clear();
++	return requests;
+ }
+ 
+ SimpleFrameInfo *SimpleFrames::find(uint32_t frame)
+@@ -1001,10 +1007,14 @@
+ 
+ void SimpleCameraData::clearIncompleteRequests()
+ {
+-	while (!conversionQueue_.empty()) {
+-		pipe()->cancelRequest(conversionQueue_.front().request);
++	/* Buffers may already be returned while an IPA metadata reply is still
++	 * outstanding. conversionQueue_ does not own every incomplete request.
++	 * The producer and IPA have been stopped before this terminal drain. */
++	std::vector<Request *> requests = frameInfo_.takeRequests();
++	while (!conversionQueue_.empty())
+ 		conversionQueue_.pop();
+-	}
++	for (Request *request : requests)
++		pipe()->cancelRequest(request);
+ }
+ 
+ void SimpleCameraData::tryCompleteRequest(Request *request)
+@@ -1849,7 +1859,6 @@
+ 
+ 	video->bufferReady.disconnect(data, &SimpleCameraData::imageBufferReady);
+ 
+-	data->frameInfo_.clear();
+ 	data->clearIncompleteRequests();
+ 	data->conversionBuffers_.clear();
+ 

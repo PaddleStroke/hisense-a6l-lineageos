@@ -1,0 +1,52 @@
+status_t DeviceHalAidl::setVoiceVolume(float volume) {
+    AUGMENT_LOG(D, "volume %f", volume);
+    TIME_CHECK();
+    RETURN_IF_MODULE_NOT_INIT(NO_INIT);
+    RETURN_IF_TELEPHONY_NOT_INIT(INVALID_OPERATION);
+
+    ITelephony::TelecomConfig inConfig{.voiceVolume = Float{volume}}, outConfig;
+    {
+        std::lock_guard l(mLock);
+        RETURN_STATUS_IF_ERROR(
+                statusTFromBinderStatus(mTelephony->setTelecomConfig(inConfig, &outConfig)));
+    }
+    AUGMENT_LOG_IF(
+            W, outConfig.voiceVolume.has_value() && volume != outConfig.voiceVolume.value().value,
+            "the resulting voice volume %f is not the same as requested %f",
+            outConfig.voiceVolume.value().value, volume);
+    return OK;
+}
+
+ndk::ScopedAStatus ModulePrimary::getTelephony(std::shared_ptr<ITelephony>* _aidl_return) {
+    if (!mTelephony) {
+        mTelephony = ndk::SharedRefBase::make<Telephony>();
+    }
+    *_aidl_return = mTelephony.getInstance();
+    LOG(DEBUG) << __func__
+               << ": returning instance of ITelephony: " << _aidl_return->get()->asBinder().get();
+    return ndk::ScopedAStatus::ok();
+}
+
+ndk::ScopedAStatus Telephony::setTelecomConfig(const TelecomConfig& in_config,
+                                               TelecomConfig* _aidl_return) {
+    if (in_config.voiceVolume.has_value() &&
+        (in_config.voiceVolume.value().value < TelecomConfig::VOICE_VOLUME_MIN ||
+         in_config.voiceVolume.value().value > TelecomConfig::VOICE_VOLUME_MAX)) {
+        LOG(ERROR) << __func__
+                   << ": voice volume value is invalid: " << in_config.voiceVolume.value().value;
+        return ndk::ScopedAStatus::fromExceptionCode(EX_ILLEGAL_ARGUMENT);
+    }
+    if (in_config.voiceVolume.has_value()) {
+        mTelecomConfig.voiceVolume = in_config.voiceVolume;
+    }
+    if (in_config.ttyMode != TelecomConfig::TtyMode::UNSPECIFIED) {
+        mTelecomConfig.ttyMode = in_config.ttyMode;
+    }
+    if (in_config.isHacEnabled.has_value()) {
+        mTelecomConfig.isHacEnabled = in_config.isHacEnabled;
+    }
+    *_aidl_return = mTelecomConfig;
+    LOG(DEBUG) << __func__ << ": received " << in_config.toString() << ", returning "
+               << _aidl_return->toString();
+    return ndk::ScopedAStatus::ok();
+}

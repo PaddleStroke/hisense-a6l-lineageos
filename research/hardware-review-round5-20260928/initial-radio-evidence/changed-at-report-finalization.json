@@ -1,0 +1,9 @@
+[
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/radio/hal/RadioMessagingVoice.cpp",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/radio/qmi/include/a6lqmi/client.h",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/radio/qmi/include/a6lqmi/datacall.h",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/radio/qmi/include/a6lqmi/services.h",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/radio/qmi/src/client.cc",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/radio/qmi/src/datacall.cc",
+  "/mnt/c/Users/Pierre/Desktop/A6L/device/hisense/a6l/radio/qmi/src/services.cc"
+]

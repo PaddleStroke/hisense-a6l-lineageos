@@ -1,0 +1,42 @@
+[
+  {
+    "test": "F35 rails failures acknowledged as successful drive",
+    "output": "WARN rails not switched on\nupdate 0 shown in 0 ms: ok, missed vblanks during drive=0 (total 0)\nrail_on_error=-1 return=0 flips=3\nupdate 0 shown in 0 ms: ok, missed vblanks during drive=0 (total 0)\nrail_off_error=-1 return=0 flips=3"
+  },
+  {
+    "test": "F38 readiness bypass",
+    "output": "present=1 state='' rc=0 wait_ticks=11\npresent=1 state='starting' rc=0 wait_ticks=11\npresent=1 state='stopped' rc=0 wait_ticks=11\npresent=1 state='missing' rc=0 wait_ticks=11"
+  },
+  {
+    "test": "F36 error is never retried for constant page",
+    "commands": [
+      "clear",
+      "frame 720 1440 quality"
+    ],
+    "captures": 100
+  },
+  {
+    "test": "F36 disconnect is never retried for constant page",
+    "commands": [
+      "clear",
+      "frame 720 1440 quality"
+    ],
+    "captures": 100
+  },
+  {
+    "test": "F39 Bluetooth incomplete on modem failures; F40 stop false success",
+    "output": "EARLY_FAIL state=failed:ipa-module bt_modules=2 addr_start=0\nLATE_FAIL state=failed:mss-start bt_modules=0 addr_start=0\nSTOP_NOT_CONFIRMED rc=0 state=stopped daemons_stopped=3\n/tmp/a6l-review4-d1h0uyb_/fake/a6l-radio.sh: 147: cannot create /tmp/a6l-review4-d1h0uyb_/fake/case/root/sys/class/remoteproc/remoteproc1/state: Is a directory\nA6L_ROM_RADIO stopped"
+  },
+  {
+    "test": "F37 source trace saved (static evidence, not acoustic test)",
+    "file": "audio-volume-trace.txt"
+  },
+  {
+    "test": "F41 plane transforms and blending ignored",
+    "output": "alpha=0 expected_black=0 actual=255\nrotation=180 expected=255,128,64,0 actual=0,64,128,255\ncoverage alpha=128 expected_about=100 actual=200 metadata_queries=0"
+  },
+  {
+    "test": "concurrent source-change check",
+    "changed": []
+  }
+]

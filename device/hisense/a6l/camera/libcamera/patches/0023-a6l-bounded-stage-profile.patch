@@ -1,0 +1,358 @@
+--- /dev/null
++++ b/include/libcamera/internal/a6l_stage_profile.h
+@@ -0,0 +1,45 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/* Bounded opt-in stage timings. Sampled row sums are not whole-frame costs. */
++#pragma once
++#include <array>
++#include <utility>
++#include "libcamera/internal/a6l_quality_debug.h"
++namespace libcamera {
++inline bool a6lStageProfileEnabled(uint32_t frame)
++{
++ return a6lQualityDebug(frame) && frame % 16 == 0;
++}
++class A6LStageProfile {
++public:
++ enum Stage { Copy, Stats, Debayer, Nv12, DmaBegin, Lut, Map, Resample, WorkerWait, DmaEnd, Total, Count };
++ using Clock = uint64_t (*)();
++ explicit A6LStageProfile(bool enabled, Clock clock = a6lQualityMonotonicNs)
++  : enabled_(false), clock_(clock) { setEnabled(enabled); }
++ void setEnabled(bool enabled) {
++  enabled_ = enabled;
++  if (enabled_) { ns_.fill(0); calls_.fill(0); }
++ }
++ bool enabled() const { return enabled_; }
++ uint64_t start() const { return enabled_ ? clock_() : 0; }
++ void add(Stage stage, uint64_t start) {
++  if (!enabled_) return;
++  const uint64_t end = clock_();
++  ns_[stage] += end >= start ? end - start : 0;
++  calls_[stage]++;
++ }
++ template<typename Function> void measure(Stage stage, bool sample, Function &&function) {
++  if (!enabled_ || !sample) { std::forward<Function>(function)(); return; }
++  const uint64_t begin = clock_();
++  std::forward<Function>(function)();
++  add(stage, begin);
++ }
++ uint64_t ns(Stage stage) const { return enabled_ ? ns_[stage] : 0; }
++ uint64_t calls(Stage stage) const { return enabled_ ? calls_[stage] : 0; }
++private:
++ bool enabled_;
++ Clock clock_;
++ /* Deliberately not initialized/reset while disabled; never read then. */
++ std::array<uint64_t, Count> ns_;
++ std::array<uint64_t, Count> calls_;
++};
++} /* namespace libcamera */
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -26,6 +26,7 @@
+ #include "libcamera/internal/camera_manager.h"
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/a6l_quality_debug.h"
++#include "libcamera/internal/a6l_stage_profile.h"
+ #include "libcamera/internal/global_configuration.h"
+ #include "libcamera/internal/mapped_framebuffer.h"
+ 
+@@ -71,6 +72,7 @@
+ 	std::vector<uint8_t> lineBuffers_[kMaxLineBuffers];
+ 	std::vector<uint8_t> rgbLines_[2];
+ 	bool enableInputMemcpy_;
++	A6LStageProfile stageProfile_{ false };
+ };
+ 
+ /**
+@@ -933,6 +935,8 @@
+  */
+ void DebayerCpuThread::process(uint32_t frame, const uint8_t *src, uint8_t *dst, uint8_t *dstUV)
+ {
++	stageProfile_.setEnabled(a6lStageProfileEnabled(frame));
++	const uint64_t workerStart = stageProfile_.start();
+ 	Rectangle &window = debayer_->window_;
+ 
+ 	/* Adjust src to top left corner of the window */
+@@ -949,10 +953,23 @@
+ 	else
+ 		process4(frame, src, dst, dstUV);
+ 
++	stageProfile_.add(A6LStageProfile::Total, workerStart);
+ 	debayer_->workPendingMutex_.lock();
+ 	debayer_->workPending_ &= ~(1 << threadIndex_);
+ 	debayer_->workPendingMutex_.unlock();
+ 	debayer_->workPendingCv_.notify_one();
++	if (stageProfile_.enabled())
++		LOG(Debayer, Info) << "A6L_STAGE_WORKER frame=" << frame << " worker=" << threadIndex_
++			<< " rows=" << (yEnd_ - yStart_) << " row_sample_stride=64"
++			<< " total_ns=" << stageProfile_.ns(A6LStageProfile::Total)
++			<< " copy_sample_ns=" << stageProfile_.ns(A6LStageProfile::Copy)
++			<< " copy_sample_calls=" << stageProfile_.calls(A6LStageProfile::Copy)
++			<< " stats_sample_ns=" << stageProfile_.ns(A6LStageProfile::Stats)
++			<< " stats_sample_calls=" << stageProfile_.calls(A6LStageProfile::Stats)
++			<< " debayer_sample_ns=" << stageProfile_.ns(A6LStageProfile::Debayer)
++			<< " debayer_sample_calls=" << stageProfile_.calls(A6LStageProfile::Debayer)
++			<< " nv12_sample_ns=" << stageProfile_.ns(A6LStageProfile::Nv12)
++			<< " nv12_sample_calls=" << stageProfile_.calls(A6LStageProfile::Nv12);
+ }
+ 
+ void DebayerCpuThread::process2(uint32_t frame, const uint8_t *src, uint8_t *dst, uint8_t *dstUV)
+@@ -982,7 +999,8 @@
+ 		yEnd -= 2;
+ 	}
+ 
+-	setupInputMemcpy(linePointers);
++	stageProfile_.measure(A6LStageProfile::Copy, true, [&] { setupInputMemcpy(linePointers); });
++	bool profileLine = false;
+ 
+ 	/*
+ 	 * Note y is the line-number *inside* the window, since stats_' window
+@@ -990,36 +1008,38 @@
+ 	 * single thread rendering y goes from 0 to window.height.
+ 	 */
+ 	for (unsigned int y = yStart_; y < yEnd; y += 2) {
++		profileLine = stageProfile_.enabled() && (y - yStart_) % 64 == 0;
+ 		shiftLinePointers(linePointers, src);
+-		memcpyNextLine(linePointers);
+-		debayer_->stats_->processLine0(frame, y, linePointers, threadIndex_);
+-		debayer_->debayer0(lineOut(0, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Copy, profileLine, [&] { memcpyNextLine(linePointers); });
++		stageProfile_.measure(A6LStageProfile::Stats, profileLine, [&] { debayer_->stats_->processLine0(frame, y, linePointers, threadIndex_); });
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer0(lineOut(0, dst), linePointers); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 
+ 		shiftLinePointers(linePointers, src);
+-		memcpyNextLine(linePointers);
+-		debayer_->debayer1(lineOut(1, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Copy, profileLine, [&] { memcpyNextLine(linePointers); });
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer1(lineOut(1, dst), linePointers); });
+ 		if (debayer_->yuvOutput_)
+-			pairToNV12(dst - outputStride, dstUV);
++			stageProfile_.measure(A6LStageProfile::Nv12, profileLine, [&] { pairToNV12(dst - outputStride, dstUV); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 	}
+ 
+ 	if (window.y == 0 && yEnd_ == window.height) {
++		profileLine = false; /* Border handling is outside sampled row totals. */
+ 		shiftLinePointers(linePointers, src);
+-		memcpyNextLine(linePointers);
+-		debayer_->stats_->processLine0(frame, yEnd, linePointers, threadIndex_);
+-		debayer_->debayer0(lineOut(0, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Copy, profileLine, [&] { memcpyNextLine(linePointers); });
++		stageProfile_.measure(A6LStageProfile::Stats, profileLine, [&] { debayer_->stats_->processLine0(frame, yEnd, linePointers, threadIndex_); });
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer0(lineOut(0, dst), linePointers); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 
+ 		shiftLinePointers(linePointers, src);
+ 		/* next line may point outside of src, use prev. */
+ 		linePointers[2] = linePointers[0];
+-		debayer_->debayer1(lineOut(1, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer1(lineOut(1, dst), linePointers); });
+ 		if (debayer_->yuvOutput_)
+-			pairToNV12(dst - outputStride, dstUV);
++			stageProfile_.measure(A6LStageProfile::Nv12, profileLine, [&] { pairToNV12(dst - outputStride, dstUV); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 	}
+@@ -1042,7 +1062,8 @@
+ 	linePointers[3] = src;
+ 	linePointers[4] = src + inputStride;
+ 
+-	setupInputMemcpy(linePointers);
++	stageProfile_.measure(A6LStageProfile::Copy, true, [&] { setupInputMemcpy(linePointers); });
++	bool profileLine = false;
+ 
+ 	/*
+ 	 * Note y is the line-number *inside* the window, since stats_' window
+@@ -1050,33 +1071,34 @@
+ 	 * single thread rendering y goes from 0 to window.height.
+ 	 */
+ 	for (unsigned int y = yStart_; y < yEnd_; y += 4) {
++		profileLine = stageProfile_.enabled() && (y - yStart_) % 64 == 0;
+ 		shiftLinePointers(linePointers, src);
+-		memcpyNextLine(linePointers);
+-		debayer_->stats_->processLine0(frame, y, linePointers, threadIndex_);
+-		debayer_->debayer0(lineOut(0, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Copy, profileLine, [&] { memcpyNextLine(linePointers); });
++		stageProfile_.measure(A6LStageProfile::Stats, profileLine, [&] { debayer_->stats_->processLine0(frame, y, linePointers, threadIndex_); });
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer0(lineOut(0, dst), linePointers); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 
+ 		shiftLinePointers(linePointers, src);
+-		memcpyNextLine(linePointers);
+-		debayer_->debayer1(lineOut(1, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Copy, profileLine, [&] { memcpyNextLine(linePointers); });
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer1(lineOut(1, dst), linePointers); });
+ 		if (debayer_->yuvOutput_)
+-			pairToNV12(dst - outputStride, dstUV);
++			stageProfile_.measure(A6LStageProfile::Nv12, profileLine, [&] { pairToNV12(dst - outputStride, dstUV); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 
+ 		shiftLinePointers(linePointers, src);
+-		memcpyNextLine(linePointers);
+-		debayer_->stats_->processLine2(frame, y, linePointers, threadIndex_);
+-		debayer_->debayer2(lineOut(0, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Copy, profileLine, [&] { memcpyNextLine(linePointers); });
++		stageProfile_.measure(A6LStageProfile::Stats, profileLine, [&] { debayer_->stats_->processLine2(frame, y, linePointers, threadIndex_); });
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer2(lineOut(0, dst), linePointers); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 
+ 		shiftLinePointers(linePointers, src);
+-		memcpyNextLine(linePointers);
+-		debayer_->debayer3(lineOut(1, dst), linePointers);
++		stageProfile_.measure(A6LStageProfile::Copy, profileLine, [&] { memcpyNextLine(linePointers); });
++		stageProfile_.measure(A6LStageProfile::Debayer, profileLine, [&] { debayer_->debayer3(lineOut(1, dst), linePointers); });
+ 		if (debayer_->yuvOutput_)
+-			pairToNV12(dst - outputStride, dstUV);
++			stageProfile_.measure(A6LStageProfile::Nv12, profileLine, [&] { pairToNV12(dst - outputStride, dstUV); });
+ 		src += inputStride;
+ 		dst += outputStride;
+ 	}
+@@ -1174,12 +1196,14 @@
+ {
+ 	const uint64_t qualityStart = a6lQualityDebug(frame) ? a6lQualityMonotonicNs() : 0;
+ 	bench_.startFrame();
++	A6LStageProfile stage(a6lStageProfileEnabled(frame));
++	const uint64_t stageStart = stage.start();
+ 
+ 	std::vector<DmaSyncer> dmaSyncers;
+ 
+-	dmaSyncBegin(dmaSyncers, input, output);
+-
+-	updateLookupTables(params);
++	stage.measure(A6LStageProfile::DmaBegin, true, [&] { dmaSyncBegin(dmaSyncers, input, output); });
++
++	stage.measure(A6LStageProfile::Lut, true, [&] { updateLookupTables(params); });
+ 
+ 	/* Copy metadata from the input buffer */
+ 	FrameMetadata &metadata = output->_d()->metadata();
+@@ -1195,8 +1219,10 @@
+ 		inputBufferReady.emit(input);
+ 	};
+ 
++	const uint64_t mapStart = stage.start();
+ 	MappedFrameBuffer in(input, MappedFrameBuffer::MapFlag::Read);
+ 	MappedFrameBuffer out(output, MappedFrameBuffer::MapFlag::Write);
++	stage.add(A6LStageProfile::Map, mapStart);
+ 	if (!in.isValid() || !out.isValid()) {
+ 		LOG(Debayer, Error) << "mmap-ing buffer(s) failed";
+ 		fail();
+@@ -1213,6 +1239,7 @@
+ 
+ 	const uint8_t *rawInput = in.planes()[0].data();
+ 	if (rawFovActive_) {
++		const uint64_t rawStageStart = stage.start();
+ 		const uint64_t resampleStart = qualityStart ? a6lQualityMonotonicNs() : 0;
+ 		if (!rawFov_.process(std::span<const uint8_t>(rawInput, in.planes()[0].size()), rawFovBuffer_)) {
+ 			LOG(Debayer, Error) << "RAW10 FOV source/destination bounds invalid";
+@@ -1225,6 +1252,7 @@
+ 				<< " raw_temporary_bytes=" << rawFov_.bytes()
+ 				<< " source_row_copies=" << rawFov_.sourceRowCopies()
+ 				<< " source_row_cache_bytes=" << rawFov_.rowCacheBytes();
++		stage.add(A6LStageProfile::Resample, rawStageStart);
+ 		rawInput = rawFovBuffer_.data();
+ 	}
+ 	stats_->startFrame(frame);
+@@ -1248,6 +1276,7 @@
+ 		}
+ 	}
+ 
++	const uint64_t workerStart = stage.start();
+ 	for (auto &thread : threads_)
+ 		thread->invokeMethod(&DebayerCpuThread::process,
+ 				     ConnectionTypeQueued, frame,
+@@ -1260,10 +1289,21 @@
+ 		});
+ 	}
+ 
++	stage.add(A6LStageProfile::WorkerWait, workerStart);
+ 	for (unsigned int i = 0; i < metadata.planes().size() && i < out.planes().size(); i++)
+ 		metadata.planes()[i].bytesused = out.planes()[i].size();
+ 
+-	dmaSyncers.clear();
++	stage.measure(A6LStageProfile::DmaEnd, true, [&] { dmaSyncers.clear(); });
++	stage.add(A6LStageProfile::Total, stageStart);
++	if (stage.enabled())
++		LOG(Debayer, Info) << "A6L_STAGE_ISP frame=" << frame << " output=" << window_.size()
++			<< " total_ns=" << stage.ns(A6LStageProfile::Total)
++			<< " dma_begin_ns=" << stage.ns(A6LStageProfile::DmaBegin)
++			<< " lut_ns=" << stage.ns(A6LStageProfile::Lut)
++			<< " map_ns=" << stage.ns(A6LStageProfile::Map)
++			<< " raw_resample_ns=" << stage.ns(A6LStageProfile::Resample)
++			<< " dispatch_wait_ns=" << stage.ns(A6LStageProfile::WorkerWait)
++			<< " dma_end_ns=" << stage.ns(A6LStageProfile::DmaEnd);
+ 
+ 	/* Measure before emitting signals */
+ 	bench_.finishFrame();
+--- a/src/android/yuv/post_processor_yuv.cpp
++++ b/src/android/yuv/post_processor_yuv.cpp
+@@ -14,8 +14,10 @@
+ #include <libcamera/formats.h>
+ #include <libcamera/geometry.h>
+ #include <libcamera/pixel_format.h>
++#include <libcamera/request.h>
+ 
+ #include "libcamera/internal/formats.h"
++#include "libcamera/internal/a6l_stage_profile.h"
+ #include "libcamera/internal/mapped_framebuffer.h"
+ 
+ using namespace libcamera;
+@@ -51,6 +53,10 @@
+ 
+ void PostProcessorYuv::process(Camera3RequestDescriptor::StreamBuffer *streamBuffer)
+ {
++	const uint32_t frame = a6lQualityDebug(0) && streamBuffer->request && streamBuffer->request->request_
++		? streamBuffer->request->request_->sequence() : 240;
++	A6LStageProfile stage(a6lStageProfileEnabled(frame));
++	const uint64_t totalStart = stage.start();
+ 	const FrameBuffer &source = *streamBuffer->srcBuffer;
+ 	CameraBuffer *destination = streamBuffer->dstBuffer.get();
+ 
+@@ -59,7 +65,9 @@
+ 		return;
+ 	}
+ 
++	const uint64_t mapStart = stage.start();
+ 	const MappedFrameBuffer sourceMapped(&source, MappedFrameBuffer::MapFlag::Read);
++	stage.add(A6LStageProfile::Map, mapStart);
+ 	if (!sourceMapped.isValid()) {
+ 		LOG(YUV, Error) << "Failed to mmap camera frame buffer";
+ 		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
+@@ -71,6 +79,7 @@
+ 			      crop_.y * sourceStride_[0] + crop_.x;
+ 	const uint8_t *srcUV = sourceMapped.planes()[1].data() +
+ 			       crop_.y / 2 * sourceStride_[1] + crop_.x;
++	const uint64_t scaleStart = stage.start();
+ 	int ret = libyuv::NV12Scale(srcY,
+ 				    sourceStride_[0],
+ 				    srcUV,
+@@ -83,12 +92,23 @@
+ 				    destinationSize_.width,
+ 				    destinationSize_.height,
+ 				    libyuv::FilterMode::kFilterBilinear);
++	stage.add(A6LStageProfile::Nv12, scaleStart);
+ 	if (ret) {
+ 		LOG(YUV, Error) << "Failed NV12 scaling: " << ret;
+ 		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
+ 		return;
+ 	}
+ 
++	stage.add(A6LStageProfile::Total, totalStart);
++	if (stage.enabled())
++		LOG(YUV, Info) << "A6L_STAGE_PREVIEW frame=" << frame
++			<< " android_frame=" << streamBuffer->request->frameNumber_
++			<< " sensor_sequence=" << source.metadata().sequence
++			<< " source=" << sourceSize_ << " output=" << destinationSize_
++			<< " total_ns=" << stage.ns(A6LStageProfile::Total)
++			<< " source_map_ns=" << stage.ns(A6LStageProfile::Map)
++			<< " nv12_scale_ns=" << stage.ns(A6LStageProfile::Nv12)
++			<< " destination_lock_timed=0";
+ 	processComplete.emit(streamBuffer, PostProcessor::Status::Success);
+ }
+ 

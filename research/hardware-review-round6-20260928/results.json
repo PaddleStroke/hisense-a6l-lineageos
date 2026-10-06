@@ -1,0 +1,27 @@
+[
+  {
+    "test": "gnss",
+    "exit_code": 0,
+    "stdout": "STOP_REJECTED engine_running=0 fake_receiver_running=1 stop_requests=1 after_recovery_and_second_stop\nEND_AFTER_REJECTED_STOP no_cleanup_stop=1\nSESSION_END_IND listener_ended=1 engine_running=1 restart_requests=0\n"
+  },
+  {
+    "test": "sensors",
+    "exit_code": 0,
+    "stdout": "PROX_ENABLE_FAILED activate_rc=0 valid_event_fd=1 interrupt_enable=0 after_12_poll_calls_and_2.5_seconds\nPROX_IDLE_WAIT timeout=-1 (unbounded; see exact kernel poll contract test)\n"
+  },
+  {
+    "test": "controls",
+    "exit_code": 0,
+    "stdout": "POSITION_MODE single_and_periodic_identical=1 wire_recurrence=1(periodic)\nDELETE_AIDING ephemeris_and_time_success=1 engine_deletes=0\nDELETE_AIDING all_positive_control=1\n"
+  },
+  {
+    "test": "route",
+    "exit_code": 0,
+    "stdout": "A6L_AUDIO_ROUTE out=voice-headphones in=headset-mic\nPARTIAL_ROUTE_WRITE route_success=1 ADC2_MUX=ZERO applies=1 after_100_healthy_steps\n"
+  },
+  {
+    "test": "kernel-poll",
+    "exit_code": 0,
+    "stdout": "IIO_UNREGISTERED poll_mask=0 even_with_queued_event (no_HUP_no_ERR_no_IN)\n"
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "run": "research/hardware-review-deep-20260928",
+    "hashed_inputs": 80,
+    "changed_since_test": []
+  },
+  {
+    "run": "research/hardware-review-deep-20260928/run-cache",
+    "hashed_inputs": 80,
+    "changed_since_test": []
+  },
+  {
+    "run": "research/hardware-review-deep-20260928/run-voice",
+    "hashed_inputs": 80,
+    "changed_since_test": []
+  }
+]

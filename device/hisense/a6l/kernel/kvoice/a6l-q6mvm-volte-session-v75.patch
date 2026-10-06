@@ -1,0 +1,94 @@
+--- a/sound/soc/qcom/qdsp6/q6mvm.c
++++ b/sound/soc/qcom/qdsp6/q6mvm.c
+@@ -2,7 +2,9 @@
+ // Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
+ // Copyright (c) 2020, Stephan Gerhold
+ 
++#include <linux/ctype.h>
+ #include <linux/module.h>
++#include <linux/moduleparam.h>
+ #include <linux/of.h>
+ #include <linux/of_platform.h>
+ #include <linux/soc/qcom/apr.h>
+@@ -82,6 +84,60 @@
+ 	}
+ }
+ 
++/*
++ * A6L volte3 (26 Sep 2026): MVM passive session override for the VoiceMMode1 path.
++ * The MVM passive session name selects which modem voice stream the ADSP session joins
++ * (downstream msm-4.4 voice.c: CS "default modem voice", VoLTE "default volte voice",
++ * the others by their VSID string, e.g. VoiceMMode1 "11C05000"). The CS call proven on
++ * 24 Sep used "11C05000". The modem reports its VSIDs in NAS Get Subscription Info
++ * (0x007C: CS 0x13, LTE 0x14, WLAN 0x15; `a6l-qmi ims-status`). If the LTE (VoLTE) VSID
++ * differs from the CS one, the VoLTE call needs the other session name; this parameter
++ * selects it without a new DAI/DT: read at every MVM session create (once per call),
++ * writable at run time (0644).
++ *   ""/"default": path default; "cs"/"voice": "default modem voice";
++ *   "volte": "default volte voice"; "mmode1": "11C05000"; "mmode2": "11DC5000";
++ *   8 hex digits (e.g. "10C02000"): that VSID string.
++ */
++static char mmode1_session[24];
++module_param_string(mmode1_session, mmode1_session, sizeof(mmode1_session), 0644);
++MODULE_PARM_DESC(mmode1_session,
++		 "VoiceMMode1 MVM session: default|cs|volte|mmode1|mmode2|<8 hex VSID>");
++
++static const char *q6mvm_mmode1_name(const char *def, char *buf, size_t len)
++{
++	char v[sizeof(mmode1_session)];
++	char *s;
++	int i;
++
++	kernel_param_lock(THIS_MODULE);
++	strscpy(v, mmode1_session, sizeof(v));
++	kernel_param_unlock(THIS_MODULE);
++	s = strim(v);
++
++	if (!*s || !strcasecmp(s, "default"))
++		return def;
++	if (!strcasecmp(s, "cs") || !strcasecmp(s, "voice"))
++		return "default modem voice";
++	if (!strcasecmp(s, "volte"))
++		return "default volte voice";
++	if (!strcasecmp(s, "mmode1"))
++		return "11C05000";
++	if (!strcasecmp(s, "mmode2"))
++		return "11DC5000";
++	if (strlen(s) == 8) {
++		for (i = 0; i < 8 && isxdigit(s[i]); i++)
++			;
++		if (i == 8 && len > 8) {
++			for (i = 0; i < 8; i++)
++				buf[i] = toupper(s[i]);
++			buf[8] = '\0';
++			return buf;
++		}
++	}
++	pr_warn("A6L_Q6VOICE mmode1_session '%s' not understood, using '%s'\n", s, def);
++	return def;
++}
++
+ static int q6mvm_set_dual_control(struct q6voice_session *mvm)
+ {
+ 	struct vss_imvm_cmd_set_policy_dual_control_cmd cmd;
+@@ -99,14 +155,20 @@
+ 	struct vss_imvm_cmd_create_control_session_cmd cmd;
+ 	struct q6voice_session *mvm;
+ 	const char *session_name;
++	char vsid[12];	/* A6L volte3: holds a hex VSID override */
+ 	int ret;
+ 
+ 	cmd.hdr.pkt_size = sizeof(cmd);
+ 	cmd.hdr.opcode = VSS_IMVM_CMD_CREATE_PASSIVE_CONTROL_SESSION;
+ 
+ 	session_name = q6mvm_session_name(path);
++	if (path == Q6VOICE_PATH_VOICEMMODE1)
++		session_name = q6mvm_mmode1_name(session_name, vsid, sizeof(vsid));
++	memset(cmd.name, 0, sizeof(cmd.name));
+ 	if (session_name)
+ 		strscpy(cmd.name, session_name, sizeof(cmd.name));
++	pr_info("A6L_Q6VOICE mvm passive session '%s' (path %d)\n",
++		session_name ? session_name : "", path);
+ 
+ 	mvm = q6voice_session_create(Q6VOICE_SERVICE_MVM, path, &cmd.hdr);
+ 	if (IS_ERR(mvm))

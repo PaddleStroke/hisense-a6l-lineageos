@@ -1,0 +1,4 @@
+SENSOR_BACKLOG prompt=256 chunked_process=256 drained=256 scans=256 span_error_ms=-0.006
+SENSOR_DISABLED enabled=0 delivered_after_disable=0
+SENSOR_FLUSH_OVERFLOW flush_completions=1 dropped=1
+GYRO_SLOW_ROTATION true_z=0.04 learned_bias_z=0.000000 corrected_z=0.040000 valid=1 full=0

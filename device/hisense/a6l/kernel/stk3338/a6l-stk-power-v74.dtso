@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// ATTENDED TEST ONLY (V74 recovery), applied at runtime by a6l_stk_ovl.ko: holds an always-on vote on pm660l L3
+// (STK3338 vdd, the V74 DT fixes it at 3.0 V but nothing enables it unless the rear touch driver is loaded) and on
+// pm660 L13 (vio, already always-on), so the read-only I2C probe runs with the sensor powered. Adds the gpio71
+// pull-up pin state too. No sensor node change: the V74 node light-sensor@47 (sensortek,stk3335) is used as is.
+/dts-v1/;
+/plugin/;
+
+&tlmm {
+	a6l_stkt_int: a6l-stkt-int-state {
+		pins = "gpio71";
+		function = "gpio";
+		drive-strength = <6>;
+		bias-pull-up;
+	};
+};
+
+&{/} {
+	a6l-stk-vdd-vote {
+		compatible = "regulator-fixed";
+		regulator-name = "a6l_stk_vdd_vote";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		vin-supply = <&a6l_vreg_l3b>;
+		regulator-always-on;
+		regulator-boot-on;
+		startup-delay-us = <5000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&a6l_stkt_int>;
+	};
+	a6l-stk-vio-vote {
+		compatible = "regulator-fixed";
+		regulator-name = "a6l_stk_vio_vote";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		vin-supply = <&a6l_vreg_l13a>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+};

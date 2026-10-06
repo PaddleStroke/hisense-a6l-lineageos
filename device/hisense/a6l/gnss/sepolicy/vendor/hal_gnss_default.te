@@ -1,3 +1,6 @@
 # A6L GNSS HAL: QMI LOC over QRTR (agent gnss). Not compiled in rom-v1 (permissive); for the enforcing ROM.
 allow hal_gnss_default self:qipcrtr_socket { create_socket_perms_no_ioctl };
-get_prop(hal_gnss_default, vendor_default_prop)
+# r5 bug hunt round2 G3 (29 Sep 2026): persist.vendor.a6l.gnss.* (mode/unlock_engine/synth_nmea/xtra, read by
+# hal/Gnss.cpp) are labeled vendor_a6l_prop by the persist.vendor.a6l. prefix (rom/sepolicy/vendor, hals/sepolicy
+# property_contexts), not vendor_default_prop: enforcing -> every read denied, silent defaults.
+get_prop(hal_gnss_default, vendor_a6l_prop)

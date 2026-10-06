@@ -80,6 +80,33 @@ static bool no_sram_direct;
 module_param(no_sram_direct, bool, 0444);
 static uint comp_cfg = 0x11;
 module_param(comp_cfg, uint, 0444);
+/*
+ * A6L data2 (25 Sep 2026): the attended MODE=status reset the phone while it dumped a6l_diag with the
+ * IPA runtime-suspended (no reset with power/control=on and no dump). a6l_diag now takes a runtime-PM
+ * reference and refuses when the device cannot be resumed, and by default dumps only the AP-owned pipes
+ * (2 LAN_RX, 3 CMD, 4 TX, 5 RX): the modem-owned pipes 6..14 (and their IPA EP registers) are programmed
+ * by the modem/uC after the handshake and may be XPU-protected, which is fatal on this unit.
+ *   diag_pipes   bitmask of pipes dumped by a6l_diag (default 0x3c = pipes 2..5; 0x7fff = old behaviour)
+ */
+static uint diag_pipes = 0x3c;
+module_param(diag_pipes, uint, 0644);
+MODULE_PARM_DESC(diag_pipes, "a6l_diag pipe bitmask (default 0x3c: AP pipes 2-5 only)");
+
+/*
+ * A6L data3 (25 Sep 2026): first data call on the phone had rmnet_ipa0 tx 3 / tx_drop 3 and no RX.
+ *   status_log     decode this many IPA status packets received on ipa_lan0 (EP2) into dmesg as
+ *                  "A6L_IPA_ST ..." (source/destination pipe, exception, filter/route result of every
+ *                  AP TX packet: EP4 sends its status to EP2). ipa_lan0 must be UP to receive them.
+ *   rt_apps_entry  give route-table index 7 a real (empty) table. EP4's ENDP_INIT_ROUTE selects index 7
+ *                  (downstream v4_apps_rt_index_lo), but upstream ipa2-lite only allocated 7 entries
+ *                  (0..6), so index 7 was the SRAM canary 0xdeadbeaf. The modem is still told 0..6.
+ */
+static int status_log = 64;
+module_param(status_log, int, 0644);
+MODULE_PARM_DESC(status_log, "decode N IPA status packets from ipa_lan0 into dmesg (A6L_IPA_ST); -1 = no limit, 0 = off");
+static bool rt_apps_entry = true;
+module_param(rt_apps_entry, bool, 0444);
+MODULE_PARM_DESC(rt_apps_entry, "allocate route table index 7 (EP4 default route) as an empty table (default 1; 0 = upstream layout)");
 static u32 a6l_uc_loaded_dummy;
 
 static int a6l_step(unsigned int n, const char *what)
@@ -462,7 +489,33 @@ ipa_submit_sync(struct ipa_ep *ep, struct fifo_desc *descs, int num_descs)
 	return -ETIMEDOUT;
 }
 
+/* A6L data2: keep the IPA resumed around register access done outside the probe and the open netdev
+ * paths. -EACCES = runtime PM not enabled yet (inside the probe, clock already on): allowed. */
+static int a6l_pm_get(struct ipa *ipa)
+{
+	int ret = pm_runtime_get_sync(ipa->dev);
+
+	if (ret < 0 && ret != -EACCES) {
+		pm_runtime_put_noidle(ipa->dev);
+		return ret;
+	}
+	return 0;
+}
+
+static int ipa_uc_send_cmd_locked(struct ipa *ipa, u8 cmd_op, u32 cmd_param, u32 resp_status);
+
 static int ipa_uc_send_cmd(struct ipa *ipa, u8 cmd_op, u32 cmd_param, u32 resp_status)
+{
+	int ret = a6l_pm_get(ipa);
+
+	if (ret)
+		return ret;
+	ret = ipa_uc_send_cmd_locked(ipa, cmd_op, cmd_param, resp_status);
+	pm_runtime_put(ipa->dev);
+	return ret;
+}
+
+static int ipa_uc_send_cmd_locked(struct ipa *ipa, u8 cmd_op, u32 cmd_param, u32 resp_status)
 {
 	unsigned long timeout = msecs_to_jiffies(1000);
 	int val, ret;
@@ -570,8 +623,8 @@ static int ipa_partition_mem(struct ipa *ipa)
 
 	ipa_partition_put(ipa, &offset, MEM_FT_V4, IPA_NUM_PIPES + 2, 2);
 	ipa_partition_put(ipa, &offset, MEM_FT_V6, IPA_NUM_PIPES + 2, 2);
-	ipa_partition_put(ipa, &offset, MEM_RT_V4, 7, 2);
-	ipa_partition_put(ipa, &offset, MEM_RT_V6, 7, 2);
+	ipa_partition_put(ipa, &offset, MEM_RT_V4, rt_apps_entry ? 8 : 7, 2);	/* A6L data3 */
+	ipa_partition_put(ipa, &offset, MEM_RT_V6, rt_apps_entry ? 8 : 7, 2);
 	ipa_partition_put(ipa, &offset, MEM_MDM_HDR, 80, 2);
 	ipa_partition_put(ipa, &offset, MEM_DRV, sizeof(ipa_rules) / 4, 1);
 
@@ -881,6 +934,42 @@ static int ipa_poll_tx(struct napi_struct *napi, int budget)
 	return done;
 }
 
+/* A6L data3: decode the IPA v2 status packets that arrive on the LAN RX pipe (EP2).
+ * Layout: downstream ipa_v2 struct ipa_hw_pkt_status (32 bytes, v2.5/v2.6L flavour).
+ * A status whose destination is EP2 itself is followed by the packet (padded to 4 bytes);
+ * any other destination is a status-only record (e.g. the copy for an AP TX packet on EP4). */
+static void a6l_log_status(struct ipa *ipa, const struct sk_buff *skb)
+{
+	const u8 *p = skb->data;
+	u32 left = skb->len, w[8], plen, adv;
+	int n = 0;
+
+	while (status_log && left >= 32 && n++ < 8) {
+		memcpy(w, p, sizeof(w));
+		plen = w[1] & 0xffff;
+		dev_info(ipa->dev,
+			 "A6L_IPA_ST op %u exc 0x%02x mask 0x%04x len %u src %u dst %u meta 0x%08x flt 0x%08x (pipe %u rule %u) rt 0x%08x (tbl %u match %u rule %u) buf %u\n",
+			 w[0] & 0xff, (w[0] >> 8) & 0xff, w[0] >> 16, plen,
+			 (w[1] >> 16) & 0x1f, (w[1] >> 24) & 0x1f, w[2],
+			 w[3], (w[3] >> 2) & 0x1f, (w[3] >> 8) & 0xff,
+			 w[6], (w[6] >> 17) & 0x1f, (w[6] >> 22) & 1, w[6] >> 24, skb->len);
+		adv = 32;
+		if (((w[1] >> 24) & 0x1f) == EP_LAN_RX && plen) {
+			u32 show = min3(plen, left - 32, 28U);
+
+			if (show)
+				dev_info(ipa->dev, "A6L_IPA_ST  pkt %*ph\n", (int)show, p + 32);
+			adv += ALIGN(plen, 4);
+		}
+		if (status_log > 0)
+			status_log--;
+		if (adv >= left)
+			break;
+		p += adv;
+		left -= adv;
+	}
+}
+
 static int ipa_poll_rx(struct napi_struct *napi, int budget)
 {
 	struct ipa_ep *ep = container_of(napi, struct ipa_ndev, napi_rx)->rx;
@@ -932,6 +1021,7 @@ static int ipa_poll_rx(struct napi_struct *napi, int budget)
 			bytes += skb->len;
 			netif_receive_skb(skb);
 		} else {
+			a6l_log_status(ipa, skb);	/* A6L data3 */
 			dev_kfree_skb_any(skb);
 		}
 
@@ -1519,22 +1609,36 @@ static int ipa_system_suspend(struct device *dev)
 	return 0;
 }
 
-/* A6L: register snapshot for the attended test (cat /sys/bus/platform/devices/14780000.ipa/a6l_diag) */
+/* A6L: register snapshot for the attended test (cat /sys/bus/platform/devices/14780000.ipa/a6l_diag).
+ * data2: runtime-PM safe (resume + reference, refuse otherwise) and AP pipes only by default (diag_pipes). */
 static ssize_t a6l_diag_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct ipa *ipa = dev_get_drvdata(dev);
 	void __iomem *m;
-	int len = 0, p;
+	int len = 0, p, ret;
+	uint mask = diag_pipes;
 
 	if (!ipa || !ipa->mmio)
 		return -ENODEV;
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0)
+		return sysfs_emit(buf, "A6L_IPA_DIAG refused: cannot resume the IPA (%d), no register access\n", ret);
+	if (!pm_runtime_active(dev)) {
+		pm_runtime_put(dev);
+		return sysfs_emit(buf, "A6L_IPA_DIAG refused: IPA not runtime-active, no register access\n");
+	}
 	m = ipa->mmio;
-	len += sysfs_emit_at(buf, len, "irq_stts 0x%08x irq_en 0x%08x bam_irq_srcs 0x%08x bam_irq_stts 0x%08x uc_resp 0x%08x uc_loaded 0x%08x\n",
+	len += sysfs_emit_at(buf, len, "A6L_IPA_DIAG pm active usage %d pipes 0x%x\n",
+			     atomic_read(&dev->power.usage_count), mask);
+	len += sysfs_emit_at(buf, len, "irq_stts 0x%08x irq_en 0x%08x suspend_info 0x%08x bam_irq_srcs 0x%08x bam_irq_stts 0x%08x uc_resp 0x%08x uc_loaded 0x%08x\n",
 			     ioread32(m + REG_IPA_IRQ_STTS_EE0), ioread32(m + REG_IPA_IRQ_EN_EE0),
+			     ioread32(m + REG_IPA_IRQ_SUSPEND_INFO_EE0),
 			     ioread32(m + REG_BAM_IRQ_SRCS_EE0), ioread32(m + REG_BAM_IRQ_STTS),
 			     ioread32(m + REG_IPA_UC_RESP),
 			     ipa->smem_uc_loaded ? ipa->smem_uc_loaded[0] : 0);
-	for (p = 0; p < 15; p++)
+	for (p = 0; p < 15; p++) {
+		if (!(mask & BIT(p)))
+			continue;
 		len += sysfs_emit_at(buf, len,
 			"pipe %2d bam_ctrl 0x%08x rd 0x%04x wr 0x%04x irq 0x%08x | ep_ctrl 0x%x hdr 0x%08x hdr_ext 0x%08x route 0x%x mode 0x%x status 0x%x aggr 0x%x holb %u dbg 0x%x\n",
 			p, ioread32(m + REG_BAM_P_CTRL(p)),
@@ -1546,6 +1650,8 @@ static ssize_t a6l_diag_show(struct device *dev, struct device_attribute *attr, 
 			ioread32(m + REG_IPA_EP_MODE(p)), ioread32(m + REG_IPA_EP_STATUS(p)),
 			ioread32(m + REG_IPA_EP_AGGR(p)), ioread32(m + REG_IPA_EP_HOL_BLOCK_EN(p)),
 			ioread32(m + REG_IPA_EP_DBG_CNT_REG(p)));
+	}
+	pm_runtime_put(dev);
 	return len;
 }
 static DEVICE_ATTR_RO(a6l_diag);

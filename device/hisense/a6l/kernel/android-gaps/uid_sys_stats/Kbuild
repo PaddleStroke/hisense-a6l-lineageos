@@ -1,0 +1,2 @@
+# A6L out-of-tree uid_sys_stats (ACK CONFIG_UID_SYS_STATS: /proc/uid_cputime, /proc/uid_io, /proc/uid_procstat), see ../README.md
+obj-m += uid_sys_stats.o

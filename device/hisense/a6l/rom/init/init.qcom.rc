@@ -1,9 +1,11 @@
-# A6L LineageOS 24 rom-v1 vendor init (agent flash, 24 Sep 2026). Imported by /system/etc/init/hw/init.rc via
+# A6L LineageOS 24 rom-v1/rom-v2 vendor init (agent flash, 24 Sep 2026; rom-v2 additions by agent merge, 25 Sep 2026). Imported by /system/etc/init/hw/init.rc via
 # /vendor/etc/init/hw/init.${ro.hardware}.rc (androidboot.hardware=qcom). SELinux is PERMISSIVE in rom-v1
 # (androidboot.selinux=permissive): our vendor binaries are not labelled yet, services carry explicit seclabels.
 #
 # Hardware bring-up follows the order proven from RAM on the phone (bundle-v74 run.sh, radio2 run.sh, audio2/als2):
-#   early-init : display + GPU + panels + touch + e-ink PMIC modules (a6l-modules.sh display), e-ink connector forced off
+#   early-init : display + GPU + panels + touch + e-ink PMIC modules (a6l-modules.sh display), e-ink connector forced off.
+#                r6b boot fix (30 Sep 2026): STARTED, not exec_start (r6's first boot hung in early-init on a display insmod
+#                that never returned). post-fs-data waits for it BOUNDED (a6l_display_wait, <= 45 s) before the EGL copy.
 #   fs         : mount_all (userdata formatted on first boot, persist read-only)
 #   boot       : USB gadget controller; sensor registry + ADSP + audio card + TMD3702 (a6l-modules.sh adsp)
 #   radio      : ONLY when persist.vendor.a6l.radio=1 (RF: needs Pierre's explicit go) -> a6l-radio.sh
@@ -11,23 +13,55 @@ import /vendor/etc/init/hw/init.a6l.usb.rc
 
 on early-init
     write /proc/sys/kernel/printk_devkmsg on
+    # Serial device suspend/resume (6 Oct 2026, docs/sleep-async-workaround-20261006.md). WORKAROUND, not a fix.
+    # With the kernel default pm_async=1, sleep after a camera VIDEO recording hard-hangs the phone (watchdog reset,
+    # then backlit black) in about 4 of 6 trials: pm_test=devices passes, pm_test=platform (adds late/noirq) crashes,
+    # each of the 19 late/noirq callbacks passes when run serially, and the hold time does not matter. With
+    # pm_async=0 all 4 post-video trials passed (3 real sleeps + platform stage). So two devices that depend on each
+    # other are suspended/resumed in parallel without a device_link. Remove this line once that link is found and
+    # fixed (re-test: video, then pm_test=platform with pm_async=1). Cost: suspend/resume callbacks run one at a time.
+    write /sys/power/pm_async 0
     # Watchdog = 60 s x multiplier. Phone default 2 (first boot: dex2oat + CPUs at the bootloader clock, no cpufreq);
     # the QEMU test passes androidboot.hw_timeout_multiplier=5.
     setprop ro.hw_timeout_multiplier ${ro.boot.hw_timeout_multiplier:-2}
     # firmware for request_firmware(): GPU zap/pm4/pfp, ADSP, modem, WLAN, BT (also tqftpserv's search root)
     write /sys/module/firmware_class/parameters/path /vendor/firmware
-    exec_start a6l_modules_display
+    # r6b boot fix (30 Sep 2026, docs/rom-r6b-bootfix-20260930.md): NON-blocking. Was `exec_start a6l_modules_display`: an
+    # insmod that never returns (r6 first boot: after the msm probe) kept init in early-init for ever -> no mount_all, no
+    # USB gadget, no adbd, no log. Ordering that needed the group finished is now explicit and bounded:
+    #   post-fs-data: exec_start a6l_display_wait (vendor.a6l.display=done or 45 s) -> persist.graphics.egl (F11, below)
+    #   charger mode: the same wait before the charger UI needs the panel (next block)
+    #   adsp group  : waits (30 s max) until the display lists are loaded (shared providers: mdt_loader, qcom_aoss, ...)
+    # USB gadget (init.a6l.usb.rc, early-boot) and adbd no longer depend on this group at all.
+    start a6l_modules_display
+    write /dev/kmsg "A6L_STAGE early-init: vendor actions done (display group started, non-blocking)"
+
+on early-init && property:ro.bootmode=charger
+    # off-mode charging: the charger UI (health HAL --charger, class charger) opens the panel; keep the old guarantee, bounded
+    exec_start a6l_display_wait
 
 on init
+    write /dev/kmsg "A6L_STAGE init"
     # compatibility links used by stock-style paths
     symlink /dev/block/platform/soc@0/c0c4000.mmc /dev/block/bootdevice
     # no ashmem on 7.2: memfd (same as the RAM bring-ups)
     setprop sys.use_memfd true
 
 on fs
+    write /dev/kmsg "A6L_STAGE fs: mount_all"
+    # r6c (30 Sep 2026, docs/rom-r6c-20260930.md): first-boot format WITHOUT a whole-device discard. fs_mgr
+    # (system/fs/fs_mgr/fs_mgr_format.cpp format_ext4) runs /system/bin/mke2fs from init with init's environment and no
+    # -E option; mke2fs then discards the whole partition first (profile relation `discard`, default true): r6b spent
+    # 28.5 s (5.88 -> 34.43 s) in "Discarding device blocks" on the 107 GiB userdata, blocking mount_all and everything
+    # after it. The profile below = /system/etc/mke2fs.conf + `discard = false`; restored right after mount_all, so vold
+    # (SD cards) keeps the platform default. Stock never discarded at format time either (its /data came from the factory).
+    export MKE2FS_CONFIG /vendor/etc/mke2fs.a6l.conf
     mount_all /vendor/etc/fstab.qcom
+    export MKE2FS_CONFIG /system/etc/mke2fs.conf
+    write /dev/kmsg "A6L_STAGE fs: mount_all done"
 
 on post-fs-data
+    write /dev/kmsg "A6L_STAGE post-fs-data"
     mkdir /data/vendor 0771 root root
     mkdir /data/vendor/a6l 0770 system system
     mkdir /data/vendor/tmp 0770 root root
@@ -35,13 +69,32 @@ on post-fs-data
     mkdir /data/vendor/wifi 0771 wifi wifi
     mkdir /data/vendor/wifi/wpa 0770 wifi wifi
     mkdir /data/vendor/wifi/wpa/sockets 0770 wifi wifi
-    # attended debugging: the laptop's adb key is trusted from the first boot (no on-screen prompt needed)
+    # r5 review fix F11 (28 Sep 2026): EGL renderer of THIS boot. init.rc's post-fs-data (load_persist_props) runs before
+    # this vendor block, so the value below always replaces a persisted one from an earlier boot; zygote/SurfaceFlinger
+    # start later (zygote-start, boot). vendor.a6l.gpu is set by a6l-modules.sh display (started in early-init): mesa when
+    # renderD128 exists, angle otherwise; unset (script failure) => angle (software).
+    # r6b boot fix: the display group no longer blocks early-init, so wait for it here, BOUNDED: a6l_display_wait returns
+    # when vendor.a6l.display=done (LCD connector ready, as the composer expects) or after 45 s. The group's decider always
+    # publishes vendor.a6l.gpu within 30 s of its start, even if an insmod hangs (then angle), so the copy below is final.
+    exec_start a6l_display_wait
+    setprop persist.graphics.egl ${vendor.a6l.gpu:-angle}
+
+# merge2 (25 Sep 2026, Astra R14): the laptop's adb key is pre-trusted ONLY in the explicit debug variant
+# (rom/debug/adbkey.mk, pipeline A6L_DEBUG_ADBKEY=1 -> ro.vendor.a6l.debug.adbkey=1 + /vendor/etc/a6l/adb_keys).
+# A release image ships no key and never writes /data/misc/adb/adb_keys: ADB needs the on-screen authorization and a
+# revocation survives reboot.
+on post-fs-data && property:ro.vendor.a6l.debug.adbkey=1
     mkdir /data/misc/adb 02750 system shell
     copy /vendor/etc/a6l/adb_keys /data/misc/adb/adb_keys
     chown system shell /data/misc/adb/adb_keys
     chmod 0640 /data/misc/adb/adb_keys
 
 on boot
+    write /dev/kmsg "A6L_STAGE boot"
+    # rom-v2: vibrator = a6l_gpio_vib (misc group). r5 review fix F49: VibratorOL drives its LED class device
+    # /sys/class/leds/vibrator (DAC from vendor-etc/ueventd.rc); see the a6l_modules_misc=stopped trigger below.
+    # r5 review fix F13: the flash LED (/sys/class/leds/white:flash, leds-qcom-flash, loaded later by the misc group) gets
+    # its ownership from ueventd when the device appears (vendor-etc/ueventd.rc), not from a chown here that runs too early.
     # LCD backlight (pm660l WLED) writable by system (lights HAL / settings)
     chown system system /sys/class/backlight/backlight/brightness
     chmod 0664 /sys/class/backlight/backlight/brightness
@@ -50,6 +103,9 @@ on boot
 on property:sys.boot_completed=1
     write /dev/kmsg "A6L_ROM_BOOT_COMPLETED"
     start a6l_bootinfo
+    # merge2 (25 Sep, 6 GiB profile): zram swap (fstab.qcom zramsize=50%), lz4, after boot so first-boot dexopt is not slowed
+    write /sys/block/zram0/comp_algorithm lz4
+    swapon_all /vendor/etc/fstab.qcom
 
 # Test harness only (QEMU: androidboot.a6l_stayawake=1): keep the screen on so the stability check after boot_completed is
 # not cut short by autosuspend (r7 suspended ~7 min after boot_completed, which is normal on the phone).
@@ -78,7 +134,55 @@ service a6l_modules_display /vendor/bin/a6l-modules.sh display
     stdio_to_kmsg
     seclabel u:r:vendor_modprobe:s0
 
+# r6b boot fix: bounded wait for the display group (post-fs-data, charger mode); see a6l-modules.sh displaywait
+service a6l_display_wait /vendor/bin/a6l-modules.sh displaywait done 45
+    user root
+    group root
+    disabled
+    oneshot
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
 service a6l_modules_adsp /vendor/bin/a6l-modules.sh adsp
+    user root
+    group root
+    disabled
+    oneshot
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+# rom-v2: fuel gauge, vibrator, flash LED, frontlight, cameras (probe only) after the ADSP/audio group; charger gated
+on property:init.svc.a6l_modules_adsp=stopped
+    start a6l_modules_misc
+
+# r5 review fix F49 (29 Sep 2026): vendor.qti.vibrator (class hal) probes its devices ONCE in its constructor, normally
+# before the misc group has loaded a6l_gpio_vib.ko -> no device -> on() "succeeds" with no effect. Restart it once the
+# misc group (insmod probes synchronously) is done, so it finds /sys/class/leds/vibrator. `restart` starts it if it is
+# not running yet; the framework's vibrator HalController reconnects after the restart (capabilities unchanged:
+# CAP_ON_CALLBACK with or without a device).
+on property:init.svc.a6l_modules_misc=stopped
+    restart vendor.qti.vibrator
+
+service a6l_modules_misc /vendor/bin/a6l-modules.sh misc
+    user root
+    group root
+    disabled
+    oneshot
+    stdio_to_kmsg
+    seclabel u:r:vendor_modprobe:s0
+
+# H49 (r5, 28 Sep 2026): off-mode charging. init triggers `charger` instead of late-init (no fs/post-fs-data/boot), so
+# none of the `on boot` module groups run. Minimal path: fuel gauge + charger group (rom/modules/charger.txt, when
+# persist.vendor.a6l.charger=1 - its build default in charger mode, /data is not mounted) and then the charge guard,
+# exactly like the normal-boot chain (a6l_modules_misc stopped -> a6l_chg_guard). No ADSP/audio/radio/camera. The display
+# group (early-init) and the health HAL's `vendor.charger` service (class charger) are started by the stock paths.
+on charger
+    start a6l_modules_offcharge
+
+on property:init.svc.a6l_modules_offcharge=stopped && property:persist.vendor.a6l.charger=1
+    start a6l_chg_guard
+
+service a6l_modules_offcharge /vendor/bin/a6l-modules.sh offcharge
     user root
     group root
     disabled

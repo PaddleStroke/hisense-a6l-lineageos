@@ -1,0 +1,4 @@
+present=1 state='' rc=0 wait_ticks=11
+present=1 state='starting' rc=0 wait_ticks=11
+present=1 state='stopped' rc=0 wait_ticks=11
+present=1 state='missing' rc=0 wait_ticks=11

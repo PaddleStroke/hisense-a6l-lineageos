@@ -1,0 +1,37 @@
+//
+// Copyright (C) 2024 The LineageOS Project
+// A6L (lc2, 29 Sep 2026): fork of hardware/lineage/interfaces/camera/aidl/device + A6lTorch (torch strength levels on
+// /sys/class/leds/white:flash).
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+cc_library_shared {
+    name: "camera.device-impl.a6l",
+    defaults: ["android.hardware.graphics.common-ndk_shared"],
+    vendor: true,
+    srcs: [
+        "A6lTorch.cpp",
+        "CameraDevice.cpp",
+        "CameraDeviceSession.cpp",
+        "convert.cpp",
+    ],
+    shared_libs: [
+        "android.hardware.camera.common-V1-ndk",
+        "android.hardware.camera.device-V1-ndk",
+        "libbinder_ndk",
+        "libcamera_metadata",
+        "libcutils",
+        "libfmq",
+        "libgralloctypes",
+        "libhidlbase",
+        "liblog",
+        "libui",
+        "libutils",
+    ],
+    static_libs: [
+        "android.hardware.camera.common-helper",
+        "libaidlcommonsupport",
+    ],
+    export_include_dirs: ["."],
+}

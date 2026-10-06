@@ -19,3 +19,9 @@ allow a6l_eink_mirror uhid_device:chr_file rw_file_perms;
 
 # mode / reading / transform settings (the key toggle persists the mode) and the published state
 set_prop(a6l_eink_mirror, vendor_eink_prop)
+
+# r5 bug hunt eink-display E4: a6l_eink.rc starts the mirror with --wait-prop sys.boot_completed=1 (the DRM card is only
+# opened once the composer surely holds master). sys.boot_completed is boot_status_prop (system_restricted_prop), which
+# system/sepolicy grants only to coredomain/appdomain/vendor_init: without this the read is denied when enforcing, the
+# property reads as "" and the mirror waits for ever (rear screen never mirrors).
+get_prop(a6l_eink_mirror, boot_status_prop)

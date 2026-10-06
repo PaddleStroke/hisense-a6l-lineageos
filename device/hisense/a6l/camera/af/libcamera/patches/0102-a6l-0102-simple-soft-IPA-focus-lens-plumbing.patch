@@ -1,0 +1,215 @@
+From 95cdb961dae1b0cb5662411c3a125aa90b766f89 Mon Sep 17 00:00:00 2001
+From: a6l <a6l@local>
+Date: Tue, 29 Sep 2026 23:20:51 +0200
+Subject: [PATCH 102/104] a6l 0102 simple: soft IPA focus lens plumbing
+
+---
+ .../internal/software_isp/software_isp.h      |  1 +
+ include/libcamera/ipa/soft.mojom              |  4 +++-
+ src/ipa/simple/ipa_context.h                  |  7 ++++++
+ src/ipa/simple/soft_simple.cpp                | 12 ++++++++++
+ src/libcamera/pipeline/simple/simple.cpp      | 14 ++++++++++++
+ src/libcamera/software_isp/software_isp.cpp   | 22 +++++++++++++++++++
+ 6 files changed, 59 insertions(+), 1 deletion(-)
+
+diff --git a/include/libcamera/internal/software_isp/software_isp.h b/include/libcamera/internal/software_isp/software_isp.h
+index 4f72dce..f7a9a20 100644
+--- a/include/libcamera/internal/software_isp/software_isp.h
++++ b/include/libcamera/internal/software_isp/software_isp.h
+@@ -87,6 +87,7 @@ public:
+ 	Signal<uint32_t, uint32_t> ispStatsReady;
+ 	Signal<uint32_t, const ControlList &> metadataReady;
+ 	Signal<const ControlList &> setSensorControls;
++	Signal<const ControlList &> setLensControls;
+ 
+ private:
+ 	void saveIspParams();
+diff --git a/include/libcamera/ipa/soft.mojom b/include/libcamera/ipa/soft.mojom
+index 77328c5..b391335 100644
+--- a/include/libcamera/ipa/soft.mojom
++++ b/include/libcamera/ipa/soft.mojom
+@@ -17,7 +17,8 @@ interface IPASoftInterface {
+ 	     libcamera.SharedFD fdStats,
+ 	     libcamera.SharedFD fdParams,
+ 	     libcamera.IPACameraSensorInfo sensorInfo,
+-	     libcamera.ControlInfoMap sensorControls)
++	     libcamera.ControlInfoMap sensorControls,
++	     libcamera.ControlInfoMap lensControls)
+ 		=> (int32 ret, libcamera.ControlInfoMap ipaControls, bool ccmEnabled);
+ 	start() => (int32 ret);
+ 	stop();
+@@ -33,6 +34,7 @@ interface IPASoftInterface {
+ 
+ interface IPASoftEventInterface {
+ 	setSensorControls(libcamera.ControlList sensorControls);
++	setLensControls(libcamera.ControlList lensControls);
+ 	setIspParams();
+ 	metadataReady(uint32 frame, libcamera.ControlList metadata);
+ };
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 8ccfacb..7e896c2 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -90,6 +90,13 @@ struct IPAContext {
+ 	FCQueue<IPAFrameContext> frameContexts;
+ 	ControlInfoMap::Map ctrlMap;
+ 	bool ccmEnabled = false;
++
++	/* A6L AF: focus lens limits (V4L2_CID_FOCUS_ABSOLUTE), from init() */
++	struct {
++		bool present = false;
++		int32_t min = 0;
++		int32_t max = 0;
++	} lens;
+ };
+ 
+ } /* namespace ipa::soft */
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 629e1a3..05a0938 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -56,6 +56,7 @@ public:
+ 		 const SharedFD &fdParams,
+ 		 const IPACameraSensorInfo &sensorInfo,
+ 		 const ControlInfoMap &sensorControls,
++		 const ControlInfoMap &lensControls,
+ 		 ControlInfoMap *ipaControls,
+ 		 bool *ccmEnabled) override;
+ 	int configure(const IPAConfigInfo &configInfo) override;
+@@ -78,6 +79,7 @@ private:
+ 	SwIspStats *stats_;
+ 	std::unique_ptr<CameraSensorHelper> camHelper_;
+ 	ControlInfoMap sensorInfoMap_;
++	ControlInfoMap lensInfoMap_;
+ 
+ 	/* Local parameter storage */
+ 	struct IPAContext context_;
+@@ -96,6 +98,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 			const SharedFD &fdParams,
+ 			const IPACameraSensorInfo &sensorInfo,
+ 			const ControlInfoMap &sensorControls,
++			const ControlInfoMap &lensControls,
+ 			ControlInfoMap *ipaControls,
+ 			bool *ccmEnabled)
+ {
+@@ -108,6 +111,15 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 
+ 	context_.sensorInfo = sensorInfo;
+ 
++	/* A6L AF: must be known before the algorithms are created */
++	lensInfoMap_ = lensControls;
++	const auto lensIt = lensControls.find(V4L2_CID_FOCUS_ABSOLUTE);
++	if (lensIt != lensControls.end()) {
++		context_.lens.present = true;
++		context_.lens.min = lensIt->second.min().get<int32_t>();
++		context_.lens.max = lensIt->second.max().get<int32_t>();
++	}
++
+ 	/* Load the tuning data file */
+ 	File file(settings.configurationFile);
+ 	if (!file.open(File::OpenModeFlag::ReadOnly)) {
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index e26f438..26bf7d6 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -33,6 +33,7 @@
+ #include <libcamera/stream.h>
+ 
+ #include "libcamera/internal/camera.h"
++#include "libcamera/internal/camera_lens.h"
+ #include "libcamera/internal/camera_manager.h"
+ #include "libcamera/internal/camera_sensor.h"
+ #include "libcamera/internal/camera_sensor_properties.h"
+@@ -372,6 +373,7 @@ private:
+ 	void ispStatsReady(uint32_t frame, uint32_t bufferId);
+ 	void metadataReady(uint32_t frame, const ControlList &metadata);
+ 	void setSensorControls(const ControlList &sensorControls);
++	void setLensControls(const ControlList &lensControls);
+ };
+ 
+ class SimpleCameraConfiguration : public CameraConfiguration
+@@ -626,6 +628,7 @@ int SimpleCameraData::init()
+ 			swIsp_->ispStatsReady.connect(this, &SimpleCameraData::ispStatsReady);
+ 			swIsp_->metadataReady.connect(this, &SimpleCameraData::metadataReady);
+ 			swIsp_->setSensorControls.connect(this, &SimpleCameraData::setSensorControls);
++			swIsp_->setLensControls.connect(this, &SimpleCameraData::setLensControls);
+ 		}
+ 	}
+ 
+@@ -1058,6 +1061,17 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
+ 	}
+ }
+ 
++/* A6L AF: the soft IPA moves the VCM directly (no frame alignment, the IPA skips settling frames). */
++void SimpleCameraData::setLensControls(const ControlList &lensControls)
++{
++	CameraLens *lens = sensor_->focusLens();
++	if (!lens || !lensControls.contains(V4L2_CID_FOCUS_ABSOLUTE))
++		return;
++
++	const ControlValue &focus = lensControls.get(V4L2_CID_FOCUS_ABSOLUTE);
++	lens->setFocusPosition(focus.get<int32_t>());
++}
++
+ /* Retrieve all source pads connected to a sink pad through active routes. */
+ std::vector<const MediaPad *> SimpleCameraData::routedSourcePads(MediaPad *sink)
+ {
+diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
+index c73a16c..3fa0121 100644
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -24,6 +24,8 @@
+ #include <libcamera/stream.h>
+ 
+ #include "libcamera/internal/bayer_format.h"
++#include "libcamera/internal/camera_lens.h"
++#include "libcamera/internal/camera_sensor.h"
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
+ 
+@@ -66,6 +68,12 @@ LOG_DEFINE_CATEGORY(SoftwareIsp)
+  * \brief A signal emitted when the metadata for IPA is ready
+  */
+ 
++/**
++ * \var SoftwareIsp::setLensControls
++ * \brief Signal emitted when the focus lens position shall be changed
++ * (V4L2_CID_FOCUS_ABSOLUTE)
++ */
++
+ /**
+  * \var SoftwareIsp::setSensorControls
+  * \brief A signal emitted when the values to write to the sensor controls are
+@@ -157,11 +165,21 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
+ 		return;
+ 	}
+ 
++	/*
++	 * A6L AF: the focus lens (DT lens-focus ancillary link), empty map if
++	 * none. focusLens() is not const but only returns the lens pointer.
++	 */
++	CameraLens *lens = const_cast<CameraSensor *>(sensor)->focusLens();
++	const ControlInfoMap lensControls = lens ? lens->controls() : ControlInfoMap();
++	if (lens)
++		LOG(SoftwareIsp, Info) << "Focus lens " << lens->model();
++
+ 	ret = ipa_->init(IPASettings{ ipaTuningFile, sensor->model() },
+ 			 debayer_->getStatsFD(),
+ 			 sharedParams_.fd(),
+ 			 sensorInfo,
+ 			 sensor->controls(),
++			 lensControls,
+ 			 ipaControls,
+ 			 &ccmEnabled_);
+ 	if (ret) {
+@@ -176,6 +194,10 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
+ 					    metadataReady.emit(frame, metadata);
+ 				    });
+ 	ipa_->setSensorControls.connect(this, &SoftwareIsp::setSensorCtrls);
++	ipa_->setLensControls.connect(this,
++				      [this](const ControlList &lensControls) {
++					      setLensControls.emit(lensControls);
++				      });
+ 
+ 	debayer_->moveToThread(&ispWorkerThread_);
+ }

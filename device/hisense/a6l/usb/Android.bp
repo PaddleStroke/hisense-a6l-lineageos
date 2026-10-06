@@ -1,0 +1,32 @@
+// Hisense A6L USB device mode (android-usb, 29 Sep 2026): gadget AIDL HAL on the mainline configfs gadget.
+// docs/android-usb-20260929.md
+soong_namespace {
+}
+
+cc_library_static {
+    name: "liba6l_usb_gadget_core",
+    vendor: true,
+    srcs: ["gadget/a6l_gadget_core.cpp"],
+    export_include_dirs: ["gadget"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "android.hardware.usb.gadget-service.a6l",
+    relative_install_path: "hw",
+    vendor: true,
+    init_rc: ["gadget/android.hardware.usb.gadget-service.a6l.rc"],
+    vintf_fragments: ["gadget/android.hardware.usb.gadget-service.a6l.xml"],
+    srcs: [
+        "gadget/UsbGadget.cpp",
+        "gadget/service.cpp",
+    ],
+    static_libs: ["liba6l_usb_gadget_core"],
+    shared_libs: [
+        "android.hardware.usb.gadget-V2-ndk",
+        "libbase",
+        "libbinder_ndk",
+        "liblog",
+    ],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}

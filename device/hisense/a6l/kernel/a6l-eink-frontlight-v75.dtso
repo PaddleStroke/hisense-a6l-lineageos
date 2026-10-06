@@ -28,6 +28,7 @@
 &pm660l_lpg {
     status = "okay";
     #pwm-cells = <2>;
+    qcom,power-source = <1>;   /* TRILED source select required by leds-qcom-lpg on PM660L (1 = VPH_PWR, as mainline sdm660 boards) */
     qcom,dtest = <0 0>, <0 0>, <0 0>, <2 2>;   /* channel 4 (index 3): DTEST line 2, output 2 (stock) */
 };
 / {

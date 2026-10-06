@@ -1,0 +1,214 @@
+A6L r5 review fix F6 (28 Sep 2026): uplink (TX) mute of the q6voice VoiceMMode1 path.
+VSS_IVOLUME_CMD_MUTE_V2 (0x0001138B, TX=0) on the full-control CVP session, ALSA control "VoiceMMode1 TX Mute"
+(put returns the DSP error), state kept per path and restored (fail closed) at every path start.
+Applies after a6l-q6voice-full-7.2.3.patch (series kernel/rom-v2/series). Built W=1 against out-a6l-phone-v67.
+
+diff --git a/sound/soc/qcom/qdsp6/q6cvp.c b/sound/soc/qcom/qdsp6/q6cvp.c
+index d87849b..2f01fc3 100644
+--- a/sound/soc/qcom/qdsp6/q6cvp.c
++++ b/sound/soc/qcom/qdsp6/q6cvp.c
+@@ -45,6 +45,17 @@
+ 
+ #define VOC_SET_MEDIA_FORMAT_PARAM_TOKEN		2
+ 
++/*
++ * A6L r5 (F6 call mute): device mute on the vocproc. Downstream msm voice.c voice_send_device_mute_cmd() sends
++ * VSS_IVOLUME_CMD_MUTE_V2 to the CVP handle ("Voice Tx Device Mute"); stock "Voice Tx Mute" uses the same command on
++ * a CVS passive session, which this driver does not create (the modem owns the stream). Muting the vocproc TX output
++ * silences the uplink before the modem's encoder. Note: VSS_IVOLUME directions are TX = 0, RX = 1 (not the
++ * VSS_IVOCPROC_DIRECTION_* values above).
++ */
++#define VSS_IVOLUME_CMD_MUTE_V2				0x0001138B
++#define VSS_IVOLUME_DIRECTION_TX			0
++#define VSS_IVOLUME_DIRECTION_RX			1
++
+ #define VSS_NUM_CHANNELS_MAX 8
+ 
+ struct vss_ivocproc_cmd_create_full_control_session_v2_cmd {
+@@ -164,6 +175,13 @@ struct vss_icommon_cmd_set_param_v2_cmd {
+ 	struct vss_icommon_param_data param_data;
+ } __packed;
+ 
++struct vss_ivolume_cmd_mute_v2_cmd {
++	struct apr_hdr hdr;
++	u16 direction;
++	u16 mute_flag;
++	u16 ramp_duration_ms;
++} __packed;
++
+ struct q6voice_session *q6cvp_session_create(enum q6voice_path_type path,
+ 					     u16 tx_port, u16 rx_port,
+ 					     u32 tx_topo, u32 rx_topo)
+@@ -303,6 +321,20 @@ int q6cvp_enable(struct q6voice_session *cvp, bool state)
+ }
+ EXPORT_SYMBOL_GPL(q6cvp_enable);
+ 
++int q6cvp_set_mute(struct q6voice_session *cvp, bool tx, bool mute, u16 ramp_ms)
++{
++	struct vss_ivolume_cmd_mute_v2_cmd cmd;
++
++	cmd.hdr.pkt_size = sizeof(cmd);
++	cmd.hdr.opcode = VSS_IVOLUME_CMD_MUTE_V2;
++	cmd.direction = tx ? VSS_IVOLUME_DIRECTION_TX : VSS_IVOLUME_DIRECTION_RX;
++	cmd.mute_flag = mute ? 1 : 0;
++	cmd.ramp_duration_ms = ramp_ms;
++
++	return q6voice_common_send(cvp, &cmd.hdr);
++}
++EXPORT_SYMBOL_GPL(q6cvp_set_mute);
++
+ static int q6cvp_probe(struct apr_device *adev)
+ {
+ 	return q6voice_common_probe(adev, Q6VOICE_SERVICE_CVP);
+diff --git a/sound/soc/qcom/qdsp6/q6cvp.h b/sound/soc/qcom/qdsp6/q6cvp.h
+index aad99eb..b68679b 100644
+--- a/sound/soc/qcom/qdsp6/q6cvp.h
++++ b/sound/soc/qcom/qdsp6/q6cvp.h
+@@ -16,5 +16,7 @@ int q6cvp_send_channel_info(struct q6voice_session *cvp, bool is_tx);
+ int q6cvp_send_media_format(struct q6voice_session *cvp, int port_id, bool is_tx);
+ int q6cvp_topology_commit(struct q6voice_session *cvp);
+ int q6cvp_enable(struct q6voice_session *cvp, bool enable);
++/* A6L r5 (F6): VSS_IVOLUME_CMD_MUTE_V2 on the vocproc (tx: uplink) */
++int q6cvp_set_mute(struct q6voice_session *cvp, bool tx, bool mute, u16 ramp_ms);
+ 
+ #endif /*_Q6_CVP_H */
+diff --git a/sound/soc/qcom/qdsp6/q6voice-dai.c b/sound/soc/qcom/qdsp6/q6voice-dai.c
+index c5c60a7..0d099bf 100644
+--- a/sound/soc/qcom/qdsp6/q6voice-dai.c
++++ b/sound/soc/qcom/qdsp6/q6voice-dai.c
+@@ -228,7 +228,44 @@ static int q6voice_put_topology_kctrl(struct snd_kcontrol *kcontrol, struct snd_
+ 	return 1;
+ }
+ 
++/* A6L r5 (F6): "VoiceMMode1 TX Mute" (0/1). A failed DSP command is returned to userspace (-EIO/-ETIMEDOUT). */
++static int q6voice_get_tx_mute_kctrl(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	struct q6voice *v = snd_soc_component_get_drvdata(c);
++	enum q6voice_path_type path = q6voice_get_path(mc->reg);
++
++	if (path >= Q6VOICE_PATH_COUNT)
++		return -EINVAL;
++	ucontrol->value.integer.value[0] = q6voice_get_tx_mute(v, path);
++	return 0;
++}
++
++static int q6voice_put_tx_mute_kctrl(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	struct q6voice *v = snd_soc_component_get_drvdata(c);
++	enum q6voice_path_type path = q6voice_get_path(mc->reg);
++	bool mute = !!ucontrol->value.integer.value[0];
++	bool was;
++	int ret;
++
++	if (path >= Q6VOICE_PATH_COUNT)
++		return -EINVAL;
++	was = q6voice_get_tx_mute(v, path);
++	ret = q6voice_set_tx_mute(v, path, mute);
++	if (ret)
++		return ret;
++	return was != mute;
++}
++
+ static const struct snd_kcontrol_new q6voice_kcontrols[] = {
++	SOC_SINGLE_EXT("VoiceMMode1 TX Mute", VOICEMMODE1, 0, 1, 0,
++		       q6voice_get_tx_mute_kctrl, q6voice_put_tx_mute_kctrl),
+ 	SOC_SINGLE_EXT("VoiceMMode1 TX Topology", VOICEMMODE1, 1, S32_MAX, 0,
+ 		       q6voice_get_topology_kctrl, q6voice_put_topology_kctrl),
+ 	SOC_SINGLE_EXT("VoiceMMode1 RX Topology", VOICEMMODE1, 0, S32_MAX, 0,
+diff --git a/sound/soc/qcom/qdsp6/q6voice.c b/sound/soc/qcom/qdsp6/q6voice.c
+index 1b8ee0f..4a2510b 100644
+--- a/sound/soc/qcom/qdsp6/q6voice.c
++++ b/sound/soc/qcom/qdsp6/q6voice.c
+@@ -36,6 +36,8 @@ struct q6voice_path {
+ 	enum q6voice_path_type type;
+ 	int tx_port, rx_port;
+ 	u32 tx_topo, rx_topo;
++	/* A6L r5 (F6): uplink mute requested by userspace; kept across calls, applied at every start */
++	bool tx_mute;
+ 	/* Serialize access to voice path session */
+ 	struct mutex lock;
+ 	struct q6voice_path_runtime *runtime;
+@@ -147,6 +149,17 @@ static int q6voice_path_start(struct q6voice_path *p)
+ 		goto cvp_err;
+ 	}
+ 
++	/*
++	 * A6L r5 (F6): restore the uplink mute before the vocproc joins the modem's stream. Fail closed: a call that
++	 * was muted must never start with a live microphone (userspace sees the start error and can unmute).
++	 */
++	if (p->tx_mute) {
++		ret = q6cvp_set_mute(cvp, true, true, 0);
++		dev_info(dev, "A6L_Q6VOICE path %d tx mute restore: %d\n", p->type, ret);
++		if (ret)
++			goto cvp_err;
++	}
++
+ 	ret = q6mvm_attach(mvm, cvp, true);
+ 	if (ret) {
+ 		dev_err(dev, "failed to attach cvp to mvm: %d\n", ret);
+@@ -267,6 +280,46 @@ out:
+ }
+ EXPORT_SYMBOL_GPL(q6voice_stop);
+ 
++/*
++ * A6L r5 (F6): uplink mute. While the path runs, the vocproc is muted/unmuted at once (500 ms ramp like stock
++ * "Voice Tx Mute") and the new state is only stored when the DSP accepted it; otherwise it is stored and applied
++ * by the next q6voice_path_start().
++ */
++int q6voice_set_tx_mute(struct q6voice *v, enum q6voice_path_type path, bool mute)
++{
++	struct q6voice_path *p;
++	struct q6voice_session *cvp;
++	int ret = 0;
++
++	if (path >= Q6VOICE_PATH_COUNT)
++		return -EINVAL;
++	p = &v->paths[path];
++	mutex_lock(&p->lock);
++	if (p->runtime && p->runtime->started == 3) {
++		cvp = p->runtime->sessions[Q6VOICE_SERVICE_CVP];
++		ret = cvp ? q6cvp_set_mute(cvp, true, mute, 500) : -ENODEV;
++		dev_info(v->dev, "A6L_Q6VOICE path %d tx mute %d (live): %d\n", path, mute, ret);
++	}
++	if (!ret)
++		p->tx_mute = mute;
++	mutex_unlock(&p->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(q6voice_set_tx_mute);
++
++bool q6voice_get_tx_mute(struct q6voice *v, enum q6voice_path_type path)
++{
++	bool mute;
++
++	if (path >= Q6VOICE_PATH_COUNT)
++		return false;
++	mutex_lock(&v->paths[path].lock);
++	mute = v->paths[path].tx_mute;
++	mutex_unlock(&v->paths[path].lock);
++	return mute;
++}
++EXPORT_SYMBOL_GPL(q6voice_get_tx_mute);
++
+ static void q6voice_free(void *data)
+ {
+ 	struct q6voice *v = data;
+diff --git a/sound/soc/qcom/qdsp6/q6voice.h b/sound/soc/qcom/qdsp6/q6voice.h
+index ba255c0..357f128 100644
+--- a/sound/soc/qcom/qdsp6/q6voice.h
++++ b/sound/soc/qcom/qdsp6/q6voice.h
+@@ -35,4 +35,8 @@ u32 q6voice_get_topology(struct q6voice *v, enum q6voice_path_type path,
+ void q6voice_set_topology(struct q6voice *v, enum q6voice_path_type path,
+ 			  bool capture, u32 topo);
+ 
++/* A6L r5 (F6): uplink (TX) mute of a voice path; 0 or a negative errno from the DSP */
++int q6voice_set_tx_mute(struct q6voice *v, enum q6voice_path_type path, bool mute);
++bool q6voice_get_tx_mute(struct q6voice *v, enum q6voice_path_type path);
++
+ #endif /*_Q6_VOICE_H */

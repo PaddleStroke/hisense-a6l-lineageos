@@ -1,0 +1,14 @@
+SENSOR_BACKLOG prompt=256 delayed=64 scans=256 first_timestamp_error_ms=960.028
+SENSOR_DISABLED enabled=0 delivered_handle=3
+SENSOR_FLUSH_OVERFLOW flush_completions=0 dropped=1
+GYRO_SLOW_ROTATION true_z=0.04 learned_bias_z=0.040000 corrected_z=-0.000000 valid=1
+
+CELL_BROADCAST ignored_log=1 negative_acks=1
+STORED_SMS deletes_before_delivery=1 first_receipt_rejected=1
+SMS_ACK_ORDER first_delivered=stored_A ack_target=0x2222 transfer_B_not_yet_delivered=1 ack_delta=1
+
+DATA_STALE_LOSS old_cid=1 new_cid=1 remaining_after_old_callback=0
+
+XTRA_ACK mode=wrong-part success=1 parts=3
+XTRA_ACK mode=missing-status success=1 parts=3
+GNSS_STOP_DURING_UPLOAD stop_requests=0 session_still_running=1 elapsed_ms=1200

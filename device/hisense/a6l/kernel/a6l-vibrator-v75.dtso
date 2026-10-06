@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Hisense A6L vibrator (agent misc2, 25 Sep 2026; docs/misc2-20260925.md §1).
+// Stock evidence: the stock kernel has NO qpnp-haptic driver (no symbol/string); its vibrator is
+//   timed-gpio { compatible = "timed-gpio"; vib-gpio = <&tlmm 79 0>; pinctrl-0 = <&vib_en_pin>; }  (stock-00.dts:14279)
+//   vib_en_pin: gpio79, function gpio, drive-strength 2, output-low                                  (stock-00.dts:12340)
+//   timed_gpio_probe: gpiod_direction_output_raw(79, 0); gpio_enable(): raw 1 while on (active_low = 0).
+// So the PM660 haptics block (qcom,haptic@c000) is not wired to the motor on this board: keep it DISABLED and do not
+// merge a6l-haptics-v75.dtso / load a6l_pm660_haptics.ko (VibratorOL would pick the first FF device).
+// Driver: a6l_gpio_vib.ko (device/hisense/a6l/kernel/a6l-gpio-vibrator), input FF device "a6l_gpio_vibrator".
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/gpio/gpio.h>
+
+&tlmm {
+	a6l_vib_en_default: a6l-vib-en-state {
+		pins = "gpio79";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-low;
+	};
+};
+
+&pm660_haptics {
+	status = "disabled";
+};
+
+/ {
+	fragment@93 {
+		target-path = "/";
+		__overlay__ {
+			a6l_vibrator: a6l-vibrator {
+				compatible = "hisense,a6l-gpio-vibrator";
+				enable-gpios = <&tlmm 79 GPIO_ACTIVE_HIGH>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&a6l_vib_en_default>;
+			};
+		};
+	};
+};

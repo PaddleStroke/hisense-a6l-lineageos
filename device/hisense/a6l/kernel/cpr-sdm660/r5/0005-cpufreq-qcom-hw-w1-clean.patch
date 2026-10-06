@@ -1,0 +1,32 @@
+--- a/drivers/cpufreq/qcom-cpufreq-hw.c	2026-09-29 20:43:33.216692662 +0200
++++ b/drivers/cpufreq/qcom-cpufreq-hw.c	2026-09-29 20:43:33.228563236 +0200
+@@ -303,8 +303,9 @@
+  *
+  * Returns: Zero for success, otherwise negative value on errors
+  */
+-static int qcom_cpufreq_set_bw(struct cpufreq_policy *policy,
+-			       unsigned long freq_khz)
++/* A6L: unused while the OSM hardware owns the CPRh corners (a dev_pm_opp_set_opp() here would also vote required-opps) */
++static int __maybe_unused qcom_cpufreq_set_bw(struct cpufreq_policy *policy,
++					      unsigned long freq_khz)
+ {
+ 	unsigned long freq_hz = freq_khz * 1000;
+ 	struct dev_pm_opp *opp;
+@@ -374,7 +375,6 @@
+ {
+ 	struct qcom_cpufreq_data *data = policy->driver_data;
+ 	const struct qcom_cpufreq_soc_data *soc_data = qcom_cpufreq.soc_data;
+-	unsigned long freq = policy->freq_table[index].frequency;
+ 	unsigned int i;
+ 
+ 	writel_relaxed(index, data->base + soc_data->reg_perf_state);
+@@ -383,8 +383,7 @@
+ 		for (i = 1; i < cpumask_weight(policy->related_cpus); i++)
+ 			writel_relaxed(index, data->base + soc_data->reg_perf_state + i * 4);
+ 
+-	// if (icc_scaling_enabled)
+-	// 	qcom_cpufreq_set_bw(policy, freq);
++	/* A6L: no qcom_cpufreq_set_bw() here, see above (was commented out in the forward port) */
+ 
+ 	return 0;
+ }

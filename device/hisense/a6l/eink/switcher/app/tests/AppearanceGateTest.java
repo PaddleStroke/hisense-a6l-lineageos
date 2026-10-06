@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0
+package org.lineageos.a6l.dualux;
+public final class AppearanceGateTest {
+    private static int checks;
+    private static void check(boolean ok) { checks++; if (!ok) throw new AssertionError("check " + checks); }
+    private static final class Fake implements AppearanceGate.Backend {
+        int applies, acks; boolean applyOk = true, ready; String applied, ack;
+        @Override public boolean apply(String request, boolean eink) { applies++; applied = request; check(eink == request.endsWith(" eink")); return applyOk; }
+        @Override public boolean ready(String request, boolean eink) { return ready && request.equals(applied); }
+        @Override public void acknowledge(String request) { acks++; ack = request; }
+    }
+    public static void main(String[] args) {
+        AppearanceGate gate = new AppearanceGate(); Fake f = new Fake();
+        for (String s : new String[] {"", "0 eink", "-1 lcd", "1 unknown", "1 eink extra", "x eink", "9223372036854775808 lcd", "1  eink"}) check(!AppearanceGate.valid(s));
+        check(AppearanceGate.valid("1 eink") && AppearanceGate.valid("9223372036854775807 lcd"));
+        gate.step("1 eink", 0, f); check(f.applies == 1 && f.acks == 0);
+        f.ready = true; gate.step("1 eink", 199, f); check(f.acks == 1);
+        gate.step("1 eink", 200, f); check(f.acks == 1 && "1 eink".equals(f.ack));
+        gate.step("1 eink", 1000, f); check(f.applies == 1 && f.acks == 1);
+        f.ready = false; gate.step("2 lcd", 1000, f); gate.step("2 lcd", 1200, f); check(f.applies == 2 && f.acks == 1);
+        // A superseding request must be freshly applied and ready, never acknowledge the old request.
+        gate.step("3 eink", 1300, f); gate.step("3 eink", 1499, f); check(f.acks == 1);
+        f.ready = true; gate.step("3 eink", 1500, f); check(f.acks == 2 && "3 eink".equals(f.ack));
+        gate.step("", 1600, f); f.applyOk = false; gate.step("4 lcd", 2000, f); gate.step("4 lcd", 3000, f); check(f.acks == 2);
+        f.applyOk = true; gate.step("4 lcd", 3100, f); gate.step("4 lcd", 3300, f); check(f.acks == 3 && "4 lcd".equals(f.ack));
+        System.out.println("APPEARANCE_GATE_TEST PASS " + checks);
+    }
+}

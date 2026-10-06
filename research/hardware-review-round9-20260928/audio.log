@@ -1,0 +1,3 @@
+F62 mode=NORMAL requested=speaker/main published_route=empty daemon=headphones/headset-mic
+F62 mode=IN_COMMUNICATION requested=speaker/main published_route=empty daemon=headphones/headset-mic
+F62 modem_call_positive_control published=speaker daemon=voice-speaker/main-mic

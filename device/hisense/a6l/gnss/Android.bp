@@ -50,3 +50,13 @@ cc_binary {
     srcs: ["tools/a6l_gnss_test.cpp"],
     static_libs: ["liba6l_qmiloc"],
 }
+
+// r5 bug hunt round2 gnss-time R1 (29 Sep 2026): RTC offset keeper (the PM660 RTC is read-only for the AP).
+// Host tests: timekeep/run-timekeep-tests.sh.
+cc_binary {
+    name: "a6l_timekeep",
+    defaults: ["a6l_gnss_defaults"],
+    srcs: ["timekeep/a6l_timekeep.cpp"],
+    shared_libs: ["liblog"],
+    init_rc: ["timekeep/a6l-timekeep.rc"],
+}

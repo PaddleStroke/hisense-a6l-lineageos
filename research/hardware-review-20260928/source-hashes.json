@@ -1,0 +1,7 @@
+{
+  "device/hisense/a6l/power/rom/a6l-chg-guard.sh": "e9e7ba76967916da3e4ffdec434b373698bf2887060dd87ff15095505bb914cf",
+  "device/hisense/a6l/hals/sensors/stk3338/sensors_a6l.c": "f9c15a3376a993f816cd42233ad0a8b3db82e591b083aa51fdb0800818c5dafa",
+  "device/hisense/a6l/hals/sensors/stk3338/a6l_motion.c": "00458518e2754cbbca90230656f93e87db2dd7ecdd69857c5ebc48250288f661",
+  "device/hisense/a6l/hals/sensors/stk3338/a6l_motion.h": "33b4db21297f370563cc26de5facb8e1fd33f6cbc61223d2f1bbcab91b891ac3",
+  "device/hisense/a6l/hals/sensors/stk3338/a6l_magcal.c": "85a71bffe13ea925f78dfc0baf53cf0789e5fcc4cb0b3c0ab213bded547595fe"
+}

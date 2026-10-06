@@ -7,3 +7,5 @@ allow hal_radio_default self:udp_socket create_socket_perms;
 allowxperm hal_radio_default self:udp_socket ioctl { SIOCGIFFLAGS SIOCSIFFLAGS SIOCSIFMTU SIOCGIFINDEX };
 allow hal_radio_default self:capability { net_admin net_raw };
 get_prop(hal_radio_default, vendor_a6l_ril_prop)
+# rom-v2 (merge): the HAL publishes vendor.a6l.voice.active for a6l-q6voiced / a6l-audio-route (in-call audio)
+set_prop(hal_radio_default, vendor_a6l_voice_prop)

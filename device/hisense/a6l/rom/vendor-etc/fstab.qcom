@@ -9,14 +9,28 @@
 # /metadata/aconfig (without it every flag lookup returns null and system_server dies in AdvancedProtectionService:
 # "Invalid feature flag", found in QEMU r5 by agent gnss), vold/apexd/gsid/bootstat also use it. The installer backs the
 # stock bytes up and zeroes its first MiB, so mount_all formats it (ext4) on the first boot like /data.
-/dev/block/by-name/metadata /metadata          ext4    noatime,nosuid,nodev,discard                              wait,check,formattable
+# r6c (30 Sep 2026, docs/rom-r6c-20260930.md): the first-boot format of metadata/userdata ('formattable') runs mke2fs
+# WITHOUT the whole-device discard (init.qcom.rc exports MKE2FS_CONFIG=/vendor/etc/mke2fs.a6l.conf, discard = false,
+# around mount_all; r6b lost 28.5 s discarding 107 GiB before init could go on).
+# r6e (1 Oct 2026, docs/rom-r6e-20261001.md): NO `discard` mount option any more (metadata, data). r6d stalled 1-2 min
+# after boot: in two boots the last action the persistent boot log got onto /metadata was deleting ~2.8 MiB of files
+# (online discard at the next jbd2 commit), then nothing more was ever written back. Online discard through the
+# mainline sdhci-msm path (CMD38 + busy wait while the host is claimed) is the suspect. Freed blocks are trimmed in
+# batches instead by Android's idle maintenance (StorageManagerService -> vold fstrim = FITRIM ioctl on the writable
+# fstab mounts; it does not need the mount option; runs when idle + charging, or `adb shell sm idle-maint run`).
+/dev/block/by-name/metadata /metadata          ext4    noatime,nosuid,nodev                                      wait,check,formattable
 # /data: plain ext4, NOT encrypted in rom-v1 (FBE = later). The installer zeroes the first MiB of userdata, so fs_mgr
 # sees a wiped partition and formats it on the first boot ('formattable'). (Stock FDE footer: see docs/flash-20260924.md, restore.)
-/dev/block/by-name/userdata /data              ext4    noatime,nosuid,nodev,noauto_da_alloc,discard  wait,check,formattable,reservedsize=128M
+/dev/block/by-name/userdata /data              ext4    noatime,nosuid,nodev,noauto_da_alloc  wait,check,formattable,reservedsize=128M
 # Stock calibration/persist data: READ-ONLY (WLAN MAC wlan_mac.bin, sensors sns.reg, BT/cal). 'noload' = never replay a journal.
 /dev/block/by-name/persist  /mnt/vendor/persist ext4   ro,nosuid,nodev,noexec,noload                             wait,nofail
 # Stock modem/DSP/BT firmware partitions (vfat/ext4, read-only, informational; the ROM ships its firmware in /vendor/firmware)
 /dev/block/by-name/modem    /mnt/vendor/firmware_mnt vfat ro,shortname=lower,uid=0,gid=1000,dmask=227,fmask=337    wait,nofail
 /dev/block/by-name/dsp      /mnt/vendor/dsp     ext4   ro,nosuid,nodev,noload                                    wait,nofail
 /dev/block/by-name/bluetooth /mnt/vendor/bt_firmware vfat ro,shortname=lower,uid=1002,gid=3002,dmask=227,fmask=337 wait,nofail
+# merge2 (25 Sep 2026): zram swap, 50 % of RAM (6 GiB device), enabled by init.qcom.rc (swapon_all after boot_completed)
+/dev/block/zram0            none                swap   defaults                                                  zramsize=50%,max_comp_streams=8
 /dev/block/by-name/misc     /misc               emmc   defaults                                                  defaults
+# rom-v2 (agent merge, 25 Sep 2026): microSD slot (sdhc_2 at c084000, V75 DT a6l-microsd-v75: cd gpio54, vmmc pm660l L5,
+# vqmmc pm660l L2 as stock). vold manages it (portable or adoptable storage).
+/devices/platform/soc@0/c084000.mmc/mmc_host*   auto  auto  defaults   voldmanaged=sdcard1:auto

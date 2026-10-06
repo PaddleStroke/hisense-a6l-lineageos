@@ -1,0 +1,4 @@
+# A6L camera (lc2, 29 Sep 2026): libcamera camera provider + V4L2 media graph nodes (qcom-camss, sensors, VCM)
+/(vendor|system/vendor)/bin/hw/android\.hardware\.camera\.provider-service\.a6l   u:object_r:hal_camera_default_exec:s0
+/dev/media[0-9]*                    u:object_r:video_device:s0
+/dev/v4l-subdev[0-9]*               u:object_r:video_device:s0

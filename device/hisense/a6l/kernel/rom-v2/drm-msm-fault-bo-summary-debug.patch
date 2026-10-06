@@ -1,0 +1,99 @@
+--- a/drivers/gpu/drm/msm/msm_gpu.c
++++ b/drivers/gpu/drm/msm/msm_gpu.c
+@@ -18,6 +18,11 @@
+ #include <linux/sched/task.h>
+ #include <linux/sched/mm.h>
+ #include <linux/utsname.h>
++
++/* Opt-in bounded diagnostics before the hardware crashstate read. */
++static bool fault_bo_log;
++module_param_named(fault_bo_log, fault_bo_log, bool, 0600);
++MODULE_PARM_DESC(fault_bo_log, "Log bounded submit BO extents before fault snapshot");
+ 
+ /*
+  * Power Management:
+@@ -361,6 +366,58 @@
+ 	mutex_unlock(&vm->mmu_lock);
+ }
+ 
++/* No MMIO, object contents, or additional locks; caller holds gpu->lock. */
++static void fault_bo_summary(struct msm_gpu *gpu, struct msm_gem_submit *submit,
++		struct msm_gpu_fault_info *info, const char *comm)
++{
++	phys_addr_t expected_ttbr0 = 0;
++	u64 nearest_lo = 0, nearest_hi = U64_MAX;
++	int lo = -1, hi = -1, asid = -1;
++	unsigned int i;
++
++	if (!fault_bo_log || !info)
++		return;
++
++	if (!submit) {
++		pr_warn("MSM_FAULT_BO no active submit iova=%016lx\n", info->iova);
++		return;
++	}
++
++	msm_iommu_pagetable_params(to_msm_vm(submit->vm)->mmu,
++				  &expected_ttbr0, &asid);
++	pr_warn("MSM_FAULT_BO pid=%d comm=%s seqno=%u ring=%u bos=%u iova=%016lx actual_ttbr0=%016llx expected_ttbr0=%016llx asid=%d\n",
++		pid_nr(submit->pid), comm ?: "unknown", submit->seqno,
++		submit->ring->id, submit->nr_bos, info->iova, info->ttbr0,
++		(u64)expected_ttbr0, asid);
++
++	/* Log the first 16 BOs plus every fault-containing BO. Keep nearest
++	 * bounds even when the address is outside the submitted objects.
++	 */
++	for (i = 0; i < submit->nr_bos; i++) {
++		struct drm_gem_object *obj = submit->bos[i].obj;
++		u64 addr = submit->bos[i].iova;
++		bool contains = info->iova >= addr && info->iova - addr < obj->size;
++
++		if (addr <= info->iova && (lo < 0 || addr > nearest_lo)) {
++			nearest_lo = addr;
++			lo = i;
++		}
++		if (addr > info->iova && addr < nearest_hi) {
++			nearest_hi = addr;
++			hi = i;
++		}
++		if (i < 16 || contains)
++			pr_warn("MSM_FAULT_BO idx=%u iova=%016llx size=%zu flags=%x contains=%d\n",
++				i, addr, obj->size, submit->bos[i].flags, contains);
++	}
++	if (lo >= 0)
++		pr_warn("MSM_FAULT_BO nearest_lo idx=%d iova=%016llx size=%zu offset=%llu\n",
++			lo, nearest_lo, submit->bos[lo].obj->size, info->iova - nearest_lo);
++	if (hi >= 0)
++		pr_warn("MSM_FAULT_BO nearest_hi idx=%d iova=%016llx size=%zu gap=%llu\n",
++			hi, nearest_hi, submit->bos[hi].obj->size, nearest_hi - info->iova);
++}
++
+ static void msm_gpu_crashstate_capture(struct msm_gpu *gpu,
+ 		struct msm_gem_submit *submit, struct msm_gpu_fault_info *fault_info,
+ 		char *comm, char *cmd)
+@@ -374,6 +431,8 @@
+ 	/* Only save one crash state at a time */
+ 	if (gpu->crashstate)
+ 		return;
++
++	fault_bo_summary(gpu, submit, fault_info, comm);
+ 
+ 	state = gpu->funcs->gpu_state_get(gpu);
+ 	if (IS_ERR_OR_NULL(state))
+--- a/drivers/gpu/drm/msm/adreno/adreno_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+@@ -325,11 +325,12 @@
+ 	else if (info->fsr & ARM_SMMU_FSR_EF)
+ 		type = "EXTERNAL";
+ 
+-	pr_warn_ratelimited("*** gpu fault: ttbr0=%.16llx iova=%.16lx dir=%s type=%s source=%s (%u,%u,%u,%u)\n",
++	pr_warn_ratelimited("*** gpu fault: ttbr0=%.16llx iova=%.16lx dir=%s type=%s source=%s (%u,%u,%u,%u) fsr=%08x capture=%u\n",
+ 			info->ttbr0, iova,
+ 			flags & IOMMU_FAULT_WRITE ? "WRITE" : "READ",
+ 			type, block,
+-			scratch[0], scratch[1], scratch[2], scratch[3]);
++			scratch[0], scratch[1], scratch[2], scratch[3],
++			info->fsr, (unsigned int)do_devcoredump);
+ 
+ 	if (do_devcoredump) {
+ 		struct msm_gpu_fault_info fault_info = {};

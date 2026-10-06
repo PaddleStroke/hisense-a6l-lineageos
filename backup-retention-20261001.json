@@ -1,0 +1,18 @@
+{
+  "removed": [
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6d/capture-rom-update-update-20261001T063939Z/edl/boot.bin",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6d/capture-rom-update-update-20261001T063939Z/edl/dtbo.bin",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6d/capture-rom-update-update-20261001T063939Z/edl/vendor.bin",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6d/capture-rom-update-update-20261001T063939Z/edl/system.bin",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6e.prev/images/boot.img",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6e.prev/images/dtbo.img",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6e.prev/images/vendor.erofs",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6e.prev/images/system.erofs"
+  ],
+  "logical_bytes_removed": 9676509184,
+  "keep": [
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6/capture-rom-v1-install/edl",
+    "/home/pierrelouis/A6L-usb-20260915/rom-r6e/capture-rom-update-update-20261001T121848Z/edl"
+  ],
+  "policy": "Retain stock restore plus one previous-test rollback. No full-userdata backups for development updates."
+}
