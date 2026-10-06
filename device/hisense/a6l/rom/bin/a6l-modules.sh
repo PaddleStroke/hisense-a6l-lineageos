@@ -29,6 +29,13 @@ load_list() {
                 params="$params fault_bo_log=1"
             fi
         fi
+        # A6L hw-ISP (6 Oct 2026, hw-isp-20261006): VFE0 PIX line + hardware Bayer ISP for the main camera (libcamera
+        # picks the cameras, persist.vendor.a6l.hwisp.sensors, default imx576; the others stay on RDI + CPU soft ISP).
+        # Opt out with persist.vendor.a6l.hwisp=0 (RDI + CPU soft ISP for all, as before). Only when the module declares it.
+        if [ "$ko" = qcom-camss.ko ] && [ "$(getprop persist.vendor.a6l.hwisp)" != 0 ] && \
+           grep -a -q 'parm=a6l_pix:' "$M/$ko"; then
+            params="$params a6l_pix=1"
+        fi
         # r6b boot fix (30 Sep 2026): log BEFORE each insmod, so the last line of a hung boot names the module that never returned
         log "$1: insmod $ko ..."
         if insmod "$M/$ko" $params; then log "$1: insmod $ko ok"; else log "$1: insmod $ko FAILED rc=$?"; fails=$((fails+1)); fi

@@ -444,7 +444,13 @@ int main(int argc, char **argv) {
         for (int i = 0; r > 0 && i < n; i++) if (p[i].revents & (POLLIN | POLLHUP | POLLERR)) drain(map[i]);
         double t = now();
         struct dx_out o = dx_tick(&S, t); handle(&o, "long press");
-        int aw = read_awake(); if (aw != S.awake) { dx_set_awake(&S, aw); LOG("Android %s (%s)", aw ? "awake" : "asleep", dx_state_name(&S)); LOG("stage display awake=%d mono_ms=%.3f hold=%d", aw, now() * 1000, S.appearance_hold); publish(); apply_grabs();
+        int aw = read_awake(); if (aw != S.awake) { dx_set_awake(&S, aw); LOG("Android %s (%s)", aw ? "awake" : "asleep", dx_state_name(&S)); LOG("stage display awake=%d mono_ms=%.3f hold=%d", aw, now() * 1000, S.appearance_hold);
+            /* eink-lockscreen: keep the system up 2 s after falling asleep on the e-ink, so a6l_einklock reads
+             * vendor.dualux.state = eink-asleep and takes its own wakelock before the first suspend (timed: never sticks) */
+            if (!aw && S.screen == DX_EINK && prop_int("persist.sys.a6l.eink.lock", 1)) {
+                char p[600]; snprintf(p, sizeof p, "%s/sys/power/wake_lock", sysroot); int fd = open(p, O_WRONLY | O_CLOEXEC);
+                if (fd >= 0) { static const char wl[] = "a6l_dualux_lock 2000000000"; if (write(fd, wl, sizeof wl - 1) < 0) LOG("WARN lock-screen wakelock: %s", strerror(errno)); close(fd); } }
+            publish(); apply_grabs();
             /* eink-round2: a prepare begun while Android slept (power key on the sleeping e-ink -> LCD) is only seen by
              * the app once it polls again after SCREEN_ON. Give it the full window from the wake-up, not from the key
              * press: a fail-open before the app applied the target left sys.a6l.dualux.appearance on "<seq> eink"

@@ -33,6 +33,12 @@ final class Dualux {
     static final String P_EKEY = "persist.sys.a6l.dualux.eink_key";  // sleep | clear
     static final String P_MIRROR_LCD = "persist.sys.a6l.dualux.mirror_in_lcd";
     static final String P_PER_SCREEN = "persist.sys.a6l.dualux.per_screen";
+    // eink-lockscreen: e-ink lock screen (vendor a6l_einklock), set from Settings > Display > E-ink
+    static final String P_LOCK = "persist.sys.a6l.eink.lock";               // 1 | 0 (default 1)
+    static final String P_LOCK_BG = "persist.sys.a6l.eink.lock_bg";         // white | black | image | lcd
+    static final String P_LOCK_CLOCK = "persist.sys.a6l.eink.lock_clock";   // 1 | 0: time + date, minute RTC wake-ups
+    static final String P_LOCK_BATTERY = "persist.sys.a6l.eink.lock_battery"; // 1 | 0
+    static final String P_LOCK_24H = "persist.sys.a6l.eink.lock_24h";       // mirrored from Android by LockSync
     static final String[] MODES = {"stock", "auto", "quality", "partial", "fast", "fastest"};
     static final int DEFAULT_CLEAR_EVERY = 10;   // a6l_eink.rc default (--clear-every 10)
 

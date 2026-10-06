@@ -37,4 +37,10 @@ python3 "$S/tests/e2e_failopen.py" "$W" ./dualux && ok "e2e fail-open power key 
 python3 "$S/tests/e2e_exit_asleep.py" "$W" ./dualux && ok "e2e exit while asleep keeps the backlight off (r5 bug hunt E3)" || ko "e2e exit while asleep"
 python3 "$S/tests/e2e_appearance.py" "$W" "$W/dualux" && ok "pre-light appearance tokens, first frame, timeout and sleep" || ko "appearance handshake"
 python3 "$S/tests/e2e_watchdog.py" "$W" "$W/dualux" && ok "watchdog survives a suspend, kills a hang; e-ink restored after an unexpected restart (eink-round3 0016)" || ko "watchdog / restore"
+# eink-lockscreen: lock screen logic (renderer, schedule, state machine) + a6l_einklock end to end (fake and real a6l_epdd)
+$CC -Wall -Wextra -O1 -Wno-misleading-indentation -o t_elk "$S/tests/test_einklock_logic.c" "$S/einklock_logic.c" -lm && ./t_elk | tail -1 | grep -q EINKLOCK_TESTS_PASS && ok "einklock unit $(./t_elk | tail -2 | head -1)" || ko "einklock unit"
+DRM=$(pkg-config --cflags libdrm 2>/dev/null || echo -I/usr/include/libdrm)
+$CC -Wall -Wextra -Werror -O1 -Wno-misleading-indentation -o einklock "$S/a6l_einklock.c" "$S/einklock_logic.c" -lm && \
+$CC -O1 -Wall -Wno-misleading-indentation $DRM -o epdd_host "$E/a6l_epdd.c" -ldrm -ldl 2>/dev/null && $CC -shared -fPIC -o libfake_tcon.so "$S/../../tests/fake_tcon.c" && \
+python3 "$S/tests/e2e_einklock.py" "$W" "$W/einklock" "$W/epdd_host" "$W/libfake_tcon.so" > e2e_einklock.log 2>&1 && ok "e2e lock screen: entry, ticks, redraw, restore, LCD/disabled, real a6l_epdd" || { grep FAIL e2e_einklock.log; ko "e2e lock screen"; }
 echo "RESULT pass=$pass fail=$fail"; [ $fail = 0 ] && echo DUALUX_TESTS_PASS || echo DUALUX_TESTS_FAIL

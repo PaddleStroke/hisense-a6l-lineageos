@@ -18,6 +18,9 @@ PRODUCT_COPY_FILES += \
     $(LIBCAMERA_A6L_DIR)/prebuilt/share/libcamera/ipa/simple/imx576_a6l.yaml:$(TARGET_COPY_OUT_VENDOR)/share/libcamera/ipa/simple/imx576_a6l.yaml \
     $(LIBCAMERA_A6L_DIR)/prebuilt/share/libcamera/ipa/simple/s5k3t1.yaml:$(TARGET_COPY_OUT_VENDOR)/share/libcamera/ipa/simple/s5k3t1.yaml \
     $(LIBCAMERA_A6L_DIR)/prebuilt/share/libcamera/ipa/simple/uncalibrated.yaml:$(TARGET_COPY_OUT_VENDOR)/share/libcamera/ipa/simple/uncalibrated.yaml \
+    $(LIBCAMERA_A6L_DIR)/prebuilt/share/libcamera/ipa/simple/imx576_a6l_hwisp.yaml:$(TARGET_COPY_OUT_VENDOR)/share/libcamera/ipa/simple/imx576_a6l_hwisp.yaml \
+    $(LIBCAMERA_A6L_DIR)/prebuilt/share/libcamera/ipa/simple/s5k3t1_hwisp.yaml:$(TARGET_COPY_OUT_VENDOR)/share/libcamera/ipa/simple/s5k3t1_hwisp.yaml \
+    $(LIBCAMERA_A6L_DIR)/prebuilt/share/libcamera/ipa/simple/hi846_hwisp.yaml:$(TARGET_COPY_OUT_VENDOR)/share/libcamera/ipa/simple/hi846_hwisp.yaml \
     device/hisense/a6l/camera/camera_hal.yaml:$(TARGET_COPY_OUT_VENDOR)/etc/libcamera/camera_hal.yaml
 
 # hw_get_module("camera") -> /vendor/lib64/hw/camera.libcamera.so

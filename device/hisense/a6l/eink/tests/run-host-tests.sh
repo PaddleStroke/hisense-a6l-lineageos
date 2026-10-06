@@ -13,6 +13,8 @@ $CC -O2 -Wall -Wextra -o t_blend_abi "$S/tests/test_plane_blend_abi.c" "$S/src/e
 $CC -shared -fPIC -o libfake_tcon.so "$S/tests/fake_tcon.c" || ko fake-lib
 # r5 review round4 F35: real drive()/run_update()/exec_cmd() with fake rails + page flips (rail/flip failures, recovery)
 $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o t_drive "$S/tests/test_epdd_drive.c" "$S/tests/fake_tcon.c" -ldrm -ldl && ./t_drive > t_drive.log 2>&1 && grep -q "A6L_EPDD_DRIVE_TEST PASS" t_drive.log && ok epdd-drive-rails-recovery || { ko epdd-drive-rails-recovery; grep FAIL t_drive.log; }
+# eink-lockscreen: lockframe keeps the covered picture + CRTC off after each lock picture; lock restore only while still shown
+$CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o t_lock "$S/tests/test_epdd_lock.c" "$S/tests/fake_tcon.c" -ldrm -ldl && ./t_lock > t_lock.log 2>&1 && grep -q "A6L_EPDD_LOCK_TEST PASS" t_lock.log && ok epdd-lockframe-restore || { ko epdd-lockframe-restore; grep FAIL t_lock.log; }
 # r5 bug hunt eink-display E1: a late page-flip event is never taken for the next flip's completion (fake event stream)
 $CC -O1 -Wall -Wno-misleading-indentation $DRM -o t_flip "$S/tests/test_epdd_flip.c" "$S/tests/fake_tcon.c" -ldrm -ldl && ./t_flip > t_flip.log 2>&1 && grep -q "A6L_EPDD_FLIP_TEST PASS" t_flip.log && ok epdd-flip-late-event || { ko epdd-flip-late-event; grep FAIL t_flip.log; }
 $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o epdd "$S/src/a6l_epdd.c" -ldrm -ldl && ok build-epdd || ko build-epdd
@@ -28,7 +30,8 @@ timeout 40 ./mirror --epd-socket e2e/sock --source 'files:frames/f%d.raw' --no-p
 python3 - <<'PY' > e2e/client.log 2>&1
 import socket
 s=socket.socket(socket.AF_UNIX); s.connect("e2e/sock"); f=s.makefile("rwb")
-for c in [b"ping\n", b"status\n", b"frame 720 1440 reading\n"+bytes([128])*(720*1440), b"mode fast\n", b"quit\n"]:
+for c in [b"ping\n", b"status\n", b"frame 720 1440 reading\n"+bytes([128])*(720*1440), b"mode fast\n",
+          b"lockframe 720 1440 reading\n"+bytes([60])*(720*1440), b"lock restore\n", b"quit\n"]:
     f.write(c); f.flush(); print(c[:24], "->", f.readline().decode().strip())
 PY
 wait $EP
@@ -39,6 +42,7 @@ q=$(grep -c "cmd: frame 720 1440 quality\|cmd: frame 720 1440 clean" e2e/mirror.
 [ "$q" -ge 2 ] && [ "$f" -ge 5 ] && ok "mirror-policy quality=$q fastest=$f" || ko "mirror-policy quality=$q fastest=$f"
 grep -q "cmd: refresh\|cmd: frame 720 1440 quality" e2e/mirror.log && ok mirror-settle || ko mirror-settle
 grep -q "OK pong" e2e/client.log && grep -q "OK updates=" e2e/client.log && grep -q "reading.*OK shown" e2e/client.log && ok socket-protocol || ko socket-protocol
+grep -q "lockframe.*OK lock picture shown" e2e/client.log && grep -q "lock restore.*OK lock restore: earlier picture redrawn" e2e/client.log && ok socket-lock-protocol || ko socket-lock-protocol
 n=$(grep -c "epdd: OK" e2e/mirror.log); r=$(grep -c "cmd:" e2e/mirror.log); [ "$n" = "$r" ] && [ "$r" -gt 0 ] && ok "every command answered OK ($r cmds, $n replies)" || ko "unanswered commands ($r cmds, $n OK replies)"
 # r5 review round4 F36: failed / unacknowledged frames are resent for a static page (ERR, disconnect, lost reply)
 python3 "$S/tests/mirror_ack_test.py" ./mirror ack > ack.log 2>&1; grep -q "MIRROR_ACK_TEST PASS" ack.log && ok mirror-ack-resend || { ko mirror-ack-resend; cat ack.log; }

@@ -38,6 +38,14 @@
  *             modes: quality|picture|reading|partial|fast|fastest|a2|auto|N;
  *             frame ... clean = legacy forced mode-2 redraw;
  *             frame W H MODE force = stock-style ghost refresh retaining MODE, without white/INIT.
+ *   eink-lockscreen (6 Oct 2026, firmware/extracted/eink-lockscreen-20261006): two commands for a6l_einklock, the e-ink
+ *   lock screen drawn while Android sleeps on the e-ink:
+ *     lockframe W H [MODE] [force] + W*H bytes: like "frame" (default MODE reading = REGAL, only changed pixels driven), but
+ *             the picture the panel showed before the first lock frame (the mirror's) is kept, and the e-ink CRTC is
+ *             switched off right after the update (its no-suspend lock released: the system may suspend between ticks);
+ *     lock restore [off]: the lock ended; if the lock picture is still on the panel (no other picture since), redraw the
+ *             kept picture (REGAL) so the panel matches what the mirror believes it shows — the mirror only sends pages
+ *             that differ from ITS last frame. "off": switch the CRTC off afterwards (not awake on the e-ink).
  */
 #define _GNU_SOURCE
 #include <dirent.h>
@@ -921,6 +929,38 @@ static int show(const char *path, int m) {
     if (recover()) return -1;
     if (load_pnm(path)) return -1; return show_loaded(m, path);
 }
+/* eink-lockscreen: lock pictures (a6l_einklock) and the restore of the picture they covered. lock_on_panel = a lock picture
+ * was the last one driven; mirror_img/mirror_mode = the picture (library layout) the panel showed before the first one. */
+static uint8_t *mirror_img; static int mirror_mode = 3, have_mirror, lock_on_panel, lock_frames;
+static int lock_frame(const uint8_t *payload, int w, int h, int m, int force) {
+    if (!size_ok(w, h)) { LOG("FAIL lockframe %dx%d: need 1440x720 or 720x1440", w, h); return -1; }
+    if (!lock_on_panel) {
+        if (have_last && (mirror_img || (mirror_img = malloc(RGBA)))) { memcpy(mirror_img, last_img, RGBA); mirror_mode = last_mode; have_mirror = 1; }
+        else have_mirror = 0;
+        LOG("lock screen: first lock picture (%s)", have_mirror ? "the current picture is kept for the restore" : "no earlier picture to keep");
+    }
+    int rc = recover();
+    if (!rc) rc = load_grey(payload, w, h);
+    if (!rc) {
+        memcpy(last_img, img.data, RGBA); have_last = 1; last_mode = m; lock_on_panel = 1; lock_frames++;
+        rc = run_update(force, m, force ? "lock-clean" : "lock");
+    }
+    crtc_off("lock picture shown: the system may suspend until the next tick");	/* also after a failure */
+    return rc;
+}
+static int lock_restore(int off, char *reply, size_t rn) {
+    int rc = 0;
+    if (!lock_on_panel) snprintf(reply, rn, "OK lock restore: nothing to do");
+    else if (!have_mirror) { lock_on_panel = 0; snprintf(reply, rn, "OK lock restore: no earlier picture, lock picture kept"); }
+    else {
+        lock_on_panel = 0; rc = recover();
+        if (!rc) { memcpy(img.data, mirror_img, RGBA); memcpy(last_img, mirror_img, RGBA); have_last = 1; last_mode = mirror_mode; rc = run_update(0, mirror_mode, "lock-restore"); }
+        if (rc) snprintf(reply, rn, "ERR lock restore failed (see log)");
+        else snprintf(reply, rn, "OK lock restore: earlier picture redrawn in %d ms (update %d)", last_ms, updates);
+    }
+    if (off) crtc_off("lock restore: not awake on the e-ink");
+    return rc;
+}
 
 /* ---------------- commands (v4: one reply per command) ---------------- */
 static volatile sig_atomic_t stop;
@@ -946,14 +986,26 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     if (!strcmp(line, "quit")) { stop = 1; snprintf(reply, rn, "OK quitting"); return 0; }
     if (!strcmp(line, "status")) {
         char st[200]; bringup_status(st, sizeof st);
-        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d crtc=%s crtc_wakelock=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms,
-                 started ? "on" : "off", crtc_wl_held ? "held" : "free", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot, st[0] ? st : "-");
+        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d crtc=%s crtc_wakelock=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f lock=%s lock_frames=%d bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms,
+                 started ? "on" : "off", crtc_wl_held ? "held" : "free", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot,
+                 lock_on_panel ? "on" : "off", lock_frames, st[0] ? st : "-");
         return 0;
     }
     if (!strcmp(line, "power off")) { crtc_off("requested"); snprintf(reply, rn, "OK crtc off"); return 0; }
+    if (!strcmp(line, "lock restore") || !strcmp(line, "lock restore off")) return lock_restore(line[12] != 0, reply, rn);
+    if (sscanf(line, "lockframe %d %d %31s %15s", &w, &h, mname, flag) >= 2) {
+        if (!payload) { snprintf(reply, rn, "ERR lockframe needs a pixel payload (socket only)"); return -1; }
+        if (!strcmp(mname, "force")) { snprintf(mname, sizeof mname, "reading"); snprintf(flag, sizeof flag, "force"); }
+        if (flag[0] && strcmp(flag, "force")) { snprintf(reply, rn, "ERR unknown lockframe flag"); return -1; }
+        rc = lock_frame(payload, w, h, mname[0] ? mode_by_name(mname, 3) : 3, flag[0] != 0);
+        if (rc) snprintf(reply, rn, "ERR lock picture failed (see log)");
+        else snprintf(reply, rn, "OK lock picture shown in %d ms (update %d), crtc off", last_ms, updates);
+        return rc;
+    }
     if (!strncmp(line, "mode ", 5)) { mode = mode_by_name(line + 5, mode); snprintf(reply, rn, "OK mode=%d", mode); return 0; }
-    if (!strcmp(line, "clear")) rc = clear_full();
-    else if (!strncmp(line, "clear ", 6)) rc = clear_kind(line + 6);
+    /* eink-lockscreen: any other picture replaces a lock picture ("refresh" redraws the current one and keeps the state) */
+    if (!strcmp(line, "clear")) { lock_on_panel = 0; rc = clear_full(); }
+    else if (!strncmp(line, "clear ", 6)) { lock_on_panel = 0; rc = clear_kind(line + 6); }
     else if (!strcmp(line, "refresh")) rc = refresh();
     else if (!strncmp(line, "sleep ", 6)) { sleep((unsigned)atoi(line + 6)); rc = 0; }
     else if (sscanf(line, "frame %d %d %31s %15s", &w, &h, mname, flag) >= 2) {
@@ -966,7 +1018,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
         trace_poll();
         if (!rc && size_ok(w,h)) trace_capture(payload,w,h,m,clean,line);
         if (!rc) rc = load_grey(payload, w, h);
-        if (!rc) trace_post();
+        if (!rc) { trace_post(); lock_on_panel = 0; }
         if (!rc && clean) {
             /* Stock ghost clearing forces GC16 on the actual page. Reserve
              * INIT/white sequences for startup, manual clear and recovery. */
@@ -983,7 +1035,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
         char hdr[96]; snprintf(hdr, sizeof hdr, "frame %d %d %s%s%s", fw, fh, mname[0] ? mname : "", flag[0] ? " " : "", flag);
         rc = exec_cmd(hdr, px, reply, rn); free(px); return rc;
     }
-    else if (sscanf(line, "show %511s %31s", path, mname) >= 1) { m = mode_by_name(mname, mode); rc = show(path, m); }
+    else if (sscanf(line, "show %511s %31s", path, mname) >= 1) { m = mode_by_name(mname, mode); lock_on_panel = 0; rc = show(path, m); }
     else { LOG("unknown command '%s'", line); snprintf(reply, rn, "ERR unknown command"); return -1; }
     if (rc) snprintf(reply, rn, "ERR update failed (see log)");
     else snprintf(reply, rn, "OK shown in %d ms (update %d)", last_ms, updates);
@@ -1018,7 +1070,7 @@ static void client_input(struct client *c) {
         char *nl = memchr(c->buf, '\n', c->len);
         if (!nl) { if (c->len >= 600) { client_reply(c, "ERR line too long"); client_drop(c); } return; }
         *nl = 0; size_t used = (size_t)(nl - c->buf) + 1; int w = 0, h = 0;
-        if (sscanf(c->buf, "frame %d %d", &w, &h) == 2) {
+        if (sscanf(c->buf, "frame %d %d", &w, &h) == 2 || sscanf(c->buf, "lockframe %d %d", &w, &h) == 2) {
             if (!size_ok(w, h)) { client_reply(c, "ERR frame size must be 720x1440 or 1440x720"); client_drop(c); return; }
             snprintf(c->hdr, sizeof c->hdr, "%s", c->buf); c->need = (size_t)w * h;
         } else if (c->buf[0] && c->buf[0] != '#') {

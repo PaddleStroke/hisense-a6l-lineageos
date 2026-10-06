@@ -13,6 +13,6 @@ on property:init.svc.vendor.hwcomposer-3=running
 service vendor.a6l_dualux /vendor/bin/a6l_dualux
     class hal
     user system
-    group system input uhid graphics
+    group system input uhid graphics wakelock
     task_profiles ServiceCapacityLow
     disabled

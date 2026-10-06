@@ -10,7 +10,9 @@
 
 PRODUCT_PACKAGES += \
     a6l_dualux \
+    a6l_einklock \
     A6LDisplaySwitcher \
+    a6l_eink_lock_rc \
     privapp_whitelist_org.lineageos.a6l.dualux
 
 PRODUCT_COPY_FILES += \

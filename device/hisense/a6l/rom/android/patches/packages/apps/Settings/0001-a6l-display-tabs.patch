@@ -342,8 +342,8 @@ index 0000000..7f88a1d
 +        list(appearance, "wallpaper", "sec_wallpaper", new String[]{"white", "lcd"},
 +                "wallpaper_white", "wallpaper_lcd");
 +        PreferenceCategory refresh = section(parent, "refresh_section", "sec_refresh");
-+        list(refresh, "refresh", "sec_refresh", new String[]{"auto", "quality", "partial", "fast", "fastest"},
-+                "mode_auto", "mode_quality", "mode_partial", "mode_fast", "mode_fastest");
++        list(refresh, "refresh", "sec_refresh", new String[]{"stock", "auto", "quality", "partial", "fast", "fastest"},
++                "mode_stock", "mode_auto", "mode_quality", "mode_partial", "mode_fast", "mode_fastest");
 +        Preference clear = new Preference(mContext);
 +        clear.setKey("a6l_eink_clear");
 +        clear.setTitle(text("clear_now"));

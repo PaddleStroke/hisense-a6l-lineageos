@@ -1,0 +1,2 @@
+# eink-lockscreen: lock-screen background written by A6LDisplaySwitcher, copied by init (a6l_eink_lock.rc)
+/data/misc/a6l_eink(/.*)?               u:object_r:a6l_eink_lock_src_file:s0

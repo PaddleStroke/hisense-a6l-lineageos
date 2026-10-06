@@ -1,0 +1,8 @@
+# eink-lockscreen: background picture of the e-ink lock screen, written by A6LDisplaySwitcher (system_app) into
+# /data/misc/a6l_eink and read by init, which copies it to /data/vendor/a6l_eink_lock (vendor policy a6l_einklock.te)
+# for the vendor daemon a6l_einklock. Core data type: no vendor domain ever opens it (Treble).
+type a6l_eink_lock_src_file, file_type, data_file_type, core_data_file_type;
+allow system_app a6l_eink_lock_src_file:dir rw_dir_perms;
+allow system_app a6l_eink_lock_src_file:file create_file_perms;
+allow init a6l_eink_lock_src_file:dir r_dir_perms;
+allow init a6l_eink_lock_src_file:file r_file_perms;

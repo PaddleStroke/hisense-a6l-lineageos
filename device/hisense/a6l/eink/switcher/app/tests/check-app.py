@@ -47,7 +47,9 @@ check(refs <= set(en), 'every referenced string exists (missing: %s)' % sorted(r
 unused = set(en) - refs - {'app_name'}
 inline_patch = os.path.join(D, 'rom/android/patches/packages/apps/Settings/0001-a6l-display-tabs.patch')
 # Settings obtains these same translated resources from the controller package.
-external_refs = set(re.findall(r'"([a-z][a-z0-9_]*)"', rd(inline_patch))) if os.path.exists(inline_patch) else set()
+import glob
+settings_patches = sorted(glob.glob(os.path.join(os.path.dirname(inline_patch), '*.patch')))
+external_refs = set(re.findall(r'"([a-z][a-z0-9_]*)"', ''.join(rd(p) for p in settings_patches)))
 check(not (unused - external_refs), 'no unused strings (%s)' % sorted(unused - external_refs))
 draw = set(re.findall(r'@drawable/(\w+)', man)) | set(re.findall(r'R\.drawable\.(\w+)', alljava))
 check(all(os.path.exists(os.path.join(APP, 'res/drawable', d + '.xml')) for d in draw), 'drawables exist')
@@ -80,10 +82,10 @@ check('set_prop(system_app, a6l_dualux_ctl_prop)' in te, 'system_app may set a6l
 vpc = rd(os.path.join(SW, 'sepolicy/vendor/property_contexts'))
 check('vendor.dualux.state' in vpc and 'vendor_restricted_prop(vendor_dualux_prop)' in rd(os.path.join(SW, 'sepolicy/vendor/property.te')), 'vendor.dualux.state readable (vendor_restricted)')
 # every setting the app writes is consumed by a daemon
-src = rd(os.path.join(SW, 'native/a6l_dualux.c')) + rd(os.path.join(D, 'eink/src/a6l_eink_mirror.c'))
+src = rd(os.path.join(SW, 'native/a6l_dualux.c')) + rd(os.path.join(D, 'eink/src/a6l_eink_mirror.c')) + rd(os.path.join(SW, 'native/a6l_einklock.c'))
 for k, v in props.items():
     if k in ('P_STATE', 'P_PER_SCREEN'): continue   # per_screen is app-internal (PerScreenMemory)
-    check(v in src, '%s (%s) consumed by a6l_dualux / a6l_eink_mirror' % (k, v))
+    check(v in src, '%s (%s) consumed by a6l_dualux / a6l_eink_mirror / a6l_einklock' % (k, v))
 check('P_PER_SCREEN' in java.get('PerScreenMemory', ''), 'per_screen consumed by PerScreenMemory')
 
 # product wiring: rom.mk -> dualux.mk -> PRODUCT_PACKAGES; Android.bp module; sepolicy dirs
@@ -96,8 +98,17 @@ check('name: "A6LDisplaySwitcher"' in bp and 'resource_dirs: ["app/res"]' in bp 
 bc = rd(os.path.join(D, 'rom/BoardConfig-rom.mk'))
 check('eink/switcher/sepolicy/vendor' in bc and 'switcher/sepolicy/system_ext/private' in bc, 'BoardConfig-rom.mk sepolicy dirs')
 priv = rd(os.path.join(APP, 'privapp-permissions-a6l-dualux.xml'))
-need = set(re.findall(r'uses-permission android:name="([^"]+)"', man)) - {'android.permission.WRITE_SETTINGS', 'android.permission.RECEIVE_BOOT_COMPLETED'}
+need = set(re.findall(r'uses-permission android:name="([^"]+)"', man)) - {'android.permission.WRITE_SETTINGS', 'android.permission.RECEIVE_BOOT_COMPLETED',
+        'android.permission.READ_WALLPAPER_INTERNAL'}   # signature permission: granted by the platform certificate
 check(all(p in priv for p in need), 'privileged permissions allowlisted: %s' % sorted(need))
 check('filename: "privapp-permissions-a6l-dualux.xml"' in bp and 'system_ext_specific: true' in bp.split('prebuilt_etc {', 1)[1].split('}', 1)[0], 'allowlist installs as XML on the app partition (SystemConfig ignores extensionless files)')
+# eink-lockscreen: lock-screen options inline in Settings (only UI), picture hand-over through init
+lp = [p for p in settings_patches if 'lockscreen' in os.path.basename(p)]
+lpt = rd(lp[0]) if lp else ''
+check(all(k in lpt for k in ('"lock"', '"lock_bg"', '"lock_clock"', '"lock_battery"', 'LockImagePickActivity')), 'lock-screen options + picture picker in the Settings E-ink tab')
+lrc = rd(os.path.join(APP, 'a6l_eink_lock.rc'))
+check('copy /data/misc/a6l_eink/lock_bg.pgm /data/vendor/a6l_eink_lock/bg.pgm' in lrc and 'setprop vendor.dualux.lock_bg_seq' in lrc
+      and 'LockBackground.SEQ' not in lrc and 'sys.a6l.eink.lock_bg_seq' in rd(os.path.join(SW, 'sepolicy/system_ext/private/property_contexts')), 'init copies the lock picture (system_ext rc), trigger property labelled')
+check('/data/misc/a6l_eink' in rd(os.path.join(SW, 'sepolicy/system_ext/private/file_contexts')) and '/data/vendor/a6l_eink_lock' in rd(os.path.join(SW, 'sepolicy/vendor/file_contexts')), 'lock picture paths labelled on both sides')
 print('%s %d/%d' % ('CHECK_APP PASS' if not fails else 'CHECK_APP FAIL', n - fails, n))
 sys.exit(1 if fails else 0)

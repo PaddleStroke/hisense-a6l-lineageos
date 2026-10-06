@@ -1,5 +1,7 @@
 # a6l_dualux (agent dualux): sys.a6l.dualux.req, persist.sys.a6l.dualux.*, persist.sys.a6l.eink.{refresh,clear_every,contrast}
 sys.a6l.dualux.req          u:object_r:a6l_dualux_ctl_prop:s0 exact string
+# eink-lockscreen: new lock-screen background stored by the app (init trigger: a6l_eink_lock.rc)
+sys.a6l.eink.lock_bg_seq    u:object_r:a6l_dualux_ctl_prop:s0 exact string
 persist.sys.a6l.            u:object_r:a6l_dualux_ctl_prop:s0
 
 # Pre-light appearance request and committed readiness handshake

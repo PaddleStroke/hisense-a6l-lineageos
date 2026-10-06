@@ -4,7 +4,8 @@ package org.lineageos.a6l.dualux;
 /** Narrow public setting contract; callers cannot name arbitrary system properties. */
 final class SettingsValues {
     static final String[] KEYS = {"refresh", "clear_every", "contrast", "fl_enable",
-            "fl_max", "fl_gamma", "ekey", "mirror_lcd", "per_screen", "wallpaper"};
+            "fl_max", "fl_gamma", "ekey", "mirror_lcd", "per_screen", "wallpaper",
+            "lock", "lock_bg", "lock_clock", "lock_battery"};
     private SettingsValues() { }
 
     static String property(String key) {
@@ -20,6 +21,10 @@ final class SettingsValues {
             case "mirror_lcd": return "persist.sys.a6l.dualux.mirror_in_lcd";
             case "per_screen": return "persist.sys.a6l.dualux.per_screen";
             case "wallpaper": return "persist.sys.a6l.eink.wallpaper";
+            case "lock": return "persist.sys.a6l.eink.lock";
+            case "lock_bg": return "persist.sys.a6l.eink.lock_bg";
+            case "lock_clock": return "persist.sys.a6l.eink.lock_clock";
+            case "lock_battery": return "persist.sys.a6l.eink.lock_battery";
             default: throw new IllegalArgumentException("Unknown setting");
         }
     }
@@ -28,7 +33,8 @@ final class SettingsValues {
         switch (key) {
             case "refresh": return "stock";
             case "clear_every": return "10";
-            case "fl_enable": case "fl_gamma": case "per_screen": return "1";
+            case "fl_enable": case "fl_gamma": case "per_screen": case "lock": case "lock_clock": case "lock_battery": return "1";
+            case "lock_bg": return "white";
             case "fl_max": return "100";
             case "ekey": return "sleep";
             case "wallpaper": return "white";
@@ -43,7 +49,8 @@ final class SettingsValues {
             case "refresh": return oneOf(value, "stock", "auto", "quality", "partial", "fast", "fastest");
             case "ekey": return oneOf(value, "sleep", "clear");
             case "wallpaper": return oneOf(value, "white", "lcd");
-            case "fl_enable": case "mirror_lcd": case "per_screen": return oneOf(value, "0", "1");
+            case "fl_enable": case "mirror_lcd": case "per_screen": case "lock": case "lock_clock": case "lock_battery": return oneOf(value, "0", "1");
+            case "lock_bg": return oneOf(value, "white", "black", "image", "lcd");
             case "fl_gamma": return oneOf(value, "1", "2");
             case "clear_every": return inRange(value, 30);
             case "contrast": case "fl_max": return inRange(value, 100);

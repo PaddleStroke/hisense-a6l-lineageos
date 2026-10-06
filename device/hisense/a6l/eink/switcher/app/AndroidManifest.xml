@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.CONTROL_DISPLAY_BRIGHTNESS" />
     <uses-permission android:name="android.permission.MODIFY_DAY_NIGHT_MODE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- eink-lockscreen: LCD wallpaper as the e-ink lock-screen background (signature permission, platform-signed app) -->
+    <uses-permission android:name="android.permission.READ_WALLPAPER_INTERNAL" />
 
     <application
         android:name=".DualuxApp"
@@ -39,6 +41,14 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
         </activity>
+
+        <!-- eink-lockscreen: photo picker for the e-ink lock-screen background, started by Settings > Display > E-ink -->
+        <activity
+            android:name=".LockImagePickActivity"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <service android:name=".DisplayTile" android:label="@string/tile_display" android:icon="@drawable/ic_eink"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">

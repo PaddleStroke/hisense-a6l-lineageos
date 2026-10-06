@@ -17,3 +17,9 @@ allow hal_camera_default sysfs_leds:lnk_file read;
 # libcamera DmaBufAllocator (HAL-internal buffers, patch 0005): /dev/dma_heap/system (0444, opened O_RDONLY)
 allow hal_camera_default dmabuf_heap_device:dir r_dir_perms;
 allow hal_camera_default dmabuf_system_heap_device:chr_file r_file_perms;
+
+# A6L hw-ISP (hw-isp-20261006): libcamera reads persist.vendor.a6l.hwisp / persist.vendor.a6l.hwisp.sensors (labelled
+# vendor_a6l_prop by the persist.vendor.a6l. prefix, rom/sepolicy/vendor/property_contexts) and the qcom_camss module
+# parameters /sys/module/qcom_camss/parameters/{a6l_pix,a6l_isp_live_lut} (generic sysfs: covered by the sysfs rules above).
+# Denial seen in permissive (6 Oct trial): hal_camera_default read/open/getattr/map u:object_r:vendor_a6l_prop:s0.
+get_prop(hal_camera_default, vendor_a6l_prop)

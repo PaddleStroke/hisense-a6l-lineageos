@@ -1,0 +1,18 @@
+# Hisense A6L e-ink lock screen (eink-lockscreen, firmware/extracted/eink-lockscreen-20261006). Installed by a6l_einklock.
+# While Android sleeps on the e-ink (vendor.dualux.state = eink-asleep) the e-ink shows time/date/battery on the chosen
+# background and the clock follows every minute through a CLOCK_REALTIME_ALARM timer (wakes the suspended system).
+on post-fs-data
+    # background picture: written by the Dualux app to /data/misc/a6l_eink, copied here by init (system_ext rc of the app)
+    mkdir /data/vendor/a6l_eink_lock 0750 system system
+
+on property:init.svc.vendor.a6l_epdd=running
+    start vendor.a6l_einklock
+
+service vendor.a6l_einklock /vendor/bin/a6l_einklock
+    class hal
+    user system
+    group system wakelock
+    # WAKE_ALARM: timerfd CLOCK_REALTIME_ALARM; BLOCK_SUSPEND: EPOLLWAKEUP + /sys/power/wake_lock
+    capabilities WAKE_ALARM BLOCK_SUSPEND
+    disabled
+    task_profiles ServiceCapacityLow

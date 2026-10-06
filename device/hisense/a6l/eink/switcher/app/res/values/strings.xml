@@ -61,4 +61,17 @@
     <string name="fl_tile_on">On, up to %1$d%%</string>
     <string name="fl_tile_off">Off</string>
     <string name="fl_help">The frontlight lights the e-ink only while it is the active screen. Its level follows the normal brightness slider; it has a single white LED (no warmth setting).</string>
+    <!-- eink-lockscreen: e-ink lock screen (Settings > Display > E-ink) -->
+    <string name="sec_lockscreen">Lock screen on the e-ink</string>
+    <string name="lock_enable">Show a lock screen when the phone sleeps on the e-ink</string>
+    <string name="lock_bg_title">Lock screen background</string>
+    <string name="lock_bg_white">Plain white</string>
+    <string name="lock_bg_black">Plain black</string>
+    <string name="lock_bg_image">Picture of your choice</string>
+    <string name="lock_bg_lcd">LCD wallpaper</string>
+    <string name="lock_pick">Choose the picture…</string>
+    <string name="lock_clock">Show the time and date (wakes the phone once a minute)</string>
+    <string name="lock_battery">Show the battery level</string>
+    <string name="lock_pick_done">E-ink lock screen picture updated</string>
+    <string name="lock_pick_failed">This picture cannot be used</string>
 </resources>

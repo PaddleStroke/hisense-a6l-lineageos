@@ -61,4 +61,17 @@
     <string name="fl_tile_on">Activé, jusqu\'à %1$d %%</string>
     <string name="fl_tile_off">Désactivé</string>
     <string name="fl_help">L\'éclairage n\'illumine l\'e-ink que lorsqu\'il est l\'écran actif. Son niveau suit le curseur de luminosité habituel ; il n\'a qu\'une LED blanche (pas de réglage de chaleur).</string>
+    <!-- eink-lockscreen: e-ink lock screen (Settings > Display > E-ink) -->
+    <string name="sec_lockscreen">Écran de verrouillage sur l\'e-ink</string>
+    <string name="lock_enable">Afficher un écran de verrouillage quand le téléphone se met en veille sur l\'e-ink</string>
+    <string name="lock_bg_title">Fond de l\'écran de verrouillage</string>
+    <string name="lock_bg_white">Blanc uni</string>
+    <string name="lock_bg_black">Noir uni</string>
+    <string name="lock_bg_image">Image de votre choix</string>
+    <string name="lock_bg_lcd">Fond d\'écran du LCD</string>
+    <string name="lock_pick">Choisir l\'image…</string>
+    <string name="lock_clock">Afficher l\'heure et la date (réveille le téléphone une fois par minute)</string>
+    <string name="lock_battery">Afficher le niveau de batterie</string>
+    <string name="lock_pick_done">Image de l\'écran de verrouillage e-ink mise à jour</string>
+    <string name="lock_pick_failed">Impossible d\'utiliser cette image</string>
 </resources>

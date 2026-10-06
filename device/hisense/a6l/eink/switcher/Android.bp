@@ -31,11 +31,51 @@ cc_test_host {
     gtest: false,
 }
 
+// eink-lockscreen: the e-ink lock screen (time/date/battery while Android sleeps on the e-ink, minute RTC alarm)
+cc_binary {
+    name: "a6l_einklock",
+    vendor: true,
+    compile_multilib: "64",
+    srcs: [
+        "native/a6l_einklock.c",
+        "native/einklock_logic.c",
+    ],
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-misleading-indentation",
+        "-DA6L_ANDROID_LOG",
+    ],
+    shared_libs: ["liblog"],
+    init_rc: ["a6l_einklock.rc"],
+}
+
+// host unit tests of the lock screen renderer / schedule / state machine: `m a6l_einklock_logic_test` then run it
+cc_test_host {
+    name: "a6l_einklock_logic_test",
+    srcs: [
+        "native/tests/test_einklock_logic.c",
+        "native/einklock_logic.c",
+    ],
+    cflags: ["-Wall", "-Wextra", "-Wno-misleading-indentation"],
+    gtest: false,
+}
+
 prebuilt_etc {
     name: "privapp_whitelist_org.lineageos.a6l.dualux",
     src: "app/privapp-permissions-a6l-dualux.xml",
     filename: "privapp-permissions-a6l-dualux.xml",
     sub_dir: "permissions",
+    system_ext_specific: true,
+}
+
+// eink-lockscreen: init copies the app's lock-screen background for the vendor daemon (system_ext init script)
+prebuilt_etc {
+    name: "a6l_eink_lock_rc",
+    src: "app/a6l_eink_lock.rc",
+    filename: "a6l_eink_lock.rc",
+    sub_dir: "init",
     system_ext_specific: true,
 }
 
@@ -49,5 +89,8 @@ android_app {
     certificate: "platform",
     privileged: true,
     system_ext_specific: true,
-    required: ["privapp_whitelist_org.lineageos.a6l.dualux"],
+    required: [
+        "privapp_whitelist_org.lineageos.a6l.dualux",
+        "a6l_eink_lock_rc",
+    ],
 }

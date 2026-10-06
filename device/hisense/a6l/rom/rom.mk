@@ -12,7 +12,9 @@ PRODUCT_COPY_FILES += \
     $(ROM_DIR)/init/init.a6l.usb.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.a6l.usb.rc \
     $(ROM_DIR)/bin/a6l-modules.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-modules.sh \
     $(ROM_DIR)/bin/a6l-radio.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-radio.sh \
-    $(ROM_DIR)/bin/a6l-logcat.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-logcat.sh
+    $(ROM_DIR)/bin/a6l-logcat.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-logcat.sh \
+    $(ROM_DIR)/init/init.a6l-rebootguard.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l-rebootguard.rc \
+    $(ROM_DIR)/bin/a6l-reboot-guard.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-reboot-guard.sh
 
 -include $(ROM_DIR)/rom-files.mk
 

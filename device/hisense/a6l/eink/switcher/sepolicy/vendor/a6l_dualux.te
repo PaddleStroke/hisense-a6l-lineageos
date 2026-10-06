@@ -45,3 +45,7 @@ get_prop(a6l_eink_mirror, a6l_eink_animation_prop)
 # CLOCK_BOOTTIME - CLOCK_MONOTONIC check when unreadable)
 allow a6l_dualux sysfs_power:dir search;
 allow a6l_dualux sysfs_power:file r_file_perms;
+
+# eink-lockscreen: a 2 s timed wakelock "a6l_dualux_lock" when Android falls asleep on the e-ink, so a6l_einklock sees
+# vendor.dualux.state = eink-asleep and takes its own lock before the first system suspend
+wakelock_use(a6l_dualux)

@@ -1,0 +1,12 @@
+# Hisense A6L e-ink lock screen (eink-lockscreen, firmware/extracted/eink-lockscreen-20261006). Installed on system_ext
+# with A6LDisplaySwitcher (prebuilt_etc a6l_eink_lock_rc). The app writes the background picture into /data/misc/a6l_eink
+# (core data) and bumps sys.a6l.eink.lock_bg_seq; init — the one domain allowed on both sides of the Treble data split —
+# copies it for the vendor daemon a6l_einklock and acknowledges with vendor.dualux.lock_bg_seq.
+on post-fs-data
+    mkdir /data/misc/a6l_eink 0770 system system
+
+on property:sys.a6l.eink.lock_bg_seq=*
+    copy /data/misc/a6l_eink/lock_bg.pgm /data/vendor/a6l_eink_lock/bg.pgm
+    chown system system /data/vendor/a6l_eink_lock/bg.pgm
+    chmod 0640 /data/vendor/a6l_eink_lock/bg.pgm
+    setprop vendor.dualux.lock_bg_seq ${sys.a6l.eink.lock_bg_seq}

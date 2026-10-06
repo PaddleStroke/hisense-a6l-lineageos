@@ -34,3 +34,9 @@ Core/base/IPA/proxy/tuning/key/signature/lifecycle/clocks retained; physical vid
 4 October r7a measurement build: bounded frame176 original10-bit numeric calibration under existing opt-in quality gate. Matching full247-task graph with retained r6z0028HAL source, original IPA key and unchanged IPA/proxy/base/tuning. No image controls changed.
 Core ddae16c6efdd2242d5ca743ee21cb5fc0d7dddd8fe4fd578289402e82e0b5892
 HAL 13b57fcc07081a03caf22e633a8ee30c5fb15b2844a3cb8269e1c5e9040a7206
+
+6 October hw-isp-20261006 (round 5): VFE 4.8 hardware ISP for the main camera (qcom-camss a6l_pix=1, loaded by a6l-modules.sh
+unless persist.vendor.a6l.hwisp=0). Core = r6z + 0101 (DebayerHwIsp backend, NV12 statistics with a linear-domain AF focus
+measure, per-camera selection persist.vendor.a6l.hwisp.sensors default imx576; front/wide stay on RDI + CPU soft ISP).
+Same IPA key: IPA be807526 + .sign, HAL, base, proxy unchanged. New tuning: <model>_hwisp.yaml (r3-A based).
+Core 06d73d6fbab556be4ea6989cf2682085e53ff9ba70e44d884af0d3f5a6939cf9

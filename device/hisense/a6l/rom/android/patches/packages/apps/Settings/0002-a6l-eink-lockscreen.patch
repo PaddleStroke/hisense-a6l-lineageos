@@ -1,0 +1,54 @@
+diff --git a/src/com/android/settings/display/A6lEinkPreferences.java b/src/com/android/settings/display/A6lEinkPreferences.java
+index 7f88a1d..8ca9d99 100644
+--- a/src/com/android/settings/display/A6lEinkPreferences.java
++++ b/src/com/android/settings/display/A6lEinkPreferences.java
+@@ -3,3 +3,6 @@ package com.android.settings.display;
+
++import android.app.Activity;
++import android.content.ActivityNotFoundException;
+ import android.content.Context;
++import android.content.Intent;
+ import android.content.pm.PackageManager;
+@@ -32,2 +35,3 @@ final class A6lEinkPreferences {
+     private Preference mSwitch;
++    private Preference mLockPick;
+     private Bundle mSnapshot = new Bundle();
+@@ -75,2 +79,15 @@ final class A6lEinkPreferences {
+                 "wallpaper_white", "wallpaper_lcd");
++        /* eink-lockscreen: picture shown on the e-ink while the phone sleeps on it (vendor a6l_einklock) */
++        PreferenceCategory lock = section(parent, "lockscreen", "sec_lockscreen");
++        toggle(lock, "lock", "lock_enable");
++        list(lock, "lock_bg", "lock_bg_title", new String[]{"white", "black", "image", "lcd"},
++                "lock_bg_white", "lock_bg_black", "lock_bg_image", "lock_bg_lcd");
++        mLockPick = new Preference(mContext);
++        mLockPick.setKey("a6l_eink_lock_pick");
++        mLockPick.setPersistent(false);
++        mLockPick.setTitle(text("lock_pick"));
++        mLockPick.setOnPreferenceClickListener(p -> { pickLockPicture(); return true; });
++        lock.addPreference(mLockPick);
++        toggle(lock, "lock_clock", "lock_clock");
++        toggle(lock, "lock_battery", "lock_battery");
+         PreferenceCategory refresh = section(parent, "refresh_section", "sec_refresh");
+@@ -119,2 +136,3 @@ final class A6lEinkPreferences {
+             updateSummaries();
++            if ("lock_bg".equals(key) && "image".equals(args.getString("value"))) pickLockPicture();
+             return true;
+@@ -185,2 +203,18 @@ final class A6lEinkPreferences {
+         }
++        /* eink-lockscreen: the lock options only matter while the lock screen is on; the picker only for "image" */
++        boolean lockOn = !"0".equals(mSnapshot.getString("lock", "1"));
++        for (String key : new String[]{"lock_bg", "lock_clock", "lock_battery"}) mValues.get(key).setEnabled(lockOn);
++        mLockPick.setVisible("image".equals(mSnapshot.getString("lock_bg", "white")));
++        mLockPick.setEnabled(lockOn);
++    }
++    /** eink-lockscreen: the controller's photo-picker activity (no UI of its own) stores the chosen picture. */
++    private void pickLockPicture() {
++        Intent pick = new Intent().setClassName(PACKAGE, PACKAGE + ".LockImagePickActivity");
++        if (!(mContext instanceof Activity)) pick.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++        try {
++            mContext.startActivity(pick);
++        } catch (ActivityNotFoundException | SecurityException e) {
++            Log.w("A6lEinkPreferences", "Lock screen picture picker unavailable", e);
++            Toast.makeText(mContext, text("settings_unavailable"), Toast.LENGTH_SHORT).show();
++        }
+     }

@@ -1,1 +1,4 @@
 /vendor/bin/a6l_dualux                  u:object_r:a6l_dualux_exec:s0
+# eink-lockscreen
+/vendor/bin/a6l_einklock                u:object_r:a6l_einklock_exec:s0
+/data/vendor/a6l_eink_lock(/.*)?        u:object_r:a6l_eink_lock_data_file:s0

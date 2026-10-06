@@ -1,2 +1,4 @@
 # LCD backlight + e-ink frontlight sysfs nodes (paths in genfs_contexts are unverified: check `ls -lZ` in test D10)
 type sysfs_a6l_dualux, sysfs_type, fs_type;
+# eink-lockscreen: background picture of the e-ink lock screen (/data/vendor/a6l_eink_lock, copied there by init)
+type a6l_eink_lock_data_file, file_type, data_file_type;

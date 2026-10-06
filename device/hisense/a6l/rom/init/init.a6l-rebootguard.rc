@@ -1,0 +1,36 @@
+# A6L reboot guard (reboot-hang analysis, 6 Oct 2026; firmware/extracted/reboot-hang-20261006/README.md, fix A).
+# Vendor-only. Converts any hang of the orderly shutdown/restart path into a reset through the path that is known to
+# work (sysrq-b = emergency_restart), and leaves evidence in kmsg first. It does NOT fix a hang that happens after the
+# reset (bootloader / next boot); see fixes B/C and the experiment for those.
+#
+# 1. `on shutdown` runs before init's DoReboot (init queues the "shutdown" trigger, then shutdown_done):
+#    - reboot mode warm: no PMIC hard reset, so no USB_CHG charger-mode trap (boot-hang-fixes-20261006 F2/F6/F9);
+#    - kernel.panic=5: the cmdline has panic=0, so today an oops inside a .shutdown callback (it runs in pid 1, init
+#      dies -> "Attempted to kill init") and init's own 300 s RebootMonitorThread (which ends with sysrq-c) both HALT the
+#      phone forever. With panic=5 they reboot 5 s later;
+#    - soft/hard lockup detectors (built in) panic during shutdown only.
+# 2. a6l_reboot_guard is "shutdown critical": init starts it at the beginning of DoReboot (reboot.cpp:891-896). Before
+#    unmounting, init SIGTERMs shutdown-critical services and sends sysrq-e (SIGTERM to every process); the script ignores
+#    SIGTERM. Only if the 6 s clean-shutdown budget is exhausted or umount fails does init use SIGKILL / sysrq-i
+#    (reboot.cpp:343-375,530-566); the guard then dies and panic=5 + init's own 300 s monitor remain as the backstop.
+#    The guard waits for init to enter reboot(2); if init is still inside it after 15 s (normal: < 5 s) it logs init's
+#    kernel stack and the D-state tasks (sysrq w) and then resets with sysrq b.
+on shutdown
+    write /sys/kernel/reboot/mode warm
+    write /proc/sys/kernel/panic 5
+    write /proc/sys/kernel/softlockup_panic 1
+    write /proc/sys/kernel/hardlockup_panic 1
+
+# Optional evidence: device_shutdown() prints "<device>: shutdown" before every driver .shutdown callback.
+on shutdown && property:persist.vendor.a6l.rebootguard.trace=1
+    write /sys/module/kernel/parameters/initcall_debug 1
+
+service a6l_reboot_guard /vendor/bin/a6l-reboot-guard.sh
+    user root
+    group root
+    disabled
+    oneshot
+    shutdown critical
+    # userdebug/permissive ROM (same convention as a6l_logcat). An enforcing build needs a vendor domain allowed to
+    # write /proc/sysrq-trigger, /proc/sys/kernel/*, /sys/kernel/reboot/mode and to read /proc/1/{syscall,stack}.
+    seclabel u:r:su:s0

@@ -485,3 +485,49 @@ x3 must pass, then video + real sleep with pm_async=1, then drop the init.qcom.r
 - Camera round 3 (firmware/extracted/camera-round3-20261006/): AF 0034 (rescans climb from current position, keep
   focus after lock), AE 0035 (faster convergence), chroma denoise 0036 (core) + 0037 (IPA). IPA-only build be807526;
   core-coupled build libcamera.so 0de15051 + IPA 1e3e20be (same signing key; core reproduced byte-identically).
+
+### 6 Oct ~17:55 local — HW ISP staged trial: kernel + libcamera streaming STABLE; HAL sees 0 cameras (fixing)
+
+Round 3 installed (vendor b6dca76e + system 4f29076d, boot f517fef5); commit f745424. Stopgap on phone:
+persist.vendor.eink.copy_guard_kib=0 (0014 discard storm). Settings app e-ink tab patch edited (workspace) to add "stock".
+Agents: eink-round4 (latency/0014/epdd stall/switch time/remove Dualux settings UI), eink-lockscreen (clock+battery
+bottom-left, settings in Settings tab), reboot-hang (device_shutdown/notifier hypothesis), hw-isp (HAL init fix).
+HW ISP trial (firmware/extracted/hw-isp-20261006/m2/package/trial, m3 camss a76e6b1d, libcamera 8d1815e2):
+load/ispcap/bind/lclist/lccap all OK (lccap 60 frames 29 fps 0 errors through libcamera — the earlier wedge is fixed
+by the PIX scratch-buffer mode). Provider: HAL camera_capabilities init fails for all cameras ("invalid
+configuration") -> 0 cameras -> app has no camera. Logs phone-test-20261006/trial-20261006/. Phone left on the
+camera-disabled trial boot a0429c4a with m3 loaded and bind mounts; restore with persist.vendor.a6l.camera=1 + sysrq.
+Driver: /home/pierrelouis/A6L-usb-20260915/hwisp-trial-20261006/drive.sh (run via ssh with MSYS_NO_PATHCONV=1).
+
+### 6 Oct ~18:10 local — CAMERA APP RUNS ON THE HARDWARE ISP
+
+libcamera 18a73579 (NV12-only hw path, validate adjusts, RAW reported unavailable) fixed the HAL init: halinit 3/3,
+provider ready with 3 cameras (LIMITED), Aperture preview ~26.5 fps via VFE (app-preview.png: oriented OK, AF blurry,
+grainy at max gain, slight cast). Aperture video 1280x720 H.264 = 19.7 fps (205 frames/10.4 s; was 9.3 fps on the CPU
+ISP), AAC OK; bottleneck now the software encoder. Evidence: firmware/extracted/hw-isp-20261006/phone-test-20261006/
+trial-20261006/ (lit.png = ispcap with AF best 408, app-preview.png, hwisp-video.mp4, host logs). Phone still on the
+trial boot a0429c4a (camera-disabled boot + manual insmod + bind mounts). Agents: hw-isp (AF in app, packaging 0201 for
+vendor, default hwisp ON with persist.vendor.a6l.hwisp=0 fallback), venus-impl (hardware encoder), eink-round4,
+eink-lockscreen, reboot-hang.
+
+### 6 Oct ~20:30 local — round 4 integration (user away): HW ISP packaged, lock screen, reboot guard
+
+Applied to BOTH trees (workspace + /home/a6l/android/a6l-lineage24):
+- HW ISP packaging `firmware/extracted/hw-isp-20261006/m2/package/0201` + device-payload (PAYLOAD-SHA256SUMS OK):
+  libcamera.so 06d73d6f (hw backend, linear-domain AF metric, per-sensor `persist.vendor.a6l.hwisp.sensors`, default
+  imx576), `*_hwisp.yaml` (r3-A based), a6l-modules.sh passes `a6l_pix=1` to qcom-camss unless
+  `persist.vendor.a6l.hwisp=0`, hal_camera get_prop vendor_a6l_prop. qcom-camss.ko m3 a76e6b1d in the Android-tree
+  prebuilt only (previous 43c5d6ca saved as /home/a6l/android/qcom-camss.ko.rom1-43c5d6ca.bak;
+  tools/stage-rom-v2-prebuilts.sh would overwrite it).
+- E-ink lock screen LS1-LS4 (`firmware/extracted/eink-lockscreen-20261006/patches`, README §4, §9 test plan, §11 RTC):
+  epdd lockframe, a6l_einklock daemon (vendor), Dualux app lock background/sync (system_ext), Settings
+  `0002-a6l-eink-lockscreen.patch`. RTC wake from s2idle unproven (T0 not decisive); LS2 falls back to "Mis à jour à
+  HH:MM" when minute ticks run late. Decisive test: `eink-lockscreen-20261006/tools/rtc-wake-test.sh arm 90` / `collect`.
+- Settings (Android tree packages/apps/Settings): old 0001 reversed, new 0001 (refresh list with "stock") + 0002 applied.
+- Reboot-hang fix A (vendor reboot guard: on shutdown warm mode + panic=5, shutdown-critical a6l_reboot_guard does a
+  logged sysrq-b if init sits in reboot(2) >= 15 s) and fix B (qcom-wdt with watchdog_stop_on_reboot, stripped
+  dfda442c; previous 63580d3b saved as /home/a6l/android/qcom-wdt.ko.prev-63580d3b.bak), from
+  `firmware/extracted/reboot-hang-20261006`. Fix C (panel) NOT applied: only if E1 (sysrq-b with LCD off) hangs.
+Builds (pm-logging-20261005/): round4a-vendor (HW ISP + LS1/LS2) ad05b869 audited (adds a6l_einklock + rc + hwisp
+yamls; nothing removed); round4a-system and round4b-vendor (+ fixes A/B) building. E-ink round 4 and Venus agents
+still running.

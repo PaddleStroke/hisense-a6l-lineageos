@@ -1,0 +1,35 @@
+# a6l_einklock — e-ink lock screen (eink-lockscreen, firmware/extracted/eink-lockscreen-20261006). Written from reading,
+# not from denials: collect `dmesg | grep avc | grep -e a6l_einklock -e a6l_eink_lock` in the attended test (README L10).
+type a6l_einklock, domain;
+type a6l_einklock_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(a6l_einklock)
+
+# lock pictures to vendor.a6l_epdd ("lockframe", "lock restore") over its control socket
+unix_socket_connect(a6l_einklock, a6l_epd, a6l_epdd)
+
+# minute tick that wakes the suspended system: timerfd CLOCK_REALTIME_ALARM (wake_alarm), polled with EPOLLWAKEUP and a
+# timed /sys/power/wake_lock "a6l_einklock" around each a6l_epdd transaction (block_suspend; same as hal_health's alarm)
+wakelock_use(a6l_einklock)
+allow a6l_einklock self:global_capability2_class_set { wake_alarm block_suspend };
+
+# state (vendor.dualux.state, vendor.dualux.lock_bg_seq) + settings written by the app (persist.sys.a6l.eink.lock*);
+# persist.sys.locale / persist.sys.timezone are readable by every domain (system/sepolicy private/domain.te)
+get_prop(a6l_einklock, vendor_dualux_prop)
+get_prop(a6l_einklock, a6l_dualux_ctl_prop)
+# RTC wake fallback: learned "minute alarm wakes the system" state, persist.vendor.eink.lock_rtc = ok|late
+set_prop(a6l_einklock, vendor_eink_prop)
+
+# battery level / charging state (qcom-battery: sysfs_batteryinfo via genfs, sysfs_a6l_power_supply)
+allow a6l_einklock { sysfs sysfs_batteryinfo sysfs_a6l_power_supply }:dir r_dir_perms;
+allow a6l_einklock { sysfs sysfs_batteryinfo sysfs_a6l_power_supply }:lnk_file read;
+allow a6l_einklock { sysfs_batteryinfo sysfs_a6l_power_supply }:file r_file_perms;
+
+# background picture /data/vendor/a6l_eink_lock/bg.pgm
+allow a6l_einklock a6l_eink_lock_data_file:dir r_dir_perms;
+allow a6l_einklock a6l_eink_lock_data_file:file r_file_perms;
+
+# Treble-clean hand-over of the picture: the app (system_app) writes /data/misc/a6l_eink/lock_bg.pgm (core data), init
+# copies it here on sys.a6l.eink.lock_bg_seq (system_ext rc: init is the only domain allowed on both sides,
+# system/sepolicy private/domain.te full_treble_only exemptions), then chown/chmod and setprop vendor.dualux.lock_bg_seq.
+allow init a6l_eink_lock_data_file:dir rw_dir_perms;
+allow init a6l_eink_lock_data_file:file create_file_perms;

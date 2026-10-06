@@ -19,6 +19,9 @@ public final class SettingsProvider extends ContentProvider {
             if (!SettingsValues.valid(arg, value)) throw new IllegalArgumentException("Invalid e-ink setting");
             if ("theme".equals(arg)) PerScreenAppearance.get(getContext()).setTheme(value);
             else Dualux.set(SettingsValues.property(arg), value);
+            /* eink-lockscreen: "lcd" = export the LCD wallpaper for the e-ink lock screen now (and after each change);
+             * "image" keeps the last chosen picture, Settings opens LockImagePickActivity to choose one */
+            if ("lock_bg".equals(arg) && "lcd".equals(value)) LockSync.exportLcdAsync(getContext());
         } else if ("request".equals(method)) {
             if (!"eink".equals(arg) && !"lcd".equals(arg) && !"clear".equals(arg)) {
                 throw new IllegalArgumentException("Invalid display request");
