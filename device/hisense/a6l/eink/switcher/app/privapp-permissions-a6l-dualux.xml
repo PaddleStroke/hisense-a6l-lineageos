@@ -4,5 +4,7 @@
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
         <permission name="android.permission.CONTROL_DISPLAY_BRIGHTNESS" />
         <permission name="android.permission.MODIFY_DAY_NIGHT_MODE" />
+        <!-- LS3 lock-screen background: copy the LCD wallpaper (signature|privileged). Missing => system_server boot loop. -->
+        <permission name="android.permission.READ_WALLPAPER_INTERNAL" />
     </privapp-permissions>
 </permissions>

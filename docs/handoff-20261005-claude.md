@@ -543,3 +543,20 @@ still running.
   - rom-r7c-round4-20261006 = fallback without e-ink round 4: vendor b545064a + system 8f1158d8.
 - Venus encoder (`firmware/extracted/venus-impl-20261006`): built offline, NOT in the kits. Stage A needs
   boot-venus-cx.img (cdcce6ac, DTB 209dfd65: mmcc on CX, venus okay); staged separately for an attended test.
+
+### 6 Oct ~21:15-23:00 local — round 4e installed; boot loop fixed (4f); user feedback; night plan
+
+- Round 4e flashed (vendor 6088e10b + system 759b089f). First boot LOOPED: system_server
+  `Signature|privileged permissions not in privileged permission allowlist: org.lineageos.a6l.dualux:
+  android.permission.READ_WALLPAPER_INTERNAL` (LS3 added the permission, the privapp xml was not updated). Live
+  workaround: bind mount of a patched /system_ext/etc/permissions (lost on reboot). Source fix:
+  device/hisense/a6l/eink/switcher/app/privapp-permissions-a6l-dualux.xml (both trees). System 4f f2d388ae; kit
+  rom-r7c-round4f-20261006 (vendor 6088e10b + system f2d388ae) — flashing at ~22:50.
+- Runtime on 4e: hw-ISP a6l_pix=1 for the main camera, a6l_einklock running, reboot guard + qcom-wdt dfda442c present,
+  copy_guard_kib cleared.
+- User: main camera works (photos/videos; low light noisy, stock a bit less noisy). Drawer artefacts fully back
+  (0018 regression vs 0014). E-ink -> lock -> open LCD => HARD RESET (kmsg ends 468.9 s, no panic/shutdown), no lock
+  picture; the following boot never reached the logger (backlit black), user went to recovery. Logs:
+  firmware/extracted/round4e-feedback-20261006/.
+- Night agents: eink-round5-20261006 (reset, lock screen, drawer), hw-isp m3 (front/wide on HW path, low-light noise,
+  AF check; gets the phone exclusively after the 4f boot). Then Venus stage A/B (kit rom-r7c-venusA-20261006).
