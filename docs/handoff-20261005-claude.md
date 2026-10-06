@@ -560,3 +560,29 @@ still running.
   firmware/extracted/round4e-feedback-20261006/.
 - Night agents: eink-round5-20261006 (reset, lock screen, drawer), hw-isp m3 (front/wide on HW path, low-light noise,
   AF check; gets the phone exclusively after the 4f boot). Then Venus stage A/B (kit rom-r7c-venusA-20261006).
+
+### 7 Oct ~00:00-01:00 local — night work
+
+- 4f installed via a kit staged against the INSTALLED build (Prepare/updater refuse a kit whose "previous" build
+  differs: stage-round4-kit.py now takes the previous kit tag). Clean boot, no crash.
+- E-ink round 5 (`firmware/extracted/eink-round5-20261006`, 0023-0026, vendor only) applied to both trees:
+  drawer artefacts on 4e were partly MY slip (stopgap property cleared without restarting a6l_eink_mirror, which
+  kept `--copy-guard-kib 0`), plus a real 0018 hole (forced torn copy); 0023 fixes both. No lock picture: a6l_dualux
+  also lacked CAP_BLOCK_SUSPEND (0024). Hard reset (e-ink lock -> LCD) not pinned; 0024 removes the likely e-ink
+  trigger (no e-ink modeset near an LCD switch), 0025 kmsg markers, repro/ scripts. Vendor 514a9561 = kit round5e.
+- HW ISP round 6 (`hw-isp-20261006/m3`): phone trial passed 00:00-00:50 (front S5K3T1 fixed: PIX pixel clock bounded
+  by the CSI-2 link rate; wide OK; ABF/BPC; low-light 15 fps extension; AF locks). NOTE: kernel has NO cpufreq driver
+  (CPU slow) — the chroma filter was NEON/threaded to compensate; cpufreq is a separate future item.
+  0202 + payload applied to both trees (libcamera 5d048ba2, IPA d4db6a61, camss m4 3a6a3c0f build-tree only;
+  previous camss saved /home/a6l/android/qcom-camss.ko.m3-a76e6b1d.bak). Vendor round6 bc53a6f0 (e-ink r5 + hwisp r6).
+- Remote recovery entry works on this build: `adb -s 1e529013 reboot recovery` -> recovery in 25 s.
+- Venus: stage A boot cdcce6ac flashed (kit rom-r7c-venusA-20261006 on 4f) and PASSED (CX subdomains, perf 256 as
+  baseline, no deferred, display/camera OK). Stage B: firmware authenticated, encoder /dev/video7 in 0.1 s; bench
+  failed on its own format negotiation (G_FMT stride 0) -> Venus agent fixing and rerunning on the phone.
+- ~01:25: Venus agent found the real stage-B cause: on HFI 3xx the venus driver never gets codec size limits from
+  the firmware -> formats clamped to 0x0. Patched venus-core.ko + stage-b2.sh in venus-impl-20261006 (kmod/,
+  test/kit/venus-b). NOT run: the agent was blocked by the permission system from the laptop ssh; left for the user to
+  decide (run stage-b2 from the venusA boot).
+- INSTALLED NOW (phone booted to Android, boot ffbd8b1b): kit rom-r7c-round6-20261006 = boot f517fef5 (Venus DT
+  reverted for clean morning tests) + vendor bc53a6f0 (e-ink r5 + hw-ISP r6) + system f2d388ae. Runtime check passed:
+  mirror runs with --copy-guard-kib 1024, libcamera 5d048ba2, a6l_pix=1, a6l_pix_linkcap=1, einklock running, no crash.
