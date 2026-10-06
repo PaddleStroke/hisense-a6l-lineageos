@@ -30,7 +30,8 @@ load_list() {
             fi
         fi
         # A6L hw-ISP (6 Oct 2026, hw-isp-20261006): VFE0 PIX line + hardware Bayer ISP for the main camera (libcamera
-        # picks the cameras, persist.vendor.a6l.hwisp.sensors, default imx576; the others stay on RDI + CPU soft ISP).
+        # picks the cameras, persist.vendor.a6l.hwisp.sensors; default since hw-isp round 6: all three cameras when the
+        # module has the PIX link-rate clock fix (parameter a6l_pix_linkcap), else imx576 only).
         # Opt out with persist.vendor.a6l.hwisp=0 (RDI + CPU soft ISP for all, as before). Only when the module declares it.
         if [ "$ko" = qcom-camss.ko ] && [ "$(getprop persist.vendor.a6l.hwisp)" != 0 ] && \
            grep -a -q 'parm=a6l_pix:' "$M/$ko"; then

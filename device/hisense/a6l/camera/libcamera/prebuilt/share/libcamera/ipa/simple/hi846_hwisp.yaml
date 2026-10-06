@@ -1,4 +1,4 @@
-# A6L hw-ISP (VFE 4.8 PIX path, round 5): hi846 = r3-A unchanged (used only if listed in persist.vendor.a6l.hwisp.sensors).
+# A6L hw-ISP (VFE 4.8 PIX path, round 6 = round 5 + chroma denoise + low-light frame extension): hi846 = r3-A unchanged (used only if listed in persist.vendor.a6l.hwisp.sensors).
 # CCM / WB gains / LUT are applied by the VFE through DebayerHwIsp; statistics come from the NV12 output
 # (inverse LUT/CCM/WB; AF focus measure in the linear domain). Needs IPA be807526 (camera round 3, 0030-0035).
 # Source: camera-round3-20261006/tuning/hi846.r3-A.yaml
@@ -30,6 +30,14 @@ algorithms:
       blackPoint: 0.008
       drcStrength: 0.5
       drcPivot: 0.18
+      # Round 6 (0037 keys, camera round 3 r3-B values): NV12 chroma denoise, applied by DebayerHwIsp while it copies
+      # the CbCr plane from the VFE buffer (no extra pass); stronger at high gain, the limit protects colour edges.
+      chromaDenoise: 0.7
+      chromaDenoiseHighGain: 1.0
+      chromaDenoiseLimit: 6
+      chromaDenoiseLimitHighGain: 12
+      chromaDenoiseGainStart: 2.0
+      chromaDenoiseGainEnd: 8.0
   - Agc:
       # 0031. target = stock luma target 58/255 x missing-LSC frame-mean factor 1.851
       # x 0.74 (matched front pair, subject patches): 0.312.
@@ -47,4 +55,9 @@ algorithms:
       convergence: 0.6
       maxStep: 2.0
       splitExposureGain: true
+      # Round 6 (0038, needs core 0102): low light, lengthen the frame (VBLANK) instead of adding gain once the
+      # gain at the 30 fps exposure reaches frameExtensionGain; at most maxFrameDuration (15 fps, like stock
+      # preview). Bright and normal indoor scenes stay at 30 fps. persist.vendor.a6l.hwisp.minfps=30 disables it.
+      maxFrameDuration: 66667
+      frameExtensionGain: 4.0
 ...

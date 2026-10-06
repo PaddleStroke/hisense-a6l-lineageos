@@ -40,3 +40,11 @@ unless persist.vendor.a6l.hwisp=0). Core = r6z + 0101 (DebayerHwIsp backend, NV1
 measure, per-camera selection persist.vendor.a6l.hwisp.sensors default imx576; front/wide stay on RDI + CPU soft ISP).
 Same IPA key: IPA be807526 + .sign, HAL, base, proxy unchanged. New tuning: <model>_hwisp.yaml (r3-A based).
 Core 06d73d6fbab556be4ea6989cf2682085e53ff9ba70e44d884af0d3f5a6939cf9
+
+6 October hw-isp-20261006 round 6 (m3/): all three cameras on the VFE PIX path (camss 0004: PIX clock bounded by the
+CSI-2 link rate, which the front S5K3T1 needed; ABF + BPC noise filters), low-light frame extension down to 15 fps
+(IPA 0038 + core 0102: VBLANK delayed control; persist.vendor.a6l.hwisp.minfps), NV12 chroma denoise in DebayerHwIsp,
+VFE noise filter strength from the AE gain (persist.vendor.a6l.hwisp.nr, percent). Core = r6z + 0036 + 0101 + 0102,
+IPA = r6z + 0030..0038 (same key; core and IPA must be installed together: DebayerParams gained a field).
+Core 5d048ba2cbb7d3fba40bd759e104981ccc87c98ba6042754b7b2cef144651d19
+IPA d4db6a615b646dde78d94676dedd94a78ac4a1b343c5792dc0af7d8a35a837c6 sign c169fe0bab36389343afa7977330d79c5366e40b23a899f5709858493c38b0c6
