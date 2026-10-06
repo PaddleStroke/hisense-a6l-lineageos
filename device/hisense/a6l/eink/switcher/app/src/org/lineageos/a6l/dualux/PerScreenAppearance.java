@@ -21,6 +21,7 @@ final class PerScreenAppearance {
     private Object mUiManager;
     private Method mOverlayGetter;
     private final AnimationOverride mAnimations;
+    private final ContrastOverride mContrast;
     private String mReadyReason = "not_checked";
 
     static synchronized PerScreenAppearance get(Context context) {
@@ -55,6 +56,28 @@ final class PerScreenAppearance {
                     else editor.putString("animation_previous_" + i, session.previous[i]);
                 }
                 if (!editor.commit()) throw new IllegalStateException("Cannot persist animation recovery state");
+            }
+        });
+        mContrast = new ContrastOverride(new ContrastOverride.Client() {
+            @Override public String get() {
+                return Settings.Secure.getString(mContext.getContentResolver(), ContrastOverride.KEY);
+            }
+            @Override public void set(String value) {
+                if (!Settings.Secure.putString(mContext.getContentResolver(), ContrastOverride.KEY, value)) {
+                    throw new IllegalStateException("Cannot update " + ContrastOverride.KEY);
+                }
+            }
+        }, new ContrastOverride.Store() {
+            @Override public ContrastOverride.Session load() {
+                if (!mPrefs.getBoolean("contrast_active", false)) return null;
+                return new ContrastOverride.Session(mPrefs.getString("contrast_previous", null));
+            }
+            @Override public void save(ContrastOverride.Session s) {
+                SharedPreferences.Editor editor = mPrefs.edit();
+                if (s == null) editor.remove("contrast_active").remove("contrast_previous");
+                else if (s.previous == null) editor.putBoolean("contrast_active", true).remove("contrast_previous");
+                else editor.putBoolean("contrast_active", true).putString("contrast_previous", s.previous);
+                if (!editor.commit()) throw new IllegalStateException("Cannot persist contrast recovery state");
             }
         });
         try {
@@ -99,6 +122,8 @@ final class PerScreenAppearance {
     boolean update(boolean eink) {
         try {
             mAnimations.update(eink);
+            // eink-round2: high-contrast Material scheme with the e-ink themes; "Follow the LCD theme" keeps the LCD look.
+            mContrast.update(eink && !"lcd".equals(theme()));
             String animationState = eink ? "1" : "0";
             if (!animationState.equals(Dualux.get(Dualux.NO_ANIMATIONS, ""))) Dualux.set(Dualux.NO_ANIMATIONS, animationState);
             int slop = android.view.ViewConfiguration.get(mContext).getScaledTouchSlop();

@@ -36,4 +36,18 @@ final class AppearanceGate {
         try { return Long.parseLong(token) > 0 && request.indexOf(' ', space + 1) < 0; }
         catch (NumberFormatException e) { return false; }
     }
+
+    /** eink-round2: the daemon can fail open (clear its prepare) before this app ever applied the target, e.g. a
+     * prepare begun while Android slept. Bookkeeping then restores theme and animations, but the WM-facing target
+     * (sys.a6l.dualux.appearance) keeps the old screen: the rear white wallpaper stayed over the LCD home (user
+     * report 6 Oct). Returns the target to publish, or null when it already matches or a switch is in flight. */
+    static String reconcile(String appearance, String prepare, String screen, long token) {
+        if (prepare != null && !prepare.isEmpty()) return null;	// the gate owns an in-flight switch
+        if (!"eink".equals(screen) && !"lcd".equals(screen)) return null;
+        if (token <= 0) return null;
+        boolean valid = valid(appearance);
+        if (valid && appearance.endsWith(" " + screen)) return null;
+        if (!valid && "lcd".equals(screen)) return null;	// never prepared since boot: nothing was overridden
+        return token + " " + screen;
+    }
 }

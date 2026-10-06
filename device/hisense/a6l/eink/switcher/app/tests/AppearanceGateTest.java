@@ -23,6 +23,16 @@ public final class AppearanceGateTest {
         f.ready = true; gate.step("3 eink", 1500, f); check(f.acks == 2 && "3 eink".equals(f.ack));
         gate.step("", 1600, f); f.applyOk = false; gate.step("4 lcd", 2000, f); gate.step("4 lcd", 3000, f); check(f.acks == 2);
         f.applyOk = true; gate.step("4 lcd", 3100, f); gate.step("4 lcd", 3300, f); check(f.acks == 3 && "4 lcd".equals(f.ack));
+        // eink-round2: target reconciliation after a daemon fail-open
+        check("77 lcd".equals(AppearanceGate.reconcile("5 eink", "", "lcd", 77)));	// stale rear target over the LCD
+        check("77 lcd".equals(AppearanceGate.reconcile("5 eink", null, "lcd", 77)));
+        check("77 eink".equals(AppearanceGate.reconcile("5 lcd", "", "eink", 77)));
+        check("77 eink".equals(AppearanceGate.reconcile("", "", "eink", 77)));
+        check("77 eink".equals(AppearanceGate.reconcile("garbage", "", "eink", 77)));
+        check(AppearanceGate.reconcile("", "", "lcd", 77) == null);		// boot: never prepared
+        check(AppearanceGate.reconcile("5 lcd", "", "lcd", 77) == null && AppearanceGate.reconcile("5 eink", "", "eink", 77) == null);
+        check(AppearanceGate.reconcile("5 eink", "9 lcd", "lcd", 77) == null);	// in-flight switch belongs to the gate
+        check(AppearanceGate.reconcile("5 eink", "", "", 77) == null && AppearanceGate.reconcile("5 eink", "", "lcd", 0) == null);
         System.out.println("APPEARANCE_GATE_TEST PASS " + checks);
     }
 }

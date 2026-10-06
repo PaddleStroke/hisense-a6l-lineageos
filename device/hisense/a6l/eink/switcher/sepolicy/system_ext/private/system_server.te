@@ -2,3 +2,6 @@
 # its compositor transaction; it does not modify wallpaper files/components.
 get_prop(system_server, a6l_dualux_ctl_prop)
 set_prop(system_server, a6l_dualux_ctl_prop)
+# eink-round2 (frameworks/base 0004-a6l-eink-instant-fling): android.widget.OverScroller in system_server reads the
+# e-ink animation flag too (apps already may: system_app.te get_prop(appdomain, ...)); avoids denials, same behaviour.
+get_prop(system_server, a6l_eink_animation_prop)

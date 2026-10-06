@@ -456,3 +456,19 @@ Fix candidate staged: DTB adds the 3 clocks to &cci (stock does): boot-cci-mmssc
 7bb0aa81 with only the DTB changed), boot-only kit /home/pierrelouis/A6L-usb-20260915/rom-r7c-cci-20261006
 (extra/start-cci-flash.py, check-cci-install.py, check-runtime-cci.py). Verify: lens 1023 + pm_async=1 devices/platform
 x3 must pass, then video + real sleep with pm_async=1, then drop the init.qcom.rc workaround.
+
+### 6 Oct ~16:30 local — round 2 installed; HARDWARE ISP M1 WORKS ON THE PHONE; system build running
+
+- Installed: boot f517fef5 (CCI DTB fix on the late/noirq diag kernel), vendor 9b0a200f (round 2). pm_async=1 (default),
+  workaround removed from init.qcom.rc. persist.sys.a6l.eink.clear_every=30, refresh=stock. Commit 7c75af6 pushed.
+- Remote reboot: `sync; echo b > /proc/sysrq-trigger` from Android works (HRST). adb reboot / Restart still hang.
+- HW ISP milestone 1 (firmware/extracted/hw-isp-20261006/, evidence phone-test-20261006/): camera stack disabled via
+  persist.vendor.a6l.camera=0 + sysrq reboot, manual insmod of qcom-camss-m1-rom1.ko a6l_pix=1. Colour bars perfect at
+  28 fps (1440x1078 NV12 via VFE scaler); full 2880x2156 NV12 at 29.3 fps, CPU idle; real scene (live.png) correct
+  but rotated/cyan/overexposed (no 3A). Sensor test pattern persists: use -t 0. Every frame logs `VFE: violation = 0xd`.
+  Restored stock stack (persist 1 + sysrq). Agent continuing to milestone 2 (violation fix, stats, AE/AWB/AF, libcamera).
+- User feedback round 2: main cam most off, selfie close to stock; AE adaptation ~2 s; noise on all; AF unreliable
+  (photos in firmware/extracted/round2-feedback-20261006/media). E-ink: drawer artifacts still moving; SEVERE LCD
+  scan-out corruption after e-ink -> LCD switch (screenshots normal => scan-out level). Agents: camera-round3, eink-round3.
+- System build running: e-ink 0010-0012 applied (Dualux reconcile + high-contrast + frameworks/base 0004 instant fling,
+  applied to frameworks/base working tree like the pipeline prep does). Output round2-system-20261006/.

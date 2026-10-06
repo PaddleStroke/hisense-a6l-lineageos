@@ -183,6 +183,7 @@ final class PerScreenMemory {
         boolean running = Dualux.daemonRunning();
         PerScreenAppearance.get(mCtx).update(running && Dualux.isEink());
         if (!running) return;
+        reconcileAppearance();
         String now = screen();
         if (now.equals(mLastScreen)) return;
         String old = mLastScreen;
@@ -200,6 +201,36 @@ final class PerScreenMemory {
         int to = mPrefs.getInt("timeout_" + now, def);
         if (to > 0) Settings.System.putInt(cr, Settings.System.SCREEN_OFF_TIMEOUT, to);
         Log.i(Dualux.TAG, "screen " + old + " -> " + now + ": brightness " + b + " saved, timeout " + to);
+    }
+
+    /** eink-round2: after a daemon fail-open the WM target may still name the previous screen (rear white wallpaper
+     * over the LCD). Publish a fresh target for the actual screen and nudge WM's property callbacks once. */
+    private String mReconcileSeen = "";
+    private void reconcileAppearance() {
+        String current = Dualux.get(Dualux.APPEARANCE, "");
+        String screen = screen();
+        String fix = AppearanceGate.reconcile(current, Dualux.get(Dualux.PREPARE, ""), screen,
+                SystemClock.elapsedRealtime());
+        // The daemon publishes the new state just before its prepare: act only on a mismatch seen on two polls.
+        String seen = fix == null ? "" : current + "|" + screen;
+        boolean stable = !seen.isEmpty() && seen.equals(mReconcileSeen);
+        mReconcileSeen = seen;
+        if (!stable) return;
+        mReconcileSeen = "";
+        Dualux.set(Dualux.APPEARANCE, fix);
+        Log.w(Dualux.TAG, "appearance target '" + current + "' did not match the screen after a fail-open: " + fix);
+        if (Process.myUid() != Process.SYSTEM_UID) return;
+        Parcel data = null;
+        try {
+            IBinder window = ServiceManager.checkService(Context.WINDOW_SERVICE);
+            if (window == null) return;
+            data = Parcel.obtain();
+            window.transact(IBinder.SYSPROPS_TRANSACTION, data, null, IBinder.FLAG_ONEWAY);
+        } catch (RemoteException | RuntimeException ex) {
+            Log.w(Dualux.TAG, "appearance " + fix + " WM notify failed", ex);
+        } finally {
+            if (data != null) data.recycle();
+        }
     }
 
     // DisplayManager.getBrightness/setBrightness(int, float) are @hide/@SystemApi (CONTROL_DISPLAY_BRIGHTNESS); fall back to

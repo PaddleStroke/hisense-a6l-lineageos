@@ -27,6 +27,7 @@
     <string name="theme_dark">Sombre</string>
     <string name="theme_lcd">Suivre le thème du LCD</string>
     <string name="theme_help">Utiliser un thème distinct sur l\'écran arrière. Le choix du mode sombre et les horaires du LCD sont conservés. Les applications ayant leur propre thème peuvent nécessiter un réglage dans l\'application.</string>
+    <string name="mode_stock">Comme d\'origine — mises à jour partielles en gris, sans clignotement</string>
     <string name="mode_auto">Auto — net à l\'arrêt, rapide pendant le défilement</string>
     <string name="mode_quality">Qualité — rafraîchissement complet uniquement (lent, sans rémanence)</string>
     <string name="mode_partial">Lecture — rafraîchissement partiel, sans clignotement</string>
@@ -49,6 +50,7 @@
     <string name="sec_other">Autres</string>
     <string name="mirror_in_lcd">Afficher aussi le contenu du LCD sur l\'e-ink pendant l\'utilisation du LCD</string>
     <string name="per_screen">Mémoriser la luminosité et la mise en veille pour chaque écran</string>
+    <string name="short_stock">Origine</string>
     <string name="short_auto">Auto</string>
     <string name="short_quality">Qualité</string>
     <string name="short_partial">Lecture</string>

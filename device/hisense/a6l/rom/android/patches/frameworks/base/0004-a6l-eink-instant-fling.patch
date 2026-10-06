@@ -1,0 +1,55 @@
+--- a/core/java/android/widget/OverScroller.java
++++ b/core/java/android/widget/OverScroller.java
+@@ -290,6 +290,15 @@
+             return false;
+         }
+ 
++        if (mA6lInstant) {
++            // A6L e-paper: one step straight to the rest position (fling end clamped to its bounds, scroll end,
++            // spring-back target); callers consume this delta and see isFinished() afterwards.
++            mA6lInstant = false;
++            mScrollerX.finish();
++            mScrollerY.finish();
++            return true;
++        }
++
+         switch (mMode) {
+             case SCROLL_MODE:
+                 long time = AnimationUtils.currentAnimationTimeMillis();
+@@ -367,6 +376,20 @@
+         mMode = SCROLL_MODE;
+         mScrollerX.startScroll(startX, dx, duration);
+         mScrollerY.startScroll(startY, dy, duration);
++        mA6lInstant = a6lInstant();
++    }
++
++    /**
++     * A6L only: while the rear e-paper mirrors the screen (sys.a6l.eink.no_animations=1, set by the A6L display
++     * switcher together with the animation scales), flings and smooth scrolls end at once: the next
++     * computeScrollOffset() reports the final rest position (bounce/overfling skipped) and the following one reports
++     * "finished". animator_duration_scale does not reach OverScroller, and every intermediate position costs the
++     * e-paper one ~1.5 s update (filmed: Settings showed a mid-fling list before the final one, eink-round2-20261006).
++     */
++    private boolean mA6lInstant;
++
++    private static boolean a6lInstant() {
++        return android.os.SystemProperties.getBoolean("sys.a6l.eink.no_animations", false);
+     }
+ 
+     /**
+@@ -387,6 +410,7 @@
+         // Make sure both methods are called.
+         final boolean spingbackX = mScrollerX.springback(startX, minX, maxX);
+         final boolean spingbackY = mScrollerY.springback(startY, minY, maxY);
++        mA6lInstant = (spingbackX || spingbackY) && a6lInstant();
+         return spingbackX || spingbackY;
+     }
+ 
+@@ -438,6 +462,7 @@
+         mMode = FLING_MODE;
+         mScrollerX.fling(startX, velocityX, minX, maxX, overX);
+         mScrollerY.fling(startY, velocityY, minY, maxY, overY);
++        mA6lInstant = a6lInstant();
+     }
+ 
+     /**
