@@ -388,7 +388,12 @@ int main(int argc, char **argv) {
         for (int i = 0; r > 0 && i < n; i++) if (p[i].revents & (POLLIN | POLLHUP | POLLERR)) drain(map[i]);
         double t = now();
         struct dx_out o = dx_tick(&S, t); handle(&o, "long press");
-        int aw = read_awake(); if (aw != S.awake) { dx_set_awake(&S, aw); LOG("Android %s (%s)", aw ? "awake" : "asleep", dx_state_name(&S)); LOG("stage display awake=%d mono_ms=%.3f hold=%d", aw, now() * 1000, S.appearance_hold); publish(); apply_grabs(); }
+        int aw = read_awake(); if (aw != S.awake) { dx_set_awake(&S, aw); LOG("Android %s (%s)", aw ? "awake" : "asleep", dx_state_name(&S)); LOG("stage display awake=%d mono_ms=%.3f hold=%d", aw, now() * 1000, S.appearance_hold); publish(); apply_grabs();
+            /* eink-round2: a prepare begun while Android slept (power key on the sleeping e-ink -> LCD) is only seen by
+             * the app once it polls again after SCREEN_ON. Give it the full window from the wake-up, not from the key
+             * press: a fail-open before the app applied the target left sys.a6l.dualux.appearance on "<seq> eink"
+             * (WM rear white wallpaper over the LCD home, user report 6 Oct). */
+            if (aw && S.appearance_hold == 1 && appearance_deadline < now() + 3.0) { appearance_deadline = now() + 3.0; LOG("appearance %s: deadline restarted at wake-up", appearance_req); } }
         char rq[96]; if (prop_get(P_REQ, rq, sizeof rq) > 0 && strcmp(rq, req_last)) { snprintf(req_last, sizeof req_last, "%s", rq);
             const char *cmd = strchr(rq, ' '); cmd = cmd ? cmd + 1 : rq; o = dx_request(&S, cmd); handle(&o, "request"); }
         appearance_tick(); enforce_backlight(); enforce_frontlight();

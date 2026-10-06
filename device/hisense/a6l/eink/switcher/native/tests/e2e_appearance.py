@@ -46,6 +46,17 @@ try:
  put(p/'sys.a6l.dualux.req','4 lcd');wait(lambda:prop('vendor.dualux.prepare').endswith(' lcd'))
  z=prop('vendor.dualux.prepare');put(d/'dpms','Off');time.sleep(.15);put(p/'sys.a6l.dualux.ready',z);wait(lambda:prop('vendor.dualux.prepare')=='')
  check(get(b/'bl_power')=='4' and get(f/'brightness')=='0','ready LCD while asleep does not override Android blank')
+ # eink-round2: prepare begun while Android sleeps on the e-ink; the app can only answer after the wake-up
+ put(d/'dpms','On');time.sleep(.2)
+ put(p/'sys.a6l.dualux.req','5 eink');wait(lambda:prop('vendor.dualux.prepare').endswith(' eink'));e=prop('vendor.dualux.prepare')
+ put(p/'sys.a6l.dualux.ready',e);put(p/'vendor.eink.ready',e);wait(lambda:prop('vendor.dualux.prepare')=='')
+ put(d/'dpms','Off');wait(lambda:prop('vendor.dualux.state')=='eink-asleep')
+ t0=time.monotonic();put(p/'sys.a6l.dualux.req','6 lcd');wait(lambda:prop('vendor.dualux.prepare').endswith(' lcd'));g=prop('vendor.dualux.prepare')
+ time.sleep(2.5);put(d/'dpms','On')
+ time.sleep(max(0,t0+3.5-time.monotonic()))
+ check(prop('vendor.dualux.prepare')==g,'prepare begun asleep: deadline restarted at wake-up, no fail-open 3 s after the request')
+ put(p/'sys.a6l.dualux.ready',g);wait(lambda:prop('vendor.dualux.prepare')=='')
+ check(get(b/'bl_power')=='0','app acknowledgement after the wake-up lights the LCD normally')
  print('APPEARANCE_E2E PASS',checks)
 finally:
  proc.terminate();proc.wait(timeout=3);log.close()

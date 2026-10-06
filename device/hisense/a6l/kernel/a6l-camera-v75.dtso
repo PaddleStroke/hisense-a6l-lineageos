@@ -68,6 +68,26 @@
 
 &cci {
 	status = "okay";
+	/*
+	 * pm-async-race-20261006: stock (qcom,cci@ca0c000) also votes mnoc_ahb, smmu_ahb and smmu_axi.
+	 * Mainline leaves them to the MMSS SMMU (iommu@cd00000) alone, which drops them in its system
+	 * suspend while async CCI clients (gt9769) may still be transferring. The CCI driver enables
+	 * every listed clock (devm_clk_bulk_get_all) whenever it is runtime-active.
+	 */
+	clocks = <&mmcc CAMSS_TOP_AHB_CLK>,
+		 <&mmcc CAMSS_CCI_AHB_CLK>,
+		 <&mmcc CAMSS_CCI_CLK>,
+		 <&mmcc CAMSS_AHB_CLK>,
+		 <&mmcc MNOC_AHB_CLK>,
+		 <&mmcc BIMC_SMMU_AHB_CLK>,
+		 <&mmcc BIMC_SMMU_AXI_CLK>;
+	clock-names = "camss_top_ahb",
+		      "cci_ahb",
+		      "cci",
+		      "camss_ahb",
+		      "mnoc_ahb",
+		      "smmu_ahb",
+		      "smmu_axi";
 };
 
 &cci_i2c0 {

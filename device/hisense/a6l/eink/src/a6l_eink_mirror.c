@@ -27,6 +27,10 @@
  *        [--mode off|mirror] [--reading 0|1] [--no-props] [--key-dev auto|PATH|none] [--touch-dev auto|PATH|none]
  *        [--touch-transform T] [--front WxH] [--wait-prop NAME=VALUE] [--dry] [--ns-pid N] [--screencap P] [--out DIR]
  *        [--touch-debug] (print raw rear contacts "TOUCH_IN" and every injected event "TOUCH_OUT type code value")
+ *        [--release-quiet ms] [--release-max ms] (after a held touch drag is released: wait for one unchanged capture
+ *        pair, at most release-max ms, so the settled page is sent instead of the last drag position; 90 / 700)
+ *        [--tone B,W,G] (grey tone curve before quantisation: black clip, white clip, gamma x100; default 24,232,150;
+ *        0,255,100 = linear; persist.sys.a6l.eink.contrast still widens the black/white points live)
  *        [--reply-timeout ms] (a6l_epdd reply deadline, default 30000; also bounds socket writes)
  *   live properties (dualux, 25 Sep): persist.sys.a6l.eink.refresh (auto|quality|partial|fast|fastest, overrides .reading),
  *        persist.sys.a6l.eink.clear_every, vendor.eink.clear_req (any change = ghost refresh; written by a6l_dualux),
@@ -456,10 +460,12 @@ static struct hweight *hweights; static size_t hweights_n;
 /* dualux (25 Sep): contrast LUT (persist.sys.a6l.eink.contrast 0..100, stock "high contrast text"): linear stretch
  * between a black point and a white point (0 = identity; 100 = 0..60 -> black, 195..255 -> white) */
 static uint8_t lut[256]; static int lut_contrast = -1;
+/* eink-round2: --tone BLACK,WHITE,GAMMAx100 (rc: persist.vendor.eink.tone, default 24,232,150; "0,255,100" = the old
+ * linear LUT). Text-darkening curve for Material light UI on e-paper; see eink_logic.h tone_lut(). */
+static int tone_black = TONE_DEFAULT_BLACK, tone_white = TONE_DEFAULT_WHITE, tone_gamma = TONE_DEFAULT_GAMMA;
 static void lut_build(int c) {
     if (c < 0) c = 0; if (c > 100) c = 100; lut_contrast = c;
-    int bp = c * 60 / 100, wp = 255 - c * 60 / 100;
-    for (int i = 0; i < 256; i++) { int v = i <= bp ? 0 : i >= wp ? 255 : (i - bp) * 255 / (wp - bp); lut[i] = (uint8_t)v; }
+    tone_lut(lut, c, tone_black, tone_white, tone_gamma);
 }
 static void resample(void) {
     if (lut_contrast < 0) lut_build(0);
@@ -710,8 +716,10 @@ static int uinput_open(void) {
     if (ioctl(fd, UI_DEV_SETUP, &us) || ioctl(fd, UI_DEV_CREATE)) { LOG("WARN uinput create: %s", strerror(errno)); close(fd); return -1; }
     LOG("uinput touchscreen a6l-eink-rear-touch %dx%d created", front_w, front_h); return fd;
 }
+/* eink-round2: the finger left a held drag; the policy waits for the app's settled frame (pol_cfg.release_quiet_ms) */
+static void gesture_released(void) { if (ack_policy && suppress_drag_frames()) pol_gesture_released(ack_policy, now()); }
 static void touch_release_all(void) {
-    if (touch_any_drag()) gesture_generation++;
+    if (touch_any_drag()) { gesture_generation++; gesture_released(); }
     int any = 0; for (int i = 0; i < NSLOT; i++) if (sl[i].out_active) { emit(EV_ABS, ABS_MT_SLOT, i); emit(EV_ABS, ABS_MT_TRACKING_ID, -1); sl[i].out_active = 0; any = 1; }
     for (int i = 0; i < NSLOT; i++) { sl[i].ignored = sl[i].in_active; sl[i].moving = 0; }	/* contacts still down stay ignored until lifted */
     if (any) { emit(EV_KEY, BTN_TOUCH, 0); emit(EV_SYN, SYN_REPORT, 0); }
@@ -733,7 +741,7 @@ static void touch_flush(void) {
     }
     for (int i = 0; i < NSLOT; i++) down |= sl[i].out_active;
     if (changed) { emit(EV_KEY, BTN_TOUCH, down); emit(EV_SYN, SYN_REPORT, 0); }
-    if (was_dragging != touch_any_drag()) { gesture_generation++; if (suppress_drag_frames()) LOG("gesture %u: %s, touch delivery continues", gesture_generation, touch_any_drag() ? "hold intermediate frames" : "released, capture final page"); }
+    if (was_dragging != touch_any_drag()) { gesture_generation++; if (was_dragging) gesture_released(); if (suppress_drag_frames()) LOG("gesture %u: %s, touch delivery continues", gesture_generation, touch_any_drag() ? "hold intermediate frames" : "released, capture final page"); }
 }
 static void touch_input(void) {
     struct input_event ev[64]; ssize_t r = read(touch_fd, ev, sizeof ev);
@@ -813,6 +821,12 @@ int main(int argc, char **argv) {
         else if (OPT("--interval")) interval_ms = atoi(v); else if (OPT("--quiet")) pcfg.quiet_ms = atoi(v); else if (OPT("--settle")) pcfg.settle_ms = atoi(v);
         else if (OPT("--min-gap")) pcfg.min_gap_ms = atoi(v); else if (OPT("--clear-every")) pcfg.clear_every = atoi(v); else if (OPT("--max-per-min")) pcfg.max_per_min = atoi(v);
         else if (OPT("--active-mode")) pcfg.active_mode = v;
+        else if (OPT("--release-quiet")) pcfg.release_quiet_ms = atoi(v); else if (OPT("--release-max")) pcfg.release_max_ms = atoi(v);
+        else if (OPT("--tone")) {
+            int b, w, g;
+            if (sscanf(v, "%d,%d,%d", &b, &w, &g) == 3 && b >= 0 && b <= 96 && w >= 160 && w <= 255 && g >= 50 && g <= 300) { tone_black = b; tone_white = w; tone_gamma = g; }
+            else fprintf(stderr, "ignoring bad --tone '%s' (BLACK 0..96,WHITE 160..255,GAMMAx100 50..300)\n", v);
+        }
         else if (OPT("--fit")) {
             if (!strcmp(v, "stretch")) fit = FIT_STRETCH;
             else if (!strcmp(v, "crop")) fit = FIT_CROP;
@@ -850,6 +864,7 @@ int main(int argc, char **argv) {
     struct pol_state ps; pol_init(&ps, &pcfg, now()); ack_policy = &ps;
     int active = 0, paused = 0, frame = 0, fails = 0; double next_cap = now(), next_props = now();
     LOG("start: source=%s interval=%d mode=%s reading=%d clear-every=%d active=%s fit=%s%s", source, interval_ms, mode_name(mode), reading, pcfg.clear_every, pcfg.active_mode, fit == FIT_STRETCH ? "stretch" : fit == FIT_CROP ? "crop" : "letterbox", dry ? " DRY" : "");
+    LOG("tone: black clip %d, white clip %d, gamma %.2f; release settle %d ms (max %d ms)", tone_black, tone_white, tone_gamma / 100.0, pcfg.release_quiet_ms, pcfg.release_max_ms);
     while (!stop && (!frames_max || frame < frames_max)) {
         double t = now();
         /* mode transitions */

@@ -440,3 +440,19 @@ Other agent outputs: venus-encoder-20261006/, camera-quality-20261006/, boot-han
   init.qcom.rc. Agents running: pm-async race root cause -> firmware/extracted/pm-async-race-20261006/.
 - Reboot hang: runtime `echo warm > /sys/kernel/reboot/mode` + adb reboot still hung (backlit black) -> boot-hang
   agent's theory incomplete; still open.
+
+### 6 Oct ~14:20 local — async sleep race: root cause confirmed (pending fix test)
+
+Agent analysis firmware/extracted/pm-async-race-20261006/README.md: pm_async only parallelises async-flagged devices
+(I2C/MMC/wiphy) in the ORDINARY phases; the GT9769 VCM (4-000c, held runtime-active by libcamera) parks the lens in
+its suspend with CCI writes (~1 ms per 16 steps). MMSS NoC/SMMU clocks (mnoc_ahb, bimc_smmu_ahb/axi) are consumed
+only by iommu@cd00000 (verified in clk_summary), which gates them in its system suspend; CCI has no link to it.
+- Step 1 (pm_async=0, lens 1023, platform, pm_print_times): VCM suspend 81986 us, finishes before cd00000 suspend;
+  devices phase 118 ms total. PASS.
+- sysrq b FROM ANDROID reboots cleanly (HRST, 40 s) -> usable remote reboot path (adb reboot is the broken one).
+- Step 2a: fresh boot c6ca54cf, NO camera use, lens 1023, pm_async=1, devices stage -> phone never returned (hang).
+  Durable log /data/local/tmp/claude-vcm-2a/events on the phone (pull from recovery).
+Fix candidate staged: DTB adds the 3 clocks to &cci (stock does): boot-cci-mmssclk.img f517fef5… (= installed
+7bb0aa81 with only the DTB changed), boot-only kit /home/pierrelouis/A6L-usb-20260915/rom-r7c-cci-20261006
+(extra/start-cci-flash.py, check-cci-install.py, check-runtime-cci.py). Verify: lens 1023 + pm_async=1 devices/platform
+x3 must pass, then video + real sleep with pm_async=1, then drop the init.qcom.rc workaround.

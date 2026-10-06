@@ -96,6 +96,21 @@ int main(void) {
     EXPECT(exec_cmd("clear", NULL, reply, sizeof reply) == 0 && !panel_unknown, "explicit full clear also re-establishes a known panel");
     EXPECT(frame() == 0, "frame after recovery: OK");
 
+    /* eink-round2 0007: --overlap-gen 1 generates in a worker thread during rails-on + lead scans. Same frames, same
+     * order, rails only around the scanout, waveform scanout only after every frame exists. */
+    nflips = 0; n_on = 0; int serial_frames = last_frames, serial_flips;
+    EXPECT(frame() == 0 && !rails_on, "serial reference frame: OK"); serial_flips = nflips;
+    uint8_t serial_last = ((uint8_t *)fa.map)[0];
+    overlap_gen = 1; nflips = 0; n_on = 0; u = updates;
+    EXPECT(frame() == 0 && !strncmp(reply, "OK", 2) && updates == u + 1 && !rails_on && n_on == 1, "overlap: OK, one update, one rail cycle, rails off");
+    EXPECT(last_frames == serial_frames && ((uint8_t *)fa.map)[0] == serial_last, "overlap: same frame count and last waveform frame as serial");
+    EXPECT(nflips >= serial_flips, "overlap: waveform + lead + tail scans all delivered (extra idle scans allowed)");
+    on_err = 1;
+    EXPECT(frame() != 0 && panel_unknown, "overlap: rail-on failure -> ERR, worker joined, panel unknown");
+    on_err = 0;
+    EXPECT(frame() == 0 && !panel_unknown && !rails_on, "overlap: recovery clear + frame OK");
+    overlap_gen = 0;
+
     printf("A6L_EPDD_DRIVE_TEST %s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;
 }

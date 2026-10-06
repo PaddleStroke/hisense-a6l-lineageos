@@ -29,6 +29,7 @@
  *   --socket NAME | --listen PATH | --fifo PATH | --script F | --show F   (command sources)
  *   --idle-off S (0 = never; default 0)  --no-startup-clear  --wakelock (default on with --socket/--listen)
  *   v2/v3 options: --mode --clear-every --temp --rot180 --no-dither --dither fs|ordered|none --hold --dry --power --xon-line --lead --tail
+ *   --overlap-gen 0|1 (eink-round2, experimental, default 0): generate the waveform frames while rails-on + lead scans run
  *                  --save-mode --mode-file
  *   commands: show <file> [mode] | frame <w> <h> [mode] + w*h bytes | clear [full|stock|init|gc] | refresh | mode <m> |
  *             sleep <s> | status | power off | ping | quit | frametest <p5 file> [mode] (test: a PGM through the frame path)
@@ -45,6 +46,7 @@
 #include <linux/gpio.h>
 #include <linux/spi/spidev.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -704,10 +706,48 @@ static double last_update_t; static int last_ms, fails_total, lib_only;
  * drawn after a full recovery clear (white GC16 + INIT waveform, clear_kind("full")); rails_off_fail counts failed
  * rail switch-offs (reported by "status"). Only the error handling changed: rail values/sequencing are untouched. */
 static int panel_unknown, rails_off_fail;
-static int drive(int n) {	/* scan out the n frames of the current update; rails only around the drive (v2) */
+/* eink-round2 (EXPERIMENTAL, --overlap-gen 1, default 0): the library generates the waveform frames in a worker thread
+ * while the main thread does the modeset, the rail switch-on and the lead idle scans (~170 ms that were serial after a
+ * 300-420 ms generation). The waveform scanout starts only once ALL frames exist, exactly as before: if generation is
+ * still running after the lead scans, more idle frames are scanned (idle = no drive). Rail switch-on is delayed by the
+ * previous update's generation time so the rails are not on longer than today. Library calls stay on one thread. */
+static int overlap_gen, last_frames;
+static double last_gen_ms = -1, last_rails_on_ms = 60;
+struct gen_job { pthread_mutex_t mu; pthread_cond_t cv; int done, n, nf, t, force, m; double t0, ms; };
+static int generate(int t, int force, int m, int *nf_out) {	/* decision + all frames of one update (library state) */
+    int nf = tc_decide(&img, handle, t, t, force, m), n = 0; uint8_t more = 1;
+    while (more && n < MAXF) { struct buf *b = &ring[n % RING]; more = tc_update(b, handle);
+        if (!frames[n] && !(frames[n] = malloc(FRAME))) { LOG("FAIL out of memory"); return -1; }
+        memcpy(frames[n], b->data, FRAME); n++; }
+    *nf_out = nf; return n;
+}
+static void *gen_main(void *arg) {
+    struct gen_job *j = arg; int nf = 0;
+    int n = generate(j->t, j->force, j->m, &nf);
+    pthread_mutex_lock(&j->mu); j->n = n; j->nf = nf; j->ms = (now() - j->t0) * 1000; j->done = 1;
+    pthread_cond_broadcast(&j->cv); pthread_mutex_unlock(&j->mu);
+    return NULL;
+}
+static int job_done(struct gen_job *j) { pthread_mutex_lock(&j->mu); int d = j->done; pthread_mutex_unlock(&j->mu); return d; }
+static void job_wait_until(struct gen_job *j, double t_end) {	/* wait for the job or the deadline, whichever first */
+    pthread_mutex_lock(&j->mu);
+    while (!j->done && now() < t_end) {
+        double r = t_end - now(); struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+        long ns = ts.tv_nsec + (long)((r > 0.05 ? 0.05 : r) * 1e9); ts.tv_sec += ns / 1000000000L; ts.tv_nsec = ns % 1000000000L;
+        pthread_cond_timedwait(&j->cv, &j->mu, &ts);
+    }
+    pthread_mutex_unlock(&j->mu);
+}
+static int drive_job(int n, struct gen_job *job);
+static int drive(int n) { return drive_job(n, NULL); }
+static int drive_job(int n, struct gen_job *job) {	/* scan out the n frames of the current update; rails only around the drive (v2) */
     double tcold = now();
     if (!started) { if (drm_start()) return -1; started = 1; }	/* modeset with the real strobe pattern, as a6l_epd_play did */
     double cold_ms = (now() - tcold) * 1000;
+    if (job && last_gen_ms > 0) {	/* rails on only so early that rails-on + lead end when generation is expected to end */
+        double lead_s = lead / 85.0, budget = last_gen_ms / 1000 - last_rails_on_ms / 1000 - lead_s;
+        if (budget > 0) job_wait_until(job, job->t0 + budget);
+    }
     unsigned g0 = gaps; int rc = 0; double t1 = now();
     if (power(1)) {	/* F35: no waveform scanout without the rails; switch off whatever may have come up */
         LOG("FAIL rails not switched on: update %d not driven", updates);
@@ -716,7 +756,14 @@ static int drive(int n) {	/* scan out the n frames of the current update; rails 
         return -1;
     }
     double rails_on_ms = (now() - t1) * 1000, tp = now();
+    last_rails_on_ms = rails_on_ms;
     for (int i = 0; i < lead && !rc; i++) rc = flip(idle.id);
+    int extra_idle = 0;
+    if (job) {	/* all frames must exist before the first waveform frame; idle scans meanwhile drive nothing */
+        while (!rc && !job_done(job)) { rc = flip(idle.id); extra_idle++; }
+        n = job->n;
+        if (!rc && n <= 0) { LOG("FAIL update %d: frame generation failed", updates); rc = -1; }
+    }
     double lead_ms = (now() - tp) * 1000; tp = now();
     unsigned gd = gaps;
     for (int k = 0; k < n && !rc; k++) { struct fb *f = (k & 1) ? &fb2 : &fa; memcpy(f->map, frames[k], FRAME); rc = flip(f->id); }
@@ -728,17 +775,47 @@ static int drive(int n) {	/* scan out the n frames of the current update; rails 
         rails_off_fail++; LOG("FAIL rails not switched off after update %d", updates); rc = -1;
     }
     last_ms = (int)((now() - t1) * 1000);
-    LOG("update %d stages mono_ms=%.3f cold=%.0f rails_on=%.0f lead=%.0f waveform=%.0f tail=%.0f rails_off=%.0f", updates, now() * 1000, cold_ms, rails_on_ms, lead_ms, wave_ms, tail_ms, (now() - tp) * 1000);
+    LOG("update %d stages mono_ms=%.3f cold=%.0f rails_on=%.0f lead=%.0f waveform=%.0f tail=%.0f rails_off=%.0f%s", updates, now() * 1000, cold_ms, rails_on_ms, lead_ms, wave_ms, tail_ms, (now() - tp) * 1000, job ? " (overlapped generation)" : "");
+    if (job) LOG("update %d overlap: %d extra idle scans while generating", updates, extra_idle);
     LOG("update %d shown in %d ms: %s, missed vblanks during drive=%u (total %u)", updates, last_ms, rc ? "FAILED" : "ok", gd, gaps - g0);
     return rc;
 }
 static int run_update(int force, int m, const char *what) {
     double tt = now(); int t = temperature(); double t0 = now();
     LOG("temperature stage mono_ms=%.3f read=%.0f ms value=%dC", t0 * 1000, (t0 - tt) * 1000, t);
-    int nf = tc_decide(&img, handle, t, t, force, m), n = 0; uint8_t more = 1;
-    while (more && n < MAXF) { struct buf *b = &ring[n % RING]; more = tc_update(b, handle);
-        if (!frames[n] && !(frames[n] = malloc(FRAME))) { LOG("FAIL out of memory"); return -1; }
-        memcpy(frames[n], b->data, FRAME); n++; }
+    if (overlap_gen && !dry && !lib_only && idle_pattern) {
+        static struct gen_job job;
+        memset(&job, 0, sizeof job); pthread_mutex_init(&job.mu, NULL); pthread_cond_init(&job.cv, NULL);
+        job.t = t; job.force = force; job.m = m; job.t0 = now(); job.n = -1;
+        pthread_t th;
+        if (!pthread_create(&th, NULL, gen_main, &job)) {
+            updates++;
+            int rc = -1;
+            wakelock(1);
+            for (int attempt = 0; attempt < 2 && rc; attempt++) {
+                if (dfd < 0 && drm_open()) break;
+                if (idle.map && !started) memcpy(idle.map, idle_pattern, FRAME);
+                if (exact_trace.state == TRACE_CAPTURED && exact_trace.update == updates) exact_trace.drive_attempted=1;
+                rc = drive_job(-1, &job);
+                if (rc && drm_lost) { LOG("WARN DRM access lost (lease revoked / composer restarted?): re-acquiring and driving again"); drm_close(); }
+                else break;
+            }
+            pthread_join(th, NULL);	/* also after an early drive failure: the library state must be quiescent */
+            wakelock(0);
+            if (job.n < 0) rc = -1;
+            last_frames = job.n; last_gen_ms = job.ms;
+            if (exact_trace.state == TRACE_CAPTURED && exact_trace.update == updates) { exact_trace.frames=job.n; exact_trace.decision=job.nf; exact_trace.temperature=t; }
+            LOG("update %d (%s): mode=%d force=%d temp=%dC decision=%d frames=%d generated in %.0f ms (overlapped)", updates, what, m, force, t, job.nf, job.n, job.ms);
+            pthread_mutex_destroy(&job.mu); pthread_cond_destroy(&job.cv);
+            last_update_t = now(); if (rc) { fails_total++; panel_unknown = 1; }
+            return rc;
+        }
+        LOG("WARN generation thread not started: serial update");
+        pthread_mutex_destroy(&job.mu); pthread_cond_destroy(&job.cv);
+    }
+    int nf = 0, n = generate(t, force, m, &nf);
+    if (n < 0) return -1;
+    last_frames = n; last_gen_ms = (now() - t0) * 1000;
     updates++; if (exact_trace.state == TRACE_CAPTURED && exact_trace.update == updates) { exact_trace.frames=n; exact_trace.decision=nf; exact_trace.temperature=t; } LOG("update %d (%s): mode=%d force=%d temp=%dC decision=%d frames=%d generated in %.0f ms", updates, what, m, force, t, nf, n, (now() - t0) * 1000);
     if (dry) { write_a6lepd(n); return 0; }
     if (lib_only) return 0;
@@ -981,6 +1058,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--dry") && v) { dry = 1; dry_prefix = argv[++i]; } else if (!strcmp(a, "--power") && v) power_path = argv[++i];
         else if (!strcmp(a, "--xon-line") && v) xon_line = atoi(argv[++i]); else if (!strcmp(a, "--lead") && v) lead = atoi(argv[++i]);
         else if (!strcmp(a, "--tail") && v) tail = atoi(argv[++i]);
+        else if (!strcmp(a, "--overlap-gen") && v) overlap_gen = atoi(argv[++i]) == 1;
         else if (!strcmp(a, "--lease") && v) { if (nleases < 6) leases[nleases++] = v; i++; } else if (!strcmp(a, "--mode-file") && v) mode_file = argv[++i];
         else if (!strcmp(a, "--save-mode") && v) save_mode = argv[++i];
         else if (!strcmp(a, "--no-master")) no_master = 1; else if (!strcmp(a, "--wait-drm") && v) wait_drm = atoi(argv[++i]);
@@ -990,6 +1068,10 @@ int main(int argc, char **argv) {
         else { fprintf(stderr, "usage: see source header (%s)\n", a); return 2; }
     }
     signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGPIPE, SIG_IGN); setvbuf(stdout, NULL, _IOLBF, 0);
+    /* eink-round2: lead/tail are now property-tunable from the rc (persist.vendor.eink.lead/tail, defaults unchanged
+     * 10/20) for an ATTENDED A/B test; bound them so a typo cannot remove the idle scans or stall the drive. */
+    if (lead < 2 || lead > 40) { LOG("WARN --lead %d out of range 2..40: using 10", lead); lead = 10; }
+    if (tail < 4 || tail > 60) { LOG("WARN --tail %d out of range 4..60: using 20", tail); tail = 20; }
     use_wakelock = wl >= 0 ? wl : (sock_name || listen_at);
     if (save_mode) return drm_open() ? 1 : 0;	/* v3: only record connector + mode (drm_open exits) */
     int lfd = -1;	/* take the socket early so clients can connect (they get replies once we are ready) */

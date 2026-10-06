@@ -198,6 +198,7 @@ static void test_plane(void) {
 static void test_policy_stock(void) {
     struct pol_cfg c; pol_default_cfg(&c); c.clear_every = 3;
     CHECK(pol_apply_refresh_mode(&c, "stock") == 0 && c.stock && c.clear_every == 3, "select stock");
+    CHECK(c.min_gap_ms == 0, "stock: no extra gap after the epdd ACK (%d ms)", c.min_gap_ms);
     struct sim m; sim_init(&m, &c);
     struct pol_action a = sim_tick(&m, 1.0, 0.5);
     CHECK(a.kind == POL_SHOW && !strcmp(a.mode, POL_READING), "stock: first change sent at once as REGAL (%s)", kn(a.kind));
@@ -211,8 +212,59 @@ static void test_policy_stock(void) {
     settle(&m, 12, 0.4, 0.5);
     CHECK(m.n_refresh == r0 + 1, "stock: no repeated cleanup on a still page: %s", m.log);
 }
+/* eink-round2-20261006: the first capture after a held drag is released can still be the drag position (filmed: a
+ * half-swiped home page shown for 1.4 s). Captures every 100 ms as in the ROM (a6l_eink.rc --interval 100). */
+static void test_policy_release_settle(void) {
+    struct pol_cfg c; pol_default_cfg(&c);
+    CHECK(pol_apply_refresh_mode(&c, "stock") == 0 && c.release_quiet_ms == 90 && c.release_max_ms == 700, "stock keeps the release settle");
+    struct pol_state s; pol_init(&s, &c, 0);
+    double t = 10.0;
+    pol_gesture_released(&s, t);
+    struct pol_action a = pol_step(&s, t + 0.01, 0.3, 0.3, 0);	/* last drag frame vs the pre-drag capture */
+    CHECK(a.kind == POL_NONE, "release: the last drag position is not sent (%s)", kn(a.kind));
+    a = pol_step(&s, t + 0.11, 0.2, 0.4, 0);			/* app's settled frame != drag frame */
+    CHECK(a.kind == POL_NONE, "release: content still changing, nothing sent (%s)", kn(a.kind));
+    a = pol_step(&s, t + 0.21, 0, 0.4, 0);			/* identical capture pair */
+    CHECK(a.kind == POL_SHOW && a.mode && !strcmp(a.mode, POL_READING), "release: settled page sent after one unchanged pair (%s)", kn(a.kind));
+    pol_sent(&s, &a, t + 0.21); pol_done(&s, t + 1.0);
+    a = pol_step(&s, t + 1.3, 0.1, 0.1, 0);
+    CHECK(a.kind == POL_SHOW, "release settle is over: a later change is sent at once (%s)", kn(a.kind));
+    pol_sent(&s, &a, t + 1.3); pol_done(&s, t + 2.0);
+    pol_gesture_released(&s, 20.0);					/* a fling that keeps moving: bounded wait */
+    int sent_at = -1;
+    for (int k = 0; k < 12 && sent_at < 0; k++) { a = pol_step(&s, 20.01 + 0.1 * k, 0.1, 0.5, 0); if (a.kind != POL_NONE) sent_at = k; }
+    CHECK(sent_at == 7, "release: still moving -> normal policy once release_max_ms elapsed (capture %d)", sent_at);
+    c.release_quiet_ms = 0; pol_init(&s, &c, 0); pol_gesture_released(&s, 30);
+    a = pol_step(&s, 30.01, 0.3, 0.3, 0);
+    CHECK(a.kind == POL_SHOW, "release settle off (0): sent at once (%s)", kn(a.kind));
+    struct pol_cfg q; pol_default_cfg(&q); q.release_quiet_ms = 120; q.release_max_ms = 400;
+    CHECK(pol_apply_refresh_mode(&q, "partial") == 0 && q.release_quiet_ms == 120 && q.release_max_ms == 400, "refresh mode change keeps release settings");
+}
+/* eink-round2: tone curve. Identity and the pre-round2 linear contrast LUT are reproduced exactly; the default curve
+ * maps light Material surfaces to paper white and dark/thin text to (near) black, monotonically. */
+static void test_tone(void) {
+    uint8_t l[256]; int ok = 1, mono = 1;
+    tone_lut(l, 0, 0, 255, 100); for (int i = 0; i < 256; i++) ok &= l[i] == i;
+    CHECK(ok, "tone: 0/0/255/100 is the identity");
+    for (int c = 0; c <= 100; c += 25) {
+        tone_lut(l, c, 0, 255, 100); ok = 1;
+        int bp = c * 60 / 100, wp = 255 - c * 60 / 100;
+        for (int i = 0; i < 256; i++) { int v = i <= bp ? 0 : i >= wp ? 255 : (i - bp) * 255 / (wp - bp); ok &= l[i] == v; }
+        CHECK(ok, "tone: contrast %d with clips off and gamma 100 = old linear LUT", c);
+    }
+    tone_lut(l, 0, TONE_DEFAULT_BLACK, TONE_DEFAULT_WHITE, TONE_DEFAULT_GAMMA);
+    for (int i = 1; i < 256; i++) mono &= l[i] >= l[i - 1];
+    CHECK(mono, "tone: default curve monotonic");
+    CHECK(l[255] == 255 && l[240] == 255 && l[232] == 255, "tone: Material surfaces (232..255) -> paper white (%d %d)", l[240], l[232]);
+    CHECK(l[28] <= 2 && l[20] == 0, "tone: onSurface text (luma ~28) -> black (%d; < 8.5 = panel level 0)", l[28]);
+    CHECK(l[105] >= 50 && l[105] <= 75, "tone: filmed thin-text grey 105 darkened to %d", l[105]);
+    CHECK(l[128] >= 80 && l[128] <= 100, "tone: mid grey 128 -> %d", l[128]);
+    CHECK(l[200] > 150 && l[200] < 230, "tone: light grey 200 stays a grey (%d)", l[200]);
+    tone_lut(l, 0, 0, 255, 200); CHECK(l[128] >= 62 && l[128] <= 66, "tone: gamma 2.0 at 128/255 = %d (exp. 64)", l[128]);
+    tone_lut(l, 0, 200, 210, 150); CHECK(l[100] > 0 && l[100] < 255, "tone: nonsense clips ignored (%d)", l[100]);
+}
 int main(void) {
-    test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
+    test_tone(); test_policy_release_settle(); test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
     printf("%s: %d checks, %d failures\n", fails ? "EINK_LOGIC_TESTS_FAIL" : "EINK_LOGIC_TESTS_PASS", checks, fails);
     return fails != 0;
 }

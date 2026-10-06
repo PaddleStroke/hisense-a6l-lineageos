@@ -30,10 +30,16 @@ struct pol_cfg {
     double reading_full_frac;	/* reading: a change bigger than this fraction of the tiles -> GC16 instead of REGAL (0.6) */
     int stock;			/* 1 = stock-like: every change = one REGAL update of the latest capture, no quiet wait, no A2,
 				 * no GC16 settle; forced REGAL cleanup after clear_every updates, only once idle (settle_ms) */
+    int release_quiet_ms;	/* after a touch-drag release (pol_gesture_released): send nothing until the content has been
+				 * unchanged this long (one identical capture pair) and this long has passed since the release
+				 * (default 90; 0 = off). The app's settled frame, not the last drag position, is shown. */
+    int release_max_ms;		/* ... bounded: after this long since the release the normal policy applies even if the
+				 * content still moves (fling) (default 700) */
 };
 struct pol_state {
     struct pol_cfg cfg;
     double last_change, win_t, done_t;
+    double release_t;		/* time of the last touch-drag release (0 = none) */
     int consec, burst, fast_on_panel, clean_n, win_n, reading_n, primed, fast_n;
 };
 void pol_default_cfg(struct pol_cfg *c);
@@ -46,6 +52,8 @@ struct pol_action pol_step(struct pol_state *s, double now, double moving, doubl
 void pol_sent(struct pol_state *s, const struct pol_action *a, double now);
 void pol_done(struct pol_state *s, double now);
 int pol_in_burst(const struct pol_state *s);
+/* The mirror held captures during a touch drag (sys.a6l.eink.no_animations) and the finger has just been lifted. */
+void pol_gesture_released(struct pol_state *s, double now);
 
 /* dualux (25 Sep): user refresh modes (persist.vendor.eink.refresh) -> policy knobs. Returns 0 if the name is known.
  *   auto    = default policy (GC16 when still, A2 bursts while moving, one clean update when it settles)
@@ -117,3 +125,14 @@ int plane_compose(uint8_t *gray, int gw, int gh, const struct plane_geo *q, cons
 
 /* A valid opaque 1:1 full-screen plane makes all lower z-order planes irrelevant. */
 int plane_opaque_fullscreen(const struct plane_geo *q, int fw, int fh, int gw, int gh);
+
+/* ---------------- 5. tone curve (mirror grey LUT, applied before the e-ink quantisation) ---------------- */
+/* eink-round2-20261006: the filmed panel reaches the same black as stock on solid black content, but Material light
+ * surfaces (grey cards ~230-245), onSurfaceVariant text and thin glyphs averaged by the 1080 -> 720 resize arrive as
+ * mid greys (filmed Settings text: ink/paper 1.7 vs stock 2.4-4.6). The curve: black point = max(contrast * 60 / 100,
+ * black_clip), white point = min(255 - contrast * 60 / 100, white_clip), then out = 255 * x^(gamma_x100 / 100).
+ * contrast/black 0, white 255, gamma 100 = identity; contrast c with clips 0/255 and gamma 100 = the old linear LUT. */
+#define TONE_DEFAULT_BLACK 24
+#define TONE_DEFAULT_WHITE 232
+#define TONE_DEFAULT_GAMMA 150
+void tone_lut(uint8_t lut[256], int contrast, int black_clip, int white_clip, int gamma_x100);

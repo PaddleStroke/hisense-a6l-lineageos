@@ -8,12 +8,13 @@
 void pol_default_cfg(struct pol_cfg *c) {
     c->quiet_ms = 300; c->settle_ms = 1000; c->min_gap_ms = 150; c->clear_every = 10; c->max_per_min = 120;
     c->active_mode = POL_FASTEST; c->fixed_fast = 0; c->reading = 0; c->reading_refresh_every = 8; c->reading_full_frac = 0.6;
-    c->stock = 0;
+    c->stock = 0; c->release_quiet_ms = 90; c->release_max_ms = 700;
 }
 void pol_init(struct pol_state *s, const struct pol_cfg *c, double now) {
     memset(s, 0, sizeof *s); s->cfg = *c; s->win_t = now; s->done_t = now - 10; s->last_change = now - 10;
 }
 int pol_in_burst(const struct pol_state *s) { return s->burst; }
+void pol_gesture_released(struct pol_state *s, double now) { s->release_t = now; }
 
 struct pol_action pol_step(struct pol_state *s, double now, double moving, double vs_panel, int busy) {
     struct pol_action a = {POL_NONE, NULL};
@@ -23,6 +24,13 @@ struct pol_action pol_step(struct pol_state *s, double now, double moving, doubl
     double quiet_ms = (now - s->last_change) * 1000;
     int can = !busy && (now - s->done_t) * 1000 >= c->min_gap_ms && s->win_n < c->max_per_min;
     if (!can) return a;
+    /* eink-round2-20261006 (filmed): right after a drag release the first capture can still show the drag position
+     * (the app has not drawn its settled frame yet); one REGAL cycle (~1.5 s) then shows a half-swiped home page or a
+     * half-pulled shade. Wait for one unchanged capture pair after the release, bounded by release_max_ms. */
+    if (s->release_t > 0 && c->release_quiet_ms > 0) {
+        double since_ms = (now - s->release_t) * 1000;
+        if (since_ms < c->release_max_ms && (since_ms < c->release_quiet_ms || quiet_ms < c->release_quiet_ms)) return a;
+    }
     if (c->stock) {
         /* Stock A6L (filmed 2026-10-06): one REGAL update (39 frames, only changed pixels driven, white never
          * flashes) per change, of the newest capture, as soon as the panel is free. While scrolling this coalesces
@@ -87,11 +95,16 @@ int pol_apply_refresh_mode(struct pol_cfg *c, const char *m) {
     if (!m || !*m) return -1;
     struct pol_cfg d; pol_default_cfg(&d);
     d.clear_every = c->clear_every; d.max_per_min = c->max_per_min; d.min_gap_ms = c->min_gap_ms;
+    d.release_quiet_ms = c->release_quiet_ms; d.release_max_ms = c->release_max_ms;
     if (!strcmp(m, "auto")) { }
     else if (!strcmp(m, "quality")) { d.reading = 1; d.reading_full_frac = 0.0; d.settle_ms = 700; }
     else if (!strcmp(m, "partial") || !strcmp(m, "reading")) { d.reading = 1; }
     else if (!strcmp(m, "fast")) { d.active_mode = POL_FAST; d.fixed_fast = 1; d.quiet_ms = 200; d.settle_ms = 800; }
-    else if (!strcmp(m, "stock")) { d.stock = 1; d.active_mode = POL_READING; d.quiet_ms = 0; d.settle_ms = 1500; }
+    else if (!strcmp(m, "stock")) {
+        /* min_gap 0 (eink-round2): a6l_epdd ACKs only after its 20 tail idle scans and the rail switch-off, so the
+         * panel is already free; the extra 150 ms only lengthened the filmed 1.6 s scroll update cycle (stock ~0.3 s) */
+        d.stock = 1; d.active_mode = POL_READING; d.quiet_ms = 0; d.settle_ms = 1500; d.min_gap_ms = 0;
+    }
     else if (!strcmp(m, "fastest")) { d.active_mode = POL_FASTEST; d.fixed_fast = 1; d.quiet_ms = 150; d.settle_ms = 600; }
     else return -1;
     *c = d; return 0;
@@ -230,4 +243,41 @@ int plane_compose(uint8_t *gray, int gw, int gh, const struct plane_geo *q, cons
         }
     }
     return 0;
+}
+
+/* ---------------- 5. tone curve (eink-round2) ---------------- */
+/* x^g for x in (0,1], g > 0 without libm (the host tests and the NO_DRM mirror build link no -lm): ln via range reduction
+ * to [0.5,1) and the atanh series, exp via range reduction by ln 2 and Taylor. Accurate far below one grey level. */
+static double tone_pow(double x, double g) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    const double LN2 = 0.69314718055994531;
+    int k = 0; while (x < 0.5) { x *= 2; k++; }
+    double z = (x - 1) / (x + 1), z2 = z * z, term = z, s = 0;
+    for (int n = 1; n < 40; n += 2) { s += term / n; term *= z2; }
+    double y = g * (2 * s - k * LN2);	/* <= 0 */
+    int m = 0; while (y < -LN2) { y += LN2; m++; }
+    double e = 1, t = 1; for (int n = 1; n < 20; n++) { t *= y / n; e += t; }
+    while (m-- > 0) e *= 0.5;
+    return e;
+}
+void tone_lut(uint8_t lut[256], int contrast, int black_clip, int white_clip, int gamma_x100) {
+    if (contrast < 0) contrast = 0;
+    if (contrast > 100) contrast = 100;
+    if (gamma_x100 < 50) gamma_x100 = 50;
+    if (gamma_x100 > 300) gamma_x100 = 300;
+    int bp = contrast * 60 / 100, wp = 255 - contrast * 60 / 100;
+    if (black_clip > bp) bp = black_clip;
+    if (white_clip < wp) wp = white_clip;
+    if (bp < 0) bp = 0;
+    if (wp > 255) wp = 255;
+    if (wp - bp < 32) { bp = contrast * 60 / 100; wp = 255 - contrast * 60 / 100; }	/* nonsense clips: ignore them */
+    for (int i = 0; i < 256; i++) {
+        int v;
+        if (i <= bp) v = 0;
+        else if (i >= wp) v = 255;
+        else if (gamma_x100 == 100) v = (i - bp) * 255 / (wp - bp);	/* bit-identical to the pre-round2 linear LUT */
+        else { v = (int)(255 * tone_pow((double)(i - bp) / (wp - bp), gamma_x100 / 100.0) + 0.5); if (v > 255) v = 255; }
+        lut[i] = (uint8_t)v;
+    }
 }

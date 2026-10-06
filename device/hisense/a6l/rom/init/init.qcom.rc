@@ -13,14 +13,6 @@ import /vendor/etc/init/hw/init.a6l.usb.rc
 
 on early-init
     write /proc/sys/kernel/printk_devkmsg on
-    # Serial device suspend/resume (6 Oct 2026, docs/sleep-async-workaround-20261006.md). WORKAROUND, not a fix.
-    # With the kernel default pm_async=1, sleep after a camera VIDEO recording hard-hangs the phone (watchdog reset,
-    # then backlit black) in about 4 of 6 trials: pm_test=devices passes, pm_test=platform (adds late/noirq) crashes,
-    # each of the 19 late/noirq callbacks passes when run serially, and the hold time does not matter. With
-    # pm_async=0 all 4 post-video trials passed (3 real sleeps + platform stage). So two devices that depend on each
-    # other are suspended/resumed in parallel without a device_link. Remove this line once that link is found and
-    # fixed (re-test: video, then pm_test=platform with pm_async=1). Cost: suspend/resume callbacks run one at a time.
-    write /sys/power/pm_async 0
     # Watchdog = 60 s x multiplier. Phone default 2 (first boot: dex2oat + CPUs at the bootloader clock, no cpufreq);
     # the QEMU test passes androidboot.hw_timeout_multiplier=5.
     setprop ro.hw_timeout_multiplier ${ro.boot.hw_timeout_multiplier:-2}

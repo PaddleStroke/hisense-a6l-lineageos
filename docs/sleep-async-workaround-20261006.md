@@ -1,7 +1,23 @@
-# Sleep after video: `pm_async=0` workaround (6 Oct 2026)
+# Sleep after video: `pm_async=0` workaround → fixed in the device tree (6 Oct 2026)
 
-**Status:** workaround shipped in `device/hisense/a6l/rom/init/init.qcom.rc` (`on early-init`: `write /sys/power/pm_async 0`).
-The root cause, a missing suspend/resume dependency between two devices, is still open.
+**Status: FIXED, workaround removed.** The real fix is in `device/hisense/a6l/kernel/a6l-camera-v75.dtso`: `&cci` now also
+takes `mnoc_ahb`, `smmu_ahb` and `smmu_axi`, as the stock device tree does. The `pm_async=0` line was removed from
+`init.qcom.rc` the same day. Analysis: `firmware/extracted/pm-async-race-20261006/README.md`.
+
+**Root cause.** The rear-camera focus motor (GT9769, `4-000c`, held runtime-active by libcamera) parks the lens in
+its suspend callback with CCI I²C writes, about 1 ms per 16 positions. That is 82 ms measured at lens position 1023.
+The MMSS NoC/SMMU clocks the CCI needs were consumed only by the MMSS SMMU `iommu@cd00000`, which gates them in its
+own system-suspend callback. With async suspend, the motor's writes ran in parallel with that gating, the CCI access
+stalled the bus and the watchdog fired. A video recording only mattered because autofocus moves the lens.
+
+**Proof.**
+- Before the fix: fresh boot, no camera use, lens set to 1023, `pm_async=1`. The first `pm_test=devices` hung
+  (durable record: BEGIN, no END).
+- Fix boot `f517fef5…` (only the DTB changed): `cci@ca0c000` is listed as a consumer of the three clocks.
+- The same provocation then passed 6/6 (3× devices, 3× platform).
+- The user did three real post-video sleeps with `pm_async=1`: 3/3 pass.
+
+The original investigation notes follow.
 
 ## Symptom
 
