@@ -21,7 +21,7 @@ BOARD_MKBOOTIMG_ARGS += --header_version 1 --kernel_offset 0x00008000 --ramdisk_
 # = rom-v2 boot cmdline WITHOUT androidboot.selinux=permissive (user builds are enforcing whatever the cmdline says)
 BOARD_KERNEL_CMDLINE := console=ttyMSM0,115200n8 earlycon=a6lfb keep_bootcon androidboot.hardware=qcom loglevel=6 \
     clk_ignore_unused pd_ignore_unused regulator_ignore_unused panic=0 a6l_probe=1 a6l_manual_usb=1 \
-    androidboot.boot_devices=soc@0/c0c4000.mmc firmware_class.path=/vendor/firmware printk.devkmsg=on
+    androidboot.boot_devices=soc@0/c0c4000.mmc firmware_class.path=/vendor/firmware printk.devkmsg=on androidboot.mode=normal
 BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
 BOARD_DTBOIMG_PARTITION_SIZE := 8388608

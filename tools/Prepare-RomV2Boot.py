@@ -62,7 +62,10 @@ BOOT_BYTES = 64 << 20
 DTBO_BYTES = 8 << 20
 CMDLINE = ('console=ttyMSM0,115200n8 earlycon=a6lfb keep_bootcon androidboot.hardware=qcom loglevel=6 clk_ignore_unused '
            'pd_ignore_unused regulator_ignore_unused panic=0 a6l_probe=1 a6l_manual_usb=1 androidboot.selinux=permissive '
-           'androidboot.boot_devices=soc@0/c0c4000.mmc firmware_class.path=/vendor/firmware printk.devkmsg=on log_buf_len=4M')
+           'androidboot.boot_devices=soc@0/c0c4000.mmc firmware_class.path=/vendor/firmware printk.devkmsg=on log_buf_len=4M androidboot.mode=normal')
+# restart-hang fix (7 Oct 2026, firmware/extracted/restart-hang-20261007): the ABL appends androidboot.mode=charger when it
+# sees USB_CHG (any restart or power-on with USB attached); charger mode = no mount_all/adb/UI = 'backlit black'. Our token
+# comes first and ro.boot.mode is write-once, so Android always boots normally (off-mode charging is not supported).
 # r6b boot fix (30 Sep 2026): log_buf_len=4M (CONFIG_LOG_BUF_SHIFT=17 = 128 KiB): the whole boot stays in the ring, so the
 # userdebug boot log (/metadata/a6l/boot-kmsg.txt, started at post-fs) and dmesg from adb start at 0 s.
 # release-prep (27 Sep 2026): A6L_SELINUX=enforcing drops androidboot.selinux=permissive (a `user` build is enforcing anyway;
