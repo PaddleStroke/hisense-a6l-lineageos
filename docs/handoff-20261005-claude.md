@@ -658,3 +658,12 @@ still running.
   RTC wakealarm, stayon back on afterwards.
 - s2idle shows "Watchdog detected hard LOCKUP on cpu 5/6" reports (pre-existing, also in round 10). Non-fatal unless
   kernel.hardlockup_panic=1 (some bench scripts set it).
+- 8 Oct 00:30 INSTALLED: round 13e = boot 10affa76 + vendor 3f4f025b (13c + v4l2_codec2 0004) + system ac1ca70a (13d:
+  system_ext init.a6l.codec2-selection.rc). Verified remotely: venus ready at boot, media.c2.hal.selection=aidl,
+  MediaCodecList lists c2.v4l2.avc.encoder first, screenrecord encodes on Venus (High@4.1), cold resume ~110 ms,
+  powered off when idle, stage-b9b-sleep A/B pass on the integrated build. Codec2 HIDL vs AIDL: the platform default
+  is hidl; AIDL is needed to see the v4l2 store (ro.vendor.api_level 202604 allows it).
+- Morning (user): Aperture 1080p/720p recording (ffprobe: High/41, ~900 frames per 30 s, IDR every 30 frames),
+  video playback in Gallery + audio (AIDL bufferpool2 path), LCD->e-ink switch time (0042), retest the LCD->e-ink page
+  behaviour (0039/0041), optional reader sleep (Screen lock: None). Then attended: cpufreq SAW test, mdss_ahb fix,
+  SELinux pass 2 (round 14) + an enforcing test boot.
