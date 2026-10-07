@@ -38,4 +38,5 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_COPY_FILES += \
     $(A6L_VENUS_DIR)/media_codecs_c2.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_c2.xml \
     $(A6L_VENUS_DIR)/android.hardware.media.c2-extended-seccomp_policy:$(TARGET_COPY_OUT_VENDOR)/etc/seccomp_policy/android.hardware.media.c2-extended-seccomp_policy \
-    $(A6L_VENUS_DIR)/init.a6l.venus.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.venus.rc
+    $(A6L_VENUS_DIR)/init.a6l.venus.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.venus.rc \
+    $(A6L_VENUS_DIR)/init.a6l.codec2-selection.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.a6l.codec2-selection.rc

@@ -1,0 +1,11 @@
+# venus Stage C (8 Oct 2026): the V4L2 Codec2 service is an AIDL IComponentStore/default. The platform defaults to the
+# HIDL Codec2 path (media.c2.hal.selection=hidl, frameworks/av HalSelection.cpp), which never lists AIDL stores, so the
+# hardware encoder stayed invisible. ro.vendor.api_level is 202604, so AIDL may be selected; media.swcodec then serves
+# the software store over AIDL as well. Installed to system_ext (main init may set this platform property; vendor_init
+# may not). Both triggers run before class main starts the media services: the build default fires when init queues
+# the existing properties, a persisted 0 from /data fires at post-fs-data.
+on property:persist.vendor.a6l.venus=1
+    setprop media.c2.hal.selection aidl
+
+on property:persist.vendor.a6l.venus=0
+    setprop media.c2.hal.selection hidl

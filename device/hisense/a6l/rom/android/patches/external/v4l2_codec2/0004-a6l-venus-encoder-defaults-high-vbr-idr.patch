@@ -1,0 +1,49 @@
+--- a/components/EncodeInterface.cpp
++++ b/components/EncodeInterface.cpp
+@@ -244,7 +244,7 @@
+ 
+     addParameter(
+             DefineParam(mBitrateMode, C2_PARAMKEY_BITRATE_MODE)
+-                    .withDefault(new C2StreamBitrateModeTuning::output(0u, C2Config::BITRATE_CONST))
++                    .withDefault(new C2StreamBitrateModeTuning::output(0u, C2Config::BITRATE_VARIABLE))
+                     .withFields(
+                             {C2F(mBitrateMode, value)
+                                      .oneOf({C2Config::BITRATE_CONST, C2Config::BITRATE_VARIABLE})})
+@@ -256,9 +256,15 @@
+         outputMime = MEDIA_MIMETYPE_VIDEO_AVC;
+         C2Config::profile_t minProfile = static_cast<C2Config::profile_t>(
+                 *std::min_element(profiles.begin(), profiles.end()));
++        // A6L patch 0004: default to High (camera recording quality, as stock) when supported.
++        C2Config::profile_t defaultProfile = minProfile;
++        if (std::find(profiles.begin(), profiles.end(),
++                      static_cast<unsigned int>(C2Config::PROFILE_AVC_HIGH)) != profiles.end()) {
++            defaultProfile = C2Config::PROFILE_AVC_HIGH;
++        }
+         addParameter(
+                 DefineParam(mProfileLevel, C2_PARAMKEY_PROFILE_LEVEL)
+-                        .withDefault(new C2StreamProfileLevelInfo::output(0u, minProfile,
++                        .withDefault(new C2StreamProfileLevelInfo::output(0u, defaultProfile,
+                                                                           C2Config::LEVEL_AVC_4_1))
+                         .withFields(
+                                 {C2F(mProfileLevel, profile).oneOf(profiles),
+--- a/v4l2/V4L2Encoder.cpp
++++ b/v4l2/V4L2Encoder.cpp
+@@ -613,8 +613,16 @@
+     // Additional optional controls:
+     // - Enable macroblock-level bitrate control.
+     // - Set GOP length to 0 to disable periodic key frames.
+-    mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG, {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE, 1),
+-                                                V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0)});
++    // A6L patch 0004: set separately (an unsupported MB_RC_ENABLE must not drop the GOP setting). Venus rejects
++    // GOP_SIZE 0 (range 1..65535) and would keep its own 30-frame non-IDR I-frame cadence: use the maximum, so all
++    // key frames are the IDRs this component forces every key-frame period.
++    mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG, {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE, 1)});
++    if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG, {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0)})) {
++        if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
++                                  {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 65535)})) {
++            ALOGW("Failed to disable periodic key frames (GOP_SIZE 0/65535)");
++        }
++    }
+ 
+     // All controls below are H.264-specific, so we can return here if the profile is not H.264.
+     if (outputProfile >= C2Config::PROFILE_AVC_BASELINE &&
