@@ -1,0 +1,5 @@
+# hw-isp round 7 (Aperture 0005): the camera app mirrors the preview of whichever camera faces the user, which depends
+# on the screen in use (a6l_dualux: vendor.dualux.state = lcd | eink | eink-asleep). vendor_dualux_prop is a
+# vendor_restricted_prop (eink/switcher/sepolicy/vendor/property.te): coredomain may read it when allowed.
+# Aperture runs as untrusted_app_34 (product app, not privileged); appdomain covers it and any other camera app.
+get_prop(appdomain, vendor_dualux_prop)

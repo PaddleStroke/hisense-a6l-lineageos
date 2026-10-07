@@ -97,6 +97,20 @@ int main(void) {
         exec_cmd("power off", NULL, reply, sizeof reply); lock_on_panel = 0;
         lcd_guard = "none"; unlink("t_lcd_enabled");
     }
+    /* eink-round6d --lock-clean: the first page after a lock picture is GC16 (mode 2, forced), the next ones normal */
+    {
+        lock_clean = 1;
+        cmd("frame 720 1440 quality", 95); cmd("lockframe 720 1440 reading", 73);
+        EXPECT(cmd("frame 720 1440 reading", 96) == 0 && fake_tcon_last_force == 1 && fake_tcon_last_mode == 2 && !lock_on_panel,
+               "lock-clean: first page after a lock picture = GC16 clean (forced, mode 2)");
+        EXPECT(cmd("frame 720 1440 reading", 97) == 0 && fake_tcon_last_force == 0 && fake_tcon_last_mode == 3, "lock-clean: the following page is a normal REGAL update");
+        cmd("frame 720 1440 quality", 98); cmd("lockframe 720 1440 reading", 74);
+        EXPECT(exec_cmd("lock restore", NULL, reply, sizeof reply) == 0 && fake_tcon_last_force == 1 && fake_tcon_last_mode == 2, "lock-clean: restore of the covered page = GC16 clean");
+        lock_clean = 0;
+        cmd("lockframe 720 1440 reading", 75);
+        EXPECT(cmd("frame 720 1440 reading", 99) == 0 && fake_tcon_last_force == 0 && fake_tcon_last_mode == 3, "--lock-clean 0: first page after a lock picture stays REGAL (round 6)");
+        exec_cmd("power off", NULL, reply, sizeof reply);
+    }
     /* restore off: woke up on the LCD */
     cmd("frame 720 1440 quality", 90); memcpy(page, last_img, RGBA);
     cmd("lockframe 720 1440 reading", 70);

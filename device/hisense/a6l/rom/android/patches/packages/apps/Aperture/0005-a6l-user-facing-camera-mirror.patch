@@ -1,0 +1,200 @@
+--- a/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
++++ b/app/src/main/java/org/lineageos/aperture/CameraActivity.kt
+@@ -77,6 +77,7 @@
+ import com.google.android.material.snackbar.Snackbar
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.delay
+ import kotlinx.coroutines.flow.collect
+ import kotlinx.coroutines.flow.collectLatest
+ import kotlinx.coroutines.guava.await
+@@ -134,6 +135,7 @@
+ import org.lineageos.aperture.ui.views.PreviewBlurView
+ import org.lineageos.aperture.ui.views.VerticalSlider
+ import org.lineageos.aperture.utils.NativePhotoPolicy
++import org.lineageos.aperture.utils.A6lUserFacing
+ import org.lineageos.aperture.utils.ExifUtils
+ import org.lineageos.aperture.utils.GoogleLensUtils
+ import org.lineageos.aperture.utils.PermissionsManager
+@@ -459,6 +461,14 @@
+             if (zoomGestureDetector.onTouchEvent(event) && zoomGestureDetectorIsInProgress) {
+                 return@setOnTouchListener true
+             }
++            // A6L: mirrored preview (e-ink in use): give the gesture detector on-screen coordinates
++            if (viewFinder.scaleX < 0f) {
++                val screenEvent = MotionEvent.obtain(event)
++                screenEvent.setLocation(viewFinder.width - event.x, event.y)
++                val handled = gestureDetector.onTouchEvent(screenEvent)
++                screenEvent.recycle()
++                return@setOnTouchListener handled
++            }
+             return@setOnTouchListener gestureDetector.onTouchEvent(event)
+         }
+         viewFinder.setOnClickListener {
+@@ -592,6 +602,26 @@
+             }
+         }
+ 
++        // A6L: the camera facing the user changes with the screen in use (e-ink on the back)
++        if (A6lUserFacing.isA6l) {
++            lifecycleScope.launch {
++                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
++                    while (true) {
++                        delay(500)
++                        val eink = withContext(Dispatchers.IO) { A6lUserFacing.einkActive() }
++                        // cameraConfiguration is a SharedFlow (replay 1): the configuration bound last
++                        val cameraConfiguration = viewModel.cameraConfiguration.replayCache.lastOrNull()
++                        if (eink != viewModel.a6lEinkBound && cameraConfiguration != null &&
++                            viewModel.cameraState.value == CameraState.IDLE
++                        ) {
++                            Log.i(LOG_TAG, "A6L: screen changed (e-ink $eink), rebinding for the preview mirror")
++                            bindCameraUseCases(cameraConfiguration)
++                        }
++                    }
++                }
++            }
++        }
++
+         // Also collect location
+         lifecycleScope.launch {
+             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+@@ -1108,8 +1138,9 @@
+             viewModel.tapToFocusInfoState.collectLatest { tapToFocusInfoState ->
+                 when (tapToFocusInfoState.focusState) {
+                     CameraController.TAP_TO_FOCUS_STARTED -> {
+-                        viewFinderFocus.x =
+-                            tapToFocusInfoState.tapPoint!!.x - (viewFinderFocus.width / 2)
++                        viewFinderFocus.x = tapToFocusInfoState.tapPoint!!.x.let {
++                            if (viewFinder.scaleX < 0f) viewFinder.width - it else it
++                        } - (viewFinderFocus.width / 2)
+                         viewFinderFocus.y =
+                             tapToFocusInfoState.tapPoint!!.y - (viewFinderFocus.height / 2)
+                         viewFinderFocus.isVisible = true
+@@ -1462,13 +1493,30 @@
+             "Trying to rebind camera while camera is not in IDLE state"
+         }
+ 
+-        // Show blurred preview
++        // Show blurred preview (A6L: frozen with the mirror state it was shown with)
++        previewBlurView.scaleX = viewFinder.scaleX
+         previewBlurView.freeze()
+         previewBlurView.isVisible = true
+ 
+         // Unbind previous use cases
+         viewModel.cameraController.unbind()
+ 
++        // A6L: on the e-ink (rear screen) the rear cameras face the user. CameraX mirrors the front camera's preview;
++        // flip the whole PreviewView so the user-facing camera is the mirrored one. A SurfaceView ignores a parent's
++        // mirror, so use the TextureView implementation while flipped (takes effect with the new surface request).
++        if (A6lUserFacing.isA6l) {
++            val eink = A6lUserFacing.einkActive()
++            viewModel.a6lEinkBound = eink
++            viewFinder.implementationMode = if (eink) {
++                PreviewView.ImplementationMode.COMPATIBLE
++            } else {
++                PreviewView.ImplementationMode.PERFORMANCE
++            }
++            viewFinder.scaleX = if (eink) -1f else 1f
++            val userFacing = A6lUserFacing.isUserFacing(cameraConfiguration.camera.cameraFacing, eink)
++            Log.i(LOG_TAG, "A6L: bind camera ${cameraConfiguration.camera.cameraId} e-ink $eink user-facing $userFacing")
++        }
++
+         // Hide grid until preview is ready
+         gridView.alpha = 0f
+ 
+@@ -1632,10 +1680,12 @@
+                         VideoMirrorMode.OFF -> MirrorMode.MIRROR_MODE_OFF
+                         VideoMirrorMode.ON -> MirrorMode.MIRROR_MODE_ON
+                         VideoMirrorMode.ON_FFC_ONLY -> when (
+-                            cameraConfiguration.camera.cameraFacing
++                            A6lUserFacing.isUserFacing(
++                                cameraConfiguration.camera.cameraFacing, viewModel.a6lEinkBound
++                            )
+                         ) {
+-                            CameraFacing.FRONT -> MirrorMode.MIRROR_MODE_ON
+-                            else -> MirrorMode.MIRROR_MODE_OFF
++                            true -> MirrorMode.MIRROR_MODE_ON
++                            false -> MirrorMode.MIRROR_MODE_OFF
+                         }
+                     }
+ 
+--- a/app/src/main/java/org/lineageos/aperture/utils/A6lUserFacing.kt
++++ b/app/src/main/java/org/lineageos/aperture/utils/A6lUserFacing.kt
+@@ -0,0 +1,39 @@
++/*
++ * SPDX-FileCopyrightText: The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package org.lineageos.aperture.utils
++
++import android.os.Build
++import org.lineageos.aperture.models.CameraFacing
++
++/**
++ * Hisense A6L (LCD on the front, e-ink on the back): which camera faces the user depends on the screen in use.
++ * a6l_dualux publishes vendor.dualux.state = lcd | eink | eink-asleep. On the e-ink the rear cameras (main, wide)
++ * face the user, so they get the front-camera ("selfie") treatment: mirrored preview and the front-camera photo /
++ * video mirror settings; the LCD-side camera then behaves like a rear camera. On the LCD, on any other device, or
++ * when the property cannot be read, the lens facing decides as in upstream Aperture.
++ */
++object A6lUserFacing {
++    private const val PROP_STATE = "vendor.dualux.state"
++
++    val isA6l = Build.DEVICE.equals("a6l", ignoreCase = true)
++
++    /** The rear e-ink screen is the one in use. */
++    fun einkActive(): Boolean {
++        if (!isA6l) {
++            return false
++        }
++        return runCatching {
++            val c = Class.forName("android.os.SystemProperties")
++            val v = c.getMethod("get", String::class.java, String::class.java)
++                .invoke(null, PROP_STATE, "") as String
++            v.startsWith("eink")
++        }.getOrDefault(false)
++    }
++
++    /** This camera faces the user on the screen in use (preview mirrored, front-camera save settings). */
++    fun isUserFacing(cameraFacing: CameraFacing?, einkActive: Boolean) =
++        (cameraFacing == CameraFacing.FRONT) != einkActive
++}
+--- a/app/src/main/java/org/lineageos/aperture/viewmodels/CameraViewModel.kt
++++ b/app/src/main/java/org/lineageos/aperture/viewmodels/CameraViewModel.kt
+@@ -90,6 +90,7 @@
+ import org.lineageos.aperture.models.TimerMode
+ import org.lineageos.aperture.qr.QrImageAnalyzer
+ import org.lineageos.aperture.repositories.CameraRepository
++import org.lineageos.aperture.utils.A6lUserFacing
+ import org.lineageos.aperture.utils.CameraSoundsUtils
+ import org.lineageos.aperture.utils.StorageUtils
+ import java.io.ByteArrayOutputStream
+@@ -103,6 +104,9 @@
+  * live data regarding the setting currently enabled.
+  */
+ class CameraViewModel(application: Application) : ApertureViewModel(application) {
++    /** A6L: the e-ink screen was in use when the use cases were last bound (set by CameraActivity) */
++    var a6lEinkBound = false
++
+     // System services
+     private val locationManager = applicationContext.getSystemService(LocationManager::class.java)
+     private val powerManager = applicationContext.getSystemService(PowerManager::class.java)
+@@ -1065,7 +1069,7 @@
+                 if (!inSingleCaptureMode.value) {
+                     location = this@CameraViewModel.location.value
+                 }
+-                if (cameraFacing.value == CameraFacing.FRONT) {
++                if (A6lUserFacing.isUserFacing(cameraFacing.value, a6lEinkBound)) {
+                     isReversedHorizontal = preferencesRepository.photoFfcMirror.value
+                 }
+             },
+@@ -1131,7 +1135,7 @@
+                         if (!inSingleCaptureMode.value) {
+                             location = this@CameraViewModel.location.value
+                         }
+-                        if (cameraFacing.value == CameraFacing.FRONT) {
++                        if (A6lUserFacing.isUserFacing(cameraFacing.value, a6lEinkBound)) {
+                             isReversedHorizontal = preferencesRepository.photoFfcMirror.value
+                         }
+                     },

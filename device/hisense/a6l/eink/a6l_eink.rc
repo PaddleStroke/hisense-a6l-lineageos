@@ -20,7 +20,7 @@ on property:init.svc.vendor.hwcomposer-3=running
     start vendor.a6l_epdd
     start vendor.a6l_eink
 
-service vendor.a6l_epdd /vendor/bin/hw/a6l_epdd --socket a6l_epd --no-master --dither ${persist.vendor.eink.dither:-ordered} --lease hwc:a6l.hwc.lease --wait-drm 60 --waveform /mnt/vendor/persist/epd/epd-nor.bin --waveform /data/vendor/epd/epd-nor.bin --nor-spidev auto --waveform-cache /data/vendor/epd/epd-nor.bin --waveform /vendor/etc/epd/epd-nor.bin --lib /vendor/lib64/libtcon_eink.so --idle-off ${persist.vendor.eink.idle_off_s:-30} --wakelock --lead ${persist.vendor.eink.lead:-10} --tail ${persist.vendor.eink.tail:-20} --overlap-gen ${persist.vendor.eink.overlap_gen:-1} --chain ${persist.vendor.eink.chain:-1} --crtc-wakelock ${persist.vendor.eink.crtc_wakelock:-1}
+service vendor.a6l_epdd /vendor/bin/hw/a6l_epdd --socket a6l_epd --no-master --dither ${persist.vendor.eink.dither:-ordered} --lease hwc:a6l.hwc.lease --wait-drm 60 --waveform /mnt/vendor/persist/epd/epd-nor.bin --waveform /data/vendor/epd/epd-nor.bin --nor-spidev auto --waveform-cache /data/vendor/epd/epd-nor.bin --waveform /vendor/etc/epd/epd-nor.bin --lib /vendor/lib64/libtcon_eink.so --idle-off ${persist.vendor.eink.idle_off_s:-30} --wakelock --lead ${persist.vendor.eink.lead:-10} --tail ${persist.vendor.eink.tail:-20} --overlap-gen ${persist.vendor.eink.overlap_gen:-1} --chain ${persist.vendor.eink.chain:-1} --crtc-wakelock ${persist.vendor.eink.crtc_wakelock:-1} --lock-clean ${persist.vendor.eink.lock_clean:-1}
     class hal
     user system
     group system graphics wakelock

@@ -312,6 +312,11 @@ int main(int argc, char **argv) {
         char em[16], aw[8]; prop_get("persist.vendor.eink.mode", em, sizeof em); prop_get("vendor.dualux.awake", aw, sizeof aw);
         int lcd_idle = !strcmp(st, "lcd") && strcmp(em, "mirror") && prop_int("persist.sys.a6l.eink.lock_lcd", 1) != 0;
         { static char last_st[32], last_aw[8]; if (strcmp(st, last_st) || strcmp(aw, last_aw)) { last_transition = mono(); snprintf(last_st, sizeof last_st, "%s", st); snprintf(last_aw, sizeof last_aw, "%s", aw); } }
+        /* eink-round6d: a6l_dualux holds the lights while a screen switch completes (vendor.dualux.prepare = the request;
+         * the LCD waits for its themed frame). A lock frame in that window costs ~1.2 s of CPU (render + REGAL generation +
+         * e-ink modeset) right when the LCD redraws: 7 Oct 14:18:02 wake-up 2.65 s (lock frame at +2.0 s), 14:18:59 switch
+         * failed open at 3.3 s (LCD-mode lock entry at +2.2 s). The window counts as a transition until 1.5 s after it ends. */
+        { char pr[96]; if (prop_get("vendor.dualux.prepare", pr, sizeof pr) > 0) last_transition = mono(); }
         int settling = mono() - last_transition < ELK_SETTLE_S;
         int changed = !elk_cfg_equal(&cfg, &prev);
         if (atol(seq) != bg_seq) { bg_seq = atol(seq); load_bg(); changed |= cfg.bg == ELK_BG_IMAGE; }

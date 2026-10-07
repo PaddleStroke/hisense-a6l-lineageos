@@ -16,6 +16,8 @@ $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o t_drive "$S/tests/test
 # eink-lockscreen: lockframe keeps the covered picture + CRTC off after each lock picture; lock restore only while still shown
 $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o t_lock "$S/tests/test_epdd_lock.c" "$S/tests/fake_tcon.c" -ldrm -ldl && ./t_lock > t_lock.log 2>&1 && grep -q "A6L_EPDD_LOCK_TEST PASS" t_lock.log && ok epdd-lockframe-restore || { ko epdd-lockframe-restore; grep FAIL t_lock.log; }
 # r5 bug hunt eink-display E1: a late page-flip event is never taken for the next flip's completion (fake event stream)
+# eink-round6d: pure white / pure black stay exact through composition, tone, resize and epdd's input conversion
+$CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o t_white "$S/tests/test_white_path.c" "$S/src/eink_logic.c" "$S/tests/fake_tcon.c" -ldrm -ldl && ./t_white > t_white.log 2>&1 && grep -q "A6L_WHITE_PATH_TEST PASS" t_white.log && ok white-black-exact-path || { ko white-black-exact-path; grep -E "FAIL|info" t_white.log; }
 $CC -O1 -Wall -Wno-misleading-indentation $DRM -o t_flip "$S/tests/test_epdd_flip.c" "$S/tests/fake_tcon.c" -ldrm -ldl && ./t_flip > t_flip.log 2>&1 && grep -q "A6L_EPDD_FLIP_TEST PASS" t_flip.log && ok epdd-flip-late-event || { ko epdd-flip-late-event; grep FAIL t_flip.log; }
 $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o epdd "$S/src/a6l_epdd.c" -ldrm -ldl && ok build-epdd || ko build-epdd
 $CC -O1 -Wall -Wextra -Wno-misleading-indentation $DRM -o mirror "$S/src/a6l_eink_mirror.c" "$S/src/eink_logic.c" -ldrm && ok build-mirror || ko build-mirror

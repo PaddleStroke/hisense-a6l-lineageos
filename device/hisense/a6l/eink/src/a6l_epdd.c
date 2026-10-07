@@ -1114,6 +1114,12 @@ static int show(const char *path, int m) {
 /* eink-lockscreen: lock pictures (a6l_einklock) and the restore of the picture they covered. lock_on_panel = a lock picture
  * was the last one driven; mirror_img/mirror_mode = the picture (library layout) the panel showed before the first one. */
 static uint8_t *mirror_img; static int mirror_mode = 3, have_mirror, lock_on_panel, lock_frames;
+/* eink-round6d (--lock-clean 1, rc default): the first page after a lock picture is a GC16 clean (one flash), not a REGAL
+ * update. A lock picture (big black digits, date, battery) replaced by a page, and back, are whole-panel transitions; in
+ * the "stock" refresh mode the mirror only ever sends REGAL (partial, white never flashed) and its forced cleanup is a
+ * REGAL too, so since round 6 (lock picture also in LCD mode: a lock<->page transition at every screen switch) grey
+ * residue accumulates in white areas (user, 7 Oct: "the white is not white anymore, gray speckles"). */
+static int lock_clean;
 static int lock_frame(const uint8_t *payload, int w, int h, int m, int force) {
     if (!size_ok(w, h)) { LOG("FAIL lockframe %dx%d: need 1440x720 or 720x1440", w, h); return -1; }
     if (!lock_on_panel) {
@@ -1140,7 +1146,7 @@ static int lock_restore(int off, char *reply, size_t rn) {
     else if (!have_mirror) { lock_on_panel = 0; snprintf(reply, rn, "OK lock restore: no earlier picture, lock picture kept"); }
     else {
         lock_on_panel = 0; rc = recover();
-        if (!rc) { memcpy(img.data, mirror_img, RGBA); memcpy(last_img, mirror_img, RGBA); have_last = 1; last_mode = mirror_mode; rc = run_update(0, mirror_mode, "lock-restore"); }
+        if (!rc) { memcpy(img.data, mirror_img, RGBA); memcpy(last_img, mirror_img, RGBA); have_last = 1; last_mode = mirror_mode; rc = run_update(lock_clean, lock_clean ? 2 : mirror_mode, lock_clean ? "lock-restore-clean" : "lock-restore"); }
         if (rc) snprintf(reply, rn, "ERR lock restore failed (see log)");
         else snprintf(reply, rn, "OK lock restore: earlier picture redrawn in %d ms (update %d)", last_ms, updates);
     }
@@ -1202,6 +1208,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
         if (flag[0] && strcmp(flag, "force")) { snprintf(reply, rn, "ERR unknown frame flag"); return -1; }
         int clean = !strcmp(mname, "clean") || !strcmp(flag, "force");
         m = !strcmp(mname, "clean") ? 2 : mode_by_name(mname, mode);
+        if (lock_on_panel && lock_clean && !clean) { clean = 1; m = 2; LOG("first page after a lock picture: GC16 clean (--lock-clean)"); }
         if (clear_every > 0 && ++since_clear >= clear_every) { since_clear = 0; clear_full(); }
         rc = recover();
         trace_poll();
@@ -1342,6 +1349,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--wakelock")) wl = 1; else if (!strcmp(a, "--no-wakelock")) wl = 0;
         else if (!strcmp(a, "--crtc-wakelock") && v) crtc_wakelock_on = atoi(argv[++i]) != 0;
         else if (!strcmp(a, "--lcd-guard") && v) lcd_guard = argv[++i];	/* eink-round6 */
+        else if (!strcmp(a, "--lock-clean") && v) lock_clean = atoi(argv[++i]) != 0;	/* eink-round6d */
         else if (!strcmp(a, "--stall-ms") && v) stall_ms = atoi(argv[++i]); else if (!strcmp(a, "--stall-count") && v) stall_count = atoi(argv[++i]);
         else { fprintf(stderr, "usage: see source header (%s)\n", a); return 2; }
     }

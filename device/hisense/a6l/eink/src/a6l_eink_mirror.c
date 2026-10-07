@@ -1122,7 +1122,9 @@ int main(int argc, char **argv) {
         /* epdd retains its image/library state across power off and performs a
          * recovery clear itself after a failed drive. Switching sides needs no
          * unconditional clear-white + INIT sequence before showing the page. */
-        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; pol_init(&ps, &pcfg, t); policy_epoch++; have_prev = have_shown = 0; staged.valid = 0; touch_lock(); forward = 1; touch_unlock(); LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
+        /* eink-round6d: the REGAL history belongs to the panel, not to one e-ink session: keep it across mirror OFF/ON (before,
+         * every screen switch reset it, so with frequent switches the periodic ghost cleanup never came) */
+        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; { int keep_reading_n = ps.reading_n, keep_clean_n = ps.clean_n; pol_init(&ps, &pcfg, t); ps.reading_n = keep_reading_n; ps.clean_n = keep_clean_n; } policy_epoch++; have_prev = have_shown = 0; staged.valid = 0; touch_lock(); forward = 1; touch_unlock(); LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
         if (mode != EINK_MIRROR && active) { active = 0; staged.valid = 0; policy_epoch++; touch_lock(); forward = 0; touch_release_all(); touch_unlock(); qn = 0; queue_cmd("power off", 0); LOG("mirror OFF (e-ink keeps the last picture)"); }
         if (!dry && epd < 0) epd_connect();
         { static double next_touch_scan; touch_lock(); if (touch_fd < 0 && t >= next_touch_scan) { next_touch_scan = t + 5; input_quiet = 1; touch_attach(); input_quiet = 0; } touch_unlock(); }
