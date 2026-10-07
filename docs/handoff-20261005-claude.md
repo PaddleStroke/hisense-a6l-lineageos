@@ -586,3 +586,24 @@ still running.
 - INSTALLED NOW (phone booted to Android, boot ffbd8b1b): kit rom-r7c-round6-20261006 = boot f517fef5 (Venus DT
   reverted for clean morning tests) + vendor bc53a6f0 (e-ink r5 + hw-ISP r6) + system f2d388ae. Runtime check passed:
   mirror runs with --copy-guard-kib 1024, libcamera 5d048ba2, a6l_pix=1, a6l_pix_linkcap=1, einklock running, no crash.
+
+### 7 Oct daytime — round 7 series; restart hang = charger mode (likely); state for the next session
+
+- Installed: boot 2a1b8a8f (f517 Image + DTB: Venus CX vote, inert cpufreq OSM nodes, CCI stock clock order) + vendor
+  e1202a72 (7h: camera r7, e-ink 0023-0034, hwc 0004/0005, panel fix C, msm restart-skip dabd16e0 — NOT a fix, revert
+  to 2bddfcdb later) + system f2d388ae.
+- STAGED NOT FLASHED: rom-r7c-round7i-20261006 = boot 10affa76 (2a1b8a8f + cmdline `androidboot.mode=normal`) + vendor
+  61f9f556 (7h + a6l-krec recorder on reserve2). Test: /proc/cmdline + ro.boot.mode=normal, then restart with USB.
+- Restart hang: the user's console photos show the stuck boot loading msm at 6.7 s with NO "display: boot log" wait
+  line => ro.bootmode=charger (ABL picks charger on USB_CHG). Charger mode = no mount_all/adb/UI = backlit black.
+  sysrq-b (HRST) boots fine. Fix: force-normal cmdline (above). Quick confirm: restart with USB unplugged.
+  Analysis + krec reader: firmware/extracted/restart-hang-20261007/README.md.
+- E-ink: LCD wake verified healthy on 4d9c50bf (no EBUSY, touch back each wake); 0034 removes the residual ~250 ms
+  stall. eink-round6-20261007/README.md parts A-C.
+- Open: freeze at s2idle after FRONT camera + e-ink lock (14:0x boot); front-cam sleep test at 15:4x left the phone off
+  adb (asleep or frozen, unverified). mdss_ahb_clk "stuck at on" warning at suspend (display analogue of the CCI fix).
+- CPU freq (cpufreq-20261007): rev 3 modules with step markers + L2 SAW init, run A = gold only. Load 1 froze at the OSM
+  insmod. Note logical cpu0 silver, cpu1-4 gold, cpu5-7 silver.
+- Venus (venus-impl-20261006): hfi3e bisect kit ready (stage-b6.sh); hfi3d froze at the first encode; needs the venus
+  DT boot (cdcce6ac or 2a1b8a8f — both carry the Venus CX vote).
+- Camera mirroring request (user): when on the e-ink, mirror the rear camera preview and not the LCD-side camera.
