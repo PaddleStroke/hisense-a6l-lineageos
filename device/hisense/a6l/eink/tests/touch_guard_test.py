@@ -51,7 +51,11 @@ def run(tag, extra):
     off2 = len(open(log).read())
     touch(0, 3, 360, 720); time.sleep(0.1); touch(0, -1); time.sleep(0.3)   # after the first page
     late = tids(log, off2)
-    p.terminate(); p.wait(5); os.close(kf); os.close(tf)
+    p.terminate()
+    try: p.wait(5)
+    except subprocess.TimeoutExpired:	# eink-round11: seen once in ~10 host runs under load; init SIGKILLs after its timeout
+        print("WARN mirror took > 5 s to exit after SIGTERM: killed", flush=True); p.kill(); p.wait(5)
+    os.close(kf); os.close(tf)
     return on, shown, held, early, late, open(log).read()
 on, shown, held, early, late, out = run("guard", [])
 check(on and shown, "run 1: mirror ON and first page shown (simulated)")

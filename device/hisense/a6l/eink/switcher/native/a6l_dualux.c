@@ -7,6 +7,8 @@
  *            front touchscreen (the MT device with x range >= 1000 not created by us/the mirror; GRABBED = dropped in e-ink)
  *            LCD on/off = dpms of the DRM connector that has the 1080x2340 mode (atomic commits keep it up to date)
  *            sys.a6l.dualux.req "<seq> <eink|lcd|toggle|clear>" (app / Quick Settings), persist.sys.a6l.dualux.* settings
+ *            eink-round11 reader sleep: volume keys ("A6L side keys" volume-up, "pm8941_resin" volume-down; read only),
+ *            vendor.eink.activity (mirror), persist.sys.a6l.eink.reader_sleep[_s], sys.a6l.dualux.reader_ok (app)
  *   outputs: persist.vendor.eink.mode = mirror|off (vendor.a6l_eink draws the UI on the e-ink + forwards rear touches)
  *            LCD backlight bl_power = 4 in e-ink mode (the composer keeps writing `brightness`, which the backlight core
  *              stores but does not apply while blanked — and which we read back as "what the brightness slider says")
@@ -169,9 +171,10 @@ static int read_awake(void) {
 
 /* ---------------- input ---------------- */
 static int test_bit(const unsigned long *b, int n) { return (b[n / (8 * sizeof(long))] >> (n % (8 * sizeof(long)))) & 1; }
-enum { DEV_KEY, DEV_POWER, DEV_FRONT, NDEV };
-static const char *dev_what[NDEV] = {"e-ink key", "power key", "front touch"};
-static int dev_fd[NDEV] = {-1, -1, -1}, dev_grabbed[NDEV]; static char dev_path[NDEV][640];
+enum { DEV_KEY, DEV_POWER, DEV_FRONT, DEV_VOLDOWN, NDEV };	/* eink-round11: DEV_VOLDOWN (read only, never grabbed) */
+static const char *dev_what[NDEV] = {"e-ink key", "power key", "front touch", "volume-down key"};
+static int dev_fd[NDEV] = {-1, -1, -1, -1}, dev_grabbed[NDEV]; static char dev_path[NDEV][640];
+static const char *voldown_spec = "auto";
 static int match_dev(int fd, int kind) {
     char name[128] = ""; ioctl(fd, EVIOCGNAME(sizeof name - 1), name);
     if (!strncmp(name, "a6l-", 4)) return 0;	/* our uinput + the mirror's rear-touch uinput */
@@ -180,6 +183,7 @@ static int match_dev(int fd, int kind) {
     if (kind == DEV_KEY) return test_bit(kb, KEY_EINK);
     if (kind == DEV_POWER) return !strcmp(name, "pm8941_pwrkey") || (test_bit(kb, KEY_POWER) && !test_bit(kb, KEY_VOLUMEUP) && !test_bit(ab, ABS_MT_POSITION_X));
     if (kind == DEV_FRONT && test_bit(ab, ABS_MT_POSITION_X)) { struct input_absinfo ai; return !ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &ai) && ai.maximum >= 1000; }
+    if (kind == DEV_VOLDOWN) return !strcmp(name, "pm8941_resin") || (test_bit(kb, KEY_VOLUMEDOWN) && !test_bit(kb, KEY_EINK) && !test_bit(kb, KEY_POWER) && !test_bit(ab, ABS_MT_POSITION_X));
     return 0;
 }
 static void open_dev(int kind, const char *spec) {
@@ -217,6 +221,7 @@ static void uinput_open(void) {	/* r5 pass2 F20: S.no_inject follows the result;
     ui = open("/dev/uinput", O_WRONLY | O_NONBLOCK | O_CLOEXEC); if (ui < 0) { if (!warned++) LOG("WARN /dev/uinput: %s (no wake/sleep/power injection, power key left to Android; retrying)", strerror(errno)); return; }
     ioctl(ui, UI_SET_EVBIT, EV_KEY); ioctl(ui, UI_SET_EVBIT, EV_SYN);
     ioctl(ui, UI_SET_KEYBIT, KEY_POWER); ioctl(ui, UI_SET_KEYBIT, KEY_SLEEP); ioctl(ui, UI_SET_KEYBIT, KEY_WAKEUP);
+    ioctl(ui, UI_SET_KEYBIT, KEY_VOLUMEUP); ioctl(ui, UI_SET_KEYBIT, KEY_VOLUMEDOWN);	/* eink-round11: page turn after a reader-sleep wake-up */
     struct uinput_setup us; memset(&us, 0, sizeof us); us.id.bustype = BUS_VIRTUAL; us.id.vendor = 0x2a6c; us.id.product = 0x0d0a; us.id.version = 1;
     snprintf(us.name, sizeof us.name, "a6l-dualux-keys");
     if (ioctl(ui, UI_SET_EVBIT, EV_KEY) || ioctl(ui, UI_SET_KEYBIT, KEY_POWER) || ioctl(ui, UI_DEV_SETUP, &us) || ioctl(ui, UI_DEV_CREATE)) {
@@ -345,8 +350,39 @@ static void handle(const struct dx_out *o, const char *why) {
     if (o->power_down) key_edge(KEY_POWER, 1, "POWER (long press handed to Android)");
     if (o->power_up) key_edge(KEY_POWER, 0, "POWER");
 }
+/* ---------------- eink-round11: reader sleep (dualux_logic.h dx_reader_due) ---------------- */
+#define P_READER_SLEEP "vendor.dualux.reader_sleep"
+static int reader_enabled, reader_idle_s = 30, reader_armed, reader_key; static double reader_last_act, reader_last_req = -100, reader_inject_at;
+static void reader_set(int on, const char *why) {
+    if (reader_armed == on) return;
+    reader_armed = on; prop_set(P_READER_SLEEP, on ? "1" : "0"); KLOG("reader sleep %s (%s)", on ? "on" : "off", why);
+}
+static void reader_page_key(int code, int value) {	/* volume keys: activity; while reader-asleep: wake + page turn */
+    if (value != 1) return;
+    reader_last_act = now();
+    if (reader_armed && !S.awake && !reader_key) {
+        reader_key = code; KLOG("reader sleep: %s pressed: waking, the page turn follows", code == KEY_VOLUMEUP ? "volume up" : "volume down");
+        key_tap(KEY_WAKEUP, "WAKEUP");
+    }
+}
+static void reader_tick(double t) {
+    char v[48];
+    if (prop_get("vendor.eink.activity", v, sizeof v) > 0) { double a = atof(v); if (a > reader_last_act && a <= t + 1) reader_last_act = a; }
+    if (reader_key && reader_inject_at > 0 && t >= reader_inject_at && S.awake) {
+        int k = reader_key; reader_key = 0; reader_inject_at = 0; reader_last_act = t;
+        key_tap(k, k == KEY_VOLUMEUP ? "VOLUME_UP (page turn)" : "VOLUME_DOWN (page turn)");
+    }
+    if (reader_armed && S.awake && t - reader_last_req > 3.0) { reader_set(0, "Android stayed awake (call, wake lock?): idle timer restarted"); reader_last_act = t; }
+    struct dx_reader_in in = {reader_enabled, prop_get("sys.a6l.dualux.reader_ok", v, sizeof v) > 0 && !strcmp(v, "1"), reader_idle_s, t, reader_last_act, reader_last_req};
+    if (dx_reader_due(&S, &in)) {
+        reader_last_req = t; reader_set(1, "no page change or key on the e-ink");
+        KLOG("reader sleep: %.0f s idle on the e-ink: Android sleeps, the page stays", t - reader_last_act);
+        key_tap(KEY_SLEEP, "SLEEP");
+    }
+}
 static void read_cfg(void) {
     char v[96];
+    reader_enabled = prop_int("persist.sys.a6l.eink.reader_sleep", 0) == 1; reader_idle_s = dx_reader_idle_s(prop_int("persist.sys.a6l.eink.reader_sleep_s", 30));
     S.cfg.long_ms = prop_int("persist.sys.a6l.dualux.long_ms", 800); S.cfg.power_long_ms = prop_int("persist.sys.a6l.dualux.power_long_ms", 450);
     S.cfg.ekey_in_eink = prop_get("persist.sys.a6l.dualux.eink_key", v, sizeof v) > 0 && !strcmp(v, "clear") ? DX_EK_CLEAR : DX_EK_SLEEP;
     int m = prop_int("persist.sys.a6l.dualux.mirror_in_lcd", 0) != 0; if (m != S.cfg.mirror_in_lcd) { S.cfg.mirror_in_lcd = m; publish(); }
@@ -379,7 +415,8 @@ static void drain(int kind) {
             continue; }
         if (ev[i].type != EV_KEY) continue;
         if ((kind == DEV_KEY && ev[i].code == KEY_EINK) || (kind == DEV_POWER && ev[i].code == KEY_POWER)) LOG("stage physical key=%u value=%d mono_ms=%.3f", ev[i].code, ev[i].value, now() * 1000);
-        if (kind == DEV_KEY && ev[i].code == KEY_EINK) { struct dx_out o = dx_eink_key(&S, ev[i].value, now()); handle(&o, "e-ink key"); }
+        if (kind == DEV_KEY && ev[i].code == KEY_EINK) { struct dx_out o = dx_eink_key(&S, ev[i].value, now()); handle(&o, "e-ink key"); reader_last_act = now(); }
+        if ((kind == DEV_KEY || kind == DEV_VOLDOWN) && dx_reader_page_key(ev[i].code)) reader_page_key(ev[i].code, ev[i].value);	/* eink-round11 */
         if (kind == DEV_POWER && ev[i].code == KEY_POWER) { S.pw_not_held = !dev_grabbed[DEV_POWER];
             struct dx_out o = dx_power_key(&S, ev[i].value, now()); handle(&o, "power key"); }
     }	/* front touch: grabbed = read and dropped; not grabbed = Android has its own copy, ours is discarded */
@@ -430,6 +467,7 @@ int main(int argc, char **argv) {
 #define OPT(n) (!strcmp(a, n) && v && ++i)
         if (OPT("--sysroot")) sysroot = v; else if (OPT("--prop-dir")) prop_dir = v; else if (OPT("--key-dev")) key_spec = v;
         else if (OPT("--power-dev")) power_spec = v; else if (OPT("--front-dev")) front_spec = v; else if (OPT("--awake-file")) awake_file = v;
+        else if (OPT("--voldown-dev")) voldown_spec = v;	/* eink-round11 */
         else if (OPT("--fake-uinput")) fake_uinput = v; else if (OPT("--lcd-bl")) lcd_bl_name = v; else if (OPT("--fl")) fl_spec = v; else if (OPT("--exit-after")) exit_after = atof(v);
         else if (!strcmp(a, "--no-uinput")) use_uinput = 0;
         else if (OPT("--watchdog-s")) watchdog_s = atoi(v) > 0 ? atoi(v) : WATCHDOG_S;
@@ -454,7 +492,8 @@ int main(int argc, char **argv) {
         prop_int("persist.sys.a6l.dualux.restore", 1) ? "it was already restored < 60 s ago (crash loop?)" : "restore is disabled");
     dx_init(&S, &c, start_screen, read_awake());
     read_cfg(); uinput_open();
-    open_dev(DEV_KEY, key_spec); open_dev(DEV_POWER, power_spec); open_dev(DEV_FRONT, front_spec);
+    open_dev(DEV_KEY, key_spec); open_dev(DEV_POWER, power_spec); open_dev(DEV_FRONT, front_spec); open_dev(DEV_VOLDOWN, voldown_spec);
+    prop_set(P_READER_SLEEP, "0"); reader_last_act = now();	/* eink-round11 */
     char req_last[96] = ""; prop_get(P_REQ, req_last, sizeof req_last);	/* requests made before we started are stale */
     blanked_by_us = 1;	/* a previous instance may have died in e-ink mode: unblank the LCD if Android is awake */
     prop_set(P_PREPARE, "");
@@ -477,7 +516,9 @@ int main(int argc, char **argv) {
              * eink-round5: 3 s (einklock polls every 250 ms, then holds its own lock through its 0.8 s entry delay); the rc
              * now grants CAP_BLOCK_SUSPEND: until then this write was EPERM and Android suspended ~0.1-0.7 s after the
              * screen went off (as soon as the mirror's "power off" released a6l_epdd_crtc), before the lock picture. */
-            if (!aw && S.screen == DX_EINK && prop_int("persist.sys.a6l.eink.lock", 1)) {
+            reader_last_act = t;	/* eink-round11 */
+            if (aw && reader_armed) { if (reader_key) reader_inject_at = t + 0.15; reader_set(0, reader_key ? "awake: page turn in 0.15 s" : "woken by another key"); }
+            if (!aw && S.screen == DX_EINK && prop_int("persist.sys.a6l.eink.lock", 1) && !reader_armed) {
                 char p[600]; snprintf(p, sizeof p, "%s/sys/power/wake_lock", sysroot); int fd = open(p, O_WRONLY | O_CLOEXEC), e = 0;
                 static const char wl[] = "a6l_dualux_lock 3000000000";
                 if (fd < 0) e = errno; else { if (write(fd, wl, sizeof wl - 1) < 0) e = errno; close(fd); }
@@ -491,11 +532,14 @@ int main(int argc, char **argv) {
             if (aw && S.appearance_hold == 1 && appearance_deadline < now() + 3.0) { appearance_deadline = now() + 3.0; LOG("appearance %s: deadline restarted at wake-up", appearance_req); } }
         char rq[96]; if (prop_get(P_REQ, rq, sizeof rq) > 0 && strcmp(rq, req_last)) { snprintf(req_last, sizeof req_last, "%s", rq);
             const char *cmd = strchr(rq, ' '); cmd = cmd ? cmd + 1 : rq; o = dx_request(&S, cmd); handle(&o, "request"); }
+        { static int last_screen = -1; if (S.screen != last_screen) { last_screen = S.screen; reader_last_act = t; } }	/* eink-round11 */
         appearance_tick(); enforce_backlight(); enforce_frontlight();
+        reader_tick(t);
         if (t >= next_slow) { next_slow = t + 1; read_cfg(); }
         if (t >= next_scan) { next_scan = t + 5;
             if (dev_fd[DEV_KEY] < 0) open_dev(DEV_KEY, key_spec); if (dev_fd[DEV_POWER] < 0) open_dev(DEV_POWER, power_spec);
             if (dev_fd[DEV_FRONT] < 0) open_dev(DEV_FRONT, front_spec);
+            if (dev_fd[DEV_VOLDOWN] < 0) open_dev(DEV_VOLDOWN, voldown_spec);
             if (ui < 0) uinput_open();	/* r5 pass2 F20: retry; the power key is grabbed only once it works */
             if (dev_fd[DEV_FRONT] >= 0 || dev_fd[DEV_POWER] >= 0) apply_grabs();
             if (!lcd_bl[0]) find_lcd_backlight(); if (!fl_dir[0]) find_frontlight(); if (!lcd_dpms[0] && !awake_file) find_lcd_dpms(); }
@@ -505,7 +549,7 @@ int main(int argc, char **argv) {
      * on over a sleeping (dark) panel when the service stopped while the phone was asleep (bl_power belongs to the
      * composer then; F50 contract: never override Android's blank). vendor.dualux.lcd_blank=0 is published first, so the
      * composer unblanks at the next wake-up by itself. */
-    alarm(0); S.appearance_hold = 0; prop_set(P_PREPARE, ""); S.screen = DX_LCD; publish(); S.awake = read_awake(); blanked_by_us = 1; enforce_backlight(); apply_grabs(); if (fl_dir[0]) { char p[700]; snprintf(p, sizeof p, "%s/brightness", fl_dir); wr_int(p, 0); }
+    alarm(0); S.appearance_hold = 0; prop_set(P_PREPARE, ""); prop_set(P_READER_SLEEP, "0"); S.screen = DX_LCD; publish(); S.awake = read_awake(); blanked_by_us = 1; enforce_backlight(); apply_grabs(); if (fl_dir[0]) { char p[700]; snprintf(p, sizeof p, "%s/brightness", fl_dir); wr_int(p, 0); }
     if (ui >= 0) { ioctl(ui, UI_DEV_DESTROY); close(ui); }
     LOG("exit (LCD restored)");
     return 0;

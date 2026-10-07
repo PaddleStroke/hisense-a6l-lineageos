@@ -39,6 +39,8 @@ final class Dualux {
     static final String P_LOCK_CLOCK = "persist.sys.a6l.eink.lock_clock";   // 1 | 0: time + date, minute RTC wake-ups
     static final String P_LOCK_BATTERY = "persist.sys.a6l.eink.lock_battery"; // 1 | 0
     static final String P_LOCK_24H = "persist.sys.a6l.eink.lock_24h";       // mirrored from Android by LockSync
+    // eink-round11 reader sleep: 1 = no keyguard at all (Screen lock: None), so a6l_dualux may sleep between pages
+    static final String P_READER_OK = "sys.a6l.dualux.reader_ok";
     static final int DEFAULT_CLEAR_EVERY = 10;   // a6l_eink.rc default (--clear-every 10)
 
     private static Method sGet, sSet;

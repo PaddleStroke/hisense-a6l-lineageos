@@ -128,6 +128,26 @@ int main(void) {
     EXPECT(exec_cmd("lock restore", NULL, reply, sizeof reply) == 0 && !panel_unknown && updates == u + 3 && !memcmp(last_img, page, RGBA),
            "restore after the failure: recovery clear (white + INIT) then the covered page");
 
+    /* eink-round11: "warm" = CRTC bring-up without a picture; the next update skips the cold modeset */
+    {
+        lock_clean = 1;
+        cmd("frame 720 1440 quality", 120); memcpy(page, last_img, RGBA);
+        cmd("lockframe 720 1440 reading", 76);
+        int m0 = n_modeset, u0 = updates;
+        EXPECT(!started && exec_cmd("warm", NULL, reply, sizeof reply) == 0 && !strncmp(reply, "OK warm: e-ink CRTC on", 22) && started && crtc_wl_held && n_modeset == m0 + 1 && updates == u0,
+               "warm: CRTC brought up (one modeset), no update, no-suspend lock held");
+        EXPECT(lock_on_panel && !memcmp(mirror_img, page, RGBA), "warm: the lock state and the covered page are kept");
+        EXPECT(exec_cmd("warm", NULL, reply, sizeof reply) == 0 && strstr(reply, "already on") && n_modeset == m0 + 1, "warm again: nothing (already on)");
+        EXPECT(cmd("frame 720 1440 reading", 121) == 0 && n_modeset == m0 + 1 && updates == u0 + 1 && fake_tcon_last_mode == 2,
+               "first frame after the warm-up: no second modeset; still the GC16 clean after a lock picture");
+        exec_cmd("power off", NULL, reply, sizeof reply);
+        FILE *g = fopen("/tmp/a6l_epdd_lock_test_guard", "w"); if (g) { fputs("disabled\n", g); fclose(g); }
+        lcd_guard = "/tmp/a6l_epdd_lock_test_guard"; m0 = n_modeset;
+        EXPECT(exec_cmd("warm", NULL, reply, sizeof reply) != 0 && strstr(reply, "lcd-released") && !started && n_modeset == m0,
+               "warm while the LCD pipeline is released: refused, no modeset");
+        lcd_guard = "none"; unlink("/tmp/a6l_epdd_lock_test_guard");
+    }
+
     printf("A6L_EPDD_LOCK_TEST %s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;
 }

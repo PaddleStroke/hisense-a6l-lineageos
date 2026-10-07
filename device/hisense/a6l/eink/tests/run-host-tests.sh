@@ -68,5 +68,9 @@ timeout 30 python3 "$S/tests/touch_latency_test.py" ./mirror 'frames/f%d.raw' "$
 timeout 30 python3 "$S/tests/touch_latency_test.py" ./mirror 'frames/f%d.raw' "$W" 0 > touch_lat0.out 2>&1 && grep -q "TOUCH_LATENCY_TEST FAIL" touch_lat0.out && ok "mirror-touch-latency-control (--touch-thread 0 reproduces the burst: $(grep -o 'max_ms=[0-9.-]* span_ratio=[0-9.]*' touch_lat0.out))" || { ko mirror-touch-latency-control; cat touch_lat0.out; }
 # eink-round10: a finger on the rear panel during the screen switch is never forwarded (user 19:24:47: launcher page changed)
 timeout 60 python3 "$S/tests/touch_guard_test.py" ./mirror 'frames/f%d.raw' "$W" > touch_guard.out 2>&1 && grep -q "TOUCH_GUARD_TEST PASS" touch_guard.out && ok "mirror-touch-guard (contact down at mirror ON / before the first page: not forwarded)" || { ko mirror-touch-guard; cat touch_guard.out; }
+# eink-round11: e-ink warm-up during the LCD -> e-ink switch handshake (first frame at the warm reply, no warm-up when unsafe)
+timeout 60 python3 "$S/tests/prewarm_test.py" ./mirror 'frames/f%d.raw' "$W" > prewarm.out 2>&1 && grep -q "PREWARM_TEST PASS" prewarm.out && ok "mirror-prewarm (warm at the e-ink request, first frame at the warm reply)" || { ko mirror-prewarm; cat prewarm.out; }
+# eink-round11: opt-in inverted rendering (persist.sys.a6l.eink.invert = 1)
+timeout 60 python3 "$S/tests/invert_test.py" ./mirror 'frames/f%d.raw' "$W" > invert.out 2>&1 && grep -q "INVERT_TEST PASS" invert.out && ok "mirror-invert (persist.sys.a6l.eink.invert)" || { ko mirror-invert; cat invert.out; }
 echo "EINK3_HOST_TESTS pass=$pass fail=$fail (workdir $W)"
 [ $fail = 0 ]

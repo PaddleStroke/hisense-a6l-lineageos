@@ -267,6 +267,9 @@ static double tone_pow(double x, double g) {
     while (m-- > 0) e *= 0.5;
     return e;
 }
+void tone_lut_invert(uint8_t lut[256]) {
+    for (int i = 0; i < 128; i++) { uint8_t t = lut[i]; lut[i] = lut[255 - i]; lut[255 - i] = t; }
+}
 void tone_lut(uint8_t lut[256], int contrast, int black_clip, int white_clip, int gamma_x100) {
     if (contrast < 0) contrast = 0;
     if (contrast > 100) contrast = 100;

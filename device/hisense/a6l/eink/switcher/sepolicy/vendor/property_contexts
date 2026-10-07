@@ -8,3 +8,5 @@ vendor.dualux.restored_at             u:object_r:vendor_dualux_prop:s0
 vendor.dualux.lock_bg_seq             u:object_r:vendor_dualux_prop:s0
 # eink-round6: Android awake (1) / asleep (0) as seen by a6l_dualux (LCD dpms), read by a6l_einklock
 vendor.dualux.awake                   u:object_r:vendor_dualux_prop:s0
+# eink-round11: 1 = Android was put to sleep by reader sleep (a6l_einklock keeps the page, no lock picture)
+vendor.dualux.reader_sleep            u:object_r:vendor_dualux_prop:s0

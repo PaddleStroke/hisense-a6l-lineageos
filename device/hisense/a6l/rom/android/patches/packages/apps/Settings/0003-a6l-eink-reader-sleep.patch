@@ -1,0 +1,13 @@
+diff --git a/src/com/android/settings/display/A6lEinkPreferences.java b/src/com/android/settings/display/A6lEinkPreferences.java
+index a1227e0..052395a 100644
+--- a/src/com/android/settings/display/A6lEinkPreferences.java
++++ b/src/com/android/settings/display/A6lEinkPreferences.java
+@@ -93,6 +93,8 @@ final class A6lEinkPreferences {
+         lock.addPreference(mLockPick);
+         toggle(lock, "lock_clock", "lock_clock");
+         toggle(lock, "lock_battery", "lock_battery");
++        /* eink-round11: reader sleep (vendor a6l_dualux): Android sleeps between page turns while the e-ink keeps the page */
++        toggle(lock, "reader_sleep", "reader_sleep");
+         PreferenceCategory refresh = section(parent, "refresh_section", "sec_refresh");
+         list(refresh, "refresh", "sec_refresh", new String[]{"stock", "auto", "quality", "partial", "fast", "fastest"},
+                 "mode_stock", "mode_auto", "mode_quality", "mode_partial", "mode_fast", "mode_fastest");

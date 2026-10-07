@@ -72,6 +72,7 @@
     <string name="lock_pick">Choisir l\'image…</string>
     <string name="lock_clock">Afficher l\'heure et la date (réveille le téléphone une fois par minute)</string>
     <string name="lock_battery">Afficher le niveau de batterie</string>
+    <string name="reader_sleep">Veille de lecture : le téléphone dort entre les pages, la page reste ; les touches de volume tournent la page (verrouillage d\'écran : Aucun)</string>
     <string name="lock_pick_done">Image de l\'écran de verrouillage e-ink mise à jour</string>
     <string name="lock_pick_failed">Impossible d\'utiliser cette image</string>
 </resources>

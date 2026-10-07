@@ -48,7 +48,9 @@
  *        CRTC follows the LCD CRTC so it is never enabled across a system suspend)
  *   live properties (dualux, 25 Sep): persist.sys.a6l.eink.refresh (auto|quality|partial|fast|fastest, overrides .reading),
  *        persist.sys.a6l.eink.clear_every, vendor.eink.clear_req (any change = ghost refresh; written by a6l_dualux),
- *        persist.sys.a6l.eink.contrast (0..100, black/white point stretch before the e-ink quantisation)
+ *        persist.sys.a6l.eink.contrast (0..100, black/white point stretch before the e-ink quantisation),
+ *        persist.sys.a6l.eink.invert (eink-round11: 1 = inverted rendering, for a dark LCD theme shown without the e-ink
+ *        theme change; eink_logic.h tone_lut_invert)
  *   In the ROM the e-ink key is handled by a6l_dualux (rc: --key-dev none); --key-dev auto keeps the old toggle behaviour.
  *        a6l_eink_mirror [--epd-socket P] --send "<command>"   one command to a6l_epdd, prints its reply line
  *   --dry: no socket: prints "A6L_MIRROR CMD ..." lines and simulates completion; with --out it also writes the PGMs.
@@ -151,6 +153,9 @@ static int prop_get(const char *k, char *v, size_t n) {
 #ifdef __ANDROID__
     char b[PROP_VALUE_MAX] = {0}; int l = __system_property_get(k, b); snprintf(v, n, "%s", b); return l;
 #else
+    const char *dir = getenv("A6L_PROP_DIR");	/* eink-round11 host tests: one file per property, re-read every time */
+    if (dir) { char p[512]; snprintf(p, sizeof p, "%s/%s", dir, k); FILE *f = fopen(p, "r"); v[0] = 0;
+        if (f) { if (fgets(v, (int)n, f)) v[strcspn(v, "\n")] = 0; fclose(f); return (int)strlen(v); } }
     const char *e = getenv(k); snprintf(v, n, "%s", e ? e : ""); return (int)strlen(v);
 #endif
 }
@@ -606,13 +611,14 @@ static int appearance_scanout_barrier(const char *request) {
 static uint8_t out[OW * OH]; static int out_w = OW, out_h = OH, geo_ox, geo_oy, geo_dw, geo_dh;
 /* dualux (25 Sep): contrast LUT (persist.sys.a6l.eink.contrast 0..100, stock "high contrast text"): linear stretch
  * between a black point and a white point (0 = identity; 100 = 0..60 -> black, 195..255 -> white) */
-static uint8_t lut[256]; static int lut_contrast = -1;
+static uint8_t lut[256]; static int lut_contrast = -1, lut_invert;
 /* eink-round2: --tone BLACK,WHITE,GAMMAx100 (rc: persist.vendor.eink.tone, default 24,232,150; "0,255,100" = the old
  * linear LUT). Text-darkening curve for Material light UI on e-paper; see eink_logic.h tone_lut(). */
 static int tone_black = TONE_DEFAULT_BLACK, tone_white = TONE_DEFAULT_WHITE, tone_gamma = TONE_DEFAULT_GAMMA;
 static void lut_build(int c) {
     if (c < 0) c = 0; if (c > 100) c = 100; lut_contrast = c;
     tone_lut(lut, c, tone_black, tone_white, tone_gamma);
+    if (lut_invert) tone_lut_invert(lut);	/* eink-round11 */
 }
 static struct area_resizer resizer;	/* eink-round4: fixed-point area average (eink_logic.c area_resize, host-tested) */
 static void resample(void) {
@@ -701,13 +707,20 @@ static void ordinary_small_auto(struct pol_state *ps,struct pol_action *a,double
  * pend_t = the frame in flight; any ERR, lost reply (timeout), write failure or disconnect invalidates the baseline
  * (have_shown = 0, so the current page is resent even when static) with a bounded backoff (1, 2, 4 .. 30 s). A failed
  * "clear" also drops the frame queued behind it (clear + frame is one sequence); a successful clear leaves a white panel. */
-enum { INF_OTHER, INF_FRAME, INF_CLEAR };
+enum { INF_OTHER, INF_FRAME, INF_CLEAR, INF_WARM };	/* eink-round11: INF_WARM = "warm" (e-ink CRTC bring-up, no picture) */
 static char pending_appearance[96];
 static uint8_t pend_t[NT]; static int pend_land, inflight; static double retry_at, backoff;
 static void touch_gate_page_shown(void);	/* eink-round10 */
+/* eink-round11 reader sleep: the last page change on the e-ink (frame ACK) or rear-touch press, CLOCK_MONOTONIC s;
+ * published as vendor.eink.activity while persist.sys.a6l.eink.reader_sleep = 1 (a6l_dualux's idle timer) */
+static double activity_t, touch_activity_t; static int reader_sleep_on;
 static void cmd_result(int ok, const char *why) {
+    if (inflight == INF_WARM) {	/* eink-round11: no picture involved: the panel state, backoff and policy are untouched */
+        if (!ok) LOG("e-ink warm-up not done (%s): the first frame brings the CRTC up", why ? why : "error");
+        pending_policy = (struct pol_action){POL_NONE, NULL}; inflight = INF_OTHER; return;
+    }
     if (ok) {
-        if (inflight == INF_FRAME) { touch_gate_page_shown(); memcpy(shown_t, pend_t, NT); memcpy(shown_pixels, qframe, sizeof shown_pixels); shown_land = pend_land; have_shown = 1; backoff = 0;
+        if (inflight == INF_FRAME) { touch_gate_page_shown(); activity_t = now(); memcpy(shown_t, pend_t, NT); memcpy(shown_pixels, qframe, sizeof shown_pixels); shown_land = pend_land; have_shown = 1; backoff = 0;
             shown_waveform = pending_policy.mode; shown_policy_epoch = pending_policy_epoch;
             if (use_props && !dry && pending_appearance[0]) prop_set("vendor.eink.ready", pending_appearance); }
         else if (inflight == INF_CLEAR) have_shown = 0;
@@ -733,14 +746,14 @@ static int epd_send(const struct qcmd *c) {
         printf("A6L_MIRROR CMD %s\n", c->line); fflush(stdout);
         if (c->frame && outdir) { static int k; char p[600]; snprintf(p, sizeof p, "%s/f%d.pgm", outdir, k++); FILE *f = fopen(p, "wb");
             if (f) { fprintf(f, "P5\n%d %d\n255\n", qfw, qfh); if (fwrite(qframe, 1, (size_t)qfw * qfh, f) != (size_t)qfw * qfh) LOG("WARN short %s", p); fclose(f); } }
-        dry_done_at = now() + (strstr(c->line, "clear") ? 2.0 : strstr(c->line, "fastest") ? 0.55 : 0.85);
-        inflight = c->frame ? INF_FRAME : !strncmp(c->line, "clear", 5) ? INF_CLEAR : INF_OTHER;
+        dry_done_at = now() + (strstr(c->line, "clear") ? 2.0 : strstr(c->line, "fastest") ? 0.55 : !strcmp(c->line, "warm") ? 0.4 : 0.85);
+        inflight = c->frame ? INF_FRAME : !strncmp(c->line, "clear", 5) ? INF_CLEAR : !strcmp(c->line, "warm") ? INF_WARM : INF_OTHER;
         busy = 1; cmd_t = now(); return 0;
     }
     if (epd_connect()) return -1;
     char l[128]; int n = snprintf(l, sizeof l, "%s\n", c->line);
     if (send_all(l, (size_t)n) || (c->frame && send_all(qframe, (size_t)qfw * qfh))) { LOG("WARN a6l_epdd write failed: %s", strerror(errno)); epd_drop(); return -1; }
-    inflight = c->frame ? INF_FRAME : !strncmp(c->line, "clear", 5) ? INF_CLEAR : INF_OTHER;
+    inflight = c->frame ? INF_FRAME : !strncmp(c->line, "clear", 5) ? INF_CLEAR : !strcmp(c->line, "warm") ? INF_WARM : INF_OTHER;
     pending_appearance[0] = 0;
     if (c->frame) snprintf(pending_appearance, sizeof pending_appearance, "%s", qappearance);
     busy = 1; cmd_t = now(); LOG("cmd: %s", c->line); return 0;
@@ -785,7 +798,8 @@ static int on_reply(char *line, struct pol_state *ps) {	/* returns 1 if a comman
     double dur = now() - cmd_t;
     LOG("epdd: %s (%.2f s)", line, dur);
     if (inflight == INF_FRAME && !strncmp(line, "OK", 2) && dur > 0.05 && dur < 5) est_reply_s = 0.7 * est_reply_s + 0.3 * dur;
-    busy = 0; cmd_result(!strncmp(line, "OK", 2), "a6l_epdd error reply"); pol_done(ps, now()); return 1;
+    int warm = inflight == INF_WARM;	/* eink-round11: a warm-up is not an update (no min-gap after it) */
+    busy = 0; cmd_result(!strncmp(line, "OK", 2), "a6l_epdd error reply"); if (!warm) pol_done(ps, now()); return 1;
 }
 static void epd_input(struct pol_state *ps) {
     ssize_t r = recv(epd, rbuf + rlen, sizeof rbuf - 1 - rlen, 0);
@@ -870,6 +884,26 @@ static void touch_gate_open(const char *why) {	/* under touch_mu */
 static void touch_gate_page_shown(void) { touch_lock(); touch_gate_open("first page shown on the e-ink"); touch_unlock(); }
 static int suppress_drag_frames(void) { return use_props && prop_int("sys.a6l.eink.no_animations", 0); }
 static struct tmap tm;
+/* eink-round11: e-ink warm-up during the LCD -> e-ink switch. a6l_dualux publishes the switch request
+ * (vendor.dualux.prepare "<seq> eink") at the key and holds the mirror off until the themed frame is ready (7 Oct
+ * 19:24:47: 1.11 s, most of it the launcher relaunch for the e-ink theme). While the mirror is off, the first sight of a
+ * new e-ink request sends "warm" to a6l_epdd: the CRTC bring-up (~0.4 s) overlaps the handshake instead of delaying the
+ * first frame. Only when Android has been awake for >= 1 s (a key pressed while Android sleeps on the LCD also wakes it:
+ * the LCD powers up right then, and an e-ink modeset in an LCD power-up is what round 5 forbade); a6l_epdd refuses a
+ * cold start while the LCD pipeline is released anyway. persist.sys.a6l.eink.prewarm = 0 turns it off. */
+static char prewarm_seen[96]; static double awake_since = -1; static int prewarm_enabled = 1;
+static void prewarm_check(double t) {
+    char aw[8] = ""; prop_get("vendor.dualux.awake", aw, sizeof aw);
+    int awake = !strcmp(aw, "1");
+    if (!awake) awake_since = -1; else if (awake_since < 0) awake_since = t;
+    char pr[96] = ""; prop_get("vendor.dualux.prepare", pr, sizeof pr); size_t l = strlen(pr);
+    if (l < 6 || strcmp(pr + l - 5, " eink") || !strcmp(pr, prewarm_seen)) return;
+    snprintf(prewarm_seen, sizeof prewarm_seen, "%s", pr);
+    if (!prewarm_enabled || !prop_int("persist.sys.a6l.eink.prewarm", 1)) return;
+    if (!awake || t - awake_since < 1.0) { LOG("appearance %s: no e-ink warm-up (Android %s: the LCD may be powering up)", pr, awake ? "just woke" : "asleep"); return; }
+    if (busy || qn) { LOG("appearance %s: no e-ink warm-up (a6l_epdd busy)", pr); return; }
+    queue_cmd("warm", 0); pump(); LOG("appearance %s: e-ink warm-up during the switch handshake", pr);
+}
 static int touch_debug;
 static void emit(int type, int code, int val) {
     if (touch_debug) printf("A6L_MIRROR TOUCH_OUT %d %d %d\n", type, code, val);
@@ -908,7 +942,7 @@ static void touch_flush(void) {
         if (!forward || s->ignored) continue;
         if (!s->out_active && touch_gate && now() >= touch_gate_until) touch_gate_open("timeout");	/* eink-round10 */
         if (!s->out_active && touch_gate) { s->ignored = 1; touch_gate_ignored++; if (touch_debug) printf("A6L_MIRROR TOUCH_GUARD slot %d held back\n", i); continue; }
-        if (!s->out_active) { if (!inside) { s->ignored = 1; continue; } s->out_active = 1; s->start_fx = fx; s->start_fy = fy; s->moving = 0; emit(EV_ABS, ABS_MT_SLOT, i); emit(EV_ABS, ABS_MT_TRACKING_ID, next_tid++ & 0xffff); }
+        if (!s->out_active) { if (!inside) { s->ignored = 1; continue; } touch_activity_t = now(); s->out_active = 1; s->start_fx = fx; s->start_fy = fy; s->moving = 0; emit(EV_ABS, ABS_MT_SLOT, i); emit(EV_ABS, ABS_MT_TRACKING_ID, next_tid++ & 0xffff); }
         else { int dx = fx - s->start_fx, dy = fy - s->start_fy; if ((long long)dx * dx + (long long)dy * dy > (long long)slop * slop) s->moving = 1; emit(EV_ABS, ABS_MT_SLOT, i); }
         emit(EV_ABS, ABS_MT_POSITION_X, fx); emit(EV_ABS, ABS_MT_POSITION_Y, fy); changed = 1; down = 1;
         if (i == 0 || !sl[0].out_active) { emit(EV_ABS, ABS_X, fx); emit(EV_ABS, ABS_Y, fy); }
@@ -1012,6 +1046,8 @@ static int read_live_props(int *refresh_changed, int *clear_every_changed) {	/* 
     prop_get(P_REFRESH, v, sizeof v); if (strcmp(v, refresh_mode)) { snprintf(refresh_mode, sizeof refresh_mode, "%s", v); *refresh_changed = 1; }
     int ce = prop_int(P_CLEAR_EVERY, -1); if (ce != clear_every_prop) { clear_every_prop = ce; *clear_every_changed = ce >= 0; }
     prop_get(P_CLEAR_REQ, v, sizeof v); if (strcmp(v, clear_req)) { snprintf(clear_req, sizeof clear_req, "%s", v); req = clear_req_init; }
+    int inv = prop_int("persist.sys.a6l.eink.invert", 0) == 1;	/* eink-round11 */
+    if (inv != lut_invert) { lut_invert = inv; lut_build(lut_contrast < 0 ? 0 : lut_contrast); LOG("inverted rendering %s", inv ? "on" : "off"); have_shown = 0; }
     int ct = prop_int("persist.sys.a6l.eink.contrast", 0); ct = ct < 0 ? 0 : ct > 100 ? 100 : ct; if (ct != lut_contrast) { lut_build(ct); LOG("contrast %d", lut_contrast); have_shown = 0; }
     clear_req_init = 1; return req;
 }
@@ -1109,6 +1145,7 @@ int main(int argc, char **argv) {
         else if (OPT("--wait-prop")) wait_prop = v; else if (!strcmp(a, "--touch-debug")) touch_debug = 1;
         else if (OPT("--touch-thread")) touch_threaded = atoi(v) != 0;	/* eink-round6 */
         else if (OPT("--touch-guard-ms")) touch_guard_ms = atoi(v);	/* eink-round10 */
+        else if (OPT("--prewarm")) prewarm_enabled = atoi(v) != 0;	/* eink-round11 */
         else if (OPT("--capture-delay-ms")) capture_delay_ms = atoi(v);	/* eink-round6 host tests: a slow capture (phone: ~200 ms) */
         else if (OPT("--send")) {	/* one-shot client: send one command to a6l_epdd, print the reply (attended tests) */
             last_connect_try = -10; if (epd_connect()) return 1;
@@ -1143,6 +1180,10 @@ int main(int argc, char **argv) {
           if (rp && ack_policy && suppress_drag_frames()) pol_gesture_released(ack_policy, rt); }
         /* mode transitions */
         if (t >= next_props) { next_props = t + (use_props && prop_int("sys.a6l.dualux.theme_sync", 0) ? 0.05 : 0.5); int m1, r1; read_props(&m1, &r1);
+            if (use_props && !active && mode != EINK_MIRROR) prewarm_check(t);	/* eink-round11 */
+            if (use_props) { reader_sleep_on = prop_int("persist.sys.a6l.eink.reader_sleep", 0) == 1;	/* eink-round11 */
+                touch_lock(); double ta = touch_activity_t; touch_unlock(); if (ta > activity_t) activity_t = ta;
+                static double published; if (reader_sleep_on && activity_t > published) { char b[32]; snprintf(b, sizeof b, "%.3f", activity_t); prop_set("vendor.eink.activity", b); published = activity_t; } }
             if (r1 && !refresh_mode[0]) { pcfg.reading = reading; ps.cfg.reading = reading; policy_epoch++; LOG("reading mode %s", reading ? "on" : "off"); }
             int rc1, ce1; if (read_live_props(&rc1, &ce1)) {
                 LOG("ghost refresh requested (%s=%s)", P_CLEAR_REQ, clear_req);
@@ -1190,7 +1231,7 @@ int main(int argc, char **argv) {
             queue_manual_refresh(); }
         if (dry && busy && now() >= dry_done_at) {
             if (inflight == INF_FRAME) est_reply_s = 0.7 * est_reply_s + 0.3 * (now() - cmd_t);
-            busy = 0; cmd_result(1, NULL); pol_done(&ps, now()); LOG("done (simulated)"); }
+            int warm = inflight == INF_WARM; busy = 0; cmd_result(1, NULL); if (!warm) pol_done(&ps, now()); LOG("done (simulated)%s", warm ? ": warm" : ""); }
         if (!dry && busy && (now() - cmd_t) * 1000 > reply_timeout_ms) {	/* F36: lost reply: the connection is out of step */
             LOG("WARN a6l_epdd reply timeout (%.1f s): dropping the connection", now() - cmd_t);
             epd_drop(); busy = 0; qn = 0; cmd_result(0, "reply timeout"); pol_done(&ps, now()); }
@@ -1211,7 +1252,10 @@ int main(int argc, char **argv) {
         }
         if (!active || now() < next_cap) continue;
         int precapture = 0;
-        if (busy || qn) {
+        if (busy && !qn && inflight == INF_WARM) {	/* eink-round11: capture while the CRTC comes up; sent at the reply */
+            if (precap_cmd_t == cmd_t) continue;
+            precapture = 1;
+        } else if (busy || qn) {
             if (!pipeline || qn || inflight != INF_FRAME) continue;
             int settle = release_settling(&ps);
             if (!settle && (precap_cmd_t == cmd_t || now() < precapture_due())) continue;

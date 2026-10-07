@@ -6,6 +6,10 @@
 # Kernel side: boot DTB with &venus okay + per-Venus CX vote (boot-venus-cx.img), rom/modules/video.txt loaded by
 # a6l-modules.sh misc when persist.vendor.a6l.venus=1, firmware /vendor/firmware/qcom/venus-4.4 (stage-rom-v2-prebuilts.sh).
 # Stage B PASSED 7 Oct 2026 (hfi3f: 1080p 43.8 fps max, 29.85 fps paced, EOS ok, High profile, ffprobe-clean): default ON.
+# Round 13c (7 Oct 2026): default 1 again - prod3 cold power cycle passed stage-b9b (5 cold resumes ~100 ms, sleep A/B).
+# prod3 (stagec/modules, 8 Oct 2026): fixes that SYS_INIT -110 (stale CPU_CS_SCIACMDARG0 from the previous image made the
+# boot wait end before the new firmware was up; cleared at cold suspend/resume) + balanced venc runtime PM. Set this back
+# to 1 once stage-b9b-pc.sh and stage-b9b-sleep.sh pass with prod3.
 # Off switch: setprop persist.vendor.a6l.venus 0 + reboot -> no modules -> no node -> the V4L2 store advertises nothing ->
 # MediaCodecList keeps c2.android.avc.encoder (software), exactly as before. Venus modules = venus-impl stagec (hfi3 prod:
 # SDM660 HFI3 caps fill, 133 MHz init clock, no TRANSFORM_8X8 on HFI3, firmware buffer mode, real EOS buffer) + prod2 COLD

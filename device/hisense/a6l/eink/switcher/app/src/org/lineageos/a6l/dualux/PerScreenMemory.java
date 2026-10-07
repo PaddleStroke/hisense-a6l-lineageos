@@ -74,6 +74,7 @@ final class PerScreenMemory {
         @Override public void run() {
             if (!mPolling) return;
             checkBookkeeping();
+            publishReaderOk();
             if (mPolling) mHandler.postDelayed(this, 500);
         }
     };
@@ -180,6 +181,24 @@ final class PerScreenMemory {
                 }
             }
         });
+    }
+
+    /** eink-round11 reader sleep: a6l_dualux may put Android to sleep between pages only when waking it shows the
+     * reader again, i.e. no keyguard at all (Screen lock: None). A swipe or secure keyguard would come up at every
+     * wake-up and take the page turn; the system UID cannot use the KeyguardLock API. */
+    private String mReaderOk;
+    private void publishReaderOk() {
+        boolean ok;
+        try {
+            ok = new com.android.internal.widget.LockPatternUtils(mCtx).isLockScreenDisabled(android.os.UserHandle.myUserId());
+        } catch (RuntimeException e) {
+            ok = false;
+        }
+        String v = ok ? "1" : "0";
+        if (v.equals(mReaderOk)) return;
+        mReaderOk = v;
+        Dualux.set(Dualux.P_READER_OK, v);
+        Log.i(Dualux.TAG, "reader sleep " + (ok ? "allowed (no keyguard)" : "blocked: a keyguard is set (Screen lock must be None)"));
     }
 
     private void checkBookkeeping() {

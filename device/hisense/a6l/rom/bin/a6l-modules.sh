@@ -130,7 +130,7 @@ venus_ready() {
         [ -n "$enc" ] || sleep 0.1; i=$((i+1))
     done
     if [ -n "$enc" ] && [ -c "$enc" ]; then
-        chown media system "$enc"; chmod 0660 "$enc"
+        chown media:camera "$enc"; chmod 0660 "$enc"  # owner media (codec2 HAL), group camera as ueventd sets for video*
         setprop vendor.a6l.venus.enc "$enc"; setprop vendor.a6l.venus ready
         log "misc: venus encoder $enc ready after ${i}x0.1s ($(ls -l $enc | cut -d' ' -f1,3,4))"
     else

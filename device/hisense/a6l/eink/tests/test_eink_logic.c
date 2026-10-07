@@ -265,6 +265,15 @@ static void test_tone(void) {
     CHECK(l[200] > 150 && l[200] < 230, "tone: light grey 200 stays a grey (%d)", l[200]);
     tone_lut(l, 0, 0, 255, 200); CHECK(l[128] >= 62 && l[128] <= 66, "tone: gamma 2.0 at 128/255 = %d (exp. 64)", l[128]);
     tone_lut(l, 0, 200, 210, 150); CHECK(l[100] > 0 && l[100] < 255, "tone: nonsense clips ignored (%d)", l[100]);
+    {   /* eink-round11: inverted rendering */
+        uint8_t n[256], v[256]; tone_lut(n, 0, TONE_DEFAULT_BLACK, TONE_DEFAULT_WHITE, TONE_DEFAULT_GAMMA); memcpy(v, n, 256); tone_lut_invert(v);
+        int same = 1; for (int i = 0; i < 256; i++) same &= v[i] == n[255 - i];
+        CHECK(same, "tone invert: v[i] = tone(255 - i)");
+        CHECK(v[18] == 255 && v[45] > 200 && v[240] == 0 && v[255] == 0, "tone invert: dark-theme background (#121212) -> paper white, surface (#2d2d2d) -> light grey (%d), light text (240) -> black", v[45]);
+        int mono = 1; for (int i = 1; i < 256; i++) mono &= v[i] <= v[i - 1];
+        CHECK(mono, "tone invert: monotonic decreasing");
+        tone_lut_invert(v); CHECK(!memcmp(v, n, 256), "tone invert twice = identity");
+    }
 }
 /* eink-round3: A -> B -> A during the copy. The simulated scanout swaps the displayed slot every `period` checks (a
  * refresh); the BufferQueue slot A is re-rendered while B is shown. A before/after FB comparison accepts that copy. */

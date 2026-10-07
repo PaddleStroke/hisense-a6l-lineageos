@@ -104,3 +104,26 @@ int dx_watchdog_suspended(long count_at_heartbeat, long count_now, double d_boot
  * happened in the last 60 s (crash loop -> fail safe on the LCD, power key left to Android). */
 #define DX_RESTORE_WINDOW_S 60.0
 int dx_restore_screen(const char *prev_state, int enabled, double last_restore_boot_s, double now_boot_s);
+
+/* ---------------- eink-round11: e-ink reader sleep (phase 1; persist.sys.a6l.eink.reader_sleep, default 0) ----------------
+ * Reading on the e-ink keeps Android awake (screen on, LCD panel logically on behind its blanked backlight, the mirror
+ * capturing) although the e-paper needs no power to keep the page. Reader sleep: after reader_sleep_s seconds (default
+ * 30, 5..3600) with no page change on the e-ink (vendor.eink.activity, published by the mirror at every frame ACK and
+ * rear-touch press) and no key, Android is put to sleep (KEY_SLEEP) with vendor.dualux.reader_sleep = 1: a6l_einklock
+ * then keeps the page (no lock picture) and the system suspends. A volume key (page turn in every reader app) wakes it
+ * (KEY_WAKEUP) and is re-injected once Android is awake (the waking press itself is not delivered by Android: a key
+ * that wakes the device is consumed by the policy). Only when the Dualux app reports sys.a6l.dualux.reader_ok = 1
+ * (Screen lock: None - a keyguard would come up at every wake-up and take the page turn). Any other wake-up (power key,
+ * e-ink key) ends it normally. If Android stays awake 3 s after the request (call, wake lock), the idle timer restarts. */
+#define DX_READER_MIN_S 5
+#define DX_READER_MAX_S 3600
+#define DX_READER_RETRY_S 5.0
+struct dx_reader_in {
+    int enabled;		/* persist.sys.a6l.eink.reader_sleep == 1 */
+    int ok;			/* sys.a6l.dualux.reader_ok == 1 (no keyguard) */
+    int idle_s;			/* persist.sys.a6l.eink.reader_sleep_s (clamped) */
+    double now, last_activity, last_request;	/* CLOCK_MONOTONIC seconds */
+};
+int dx_reader_idle_s(int v);					/* clamp, 0/invalid -> 30 */
+int dx_reader_due(const struct dx_state *s, const struct dx_reader_in *in);	/* 1 = put Android to sleep now */
+int dx_reader_page_key(int code);				/* evdev KEY_VOLUMEUP / KEY_VOLUMEDOWN */

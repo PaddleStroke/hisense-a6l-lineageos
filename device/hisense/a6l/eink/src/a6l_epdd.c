@@ -1138,6 +1138,31 @@ static int lock_frame(const uint8_t *payload, int w, int h, int m, int force) {
     kmark("lockframe end: %s", rc ? "FAILED" : "ok");
     return rc;
 }
+/* eink-round11: "warm" = bring the e-ink CRTC up (modeset with the idle, no-drive frame) without a picture. LCD -> e-ink
+ * (7 Oct 19:24:47): the key at 47.78, the appearance handshake (theme/uiMode change, launcher relaunch, themed frame)
+ * until 48.90, mirror ON 48.95, and only then the first frame paid the cold bring-up (round 10 restore: cold=407 ms of a
+ * 1.07 s update). a6l_eink_mirror sends "warm" when it sees the e-ink switch request (vendor.dualux.prepare "<seq> eink")
+ * so the bring-up runs during the handshake. The panel picture does not change (idle frame), the lock state is kept,
+ * idle-off and the timed no-suspend CRTC lock count from here (a switch that never reaches the mirror costs at most
+ * --idle-off seconds of CRTC). Refused like any cold start while the LCD pipeline is released (cold_guard). */
+static int warm_up(char *reply, size_t rn) {
+    if (started) { snprintf(reply, rn, "OK warm: e-ink CRTC already on"); return 0; }
+    if (dry || lib_only) { snprintf(reply, rn, "OK warm: nothing to do (%s)", dry ? "dry run" : "library only"); return 0; }
+    if (!idle_pattern) { snprintf(reply, rn, "OK warm: skipped (no idle frame yet; the first update brings the CRTC up)"); return 0; }
+    double t0 = now(); int rc = -1;
+    for (int attempt = 0; attempt < 2 && rc; attempt++) {
+        if (dfd < 0 && drm_open()) break;
+        if (idle.map) memcpy(idle.map, idle_pattern, FRAME);
+        crtc_wakelock(1);
+        rc = drm_start();
+        if (rc) { crtc_wakelock(0); if (drm_lost) { LOG("WARN DRM access lost during the warm-up: re-acquiring"); drm_close(); continue; } break; }
+    }
+    if (rc) { snprintf(reply, rn, "ERR warm-up failed (see log)"); return -1; }
+    started = 1; last_update_t = now();
+    kmark("e-ink CRTC warmed up in %.0f ms (switch to the e-ink: no picture)", (now() - t0) * 1000);
+    snprintf(reply, rn, "OK warm: e-ink CRTC on in %.0f ms", (now() - t0) * 1000);
+    return 0;
+}
 static int lock_restore(int off, char *reply, size_t rn) {
     int rc = 0;
     kmark("lock restore%s (lock picture %s)", off ? " off" : "", lock_on_panel ? "shown" : "already replaced");
@@ -1198,6 +1223,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     if (!strncmp(line, "mode ", 5)) { mode = mode_by_name(line + 5, mode); snprintf(reply, rn, "OK mode=%d", mode); return 0; }
     /* eink-round6: every remaining command except "sleep" drives the panel: no cold modeset while the LCD pipeline is released */
     if (strncmp(line, "sleep ", 6) && strncmp(line, "frametest ", 10) && cold_guard(line, reply, rn)) return -1;
+    if (!strcmp(line, "warm")) return warm_up(reply, rn);	/* eink-round11 */
     /* eink-lockscreen: any other picture replaces a lock picture ("refresh" redraws the current one and keeps the state) */
     if (!strcmp(line, "clear")) { lock_on_panel = 0; rc = clear_full(); }
     else if (!strncmp(line, "clear ", 6)) { lock_on_panel = 0; rc = clear_kind(line + 6); }

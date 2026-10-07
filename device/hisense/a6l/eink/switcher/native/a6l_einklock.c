@@ -339,6 +339,12 @@ int main(int argc, char **argv) {
         double gap = boottime() - mono(); int resumed = gap - gap_prev > 0.5; gap_prev = gap;
         if (resumed && !strncmp(st, "eink", 4) && !sm.locked && sm.asleep_since > 0)
             LOG("system suspended before the lock entry (state %s): entry delay restarted", st);
+        /* eink-round11 reader sleep (a6l_dualux put Android to sleep between pages): the e-ink keeps the page - no lock
+         * picture, no minute ticks, no restore. A lock already shown (not a reader sleep) is handled as before. */
+        { char rs[8] = ""; static int in_reader; prop_get("vendor.dualux.reader_sleep", rs, sizeof rs);
+          int reader = !strcmp(rs, "1") && !strcmp(st, "eink-asleep") && !sm.locked;
+          if (reader != in_reader) { in_reader = reader; KLOG("%s", reader ? "reader sleep: the page stays on the e-ink (no lock picture)" : "reader sleep over"); }
+          if (reader) { sm.asleep_since = 0; if (armed) timer_disarm(); if (holding) { wakelock(0); holding = 0; } continue; } }
         struct elk_in in = {cfg.enabled, cfg.clock, !strcmp(st, "eink-asleep"), !strncmp(st, "eink", 4), fired, changed, cfg.clean_min, mono(), resumed, lcd_idle, settling,
                             !strcmp(em, "mirror")};
         int was_locked = sm.locked;

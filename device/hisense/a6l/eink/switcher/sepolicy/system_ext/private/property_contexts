@@ -6,6 +6,7 @@ persist.sys.a6l.            u:object_r:a6l_dualux_ctl_prop:s0
 
 # Pre-light appearance request and committed readiness handshake
 sys.a6l.dualux.ready u:object_r:a6l_dualux_ctl_prop:s0 exact string
+sys.a6l.dualux.reader_ok u:object_r:a6l_dualux_ctl_prop:s0 exact string
 sys.a6l.dualux.theme_sync u:object_r:a6l_dualux_ctl_prop:s0 exact string
 sys.a6l.dualux.appearance u:object_r:a6l_dualux_ctl_prop:s0 exact string
 sys.a6l.dualux.wallpaper_ready u:object_r:a6l_dualux_ctl_prop:s0 exact string

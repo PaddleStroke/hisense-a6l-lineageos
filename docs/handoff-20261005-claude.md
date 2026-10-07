@@ -626,3 +626,35 @@ still running.
   - Note: logical cpu0 silver, cpu1-4 gold, cpu5-7 silver. Stage logs: phone-rev*.txt in that folder.
 - Night agents: selinux-20261007 (rules from 2840 avcs) + mdss-ahb-20261007 (mdss_ahb stuck-at-on fix).
 - Venus: hfi3e bisect kit ready (stage-b6.sh), needs Venus DT (boot 10affa76 has it).
+
+### 7-8 Oct night — rounds 12/13: SELinux prep, Venus H.264 encoder in the ROM, e-ink 0042-0044
+
+- Venus encoder (venus-impl-20261006): hfi3f/prod bench = 1080p 43 fps max, 1080p30 paced 29.99 fps, eos ok.
+  Warm power collapse is broken on this firmware (resume ok, SYS_INIT never answered). prod2 = cold cycle
+  (pas_shutdown on runtime/system suspend, full mdt boot on resume) but still -110: CPU_CS_SCIACMDARG0 kept the old
+  image's status, so the boot wait passed instantly. prod3 (core 0fd410f0, enc 5f411501, dec 562dae0a) clears it:
+  stage-b9b-pc 5 cold resumes in ~100 ms, all encodes pass; stage-b9b-sleep A (keep_on=0) and B (keep_on=1) encode
+  after real s2idle. keep_on default 0 (core powered only while a session is open). system sleep = force_suspend =
+  cold cycle; an open session refuses suspend (-EBUSY).
+- Stage C (stagec/integration.diff v3 + update-prod2/prod3): v4l2_codec2 built in-tree (patches 0001-0003 applied
+  to external/v4l2_codec2 by hand - the pipeline would do it), media_codecs_c2 rank 256, H.264 only (no HEVC
+  component), persist.vendor.a6l.venus=1 (0 = software only), module lists video.txt/video-dec.txt.
+  NOTE: I staged the Venus prebuilts into the Lineage tree by hand (modules, firmware, module lists + rom-files.mk
+  lines) instead of re-running tools/stage-rom-v2-prebuilts.sh, which would rebuild the whole prebuilt set and could
+  drop the direct overrides made since round 4. Re-running it later must be checked against the current tree.
+- SELinux prep (selinux-20261007 pass 1, committed 2036362): built with A6L_SELINUX_PREP=1 + a6l_selinux_prep.py
+  applied to the tree (rc seclabels dropped, /dev/dri card 0660). sys.use_memfd moved to system_ext props -> vendor
+  and system MUST be flashed together. Round 12 avc: 320 lines (r11: 2840). Pass 2 ready, NOT applied:
+  selinux-20261007/round12/0002-a6l-sepolicy-r12-pass2.patch (renames a6l_modules_{adsp,misc,offcharge} to vendor.*
+  because init drops on-property triggers on init.svc.a6l_* under enforcing; renderD128 check; composer backlight).
+- E-ink round 7 (eink-round7-20261007): 0042 e-ink warm-up during the LCD->e-ink handshake (default on,
+  persist.sys.a6l.eink.prewarm=0 off), 0043 opt-in inverted rendering (persist.sys.a6l.eink.invert=1), 0044 reader
+  sleep phase 1 (Settings > E-ink, default off, needs Screen lock: None). Settings patch 0003 applied in the tree.
+- Builds: build-round12-image.py (round 8 pins + A6L_SELINUX_PREP=1). Round 12 = vendor cc41d1d0 + system 464bfd42
+  (flashed, booted). Round 13 = vendor 859e9d7e (venus default 0) + system 38805b07 (flashed 23:27, booted clean).
+  Round 13c = round 13 + prod3 + venus default 1 (building).
+- Lesson: never leave a sleep test on stay_on_while_plugged_in 0 + plain `sleep N` - N counts only awake time and the
+  phone sat in a 1 s/min wake loop for 20 min (screen_off_timeout is 120 s, not infinite). Use a wall-clock wait +
+  RTC wakealarm, stayon back on afterwards.
+- s2idle shows "Watchdog detected hard LOCKUP on cpu 5/6" reports (pre-existing, also in round 10). Non-fatal unless
+  kernel.hardlockup_panic=1 (some bench scripts set it).

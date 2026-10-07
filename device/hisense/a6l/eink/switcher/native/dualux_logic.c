@@ -133,6 +133,13 @@ int dx_watchdog_suspended(long count_at_heartbeat, long count_now, double d_boot
     if (count_at_heartbeat >= 0 && count_now >= 0 && count_now != count_at_heartbeat) return 1;
     return d_boot - d_mono > 1.0;
 }
+int dx_reader_idle_s(int v) { return v <= 0 ? 30 : v < DX_READER_MIN_S ? DX_READER_MIN_S : v > DX_READER_MAX_S ? DX_READER_MAX_S : v; }
+int dx_reader_due(const struct dx_state *s, const struct dx_reader_in *in) {
+    if (!in->enabled || !in->ok || s->screen != DX_EINK || !s->awake || s->appearance_hold || s->ek_down || s->pw_down) return 0;
+    if (in->now - in->last_request < DX_READER_RETRY_S) return 0;
+    return in->now - in->last_activity >= dx_reader_idle_s(in->idle_s);
+}
+int dx_reader_page_key(int code) { return code == 115 || code == 114; }
 int dx_restore_screen(const char *prev_state, int enabled, double last_restore_boot_s, double now_boot_s) {
     if (!enabled || !prev_state || strncmp(prev_state, "eink", 4)) return DX_LCD;
     if (last_restore_boot_s > 0 && now_boot_s >= last_restore_boot_s && now_boot_s - last_restore_boot_s < DX_RESTORE_WINDOW_S) return DX_LCD;

@@ -152,6 +152,22 @@ static void test_watchdog_restore(void) {
     CHECK(dx_restore_screen("eink", 1, 500, 100) == DX_EINK, "restore: stale stamp from before a reboot (in the future) ignored");
 }
 
+static void test_reader(void) {	/* eink-round11 */
+    struct dx_reader_in in = {1, 1, 30, 1000, 960, 0};
+    reset(DX_EINK, 1);
+    CHECK(dx_reader_due(&S, &in), "reader sleep: 40 s without a page change on the e-ink -> sleep");
+    in.last_activity = 975; CHECK(!dx_reader_due(&S, &in), "reader sleep: 25 s < 30 s -> not yet");
+    in.last_activity = 960; in.ok = 0; CHECK(!dx_reader_due(&S, &in), "reader sleep: keyguard not disabled (reader_ok 0) -> never");
+    in.ok = 1; in.enabled = 0; CHECK(!dx_reader_due(&S, &in), "reader sleep: off -> never");
+    in.enabled = 1; in.last_request = 997; CHECK(!dx_reader_due(&S, &in), "reader sleep: requested < 5 s ago -> no second request");
+    in.last_request = 0; S.appearance_hold = 1; CHECK(!dx_reader_due(&S, &in), "reader sleep: not during a screen switch");
+    S.appearance_hold = 0; S.ek_down = 1; CHECK(!dx_reader_due(&S, &in), "reader sleep: not while a key is held");
+    S.ek_down = 0; reset(DX_LCD, 1); CHECK(!dx_reader_due(&S, &in), "reader sleep: LCD -> never");
+    reset(DX_EINK, 0); CHECK(!dx_reader_due(&S, &in), "reader sleep: already asleep -> nothing");
+    CHECK(dx_reader_idle_s(0) == 30 && dx_reader_idle_s(1) == 5 && dx_reader_idle_s(99999) == 3600 && dx_reader_idle_s(45) == 45, "reader sleep: idle time clamped 5..3600, default 30");
+    CHECK(dx_reader_page_key(115) && dx_reader_page_key(114) && !dx_reader_page_key(116) && !dx_reader_page_key(616), "reader sleep: page keys = volume up/down");
+}
+
 int main(void) {
     test_watchdog_restore();
     test_eink_key(); test_power_key(); test_power_failopen(); test_requests(); test_brightness();
@@ -164,6 +180,7 @@ int main(void) {
     CHECK(dx_frontlight_level(&S, &f, 4095, 4095, 0, 255) == 255, "ready rear: normal frontlight");
     reset(DX_LCD, 1); S.appearance_hold = 1;
     CHECK(dx_lcd_blank(&S) && !dx_mirror_on(&S), "LCD preparation keeps LCD blank");
+    test_reader();
     printf("%d/%d checks passed\n", checks - fails, checks);
     printf(fails ? "TESTS_FAIL\n" : "TESTS_PASS\n");
     return fails != 0;

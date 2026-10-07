@@ -141,6 +141,12 @@ int plane_opaque_fullscreen(const struct plane_geo *q, int fw, int fh, int gw, i
 #define TONE_DEFAULT_WHITE 232
 #define TONE_DEFAULT_GAMMA 150
 void tone_lut(uint8_t lut[256], int contrast, int black_clip, int white_clip, int gamma_x100);
+/* eink-round11: inverted rendering. lut[i] becomes the tone of (255 - i): a dark UI (near-black background, light text)
+ * comes out as black text on white paper with the same text-darkening curve. Used with the e-ink theme "Follow the LCD"
+ * and a dark LCD theme: the e-ink needs no Android theme/uiMode change, so the LCD -> e-ink switch skips the relaunch of
+ * the foreground app (7 Oct 19:24:47: 1.11 s handshake with the theme change, 0.13 s without, 6 Oct 16:11:38). Photos
+ * and coloured artwork come out as negatives: opt-in (persist.sys.a6l.eink.invert = 1). */
+void tone_lut_invert(uint8_t lut[256]);
 
 /* ---------------- 6. capture integrity and CRTC following (eink-round3-20261006) ---------------- */
 #include <stddef.h>
