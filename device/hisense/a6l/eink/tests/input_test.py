@@ -13,7 +13,7 @@ def touch(slot, tid, x=None, y=None):
     if x is not None: b += ev(EV_ABS, ABS_MT_POSITION_X, x) + ev(EV_ABS, ABS_MT_POSITION_Y, y)
     os.write(tf, b + ev(EV_SYN, 0, 0))
 print("T0 touch while mirror OFF (must be dropped)", flush=True); touch(0, 1, 360, 720); time.sleep(0.2); touch(0, -1); time.sleep(0.3)
-print("T1 short key press -> mirror", flush=True); key(1); time.sleep(0.2); key(0); time.sleep(1.0)
+print("T1 short key press -> mirror", flush=True); key(1); time.sleep(0.2); key(0); time.sleep(1.6)  # round 10: after the first page (guard)
 print("T2 touch centre (360,720) -> expect ~(540,1170)", flush=True); touch(0, 5, 360, 720); time.sleep(0.2)
 print("T3 move to the picture top-left (27,0) -> (0,0)", flush=True); touch(0, 5, 27, 0); time.sleep(0.2); touch(0, -1); time.sleep(0.2)
 print("T4 touch in the left white bar (5,700) -> ignored", flush=True); touch(1, 6, 5, 700); time.sleep(0.2); touch(1, -1); time.sleep(0.2)

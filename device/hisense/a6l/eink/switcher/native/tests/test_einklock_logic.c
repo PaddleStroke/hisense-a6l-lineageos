@@ -169,11 +169,31 @@ static void test_lcd_mode(void) {
     a = lstep(&s, 1, 1, 0, 0, 0, 121.6); EXPECT(a.draw && !s.deferred, "  ... settled: the deferred tick is drawn");
     a = lstep(&s, 1, 1, 0, 0, 0, 122); EXPECT(!a.draw, "  ... once");
     struct elk_in sw = {1, 1, 0, 1, 0, 0, 60, 200, 0, 0, 1}; a = elk_step(&s, &sw); elk_sm_sent(&s, &a, 200);
-    EXPECT(!a.draw && !a.restore && !s.locked && s.restore_pending, "switched to the e-ink: lock over, no restore during the switch");
-    sw.settling = 0; sw.now = 201.05; a = elk_step(&s, &sw); EXPECT(a.restore, "awake on the e-ink 1 s: restore (the mirror's page comes back)");
+    EXPECT(!a.draw && !a.restore && !s.locked && s.restore_pending && s.restore_by_mirror, "switched to the e-ink: lock over, no restore during the switch");
+    /* eink-round10: LCD-mode lock -> e-ink: the mirror (off during the lock) redraws; no restore of the stale cached page */
+    sw.settling = 0; sw.now = 201.05; a = elk_step(&s, &sw); EXPECT(!a.restore && !a.mirror_redraw && s.restore_pending, "round 10: awake on the e-ink 1 s, mirror not on yet: no restore (waits for the mirror)");
+    sw.mirror_on = 1; sw.now = 201.2; a = elk_step(&s, &sw); EXPECT(!a.restore && a.mirror_redraw && !s.restore_pending, "round 10: mirror on: restore dropped, its first frame replaces the lock picture");
+    sw.now = 210; a = elk_step(&s, &sw); EXPECT(!a.restore && !a.mirror_redraw && !a.draw, "round 10: nothing more");
+    elk_sm_init(&s);
+    a = lstep(&s, 1, 1, 0, 0, 0, 220); a = lstep(&s, 1, 1, 0, 0, 0, 222.1); EXPECT(a.draw, "LCD mode lock (round 10 fallback)");
+    sw.mirror_on = 0; sw.now = 230; a = elk_step(&s, &sw); sw.now = 233.9; a = elk_step(&s, &sw); EXPECT(!a.restore, "round 10: e-ink without the mirror: no restore before 4 s");
+    sw.now = 234.05; a = elk_step(&s, &sw); EXPECT(a.restore && !s.restore_pending, "round 10: e-ink without the mirror 4 s: restore (fallback)");
+    elk_sm_init(&s);
+    a = lstep(&s, 1, 1, 0, 0, 0, 240); a = lstep(&s, 1, 1, 0, 0, 0, 242.1); EXPECT(a.draw, "LCD mode lock (round 10 race)");
+    sw.mirror_on = 1; sw.now = 243; a = elk_step(&s, &sw); EXPECT(!a.restore && a.mirror_redraw && !s.restore_pending, "round 10: mirror already on at the lock end: no restore at all");
+    /* round 5 lock (asleep on the e-ink, mirror on) woken on the e-ink: restore kept (the paused mirror resends nothing) */
+    struct elk_in as = {1, 1, 1, 1, 0, 0, 60, 250, 0, 0, 0, 1}; elk_sm_init(&s); elk_step(&s, &as); as.now = 250.85; a = elk_step(&s, &as); elk_sm_sent(&s, &a, 250.85);
+    EXPECT(a.draw && !s.lcd_lock, "asleep on the e-ink, mirror on: lock picture");
+    as.asleep_eink = 0; as.now = 260; a = elk_step(&s, &as); as.now = 261.05; a = elk_step(&s, &as);
+    EXPECT(a.restore && !a.mirror_redraw, "round 10: lock begun asleep on the e-ink with the mirror on: restore after 1 s as before");
+    /* asleep on the e-ink -> woken on the LCD (mirror off: LCD-mode lock) -> back on the e-ink with the mirror: no restore */
+    as.asleep_eink = 1; as.now = 270; elk_step(&s, &as); as.now = 270.85; a = elk_step(&s, &as); elk_sm_sent(&s, &a, 270.85);
+    struct elk_in lw = {1, 1, 0, 0, 0, 0, 60, 280, 0, 1, 1, 0}; a = elk_step(&s, &lw); EXPECT(s.locked && s.lcd_lock, "round 10: woken on the LCD (mirror off): the lock goes on as an LCD-mode lock");
+    as.asleep_eink = 0; as.now = 300; a = elk_step(&s, &as); EXPECT(!a.restore && a.mirror_redraw, "round 10: then the e-ink with the mirror: no restore");
     elk_sm_init(&s);
     a = lstep(&s, 1, 1, 0, 0, 0, 300); a = lstep(&s, 1, 1, 0, 0, 0, 302.1); EXPECT(a.draw, "LCD mode lock again");
     a = lstep(&s, 1, 0, 0, 0, 0, 303); EXPECT(!a.draw && !a.restore && !s.locked && s.restore_pending, "mirror turned on in LCD mode: lock over, the mirror redraws (no restore)");
+    { struct elk_in m = {1, 1, 0, 0, 0, 0, 60, 303.3, 0, 0, 0, 1}; a = elk_step(&s, &m); EXPECT(!a.restore && a.mirror_redraw && !s.restore_pending, "round 10: ... and the pending restore is dropped once mirror mode is seen"); }
     elk_sm_init(&s);
     a = lstep(&s, 1, 1, 0, 0, 0, 400); a = lstep(&s, 1, 1, 0, 0, 0, 402.1); EXPECT(a.draw, "LCD mode lock");
     a = lstep(&s, 0, 1, 0, 0, 0, 403); EXPECT(a.restore && !s.locked && !a.arm, "lock disabled in LCD mode: 'lock restore off' at once, timer off");
@@ -182,6 +202,17 @@ static void test_lcd_mode(void) {
     a = lstep(&s, 1, 1, 0, 0, 0, 502.6); EXPECT(a.draw, "  ... drawn once settled");
     struct elk_in e = {1, 1, 1, 1, 0, 0, 60, 600, 0, 0, 1}; elk_sm_init(&s); elk_step(&s, &e); e.now = 600.85; a = elk_step(&s, &e);
     EXPECT(a.draw, "asleep on the e-ink: entry 0.8 s after, not delayed by the settle (round-5 timing kept)");
+}
+
+static void test_wallclock(void) {	/* eink-round10 */
+    double now = 1791393900.0 + 20.5;	/* hh:mm:20.5 */
+    long long shown = elk_display_time(now, 60, 1.0);
+    EXPECT(!elk_wallclock_redraw(shown, now + 6, 60, 1.0), "round 10: cancel at a resume in the same minute: no redraw");
+    EXPECT(!elk_wallclock_redraw(shown, now + 38.4, 60, 1.0), "round 10: cancel 0.1 s before the lead: no redraw (the tick comes)");
+    EXPECT(elk_wallclock_redraw(shown, now + 38.6, 60, 1.0), "round 10: cancel at the tick (alarm expired during the resume): redraw");
+    EXPECT(elk_wallclock_redraw(shown, now - 3600, 60, 1.0), "round 10: time set back an hour: redraw");
+    EXPECT(elk_wallclock_redraw(shown, now + 120, 60, 1.0), "round 10: time set 2 min ahead: redraw");
+    EXPECT(elk_wallclock_redraw(-1, now, 60, 1.0), "round 10: nothing drawn yet: redraw");
 }
 
 static void test_rtc_fallback(void) {
@@ -205,7 +236,7 @@ static void test_rtc_fallback(void) {
 }
 
 int main(void) {
-    test_format(); test_render(); test_pgm(); test_schedule(); test_sm(); test_lcd_mode(); test_rtc_fallback();
+    test_format(); test_render(); test_pgm(); test_schedule(); test_sm(); test_lcd_mode(); test_wallclock(); test_rtc_fallback();
     printf("%d checks, %d failures\n", checks, fails);
     printf("%s\n", fails ? "EINKLOCK_TESTS_FAIL" : "EINKLOCK_TESTS_PASS");
     return fails ? 1 : 0;

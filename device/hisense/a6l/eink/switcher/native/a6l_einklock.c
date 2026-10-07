@@ -8,6 +8,8 @@
  * minute alarm -> 800 ms wakelock -> redraw -> REGAL post -> re-arm). Here:
  *   - minute tick: timerfd CLOCK_REALTIME_ALARM (CAP_WAKE_ALARM) at each minute boundary minus --lead-ms (the panel
  *     needs ~1.4 s from a cold start to the final REGAL snap), TFD_TIMER_CANCEL_ON_SET (wall clock change = redraw),
+ *     eink-round10: a cancel (also sent at every resume from suspend) redraws only if the displayed minute changed;
+ *     SIGUSR1 = a simulated cancel (host tests);
  *     polled with EPOLLWAKEUP (CAP_BLOCK_SUSPEND: the system stays awake from the RTC alarm to our next epoll_wait);
  *     kernel alarms are not deferred by Doze (stock's setExactAndAllowWhileIdle is throttled to ~9 min in deep Doze);
  *   - a timed wakelock "a6l_einklock" (15 s) around each a6l_epdd transaction;
@@ -21,6 +23,8 @@
  *     the LCD only once the e-ink is used again (the e-ink keeps the lock picture meanwhile, as stock did); the lock entry
  *     comes 0.8 s after eink-asleep (wakelock held from the first sight, restarted after a suspend) and is re-checked
  *     right before the frame is sent (einklock_logic.h ELK_ENTRY_DELAY_S);
+ *     eink-round10: after a lock shown in LCD mode (mirror off) no restore: the mirror, turned on again, sends its first
+ *     capture and a6l_epdd draws it as the GC16 clean that follows a lock picture (einklock_logic.h ELK_MIRROR_WAIT_S);
  *   - LCD mode: nothing (state lcd). eink-round6: in LCD mode the e-ink shows the lock picture too unless it mirrors the
  *     LCD (persist.vendor.eink.mode = mirror), with the minute ticks; 2 s after LCD mode is seen (so right after boot,
  *     and after a switch to the LCD); ticks wait 1.5 s after a display transition (vendor.dualux.awake / state change).
@@ -78,6 +82,8 @@ static const char *sysroot = "", *prop_dir, *epd_socket = "/dev/socket/a6l_epd",
 static int period_s = 60, lead_ms = 1000, use_wakelock = 1, force_realtime;
 static volatile sig_atomic_t stop;
 static void on_sig(int s) { (void)s; stop = 1; }
+static volatile sig_atomic_t fake_cancel;	/* eink-round10: SIGUSR1 = a simulated TFD_TIMER_CANCEL_ON_SET cancel (host tests) */
+static void on_usr1(int s) { (void)s; fake_cancel = 1; }
 static double mono(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
 static double realtime(void) { struct timespec t; clock_gettime(CLOCK_REALTIME, &t); return t.tv_sec + t.tv_nsec / 1e9; }
 static double boottime(void) { struct timespec t; if (clock_gettime(CLOCK_BOOTTIME, &t)) return mono(); return t.tv_sec + t.tv_nsec / 1e9; }
@@ -233,6 +239,7 @@ static void timer_disarm(void) { struct itimerspec it; memset(&it, 0, sizeof it)
 
 /* ---------------- drawing ---------------- */
 static uint8_t canvas[ELK_W * ELK_H];
+static long long drawn_t = -1;	/* eink-round10: the minute the last lock frame showed (elk_wallclock_redraw) */
 static void render_at(long long t, const struct elk_cfg *c) {
     struct elk_info in; memset(&in, 0, sizeof in); time_t tt = (time_t)t; localtime_r(&tt, &in.tm);
     battery(&in.battery_pct, &in.charging);
@@ -249,7 +256,7 @@ static int draw(const struct elk_cfg *c, int force, const char *why) {
     double tr = mono();
     static int nframe; char reply[256], line[64]; snprintf(line, sizeof line, "lockframe %d %d reading%s", ELK_W, ELK_H, force ? " force" : "");
     if (dump_dir) { char p[600]; snprintf(p, sizeof p, "%s/lock%03d.pgm", dump_dir, nframe); write_pgm(p); }
-    nframe++;
+    nframe++; drawn_t = t;
     kmark("lock frame %d (%s) sent", nframe, why);
     int rc = transact(line, canvas, sizeof canvas, reply, sizeof reply);
     struct tm tm; time_t tt = (time_t)t; localtime_r(&tt, &tm);
@@ -273,7 +280,7 @@ int main(int argc, char **argv) {
     }
     if (lead_ms < 0 || lead_ms > 1500) lead_ms = 1000;
     if (period_s < 1 || period_s > 3600) period_s = 60;
-    signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGPIPE, SIG_IGN); signal(SIGUSR1, on_usr1);
     { char v[16]; prop_get("persist.vendor.eink.lock_rtc", v, sizeof v); rtc_state = !strcmp(v, "late") ? ELK_RTC_LATE : !strcmp(v, "ok") ? ELK_RTC_OK : ELK_RTC_UNKNOWN; }
     struct elk_cfg cfg, prev; read_cfg(&cfg);
     { char m[16]; prop_get("persist.sys.a6l.eink.lock_clock_mode", m, sizeof m); cfg.stale = elk_stale_variant(m, rtc_state); }
@@ -290,11 +297,18 @@ int main(int argc, char **argv) {
     while (!stop && (!exit_after || mono() - t_start < exit_after)) {
         struct epoll_event got; int n = epoll_wait(ep, &got, 1, 250), fired = 0;
         if (n < 0 && errno != EINTR) { LOG("FAIL epoll_wait: %s", strerror(errno)); break; }
-        int ontime_tick = 0;
+        int ontime_tick = 0, cancel = 0;
         if (n > 0) { uint64_t x; ssize_t r = read(tfd, &x, sizeof x);
             if (r == (ssize_t)sizeof x) { fired = 1; ontime_tick = 1; }
-            else if (r < 0 && errno == ECANCELED) { fired = 1; LOG("wall clock changed: redraw"); }
+            else if (r < 0 && errno == ECANCELED) cancel = 1;
             if (fired) armed = 0; }
+        if (fake_cancel) { fake_cancel = 0; cancel = 1; }
+        if (cancel) {	/* eink-round10: also every resume from suspend; the timer is re-armed below either way */
+            static int skipped; armed = 0;
+            if (!sm.locked || elk_wallclock_redraw(drawn_t, realtime(), period_s, lead_ms / 1000.0)) { fired = 1; LOG("wall clock changed: redraw"); }
+            else if (++skipped <= 3 || skipped % 100 == 0)
+                LOG("wall clock notification (system resume or time set), displayed minute unchanged: timer re-armed, no redraw (%d)", skipped);
+        }
         if (ontime_tick && sm.locked && armed_target) {	/* RTC wake check: how late did this tick run? */
             double late = realtime() - ((double)armed_target - lead_ms / 1000.0);
             int was = rtc_state; rtc_state = elk_rtc_learn(rtc_state, &rtc_ontime, late, late_s);
@@ -325,7 +339,8 @@ int main(int argc, char **argv) {
         double gap = boottime() - mono(); int resumed = gap - gap_prev > 0.5; gap_prev = gap;
         if (resumed && !strncmp(st, "eink", 4) && !sm.locked && sm.asleep_since > 0)
             LOG("system suspended before the lock entry (state %s): entry delay restarted", st);
-        struct elk_in in = {cfg.enabled, cfg.clock, !strcmp(st, "eink-asleep"), !strncmp(st, "eink", 4), fired, changed, cfg.clean_min, mono(), resumed, lcd_idle, settling};
+        struct elk_in in = {cfg.enabled, cfg.clock, !strcmp(st, "eink-asleep"), !strncmp(st, "eink", 4), fired, changed, cfg.clean_min, mono(), resumed, lcd_idle, settling,
+                            !strcmp(em, "mirror")};
         int was_locked = sm.locked;
         struct elk_act a = elk_step(&sm, &in);
         if (a.hold && !holding) { wakelock(1); holding = 1;
@@ -338,6 +353,8 @@ int main(int argc, char **argv) {
             KLOG("lock screen off (%s): a6l_epdd: %s", strcmp(st, "eink") ? st[0] ? st : "no state" : "awake on the e-ink", reply[0] ? reply : "no reply");
             if (rc) elk_restore_failed(&sm, mono());
         }
+        if (a.mirror_redraw)	/* eink-round10 */
+            KLOG("lock screen off (%s): no restore, the mirror's first frame replaces the lock picture (GC16 clean in a6l_epdd)", st[0] ? st : "no state");
         if (a.draw) {
             char st2[32], em2[16]; prop_get("vendor.dualux.state", st2, sizeof st2);	/* eink-round5: re-checked right before the frame */
             prop_get("persist.vendor.eink.mode", em2, sizeof em2);

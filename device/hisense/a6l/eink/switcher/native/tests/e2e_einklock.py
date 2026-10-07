@@ -79,8 +79,15 @@ check(not since(t, "lock"), "awake: nothing sent on the ticks")
 w(P + "/vendor.dualux.state", "eink-asleep"); time.sleep(1.4)
 t = time.monotonic(); w(P + "/vendor.dualux.state", "lcd"); time.sleep(1.3)  # round 6d: < the 1.5 s settle (LCD-mode ticks may follow after it)
 check(not since(t, "lock"), "round 5: woken on the LCD: nothing sent (no e-ink modeset during the LCD wake-up; the lock picture stays)")
-t = time.monotonic(); w(P + "/vendor.dualux.state", "eink"); time.sleep(1.6)
-check([c[1] for c in since(t, "lock")] == ["lock restore"], "round 5: back on the e-ink later: 'lock restore' after 1 s")
+t = time.monotonic(); w(P + "/vendor.dualux.state", "eink"); w(P + "/persist.vendor.eink.mode", "mirror"); time.sleep(1.6)
+check(not since(t, "lock"), "round 10: back on the e-ink later with the mirror (it was off: LCD-mode lock): no restore, the mirror's first frame replaces the lock picture")
+check("no restore, the mirror's first frame replaces the lock picture" in open(os.path.join(W, "einklock_e2e.log")).read(), "round 10: logged")
+t = time.monotonic(); w(P + "/persist.vendor.eink.mode", "off"); w(P + "/vendor.dualux.state", "lcd"); time.sleep(2.6)
+check(len(since(t, "lockframe")) >= 1, "round 10: LCD-mode lock again")
+t = time.monotonic(); w(P + "/vendor.dualux.state", "eink"); time.sleep(3.0)
+check(not since(t, "lock restore"), "round 10: e-ink without the mirror: no restore before 4 s")
+time.sleep(1.6)
+check([c[1] for c in since(t, "lock restore")] == ["lock restore"], "round 10: e-ink without the mirror 4 s: 'lock restore' (fallback)")
 w(P + "/persist.vendor.eink.mode", "off"); t = time.monotonic(); w(P + "/vendor.dualux.state", "lcd"); time.sleep(2.6)
 lf = since(t, "lockframe")
 check(len(lf) >= 1 and 1.9 <= lf[0][0] - t <= 2.6, "round 6: LCD mode, e-ink not mirroring: lock picture %.2f s after (2 s)" % (lf[0][0] - t if lf else -1))
@@ -130,7 +137,21 @@ check(lockrtc() == "ok" and big_digits(newest()) > 50, "two on-time ticks: live 
 w(P + "/persist.sys.a6l.eink.lock_clock_mode", "updated"); time.sleep(0.8)
 check(big_digits(newest()) == 0, "lock_clock_mode=updated forces the variant")
 os.unlink(P + "/persist.sys.a6l.eink.lock_clock_mode")
-d.terminate(); d.wait(5); srv.close()
+d.terminate(); d.wait(5)
+# eink-round10: wall-clock notifications (SIGUSR1 = simulated TFD_TIMER_CANCEL_ON_SET cancel, sent by the kernel at every
+# resume) inside one displayed minute: no redraw (before: a whole lock frame each time, 7 Oct 19:24:07/13/19/24)
+while not (3 <= time.time() % 60 <= 48): time.sleep(0.5)
+w(P + "/persist.vendor.eink.mode", "off"); w(P + "/vendor.dualux.state", "lcd")
+d = start(["--period-s", "60"]); time.sleep(4.0)
+lf0 = len(since(0, "lockframe")); t = time.monotonic()
+for _ in range(3): os.kill(d.pid, 10); time.sleep(0.5)
+time.sleep(0.5)
+check(not since(t, "lockframe"), "round 10: 3 wall-clock notifications in the same minute: no redraw (%d frames)" % len(since(t, "lockframe")))
+d.terminate(); d.wait(5)
+log = open(os.path.join(W, "einklock_e2e.log")).read()
+check("displayed minute unchanged: timer re-armed, no redraw (3)" in log, "round 10: logged, timer re-armed")
+w(P + "/vendor.dualux.state", "eink")
+srv.close()
 log = open(os.path.join(W, "einklock_e2e.log")).read()
 check("CLOCK_REALTIME" in log, "timer clock logged")
 
@@ -157,5 +178,29 @@ if EPDD:
     check(el.count("(lock)") >= 2, "real epdd: entry + minute lock frames driven (%d)" % el.count("(lock)"))
     check("(lock-restore)" in el and "earlier picture redrawn" in kl, "real epdd: the mirror's page redrawn at wake-up")
     check("lock=off" in st and "lock_frames=" in st, "real epdd status after wake-up: %s" % st[st.find("lock="):])
+    # eink-round10 (7 Oct 19:24:34): LCD-mode lock -> switch to the e-ink. Before: "lock restore" redrew the page cached at
+    # the first lock picture (stale page 1, GC16), then the mirror's page 2. Now: no restore, the mirror's first frame is
+    # the GC16 clean that follows a lock picture (--lock-clean 1, the rc default).
+    elog = open(E + "/epdd3.log", "w")
+    ep = subprocess.Popen([EPDD, "--dry", E + "/u3", "--lib", TCON, "--waveform", E + "/wf.bin", "--listen", E + "/sock3", "--lock-clean", "1"], stdout=elog, stderr=subprocess.STDOUT)
+    time.sleep(1.0)
+    m = socket.socket(socket.AF_UNIX); m.connect(E + "/sock3"); mf = m.makefile("rwb")
+    mf.write(b"frame 720 1440 reading\n" + bytes([200]) * FR); mf.flush(); r1 = mf.readline().decode().strip()  # "page 1" on the e-ink
+    w(P + "/vendor.dualux.state", "lcd"); w(P + "/persist.vendor.eink.mode", "off"); w(P + "/vendor.dualux.awake", "1")
+    for f in ("vendor.dualux.prepare", "persist.sys.a6l.eink.lock_clock_mode"):
+        if os.path.exists(P + "/" + f): os.unlink(P + "/" + f)
+    log3 = open(os.path.join(W, "einklock_e2e_real3.log"), "w")
+    d = subprocess.Popen([BIN, "--sysroot", R, "--prop-dir", P, "--epd-socket", E + "/sock3", "--period-s", "60", "--lead-ms", "300", "--clock", "realtime", "--no-wakelock"],
+                         stdout=log3, stderr=subprocess.STDOUT)
+    time.sleep(4.0)  # LCD-mode lock entry (2 s, after the 1.5 s settle of the start)
+    w(P + "/vendor.dualux.state", "eink"); time.sleep(0.6); w(P + "/persist.vendor.eink.mode", "mirror")  # dualux, then the mirror ON
+    mf.write(b"frame 720 1440 reading\n" + bytes([90]) * FR); mf.flush(); r2 = mf.readline().decode().strip()  # mirror's first frame: "page 2"
+    time.sleep(5.0)  # past the 4 s fallback
+    d.terminate(); d.wait(5); mf.write(b"quit\n"); mf.flush(); mf.readline(); ep.wait(5)
+    el = open(E + "/epdd3.log").read(); kl = open(os.path.join(W, "einklock_e2e_real3.log")).read()
+    check("(lock)" in el and r1.startswith("OK"), "round 10 real epdd: LCD-mode lock picture over the e-ink page")
+    check(r2.startswith("OK") and "first page after a lock picture: GC16 clean" in el, "round 10 real epdd: the mirror's first frame after the LCD-mode lock is the GC16 clean (%s)" % r2)
+    check("lock-restore" not in el and "lock restore" not in el and "no restore, the mirror's first frame replaces the lock picture" in kl,
+          "round 10 real epdd: no restore of the stale cached page")
 
 print("E2E_EINKLOCK %s (%d failed)" % ("PASS" if not fails else "FAIL", fails)); sys.exit(1 if fails else 0)

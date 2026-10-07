@@ -13,6 +13,8 @@
  *  - REAR TOUCH (ft5x06 on blsp_i2c7, 720x1440): always grabbed (EVIOCGRAB) so Android never sees raw rear touches.
  *    Mirror on: contacts are mapped onto the mirrored picture and re-injected on a uinput touchscreen
  *    "a6l-eink-rear-touch" sized like the front display (idc: internal, display 0). Mirror off: dropped.
+ *    eink-round10: when forwarding starts (mirror ON, front screen back on) contacts already down are ignored until
+ *    lifted; after mirror ON new contacts are also held until the e-ink shows its first page (or --touch-guard-ms).
  *
  * Capture sources (--source):
  *   drm (default, ROM): LCD CRTC planes via GETFB2 + PRIME mmap (CAP_SYS_ADMIN, never DRM master; linear buffers only).
@@ -27,6 +29,8 @@
  *        [--mode off|mirror] [--reading 0|1] [--no-props] [--key-dev auto|PATH|none] [--touch-dev auto|PATH|none]
  *        [--touch-transform T] [--front WxH] [--wait-prop NAME=VALUE] [--dry] [--ns-pid N] [--screencap P] [--out DIR]
  *        [--touch-debug] (print raw rear contacts "TOUCH_IN" and every injected event "TOUCH_OUT type code value")
+ *        [--touch-guard-ms N] (eink-round10: after mirror ON, rear contacts that begin before the first page is shown on
+ *        the e-ink are not forwarded, at most N ms; default 2000, 0 = off; sys.a6l.eink.touch_guard_ms overrides it)
  *        [--release-quiet ms] [--release-max ms] (after a held touch drag is released: wait for one unchanged capture
  *        pair, at most release-max ms, so the settled page is sent instead of the last drag position; 90 / 700)
  *        [--tone B,W,G] (grey tone curve before quantisation: black clip, white clip, gamma x100; default 24,232,150;
@@ -700,9 +704,10 @@ static void ordinary_small_auto(struct pol_state *ps,struct pol_action *a,double
 enum { INF_OTHER, INF_FRAME, INF_CLEAR };
 static char pending_appearance[96];
 static uint8_t pend_t[NT]; static int pend_land, inflight; static double retry_at, backoff;
+static void touch_gate_page_shown(void);	/* eink-round10 */
 static void cmd_result(int ok, const char *why) {
     if (ok) {
-        if (inflight == INF_FRAME) { memcpy(shown_t, pend_t, NT); memcpy(shown_pixels, qframe, sizeof shown_pixels); shown_land = pend_land; have_shown = 1; backoff = 0;
+        if (inflight == INF_FRAME) { touch_gate_page_shown(); memcpy(shown_t, pend_t, NT); memcpy(shown_pixels, qframe, sizeof shown_pixels); shown_land = pend_land; have_shown = 1; backoff = 0;
             shown_waveform = pending_policy.mode; shown_policy_epoch = pending_policy_epoch;
             if (use_props && !dry && pending_appearance[0]) prop_set("vendor.eink.ready", pending_appearance); }
         else if (inflight == INF_CLEAR) have_shown = 0;
@@ -838,6 +843,31 @@ static void touch_lock(void) { pthread_mutex_lock(&touch_mu); }
 static void touch_unlock(void) { pthread_mutex_unlock(&touch_mu); }
 static void wake_capture_loop(void) { if (touch_wake[1] >= 0) { char c = 1; if (write(touch_wake[1], &c, 1) < 0) { /* full: already woken */ } } }
 static int touch_any_drag(void) { for (int i = 0; i < NSLOT; i++) if (sl[i].out_active && sl[i].moving) return 1; return 0; }
+/* eink-round10 (user, 7 Oct 19:24:47: LCD (page 2) -> e-ink: "the e-ink shows the lock screen, then page 1 and stays there;
+ * the LCD is on page 1 too afterwards" - the launcher really changed page, no swipe was made on purpose). Forwarding
+ * started with `forward = 1` at mirror ON, and touch_flush() opened a NEW forwarded contact for any rear slot that was
+ * down and moved: a finger resting on the rear panel while the phone is turned over (the e-ink key is pressed with the
+ * LCD facing the user, the e-ink faces the user only after the flip) became DOWN + MOVE on the launcher = a page swipe,
+ * 1.2 s after the key (mirror ON 48.95), before the e-ink showed anything of the current UI (the user could not have
+ * aimed at anything yet). Now:
+ *   - contacts already down when forwarding starts (mirror ON, front screen back on) are ignored until lifted, as
+ *     touch_release_all() already did for contacts down when forwarding stops;
+ *   - after mirror ON, contacts that BEGIN before the first page is shown on the e-ink (frame ACK) are ignored until
+ *     lifted too, bounded by touch_guard_ms (default 2000, sys.a6l.eink.touch_guard_ms, --touch-guard-ms; 0 = off).
+ * Front screen back on (wake-up on the e-ink, no flip): only the first rule (the page may not change at all, no frame). */
+static int touch_guard_ms = 2000, touch_gate; static double touch_gate_until; static unsigned touch_gate_ignored;
+static void touch_enable(const char *why, int guard) {	/* under touch_mu */
+    int held = 0; forward = 1;
+    for (int i = 0; i < NSLOT; i++) if (sl[i].in_active && !sl[i].out_active && !sl[i].ignored) { sl[i].ignored = 1; held++; }
+    touch_gate = guard && touch_guard_ms > 0; touch_gate_until = now() + touch_guard_ms / 1000.0; touch_gate_ignored = 0;
+    LOG("rear touch: forwarded again (%s)%s%s", why, held ? ", contacts already down ignored until lifted" : "",
+        touch_gate ? ", new contacts held until the e-ink shows its first page" : "");
+}
+static void touch_gate_open(const char *why) {	/* under touch_mu */
+    if (!touch_gate) return;
+    touch_gate = 0; LOG("rear touch: guard ended (%s), %u contact(s) held back", why, touch_gate_ignored);
+}
+static void touch_gate_page_shown(void) { touch_lock(); touch_gate_open("first page shown on the e-ink"); touch_unlock(); }
 static int suppress_drag_frames(void) { return use_props && prop_int("sys.a6l.eink.no_animations", 0); }
 static struct tmap tm;
 static int touch_debug;
@@ -876,6 +906,8 @@ static void touch_flush(void) {
         int fx, fy, inside = tmap_apply(&tm, s->x, s->y, &fx, &fy);
         if (touch_debug) printf("A6L_MIRROR TOUCH_IN slot %d raw %d %d -> front %d %d %s%s\n", i, s->x, s->y, fx, fy, inside ? "inside" : "outside", forward ? "" : " (not forwarded)");
         if (!forward || s->ignored) continue;
+        if (!s->out_active && touch_gate && now() >= touch_gate_until) touch_gate_open("timeout");	/* eink-round10 */
+        if (!s->out_active && touch_gate) { s->ignored = 1; touch_gate_ignored++; if (touch_debug) printf("A6L_MIRROR TOUCH_GUARD slot %d held back\n", i); continue; }
         if (!s->out_active) { if (!inside) { s->ignored = 1; continue; } s->out_active = 1; s->start_fx = fx; s->start_fy = fy; s->moving = 0; emit(EV_ABS, ABS_MT_SLOT, i); emit(EV_ABS, ABS_MT_TRACKING_ID, next_tid++ & 0xffff); }
         else { int dx = fx - s->start_fx, dy = fy - s->start_fy; if ((long long)dx * dx + (long long)dy * dy > (long long)slop * slop) s->moving = 1; emit(EV_ABS, ABS_MT_SLOT, i); }
         emit(EV_ABS, ABS_MT_POSITION_X, fx); emit(EV_ABS, ABS_MT_POSITION_Y, fy); changed = 1; down = 1;
@@ -1076,6 +1108,7 @@ int main(int argc, char **argv) {
         else if (OPT("--reply-timeout")) reply_timeout_ms = atoi(v) > 0 ? atoi(v) : 30000;
         else if (OPT("--wait-prop")) wait_prop = v; else if (!strcmp(a, "--touch-debug")) touch_debug = 1;
         else if (OPT("--touch-thread")) touch_threaded = atoi(v) != 0;	/* eink-round6 */
+        else if (OPT("--touch-guard-ms")) touch_guard_ms = atoi(v);	/* eink-round10 */
         else if (OPT("--capture-delay-ms")) capture_delay_ms = atoi(v);	/* eink-round6 host tests: a slow capture (phone: ~200 ms) */
         else if (OPT("--send")) {	/* one-shot client: send one command to a6l_epdd, print the reply (attended tests) */
             last_connect_try = -10; if (epd_connect()) return 1;
@@ -1124,7 +1157,9 @@ int main(int argc, char **argv) {
          * unconditional clear-white + INIT sequence before showing the page. */
         /* eink-round6d: the REGAL history belongs to the panel, not to one e-ink session: keep it across mirror OFF/ON (before,
          * every screen switch reset it, so with frequent switches the periodic ghost cleanup never came) */
-        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; { int keep_reading_n = ps.reading_n, keep_clean_n = ps.clean_n; pol_init(&ps, &pcfg, t); ps.reading_n = keep_reading_n; ps.clean_n = keep_clean_n; } policy_epoch++; have_prev = have_shown = 0; staged.valid = 0; touch_lock(); forward = 1; touch_unlock(); LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
+        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; { int keep_reading_n = ps.reading_n, keep_clean_n = ps.clean_n; pol_init(&ps, &pcfg, t); ps.reading_n = keep_reading_n; ps.clean_n = keep_clean_n; } policy_epoch++; have_prev = have_shown = 0; staged.valid = 0;
+            if (use_props) touch_guard_ms = prop_int("sys.a6l.eink.touch_guard_ms", touch_guard_ms);
+            touch_lock(); touch_enable("mirror ON", 1); touch_unlock(); LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
         if (mode != EINK_MIRROR && active) { active = 0; staged.valid = 0; policy_epoch++; touch_lock(); forward = 0; touch_release_all(); touch_unlock(); qn = 0; queue_cmd("power off", 0); LOG("mirror OFF (e-ink keeps the last picture)"); }
         if (!dry && epd < 0) epd_connect();
         { static double next_touch_scan; touch_lock(); if (touch_fd < 0 && t >= next_touch_scan) { next_touch_scan = t + 5; input_quiet = 1; touch_attach(); input_quiet = 0; } touch_unlock(); }
@@ -1214,7 +1249,7 @@ int main(int argc, char **argv) {
          * the LCD power-on (7 Oct 12:14:04: "front screen on: resumed" 479.84 -> "e-ink CRTC 70 modeset" 480.19 -> "power
          * off" 481.43, with LCD vblank timeouts around it). Re-read the mode before the first frame after a pause. */
         if (paused && use_props && mode_forced < 0) { char mv[16]; if (prop_get(P_MODE, mv, sizeof mv) > 0 && mode_parse(mv, mode) != EINK_MIRROR) { next_props = 0; continue; } }
-        if (paused) { KLOG("front screen on: resumed"); paused = 0; touch_lock(); forward = 1; touch_unlock(); }
+        if (paused) { KLOG("front screen on: resumed"); paused = 0; touch_lock(); touch_enable("front screen on", 0); touch_unlock(); }
         fails = 0; double tcap = now() - t0;
         double tr = now(); resample(); cur_land = out_w > out_h; tiles(cur_t); double tresample = now() - tr;
         est_capture_s = 0.7 * est_capture_s + 0.3 * (tcap + tresample);

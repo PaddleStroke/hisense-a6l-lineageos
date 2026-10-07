@@ -607,3 +607,22 @@ still running.
 - Venus (venus-impl-20261006): hfi3e bisect kit ready (stage-b6.sh); hfi3d froze at the first encode; needs the venus
   DT boot (cdcce6ac or 2a1b8a8f — both carry the Venus CX vote).
 - Camera mirroring request (user): when on the e-ink, mirror the rear camera preview and not the LCD-side camera.
+
+### 7 Oct evening — round 11 installed; cpufreq bring-up (rev 1-12); state for the night
+
+- INSTALLED: boot 10affa76 (force-normal cmdline) + vendor 1bcd0779 (round 11: e-ink 0023-0041, hwc 0004/0005,
+  0032 fixed planes, panel fix C, 0037 front-touch re-bind, msm 2bddfcdb, camera r7, krec) + system acff1ea3 (round 10:
+  Aperture user-facing mirror r2, Dualux 0038). Verified: restart with USB (charger-mode fix), e-ink→LCD ~1 s,
+  speckles gone, camera mirror on the e-ink, LCD touch at boot. Pending user check: LCD→e-ink stale page / rear-touch
+  page jump (0039/0041).
+- CPU FREQ (firmware/extracted/cpufreq-20261007, rev 12 modules; NOT in the ROM, nothing auto-loads):
+  - freezes solved: per-read ioremap/iounmap with delay (rev 8); console/GCC/SAW reads were red herrings.
+  - bin 1 tables (gold top 2208 MHz) fixed (rev 9); genpd attach ordering (rev 11: CPRh setup after attach).
+  - both OSM domains enable, policies 0 (0,5,6,7) and 1 (1-4), fused voltages applied.
+  - BUT the real clock stays at index 0 (299 MHz measured by add-chain, both clusters): rev 12 self-test STUCK;
+    pstate_status=0, saw_pmic_sts=0 at top index -> the CPRh->L2 SAW->PMIC voltage path is not configured (stock
+    msm_spm programs saw2-avs-ctl/limit + PMIC data). Next: decode SAW2 v4.1 layout from stock, write stock SAW config
+    (attended only - voltage path).
+  - Note: logical cpu0 silver, cpu1-4 gold, cpu5-7 silver. Stage logs: phone-rev*.txt in that folder.
+- Night agents: selinux-20261007 (rules from 2840 avcs) + mdss-ahb-20261007 (mdss_ahb stuck-at-on fix).
+- Venus: hfi3e bisect kit ready (stage-b6.sh), needs Venus DT (boot 10affa76 has it).

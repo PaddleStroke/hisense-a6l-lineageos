@@ -20,7 +20,7 @@ p = subprocess.Popen([mirror, "--dry", "--source", "files:" + frames, "--no-prop
                       "--touch-dev", fifo, "--touch-debug"], stdout=open(log, "w"), stderr=subprocess.STDOUT)
 time.sleep(0.5)
 fd = os.open(fifo, os.O_WRONLY)
-time.sleep(0.5)
+time.sleep(1.2)  # eink-round10: after the first page is shown (rear touch guard)
 touch(fd, 0, 5, 360, 720); time.sleep(0.3)
 mark1 = open(log).read().count("TOUCH_OUT 3 57 -1")
 os.close(fd)					# device gone with the finger down

@@ -67,6 +67,14 @@ int elk_parse_pgm(const uint8_t *buf, size_t n, uint8_t *out, long *seq);
  * at `now` (realtime seconds); elk_next_target(): the next minute boundary after the displayed one (wake = target - lead). */
 long long elk_display_time(double now, int period_s, double lead_s);
 long long elk_next_target(double now, int period_s, double lead_s);
+/* eink-round10: the minute timer is armed with TFD_TIMER_CANCEL_ON_SET, so read() fails with ECANCELED whenever the kernel
+ * runs clock_was_set(): a settimeofday/NITZ time set, but also EVERY resume from suspend (timekeeping_resume ->
+ * timerfd_resume). Each one redrew the whole lock picture (e-ink modeset + bring-up + REGAL, ~1.1 s): 7 Oct 19:24:07,
+ * :13, :19, :24 (LCD-mode lock, the system suspending/resuming every ~6 s), 11 redraws in the round-10 log, each in the
+ * middle of a resume. Redraw only when the minute to display (elk_display_time) is not the one drawn last (drawn_t, -1 =
+ * nothing drawn yet); otherwise the timer is just re-armed. A real time change moves the displayed minute and redraws;
+ * a minute tick that the resume turned into ECANCELED (alarm expired during the resume) also does. */
+int elk_wallclock_redraw(long long drawn_t, double now, int period_s, double lead_s);
 
 /* ---------------- RTC wake check (fallback when the minute alarm cannot wake the suspended system) ----------------
  * The picture stays on the e-paper while the system sleeps, so a big HH:MM that is not updated would silently lie.
@@ -89,6 +97,8 @@ struct elk_sm {
     int restore_pending;	/* eink-round5: a lock picture may still cover the mirror's page: "lock restore" once awake on the e-ink */
     double eink_since;		/* eink-round5: first time seen awake on the e-ink while a restore is pending (restore delay) */
     int deferred;		/* eink-round6: a tick/settings redraw came during a display transition: drawn once it settled */
+    int lcd_lock;		/* eink-round10: the mirror was off during this lock (LCD mode lock: lcd_idle seen) */
+    int restore_by_mirror;	/* eink-round10: the pending restore is replaced by the mirror's first frame once it is on */
 };
 struct elk_in {
     int enabled, clock;
@@ -101,12 +111,14 @@ struct elk_in {
     int resumed;		/* eink-round5: the system was suspended since the previous step (CLOCK_BOOTTIME - MONOTONIC jumped) */
     int lcd_idle;		/* eink-round6: LCD mode and the e-ink does not mirror it (persist.vendor.eink.mode != mirror) */
     int settling;		/* eink-round6: a display transition (Android awake/asleep, screen switch) less than ELK_SETTLE_S ago */
+    int mirror_on;		/* eink-round10: persist.vendor.eink.mode == mirror */
 };
 struct elk_act {
     int draw, force;		/* send a lockframe (force = forced REGAL ghost cleanup, whole panel) */
     int restore;		/* send "lock restore" (the lock ended: the mirror's picture comes back if nothing replaced it) */
     int arm;			/* keep the minute timer armed */
     int hold;			/* eink-round5: lock entry pending: hold the wakelock so the system cannot suspend before it */
+    int mirror_redraw;		/* eink-round10: the lock ended, no restore: the mirror's first frame replaces the lock picture */
 };
 /* eink-round5: no e-ink modeset while the LCD CRTC is changing state. The composer switches the LCD CRTC off at sleep and
  * on at wake-up (also in e-ink mode: the LCD panel stays logically on there); the lock path used to modeset the e-ink
@@ -128,6 +140,17 @@ struct elk_act {
  * transition (no e-ink modeset in the middle of an LCD power change). Lock end: switched to the e-ink -> "lock restore"
  * 1 s after (as round 5); mirror turned on in LCD mode -> the mirror redraws; lock disabled -> "lock restore off". */
 #define ELK_LCD_ENTRY_DELAY_S 2.0
+/* eink-round10 (user, 7 Oct 19:24:34: "LCD -> e-ink: lock screen, then page 1, then page 2"): "lock restore" redraws the
+ * picture a6l_epdd kept when the FIRST lock picture went up - after an LCD-mode lock that is the page the e-ink showed
+ * before the switch to the LCD, not the page left on the LCD (the restore drew the stale page 1 as a GC16 clean, 36.42,
+ * then the mirror's page 2, 37.24: 2.9 s and two flashes after the key). When the mirror was off during the lock (an
+ * LCD-mode lock), turning it on again makes it send its first capture unconditionally (mirror ON: have_shown = 0) and
+ * a6l_epdd makes the first page after a lock picture a GC16 clean (0036, --lock-clean): no restore is needed. The pending
+ * restore is dropped as soon as persist.vendor.eink.mode = mirror is seen (any screen); on the e-ink without the mirror
+ * it still comes, ELK_MIRROR_WAIT_S after the wake-up (fallback: mirror disabled, a6l_eink_mirror dead). A lock that
+ * began asleep on the e-ink with the mirror on keeps the round-5 restore: the paused mirror resumes without resending an
+ * unchanged page. */
+#define ELK_MIRROR_WAIT_S 4.0
 #define ELK_SETTLE_S 1.5
 void elk_sm_init(struct elk_sm *s);
 struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in);

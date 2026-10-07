@@ -289,6 +289,9 @@ long long elk_display_time(double now, int period_s, double lead_s) {
     if (period_s <= 0) period_s = 60;
     return (long long)floor((now + lead_s + 0.002) / period_s) * period_s;
 }
+int elk_wallclock_redraw(long long drawn_t, double now, int period_s, double lead_s) {
+    return drawn_t < 0 || elk_display_time(now, period_s, lead_s) != drawn_t;
+}
 long long elk_next_target(double now, int period_s, double lead_s) {
     if (period_s <= 0) period_s = 60;
     return elk_display_time(now, period_s, lead_s) + period_s;
@@ -302,10 +305,12 @@ struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in) {
     a.arm = in->enabled && in->clock && (in->on_eink || in->lcd_idle);	/* armed on the e-ink even awake: a sleep missed by the poll is caught */
     if (!s->locked) {
         if (s->restore_pending) {	/* eink-round5: the covered page returns only on the e-ink, 1 s after the wake-up */
-            if ((in->asleep_eink || in->lcd_idle) && !in->enabled) { a.restore = 1; s->restore_pending = 0; }	/* eink-round6: also LCD mode */
-            else if (awake_eink) {
+            if ((in->asleep_eink || in->lcd_idle) && !in->enabled) { a.restore = 1; s->restore_pending = 0; s->restore_by_mirror = 0; }	/* eink-round6: also LCD mode */
+            else if (s->restore_by_mirror && in->mirror_on && !in->asleep_eink) {	/* eink-round10: the mirror redraws */
+                a.mirror_redraw = 1; s->restore_pending = 0; s->restore_by_mirror = 0; s->eink_since = 0;
+            } else if (awake_eink) {
                 if (s->eink_since <= 0) s->eink_since = in->now;
-                if (in->now - s->eink_since >= ELK_RESTORE_DELAY_S) { a.restore = 1; s->restore_pending = 0; s->eink_since = 0; }
+                if (in->now - s->eink_since >= (s->restore_by_mirror ? ELK_MIRROR_WAIT_S : ELK_RESTORE_DELAY_S)) { a.restore = 1; s->restore_pending = 0; s->restore_by_mirror = 0; s->eink_since = 0; }
             } else if (s->eink_since > 0 && s->eink_since <= in->now) s->eink_since = 0;	/* (a retry backoff stays) */
         }
         if (!want) { s->asleep_since = 0; return a; }
@@ -314,12 +319,15 @@ struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in) {
         if (in->now - s->asleep_since < (in->asleep_eink ? ELK_ENTRY_DELAY_S : ELK_LCD_ENTRY_DELAY_S)) return a;
         if (!in->asleep_eink && in->settling) return a;	/* eink-round6: LCD mode: not during an LCD power change */
         s->locked = 1; s->drew = 0; s->frames = 0; s->last_clean = in->now; s->restore_pending = 0; s->eink_since = 0; s->deferred = 0;
+        s->lcd_lock = !in->asleep_eink; s->restore_by_mirror = 0;	/* eink-round10 */
         a.restore = 0; a.draw = 1; return a;
     }
+    if (in->lcd_idle) s->lcd_lock = 1;	/* eink-round10: asleep-on-the-e-ink lock continued in LCD mode: the mirror went off */
     if (!want) {	/* woke up, left the e-ink, or the lock screen was disabled */
-        if (s->drew) { s->restore_pending = 1; s->eink_since = awake_eink ? in->now : 0; }
-        s->locked = 0; s->drew = 0; s->asleep_since = 0; s->frames = 0; s->deferred = 0;
-        if (s->restore_pending && (in->asleep_eink || in->lcd_idle) && !in->enabled) { a.restore = 1; s->restore_pending = 0; }	/* disabled while not in use */
+        if (s->drew) { s->restore_pending = 1; s->restore_by_mirror = s->lcd_lock; s->eink_since = awake_eink ? in->now : 0; }
+        s->locked = 0; s->drew = 0; s->asleep_since = 0; s->frames = 0; s->deferred = 0; s->lcd_lock = 0;
+        if (s->restore_pending && (in->asleep_eink || in->lcd_idle) && !in->enabled) { a.restore = 1; s->restore_pending = 0; s->restore_by_mirror = 0; }	/* disabled while not in use */
+        else if (s->restore_pending && s->restore_by_mirror && in->mirror_on && !in->asleep_eink) { a.mirror_redraw = 1; s->restore_pending = 0; s->restore_by_mirror = 0; s->eink_since = 0; }	/* eink-round10 */
         return a;
     }
     int tick = (in->timer_fired && in->clock) || s->deferred == 2;	/* eink-round6: a deferred tick stays a tick */
@@ -331,7 +339,7 @@ struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in) {
     return a;
 }
 void elk_sm_abort(struct elk_sm *s) { if (!s->frames) { s->locked = 0; s->drew = 0; s->asleep_since = 0; } }
-void elk_restore_failed(struct elk_sm *s, double now) { s->restore_pending = 1; s->eink_since = now + 4.0; }
+void elk_restore_failed(struct elk_sm *s, double now) { s->restore_pending = 1; s->eink_since = now + 4.0; s->restore_by_mirror = 0; }
 void elk_sm_sent(struct elk_sm *s, const struct elk_act *a, double now) {
     if (!a->draw) return;
     s->drew = 1; s->frames++;

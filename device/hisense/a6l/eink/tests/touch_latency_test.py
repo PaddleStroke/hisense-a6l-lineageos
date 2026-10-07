@@ -22,7 +22,7 @@ p = subprocess.Popen([mirror, "--dry", "--source", "files:" + frames, "--no-prop
                      stdout=open(log, "w"), stderr=subprocess.STDOUT)
 time.sleep(0.6)
 fd = os.open(fifo, os.O_WRONLY)
-time.sleep(1.0)
+time.sleep(1.5)  # eink-round10: after the first page is shown (rear touch guard)
 sent = []
 xs = [360 - 20 * k for k in range(8)]			# a right-to-left flick around the picture centre
 for k, x in enumerate(xs):
