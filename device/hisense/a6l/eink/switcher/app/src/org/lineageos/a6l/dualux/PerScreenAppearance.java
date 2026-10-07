@@ -128,7 +128,10 @@ final class PerScreenAppearance {
             // config change, a second relaunch of every activity): WM's sync engine then stayed busy past the 1.5 s
             // themed-redraw deadline and every switch waited for the daemon's 3 s fail-open (6 Oct 17:01:44-47). It is
             // applied by the 500 ms bookkeeping right after the switch; the e-ink then shows one more update.
-            if (!switching) mContrast.update(eink && !"lcd".equals(theme()));
+            if (!switching) {
+                String written = mContrast.update(eink && !"lcd".equals(theme()));
+                if (written != null) Log.i(Dualux.TAG, "contrast_level -> " + written + " (" + (eink ? "e-ink" : "LCD") + ", screen settled)");
+            }
             String animationState = eink ? "1" : "0";
             if (!animationState.equals(Dualux.get(Dualux.NO_ANIMATIONS, ""))) Dualux.set(Dualux.NO_ANIMATIONS, animationState);
             int slop = android.view.ViewConfiguration.get(mContext).getScaledTouchSlop();

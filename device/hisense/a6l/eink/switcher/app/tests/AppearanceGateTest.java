@@ -36,6 +36,10 @@ public final class AppearanceGateTest {
         // eink-round4: the contrast level never changes while a switch is in flight (3 s switches, 6 Oct 17:01)
         check(!AppearanceGate.contrastMayChange("1510431138 eink") && !AppearanceGate.contrastMayChange("9 lcd"));
         check(AppearanceGate.contrastMayChange("") && AppearanceGate.contrastMayChange(null));
+        // eink-round6f: and only CONTRAST_SETTLE_MS after the last switch activity (prepare / screen change)
+        check(!AppearanceGate.contrastMayChange("", 10_000, 10_000) && !AppearanceGate.contrastMayChange("", 10_000, 11_999));
+        check(AppearanceGate.contrastMayChange("", 10_000, 12_000) && AppearanceGate.contrastMayChange(null, 10_000, 20_000));
+        check(!AppearanceGate.contrastMayChange("5 lcd", 0, 1_000_000));
         System.out.println("APPEARANCE_GATE_TEST PASS " + checks);
     }
 }

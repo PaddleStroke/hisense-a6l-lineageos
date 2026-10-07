@@ -24,7 +24,7 @@ def wait(fn,secs=2):
  raise AssertionError('timed out: '+str(fn))
 try:
  wait(lambda:prop('vendor.dualux.state')=='lcd')
- put(p/'sys.a6l.dualux.req','1 eink');wait(lambda:prop('vendor.dualux.prepare').endswith(' eink'))
+ put(p/'sys.a6l.dualux.req','1 eink');wait(lambda:prop('vendor.dualux.prepare').endswith(' eink') and get(b/'bl_power')=='4' and prop('persist.vendor.eink.mode')=='off')  # round 6f: prepare is published first, the lights follow
  a=prop('vendor.dualux.prepare')
  check(get(b/'bl_power')=='4' and get(f/'brightness')=='0' and prop('persist.vendor.eink.mode')=='off','prepare holds lights and stops mirror')
  put(p/'sys.a6l.dualux.ready','1 eink');time.sleep(.15)

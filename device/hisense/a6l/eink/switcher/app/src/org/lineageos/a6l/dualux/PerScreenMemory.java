@@ -43,6 +43,8 @@ final class PerScreenMemory {
     private long mAppearanceStarted;
     private int mAppearanceStages = -1;
     private String mAppearanceReason = "";
+    private long mLastSwitchActivity;	// eink-round6f: elapsedRealtime of the last prepare / screen change seen
+    private String mContrastScreen;
 
     static synchronized PerScreenMemory get(Context c) {
         if (sInstance == null) sInstance = new PerScreenMemory(c.getApplicationContext());
@@ -61,6 +63,7 @@ final class PerScreenMemory {
         @Override public void run() {
             if (!mPolling) return;
             String request = Dualux.get(Dualux.PREPARE, "");
+            if (!request.isEmpty()) mLastSwitchActivity = SystemClock.elapsedRealtime();
             if (!request.isEmpty() || !mPrepareRequest.isEmpty()) checkAppearance(request);
             mPrepareRequest = request;
             if (mPolling) mHandler.postDelayed(this, 100);
@@ -181,8 +184,12 @@ final class PerScreenMemory {
 
     private void checkBookkeeping() {
         boolean running = Dualux.daemonRunning();
-        PerScreenAppearance.get(mCtx).update(running && Dualux.isEink(),
-                !AppearanceGate.contrastMayChange(Dualux.get(Dualux.PREPARE, "")));
+        // eink-round6f: prepare read on both sides of the state, and a settle time after any switch activity
+        String p1 = Dualux.get(Dualux.PREPARE, ""); String screenNow = screen(); String p2 = Dualux.get(Dualux.PREPARE, "");
+        long nowMs = SystemClock.elapsedRealtime();
+        if (!p1.isEmpty() || !p2.isEmpty() || !screenNow.equals(mContrastScreen)) { mLastSwitchActivity = nowMs; mContrastScreen = screenNow; }
+        PerScreenAppearance.get(mCtx).update(running && "eink".equals(screenNow),
+                !AppearanceGate.contrastMayChange(p1.isEmpty() ? p2 : p1, mLastSwitchActivity, nowMs));
         if (!running) return;
         reconcileAppearance();
         String now = screen();

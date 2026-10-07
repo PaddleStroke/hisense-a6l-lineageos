@@ -20,22 +20,25 @@ final class ContrastOverride {
     private final Store mStore;
     ContrastOverride(Client client, Store store) { mClient = client; mStore = store; }
 
-    void update(boolean wanted) {
+    /** @return the value written to contrast_level, or null when nothing was written (eink-round6f: logged by the caller) */
+    String update(boolean wanted) {
         Session session = mStore.load();
         String current = mClient.get();
         if (!wanted) {
-            if (session == null) return;
+            if (session == null) return null;
             // Do not overwrite a newer explicit user choice made while the e-ink theme was active.
-            if (HIGH.equals(current)) mClient.set(session.previous);
+            String written = null;
+            if (HIGH.equals(current)) { mClient.set(session.previous); written = session.previous == null ? "(unset)" : session.previous; }
             mStore.save(null);
-            return;
+            return written;
         }
-        if (HIGH.equals(current) && session != null) return;
+        if (HIGH.equals(current) && session != null) return null;
         String previous = session == null || !HIGH.equals(current) ? current : session.previous;
         if (session == null || !Objects.equals(previous, session.previous)) {
             mStore.save(new Session(previous));	// durable snapshot before the provider write
         }
-        if (!HIGH.equals(current)) mClient.set(HIGH);
+        if (!HIGH.equals(current)) { mClient.set(HIGH); return HIGH; }
+        return null;
     }
 
     boolean active() { return HIGH.equals(mClient.get()); }

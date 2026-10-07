@@ -333,8 +333,12 @@ static void handle(const struct dx_out *o, const char *why) {
     if (o->set_screen >= 0 || o->wake || o->sleep) LOG("stage decision %s mono_ms=%.3f old=%s target=%d awake=%d wake=%d sleep=%d", why, now() * 1000, dx_state_name(&S), o->set_screen, S.awake, o->wake, o->sleep);
     if (o->set_screen >= 0 && o->set_screen != S.screen) KLOG("%s: %s -> %s", why, S.screen == DX_EINK ? "e-ink" : "LCD", o->set_screen == DX_EINK ? "e-ink" : "LCD");
     int old = S.screen; dx_apply(&S, o);
-    if (S.screen != old) { begin_appearance(); publish(); enforce_backlight(); apply_grabs(); enforce_frontlight();
-        prop_set(P_PREPARE, appearance_req); }
+    /* eink-round6f: prepare BEFORE the new state. The Dualux app restores the Material contrast level when it reads
+     * state=lcd with no prepare; with the state published first (and the backlight, grabs and frontlight written in
+     * between) its 500 ms bookkeeping could fall into that window, write contrast_level at the very start of the switch,
+     * and SystemUI's overlay regeneration (CONFIG_ASSETS_PATHS, a second relaunch) made WM miss the 1.5 s themed-redraw
+     * deadline: 3 s fail-open (7 Oct 17:25:49, 17:26:25; round 7i 14:18:59). */
+    if (S.screen != old) { begin_appearance(); prop_set(P_PREPARE, appearance_req); publish(); enforce_backlight(); apply_grabs(); enforce_frontlight(); }
     if (o->clear) { char b[16]; snprintf(b, sizeof b, "%u", ++clear_seq); prop_set("vendor.eink.clear_req", b); LOG("%s: e-ink clear #%u", why, clear_seq); }
     if (o->wake) key_tap(KEY_WAKEUP, "WAKEUP");
     if (o->sleep) key_tap(KEY_SLEEP, "SLEEP");

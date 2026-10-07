@@ -97,6 +97,27 @@ decide() {
     fi
     setprop vendor.a6l.gpu $gpu || log "display: setprop vendor.a6l.gpu $gpu FAILED (init selects angle)"
 }
+# eink-round6e (7 Oct 2026, firmware/extracted/eink-round6-20261007 README part E): the front touch is the touch half of
+# the FT8719 TDDI (one chip with the LCD driver): it answers on I2C only while the LCD part is powered and initialised.
+# edt-ft5x06.ko probes 1-0038 right after the panel modules are loaded, while the DRM output poll worker may be powering
+# the LCD on (round 8 boot: "pclk0_clk_src: rcg didn't update its configuration" x2 at 27.76/28.09 s, then
+# "edt_ft5x06 1-0038: touchscreen probe failed" at 28.41 s): no front touchscreen for the whole boot ("touch dead, I
+# can't unlock"). Round 7i won the same race ("input: generic ft5x06 (00)" on i2c-1). Re-bind it while the LCD is on.
+# A6L_SYSROOT: host tests only.
+touch_rebind() {
+    t=${A6L_SYSROOT:-}/sys/bus/i2c/devices/1-0038; d=${A6L_SYSROOT:-}/sys/bus/i2c/drivers/edt_ft5x06; k=0
+    [ -e "$t" ] && [ -d "$d" ] || { log "display: front touch: no 1-0038 device or no edt_ft5x06 driver"; return 0; }
+    if [ -e "$t/driver" ]; then log "display: front touch 1-0038 bound at probe"; return 0; fi
+    while [ ! -e "$t/driver" ] && [ $k -lt ${A6L_TOUCH_TRIES:-15} ]; do
+        on=0; for c in ${A6L_SYSROOT:-}/sys/class/drm/card*-DSI-*; do
+            grep -q 1080x2340 "$c/modes" 2>/dev/null && [ "$(cat "$c/dpms" 2>/dev/null)" = On ] && on=1; done
+        [ $on = 1 ] && { echo 1-0038 > "$d/bind"; } 2>/dev/null
+        k=$((k+1)); [ -e "$t/driver" ] && break
+        sleep ${A6L_TOUCH_SLEEP:-2}
+    done
+    if [ -e "$t/driver" ]; then log "display: front touch 1-0038 probe had failed: re-bound after $k tries"
+    else log "display: WARN front touch 1-0038 still unbound after $k tries (LCD touch dead: echo 1-0038 > /sys/bus/i2c/drivers/edt_ft5x06/bind with the LCD on)"; fi
+}
 case "$1" in
 display)
     # 1. e-ink PMIC (TPS65185; gpio42/56 are DT fixed regulators since V71)  2. GPU msm separate_gpu_kms=1
@@ -142,6 +163,7 @@ display)
         else log "display: LCD connector missing, simplefb fallback failed"; fi
     else
         log "display: LCD $lcd"
+        touch_rebind &	# eink-round6e: bounded (15 x 2 s), never blocks the group
     fi
     # The e-ink (384x725 DSI connector on the same msm card) must NOT become a second SurfaceFlinger display:
     # drm_hwcomposer attaches every connected DSI connector and keeps DRM master (docs/eink-mirror-milestone-20260923.md).

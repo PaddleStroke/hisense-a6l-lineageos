@@ -41,6 +41,15 @@ final class AppearanceGate {
      * its overlay regeneration kept WM's sync engine busy past the themed-redraw deadline (3 s switches). */
     static boolean contrastMayChange(String prepare) { return prepare == null || prepare.isEmpty(); }
 
+    /** eink-round6f: and only once the screen has been settled (no prepare, same screen) for CONTRAST_SETTLE_MS. The
+     * overlay regeneration a contrast change starts takes ~1-2 s (FRRO + idmap + relaunch of every activity); landing in
+     * a switch it makes WM miss the themed-redraw deadline (3 s fail-open, 7 Oct 17:25:49 / 17:26:25). Waiting also
+     * means a quick e-ink visit (back to the LCD within the settle) never toggles the contrast at all. */
+    static final long CONTRAST_SETTLE_MS = 2000;
+    static boolean contrastMayChange(String prepare, long lastSwitchActivityMs, long nowMs) {
+        return contrastMayChange(prepare) && nowMs - lastSwitchActivityMs >= CONTRAST_SETTLE_MS;
+    }
+
     /** eink-round2: the daemon can fail open (clear its prepare) before this app ever applied the target, e.g. a
      * prepare begun while Android slept. Bookkeeping then restores theme and animations, but the WM-facing target
      * (sys.a6l.dualux.appearance) keeps the old screen: the rear white wallpaper stayed over the LCD home (user
