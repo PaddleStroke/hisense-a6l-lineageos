@@ -61,5 +61,8 @@ grep -q "TOUCH_OUT 3 53 0" $L && grep -q "TOUCH_OUT 3 54 0" $L && ok touch-corne
 [ "$(grep -c 'TOUCH_OUT 3 57 [0-9]' $L)" = 1 ] && ok "touch: only the in-picture contact forwarded (off/bar/after-off dropped)" || ko "touch forwarding count $(grep -c 'TOUCH_OUT 3 57 [0-9]' $L)"
 # r5 bug hunt eink-display E2: rear touch device lost with a finger down -> contact lifted on uinput, device reopened
 timeout 60 python3 "$S/tests/touch_loss_test.py" ./mirror 'frames/f%d.raw' "$W" > touch_loss_driver.log 2>&1 && grep -q "TOUCH_LOSS_TEST PASS" touch_loss_driver.log && ok mirror-touch-loss-recovery || { ko mirror-touch-loss-recovery; cat touch_loss_driver.log; }
+# eink-round6: a rear flick keeps its timing while a (slow, 250 ms) capture runs; the single-loop control shows the burst
+timeout 30 python3 "$S/tests/touch_latency_test.py" ./mirror 'frames/f%d.raw' "$W" 1 > touch_lat1.out 2>&1 && grep -q "TOUCH_LATENCY_TEST PASS" touch_lat1.out && ok "mirror-touch-latency ($(grep -o 'max_ms=[0-9.-]* span_ratio=[0-9.]*' touch_lat1.out))" || { ko mirror-touch-latency; cat touch_lat1.out; }
+timeout 30 python3 "$S/tests/touch_latency_test.py" ./mirror 'frames/f%d.raw' "$W" 0 > touch_lat0.out 2>&1 && grep -q "TOUCH_LATENCY_TEST FAIL" touch_lat0.out && ok "mirror-touch-latency-control (--touch-thread 0 reproduces the burst: $(grep -o 'max_ms=[0-9.-]* span_ratio=[0-9.]*' touch_lat0.out))" || { ko mirror-touch-latency-control; cat touch_lat0.out; }
 echo "EINK3_HOST_TESTS pass=$pass fail=$fail (workdir $W)"
 [ $fail = 0 ]

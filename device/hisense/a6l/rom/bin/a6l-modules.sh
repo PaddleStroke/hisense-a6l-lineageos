@@ -29,6 +29,18 @@ load_list() {
                 params="$params fault_bo_log=1"
             fi
         fi
+        # eink-round6b (7 Oct 2026, firmware/extracted/eink-round6-20261007 README part B): fixed DPU planes. Linux 7.2's msm
+        # defaults to virtual planes, which move the 5 SSPPs of the SDM660 DPU between the LCD and the rear e-ink CRTC at every
+        # plane change. A CTL whose interface stopped keeps the flush bits of the SSPPs it last staged; staged by the other
+        # CRTC, that SSPP's flush never completes: LCD "vblank timeout: 1001000/1001/1" after every e-ink lock/minute frame,
+        # composer commits EBUSY, setPowerMode 1.2-2.3 s, LCD touch dead, the power-key long-press menu (12:14 live log).
+        # With fixed planes each DRM plane keeps its SSPP (LCD: VIG0 + DMA0-2 via the composer, e-ink lease: VIG1).
+        # Only when the module declares the parameter (else insmod would fail); a6l.dpu_virtual_planes=1 on the kernel
+        # command line keeps the 7.2 default.
+        if [ "$ko" = msm.ko ] && grep -a -q 'parmtype=dpu_use_virtual_planes:' "$M/$ko" && \
+           ! grep -q 'a6l.dpu_virtual_planes=1' /proc/cmdline; then
+            params="$params dpu_use_virtual_planes=0"
+        fi
         # A6L hw-ISP (6 Oct 2026, hw-isp-20261006): VFE0 PIX line + hardware Bayer ISP for the main camera (libcamera
         # picks the cameras, persist.vendor.a6l.hwisp.sensors; default since hw-isp round 6: all three cameras when the
         # module has the PIX link-rate clock fix (parameter a6l_pix_linkcap), else imx576 only).
@@ -39,7 +51,10 @@ load_list() {
         fi
         # r6b boot fix (30 Sep 2026): log BEFORE each insmod, so the last line of a hung boot names the module that never returned
         log "$1: insmod $ko ..."
+        # restart-hang-20261007: show msm.ko init steps (info level) on the boot console, so a stuck boot names its last step
+        [ "$ko" = msm.ko ] && { pk=$(cat /proc/sys/kernel/printk); echo 7 > /proc/sys/kernel/printk; }
         if insmod "$M/$ko" $params; then log "$1: insmod $ko ok"; else log "$1: insmod $ko FAILED rc=$?"; fails=$((fails+1)); fi
+        [ "$ko" = msm.ko ] && echo "$pk" > /proc/sys/kernel/printk
     done < "$L/$1.txt"
     log "$1: done fails=$fails"
 }
@@ -100,6 +115,12 @@ display)
     if [ "$(getprop ro.build.type)" != user ] && [ "$(getprop ro.bootmode)" != charger ]; then
         i=0; while [ $i -lt 100 ] && [ "$(getprop vendor.a6l.bootlog)" != running ]; do sleep 0.2; i=$((i+1)); done
         log "display: boot log $(getprop vendor.a6l.bootlog) after ${i}x0.2s (debug build: lists load after it)"
+    fi
+    # restart hang (7 Oct 2026, firmware/extracted/restart-hang-20261007/krec): debug builds run a synchronous kmsg
+    # recorder on raw reserve2 from early-init; make sure it is recording before the first insmod (bounded, 5 s)
+    if [ "$(getprop ro.vendor.a6l.krec)" = 1 ]; then
+        i=0; while [ $i -lt 25 ] && [ ! -e /dev/a6l-krec.ready ]; do sleep 0.2; i=$((i+1)); done
+        log "display: kmsg recorder '$(cat /dev/a6l-krec.ready 2>/dev/null)' after ${i}x0.2s"
     fi
     decide &
     dpid=$!

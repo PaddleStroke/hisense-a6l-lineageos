@@ -80,14 +80,15 @@ static void logline(const char *fmt, ...) {
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
-/* eink-round5: display-transition markers in the kernel log ("<6>a6l_dualux: ..."; /dev/kmsg is root:system 0620, printk.devkmsg=on).
+/* eink-round5: display-transition markers in the kernel log ("<6>a6l_dualux: ..."; printk.devkmsg=on). eink-round6: /dev/kmsg is
+ * 0600 root:root (first-stage init), so a system daemon cannot open it: /dev/kmsg_debug (0622, userdebug/eng) instead.
  * One timeline with the DPU/DSI/SMMU/PM messages for the round-5 repro (kmsg streamed to the laptop / fsync'ed on the
  * phone). Android builds only: host tests never write the host's kernel log. */
 static void kmark(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void kmark(const char *fmt, ...) {
 #ifdef __ANDROID__
     static int fd = -2;
-    if (fd == -2) fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd == -2) { fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC); if (fd < 0) fd = open("/dev/kmsg_debug", O_WRONLY | O_CLOEXEC); }
     if (fd < 0) return;
     char b[300]; int n = snprintf(b, sizeof b, "<6>a6l_dualux: "); va_list ap; va_start(ap, fmt);
     int m = vsnprintf(b + n, sizeof b - (size_t)n - 1, fmt, ap); va_end(ap);
@@ -247,7 +248,8 @@ static void publish(void) {
     { static char last[16]; const char *st = dx_state_name(&S);	/* eink-round5: state changes in the kernel log */
       if (strcmp(last, st)) { kmark("state %s -> %s", last[0] ? last : "-", st); snprintf(last, sizeof last, "%s", st); } }
     prop_set("vendor.dualux.lcd_blank", dx_lcd_blank(&S) ? "1" : "0");	/* read by the patched composer (0002 patch): no LCD flash at wake-up */
-    prop_set(P_STATE, dx_state_name(&S)); prop_set("persist.vendor.eink.mode", dx_mirror_on(&S) ? "mirror" : "off"); }
+    prop_set(P_STATE, dx_state_name(&S)); prop_set("persist.vendor.eink.mode", dx_mirror_on(&S) ? "mirror" : "off");
+    prop_set("vendor.dualux.awake", S.awake ? "1" : "0"); }	/* eink-round6: a6l_einklock waits for display transitions to settle (LCD mode too) */
 static void enforce_backlight(void) {
     if (!lcd_bl[0]) return;
     char p[700]; snprintf(p, sizeof p, "%s/bl_power", lcd_bl); int pw = rd_int(p, -1);

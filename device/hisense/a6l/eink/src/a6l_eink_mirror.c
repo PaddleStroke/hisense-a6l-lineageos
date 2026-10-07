@@ -56,6 +56,7 @@
 #include <linux/input.h>
 #include <linux/uinput.h>
 #include <poll.h>
+#include <pthread.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -112,14 +113,15 @@ static void logline(const char *fmt, ...) {
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
-/* eink-round5: display-transition markers in the kernel log ("<6>a6l_eink: ..."; /dev/kmsg is root:system 0620, printk.devkmsg=on).
+/* eink-round5: display-transition markers in the kernel log ("<6>a6l_eink: ..."; printk.devkmsg=on). eink-round6: /dev/kmsg is
+ * 0600 root:root (first-stage init), so a system daemon cannot open it: /dev/kmsg_debug (0622, userdebug/eng) instead.
  * One timeline with the DPU/DSI/SMMU/PM messages for the round-5 repro (kmsg streamed to the laptop / fsync'ed on the
  * phone). Android builds only: host tests never write the host's kernel log. */
 static void kmark(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void kmark(const char *fmt, ...) {
 #ifdef __ANDROID__
     static int fd = -2;
-    if (fd == -2) fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd == -2) { fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC); if (fd < 0) fd = open("/dev/kmsg_debug", O_WRONLY | O_CLOEXEC); }
     if (fd < 0) return;
     char b[300]; int n = snprintf(b, sizeof b, "<6>a6l_eink: "); va_list ap; va_start(ap, fmt);
     int m = vsnprintf(b + n, sizeof b - (size_t)n - 1, fmt, ap); va_end(ap);
@@ -819,12 +821,29 @@ static int open_input(const char *spec, int want_key, const char *what) {
 struct slot { int in_active, x, y, dirty, out_active, ignored, start_fx, start_fy, moving; };
 static struct slot sl[NSLOT]; static int cur_slot, next_tid = 1, ui = -1, touch_fd = -1, forward;
 static unsigned gesture_generation;
+/* eink-round6: rear touch forwarding in its own thread. Before, the single loop read the rear touchscreen only between
+ * captures, and one capture + resize blocks it ~200 ms (7 Oct: capture=148 ms resize=48 ms). A flick that started during a
+ * capture reached Android as one burst (uinput stamps events when they are written): DOWN, MOVEs and UP within ~1 ms, or
+ * the moves 200 ms after the DOWN. VelocityTracker then sees no usable velocity (all samples at one instant, or the
+ * pointer "stopped"), so the launcher snaps the page back and a list does not fling: "the swipe is ignored, I have to
+ * swipe real good" (slow long drags worked: once a drag moves, captures are held and events flow in real time).
+ * The thread owns reading + forwarding (same mapping, same slots, same uinput device); everything the capture loop
+ * shares with it (slots, forward flag, touch map, fd, gesture generation) is under touch_mu. Policy calls stay in the
+ * capture loop: a release is handed over (release_pending) and the loop is woken through a pipe.
+ * --touch-thread 0 restores the old single-loop reading (comparison / fallback). */
+static pthread_mutex_t touch_mu = PTHREAD_MUTEX_INITIALIZER;
+static int touch_threaded = 1, touch_wake[2] = {-1, -1}, release_pending, touch_th_started, capture_delay_ms;
+static double release_pending_t; static volatile sig_atomic_t touch_stop; static pthread_t touch_th;
+static void touch_lock(void) { pthread_mutex_lock(&touch_mu); }
+static void touch_unlock(void) { pthread_mutex_unlock(&touch_mu); }
+static void wake_capture_loop(void) { if (touch_wake[1] >= 0) { char c = 1; if (write(touch_wake[1], &c, 1) < 0) { /* full: already woken */ } } }
 static int touch_any_drag(void) { for (int i = 0; i < NSLOT; i++) if (sl[i].out_active && sl[i].moving) return 1; return 0; }
 static int suppress_drag_frames(void) { return use_props && prop_int("sys.a6l.eink.no_animations", 0); }
 static struct tmap tm;
 static int touch_debug;
 static void emit(int type, int code, int val) {
     if (touch_debug) printf("A6L_MIRROR TOUCH_OUT %d %d %d\n", type, code, val);
+    if (touch_debug && type == EV_SYN && code == SYN_REPORT) printf("A6L_MIRROR TOUCH_SYN t=%.6f\n", now());	/* eink-round6: latency tests */
     if (ui < 0) return; struct input_event ev; memset(&ev, 0, sizeof ev); ev.type = (uint16_t)type; ev.code = (uint16_t)code; ev.value = val;
     if (write(ui, &ev, sizeof ev) != sizeof ev) { static int w; if (!w++) LOG("WARN uinput write: %s", strerror(errno)); }
 }
@@ -840,7 +859,7 @@ static int uinput_open(void) {
     LOG("uinput touchscreen a6l-eink-rear-touch %dx%d created", front_w, front_h); return fd;
 }
 /* eink-round2: the finger left a held drag; the policy waits for the app's settled frame (pol_cfg.release_quiet_ms) */
-static void gesture_released(void) { if (ack_policy && suppress_drag_frames()) pol_gesture_released(ack_policy, now()); }
+static void gesture_released(void) { release_pending = 1; release_pending_t = now(); wake_capture_loop(); }	/* eink-round6: applied by the capture loop */
 static void touch_release_all(void) {
     if (touch_any_drag()) { gesture_generation++; gesture_released(); }
     int any = 0; for (int i = 0; i < NSLOT; i++) if (sl[i].out_active) { emit(EV_ABS, ABS_MT_SLOT, i); emit(EV_ABS, ABS_MT_TRACKING_ID, -1); sl[i].out_active = 0; any = 1; }
@@ -866,6 +885,26 @@ static void touch_flush(void) {
     if (changed) { emit(EV_KEY, BTN_TOUCH, down); emit(EV_SYN, SYN_REPORT, 0); }
     if (was_dragging != touch_any_drag()) { gesture_generation++; if (was_dragging) gesture_released(); if (suppress_drag_frames()) LOG("gesture %u: %s, touch delivery continues", gesture_generation, touch_any_drag() ? "hold intermediate frames" : "released, capture final page"); }
 }
+/* eink-round6: after SYN_DROPPED the kernel's evdev buffer overflowed (reader too late). The ongoing contact gets no new
+ * ABS_MT_TRACKING_ID, so marking every slot inactive (as before) lifted the finger and ignored the rest of the swipe.
+ * Now: events are skipped up to the next SYN_REPORT, then every slot is re-read (EVIOCGMTSLOTS); only when that fails
+ * (FIFO in host tests) are the contacts lifted as before. */
+static int touch_dropping;
+static void touch_resync(void) {
+    struct { uint32_t code; int32_t v[NSLOT]; } q; int32_t id[NSLOT], x[NSLOT], y[NSLOT]; int ok = 1;
+    q.code = ABS_MT_TRACKING_ID; if (ioctl(touch_fd, EVIOCGMTSLOTS(sizeof q), &q) < 0) ok = 0; else memcpy(id, q.v, sizeof id);
+    q.code = ABS_MT_POSITION_X; if (ok && ioctl(touch_fd, EVIOCGMTSLOTS(sizeof q), &q) < 0) ok = 0; else memcpy(x, q.v, sizeof x);
+    q.code = ABS_MT_POSITION_Y; if (ok && ioctl(touch_fd, EVIOCGMTSLOTS(sizeof q), &q) < 0) ok = 0; else memcpy(y, q.v, sizeof y);
+    struct input_absinfo a;
+    if (ok && !ioctl(touch_fd, EVIOCGABS(ABS_MT_SLOT), &a)) cur_slot = a.value >= 0 && a.value < NSLOT ? a.value : 0;
+    for (int k = 0; k < NSLOT; k++) {
+        if (!ok) { sl[k].in_active = 0; sl[k].dirty = 1; continue; }
+        int act = id[k] >= 0; if (act != sl[k].in_active || (act && (x[k] != sl[k].x || y[k] != sl[k].y))) sl[k].dirty = 1;
+        sl[k].in_active = act; if (act) { sl[k].x = x[k]; sl[k].y = y[k]; }
+    }
+    { static int w; if (w++ < 5) LOG("rear touch: events dropped by the kernel (reader late): %s", ok ? "slot states re-read, contacts kept" : "slot states unreadable, contacts lifted"); }
+    touch_flush();
+}
 static void touch_input(void) {
     struct input_event ev[64]; ssize_t r = read(touch_fd, ev, sizeof ev);
     if (r < 0 && (errno == EAGAIN || errno == EINTR)) return;
@@ -877,6 +916,7 @@ static void touch_input(void) {
         return; }
     for (int i = 0; i < (int)(r / (ssize_t)sizeof ev[0]); i++) {
         struct input_event *e = &ev[i];
+        if (touch_dropping) { if (e->type == EV_SYN && e->code == SYN_REPORT) { touch_dropping = 0; touch_resync(); } continue; }
         if (e->type == EV_ABS) {
             if (e->code == ABS_MT_SLOT) { cur_slot = e->value >= 0 && e->value < NSLOT ? e->value : 0; continue; }
             struct slot *s = &sl[cur_slot];
@@ -884,8 +924,27 @@ static void touch_input(void) {
             else if (e->code == ABS_MT_POSITION_X) { s->x = e->value; s->dirty = 1; }
             else if (e->code == ABS_MT_POSITION_Y) { s->y = e->value; s->dirty = 1; }
         } else if (e->type == EV_SYN && e->code == SYN_REPORT) touch_flush();
-        else if (e->type == EV_SYN && e->code == SYN_DROPPED) { for (int k = 0; k < NSLOT; k++) { sl[k].in_active = 0; sl[k].dirty = 1; } touch_flush(); }
+        else if (e->type == EV_SYN && e->code == SYN_DROPPED) touch_dropping = 1;
     }
+}
+static void *touch_main(void *arg) {	/* eink-round6: reads + forwards the rear touch as it comes */
+    (void)arg;
+    while (!touch_stop) {
+        touch_lock(); int fd = touch_fd; unsigned g0 = gesture_generation; touch_unlock();
+        if (fd < 0) { usleep(20000); continue; }
+        struct pollfd p = {fd, POLLIN, 0}; int r = poll(&p, 1, 100);
+        if (r <= 0) continue;
+        touch_lock(); int same = touch_fd == fd; if (same) touch_input(); int changed = gesture_generation != g0 || release_pending; touch_unlock();
+        if (!same) usleep(10000);	/* the fd number was reused meanwhile: not ours */
+        if (changed) wake_capture_loop();
+    }
+    return NULL;
+}
+static void touch_thread_start(void) {
+    if (!touch_threaded) { LOG("rear touch: read by the capture loop (--touch-thread 0)"); return; }
+    if (pipe(touch_wake) == 0) { fcntl(touch_wake[0], F_SETFL, O_NONBLOCK); fcntl(touch_wake[1], F_SETFL, O_NONBLOCK); fcntl(touch_wake[0], F_SETFD, FD_CLOEXEC); fcntl(touch_wake[1], F_SETFD, FD_CLOEXEC); }
+    if (pthread_create(&touch_th, NULL, touch_main, NULL)) { LOG("WARN rear touch thread: %s: read by the capture loop", strerror(errno)); touch_threaded = 0; return; }
+    touch_th_started = 1; LOG("rear touch: forwarded by its own thread (never waits for a capture)");
 }
 /* r5 bug hunt eink-display E2: open + grab the rear touchscreen (at start, then every 5 s while it is missing) */
 static void touch_attach(void) {
@@ -1016,6 +1075,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--keep-crtc-front-off")) keep_crtc_front_off = 1;
         else if (OPT("--reply-timeout")) reply_timeout_ms = atoi(v) > 0 ? atoi(v) : 30000;
         else if (OPT("--wait-prop")) wait_prop = v; else if (!strcmp(a, "--touch-debug")) touch_debug = 1;
+        else if (OPT("--touch-thread")) touch_threaded = atoi(v) != 0;	/* eink-round6 */
+        else if (OPT("--capture-delay-ms")) capture_delay_ms = atoi(v);	/* eink-round6 host tests: a slow capture (phone: ~200 ms) */
         else if (OPT("--send")) {	/* one-shot client: send one command to a6l_epdd, print the reply (attended tests) */
             last_connect_try = -10; if (epd_connect()) return 1;
             char l[600]; int n = snprintf(l, sizeof l, "%s\n", v); if (send_all(l, (size_t)n)) return 1;
@@ -1033,6 +1094,7 @@ int main(int argc, char **argv) {
     int mc, rc_; if (mode_forced < 0 && use_props) { char v[96]; if (prop_get(P_MODE, v, sizeof v) <= 0) { mode = EINK_OFF; } } read_props(&mc, &rc_);
     key_fd = open_input(key_dev, 1, "e-ink key");
     touch_attach();
+    touch_thread_start();
     pcfg.reading = reading;
     if (use_props && !reading && !refresh_mode[0]) pol_apply_refresh_mode(&pcfg, "stock");	/* default before the first prop read */
     struct pol_state ps; pol_init(&ps, &pcfg, now()); ack_policy = &ps;
@@ -1044,6 +1106,8 @@ int main(int argc, char **argv) {
     LOG("tone: black clip %d, white clip %d, gamma %.2f; release settle %d ms (max %d ms)", tone_black, tone_white, tone_gamma / 100.0, pcfg.release_quiet_ms, pcfg.release_max_ms);
     while (!stop && (!frames_max || frame < frames_max)) {
         double t = now();
+        { touch_lock(); int rp = release_pending; double rt = release_pending_t; release_pending = 0; touch_unlock();	/* eink-round6 */
+          if (rp && ack_policy && suppress_drag_frames()) pol_gesture_released(ack_policy, rt); }
         /* mode transitions */
         if (t >= next_props) { next_props = t + (use_props && prop_int("sys.a6l.dualux.theme_sync", 0) ? 0.05 : 0.5); int m1, r1; read_props(&m1, &r1);
             if (r1 && !refresh_mode[0]) { pcfg.reading = reading; ps.cfg.reading = reading; policy_epoch++; LOG("reading mode %s", reading ? "on" : "off"); }
@@ -1058,15 +1122,16 @@ int main(int argc, char **argv) {
         /* epdd retains its image/library state across power off and performs a
          * recovery clear itself after a failed drive. Switching sides needs no
          * unconditional clear-white + INIT sequence before showing the page. */
-        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; pol_init(&ps, &pcfg, t); policy_epoch++; have_prev = have_shown = 0; staged.valid = 0; forward = 1; LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
-        if (mode != EINK_MIRROR && active) { active = 0; staged.valid = 0; policy_epoch++; forward = 0; touch_release_all(); qn = 0; queue_cmd("power off", 0); LOG("mirror OFF (e-ink keeps the last picture)"); }
+        if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; pol_init(&ps, &pcfg, t); policy_epoch++; have_prev = have_shown = 0; staged.valid = 0; touch_lock(); forward = 1; touch_unlock(); LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
+        if (mode != EINK_MIRROR && active) { active = 0; staged.valid = 0; policy_epoch++; touch_lock(); forward = 0; touch_release_all(); touch_unlock(); qn = 0; queue_cmd("power off", 0); LOG("mirror OFF (e-ink keeps the last picture)"); }
         if (!dry && epd < 0) epd_connect();
-        { static double next_touch_scan; if (touch_fd < 0 && t >= next_touch_scan) { next_touch_scan = t + 5; input_quiet = 1; touch_attach(); input_quiet = 0; } }
+        { static double next_touch_scan; touch_lock(); if (touch_fd < 0 && t >= next_touch_scan) { next_touch_scan = t + 5; input_quiet = 1; touch_attach(); input_quiet = 0; } touch_unlock(); }
         set_state(!active ? "off" : epd < 0 && !dry ? "mirror-no-epdd" : paused ? "mirror-paused" : reading ? "mirror-reading" : "mirror");
         /* wait for input / replies / the next capture */
-        struct pollfd p[3]; int n = 0, ik = -1, it = -1, ie = -1;
+        struct pollfd p[4]; int n = 0, ik = -1, it = -1, ie = -1, iw = -1;
         if (key_fd >= 0) { ik = n; p[n++] = (struct pollfd){key_fd, POLLIN, 0}; }
-        if (touch_fd >= 0) { it = n; p[n++] = (struct pollfd){touch_fd, POLLIN, 0}; }
+        if (!touch_threaded && touch_fd >= 0) { it = n; p[n++] = (struct pollfd){touch_fd, POLLIN, 0}; }
+        if (touch_wake[0] >= 0) { iw = n; p[n++] = (struct pollfd){touch_wake[0], POLLIN, 0}; }
         if (epd >= 0) { ie = n; p[n++] = (struct pollfd){epd, POLLIN, 0}; }
         double until = active && !busy && !qn ? (staged.valid ? t : next_cap) : t + 0.1; if (ks.down) until = t + 0.05;
         if (active && busy && pipeline && precap_cmd_t != cmd_t) {	/* eink-round4: wake for the pipelined capture */
@@ -1077,7 +1142,8 @@ int main(int argc, char **argv) {
         int r = poll(p, (nfds_t)n, to);
         if (r < 0 && errno != EINTR) { LOG("FAIL poll: %s", strerror(errno)); break; }
         if (r > 0 && ie >= 0 && (p[ie].revents & (POLLIN | POLLHUP | POLLERR))) epd_input(&ps);
-        if (r > 0 && it >= 0 && (p[it].revents & (POLLIN | POLLHUP | POLLERR))) touch_input();
+        if (r > 0 && it >= 0 && (p[it].revents & (POLLIN | POLLHUP | POLLERR))) { touch_lock(); touch_input(); touch_unlock(); }
+        if (r > 0 && iw >= 0 && (p[iw].revents & POLLIN)) { char wb[64]; while (read(touch_wake[0], wb, sizeof wb) > 0) {} }
         enum key_action ka = KA_NONE;
         if (r > 0 && ik >= 0 && (p[ik].revents & (POLLIN | POLLHUP | POLLERR))) ka = key_input();
         if (!ka) ka = key_tick(&ks, now());
@@ -1098,7 +1164,8 @@ int main(int argc, char **argv) {
          * and decided at the reply: the next frame command leaves at once. During a release settle (0005) captures run
          * back to back while busy, so the settled page is staged too. A drag still holds captures. */
         if (active && staged.valid && !busy && !qn) {
-            int stale = now() - staged.t > 1.0 || staged.gesture != gesture_generation || (suppress_drag_frames() && touch_any_drag());
+            touch_lock(); unsigned gen_now = gesture_generation; int drag_now = touch_any_drag(); touch_unlock();
+            int stale = now() - staged.t > 1.0 || staged.gesture != gen_now || (suppress_drag_frames() && drag_now);
             staged.valid = 0;
             if (stale) { next_cap = now(); continue; }
             if (decide_capture(&ps, &staged, "staged")) pump();
@@ -1113,15 +1180,16 @@ int main(int argc, char **argv) {
             if (!settle && (precap_cmd_t == cmd_t || now() < precapture_due())) continue;
             precapture = 1;
         }
-        if (suppress_drag_frames() && touch_any_drag()) { next_cap = now() + 0.02; continue; }
+        touch_lock(); int dragging = touch_any_drag(); unsigned capture_gesture = gesture_generation; touch_unlock();
+        if (suppress_drag_frames() && dragging) { next_cap = now() + 0.02; continue; }
         /* capture + policy */
         char capture_appearance[96], after_appearance[96];
         appearance_snapshot(capture_appearance, sizeof capture_appearance);
         if (!appearance_scanout_barrier(capture_appearance)) { next_cap = now() + 0.02; continue; }
         double ivl = capture_interval(&ps);
         next_cap += ivl; if (next_cap < now()) next_cap = now() + ivl;
-        unsigned capture_gesture = gesture_generation;
         double t0 = now(); int rc;
+        if (capture_delay_ms > 0) usleep((useconds_t)capture_delay_ms * 1000);	/* host tests only */
         if (!strcmp(source, "screencap")) rc = capture_screencap();
         else if (!strcmp(source, "drm")) rc = capture_drm();
         else if (!strncmp(source, "file:", 5)) rc = capture_file(source + 5);
@@ -1130,7 +1198,7 @@ int main(int argc, char **argv) {
         else { LOG("FAIL unknown source %s", source); return 2; }
         frame++;
         if (precapture) precap_cmd_t = cmd_t;
-        if (rc == CAP_FRONT_OFF) { cap_guard_reset(&cguard); if (!paused) { KLOG("front screen off: paused (rear touch not forwarded)"); forward = 0; touch_release_all(); } paused = 1;
+        if (rc == CAP_FRONT_OFF) { cap_guard_reset(&cguard); if (!paused) { KLOG("front screen off: paused (rear touch not forwarded)"); touch_lock(); forward = 0; touch_release_all(); touch_unlock(); } paused = 1;
             /* eink-round3: the e-ink CRTC follows the LCD CRTC, so no system suspend saves/restores an enabled lessee CRTC
              * (6 Oct 16:07: e-ink on across a suspend -> LCD scan-out of an unmapped buffer after the next LCD switch).
              * The picture stays on the panel; the next update does the bring-up again (as after idle-off). */
@@ -1139,7 +1207,12 @@ int main(int argc, char **argv) {
         front_follow_step(&front_ff, 0);
         if (rc == CAP_TORN) { fails = 0; continue; }	/* eink-round3: retried at the next interval; never sent, never a failure */
         if (rc) { if (++fails >= 40) { LOG("FAIL 40 consecutive capture failures: pausing 30 s"); fails = 0; next_cap = now() + 30; } continue; }
-        if (paused) { KLOG("front screen on: resumed"); paused = 0; forward = 1; }
+        /* eink-round6b: the LCD came back on, but a wake-up with the power key leaves the e-ink (dualux sets mode off with the
+         * LCD state) and the props are read only every 0.5 s: the mirror sent one frame anyway, an e-ink cold modeset right in
+         * the LCD power-on (7 Oct 12:14:04: "front screen on: resumed" 479.84 -> "e-ink CRTC 70 modeset" 480.19 -> "power
+         * off" 481.43, with LCD vblank timeouts around it). Re-read the mode before the first frame after a pause. */
+        if (paused && use_props && mode_forced < 0) { char mv[16]; if (prop_get(P_MODE, mv, sizeof mv) > 0 && mode_parse(mv, mode) != EINK_MIRROR) { next_props = 0; continue; } }
+        if (paused) { KLOG("front screen on: resumed"); paused = 0; touch_lock(); forward = 1; touch_unlock(); }
         fails = 0; double tcap = now() - t0;
         double tr = now(); resample(); cur_land = out_w > out_h; tiles(cur_t); double tresample = now() - tr;
         est_capture_s = 0.7 * est_capture_s + 0.3 * (tcap + tresample);
@@ -1147,10 +1220,13 @@ int main(int argc, char **argv) {
         if (strcmp(capture_appearance, after_appearance)) capture_appearance[0] = 0;
         /* Input may have arrived during the bounded CPU copy/resize. Drain it
          * before submission and discard pixels that span a drag transition. */
-        if (touch_fd >= 0) { struct pollfd tp = {touch_fd, POLLIN, 0}; if (poll(&tp, 1, 0) > 0) touch_input(); }
-        if (suppress_drag_frames() && (touch_any_drag() || capture_gesture != gesture_generation)) { next_cap = now(); continue; }
+        touch_lock();
+        if (!touch_threaded && touch_fd >= 0) { struct pollfd tp = {touch_fd, POLLIN, 0}; if (poll(&tp, 1, 0) > 0) touch_input(); }
+        int drag_after = touch_any_drag(), gen_after = gesture_generation != capture_gesture;
         if (!cur_land && (gw != tm.front_w || gh != tm.front_h || geo_ox != tm.img_x || geo_dw != tm.img_w)) {	/* keep the touch map on the picture actually shown */
             tm.front_w = gw; tm.front_h = gh; tm.img_x = geo_ox; tm.img_y = geo_oy; tm.img_w = geo_dw; tm.img_h = geo_dh; }
+        touch_unlock();
+        if (suppress_drag_frames() && (drag_after || gen_after)) { next_cap = now(); continue; }
         double td = now();
         double moving = have_prev && prev_land == cur_land ? diff_frac(cur_t, prev_t) : 1.0;
         /* Equal tile averages can hide real text changes. Keep exact damage
@@ -1166,7 +1242,8 @@ int main(int argc, char **argv) {
         if (decide_capture(&ps, &sc, "")) pump();
     }
     while (!stop && busy && dry) { usleep(20000); if (now() >= dry_done_at) busy = 0; }
-    if (ui >= 0) { touch_release_all(); ioctl(ui, UI_DEV_DESTROY); close(ui); }
+    if (touch_th_started) { touch_stop = 1; pthread_join(touch_th, NULL); }
+    touch_lock(); if (ui >= 0) { touch_release_all(); ioctl(ui, UI_DEV_DESTROY); close(ui); } touch_unlock();
     LOG("exit after %d frames", frame);
     return 0;
 }

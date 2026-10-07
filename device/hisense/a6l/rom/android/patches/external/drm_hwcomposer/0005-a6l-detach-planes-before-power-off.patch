@@ -1,0 +1,63 @@
+From: A6L port maintainers
+Subject: [PATCH] hwc: detach the planes before the display power-off commit
+
+With the CRTC kept enabled at power-off (0004) and fixed DPU planes, the
+power-off commit disabled the planes together with ACTIVE=0: the plane
+disables were flushed after the interface had stopped, and the first LCD
+frames after the next power-on waited for them (msm "vblank timeout:
+40001801", then "1800" four times, ~250 ms at every wake-up). The planes are
+now detached by an empty composition while the CRTC still scans out (the
+backlight is already off), then ACTIVE=0 is committed.
+vendor.hwc.drm.power_off_detach_planes=0 skips the extra commit.
+
+--- a/hwc/HwcDisplay.cpp
++++ b/hwc/HwcDisplay.cpp
+@@ -655,6 +655,21 @@ HwcDisplay::Error HwcDisplay::SetPowerMode(PowerMode mode) {
+     // interface are switched off by ACTIVE=0 exactly as before.
+     // vendor.hwc.drm.power_off_teardown=1 restores the upstream teardown.
+     a_args.teardown = Properties::PowerOffTeardown();
++    // A6L (eink-round6b): detach every plane while the CRTC still scans out,
++    // so the plane disables are latched by a real vsync. Committed together
++    // with ACTIVE=0 they were flushed after the interface had stopped and the
++    // LCD's first frames at the next power-on waited for them ("vblank
++    // timeout: 40001801" then "1800" x4 = ~250 ms at every wake-up, 7 Oct
++    // 13:05-13:07). Same commit as CleanFailedCommit(); the backlight is
++    // already off here. vendor.hwc.drm.power_off_detach_planes=0 skips it.
++    if (!a_args.teardown && Properties::PowerOffDetachPlanes() &&
++        GetPipe().atomic_commit_sink->IsActive()) {
++      AtomicCommitArgs d_args{};
++      d_args.blocking = true;
++      d_args.composition = std::make_shared<LayerToPlaneJoiningPlan>();
++      ALOGE_IF(!ExecuteAtomicCommit(d_args).has_value(),
++               "Failed to detach the planes before power-off");
++    }
+   }
+ 
+   const bool commit_success = ExecuteAtomicCommit(a_args).has_value();
+--- a/utils/properties.cpp
++++ b/utils/properties.cpp
+@@ -194,6 +194,14 @@ auto Properties::PowerOffTeardown() -> bool {
+   return (property_get_bool("vendor.hwc.drm.power_off_teardown", 0) != 0);
+ }
+ 
++/**
++ * Display power-off first commits an empty composition while the CRTC is still
++ * active (true, A6L default), so plane disables latch on a real vsync.
++ */
++auto Properties::PowerOffDetachPlanes() -> bool {
++  return (property_get_bool("vendor.hwc.drm.power_off_detach_planes", 1) != 0);
++}
++
+ auto Properties::DropDrmMasterAfterInit() -> bool {
+   return (property_get_bool("ro.vendor.hwc.drop_drm_master", 0) != 0);
+ }
+--- a/utils/properties.h
++++ b/utils/properties.h
+@@ -43,6 +43,7 @@ class Properties {
+   static auto IgnoredConnectors() -> std::string;
+   static auto LeaseSocketName() -> std::string;
+   static auto PowerOffTeardown() -> bool;
++  static auto PowerOffDetachPlanes() -> bool;
+ };
+ 
+ }  // namespace android::drm_hwcomposer

@@ -1,0 +1,64 @@
+From: A6L port maintainers
+Subject: [PATCH] hwc: keep the CRTC's display resources across display power-off
+
+On power-off the composer cleared MODE_ID and detached the connector
+("teardown"), so the kernel released the CRTC's hardware blocks (msm DPU CTL,
+layer mixer, DSPP). On the A6L the e-ink CRTC (a DRM lessee of a6l_epdd) is
+then modeset while the LCD is off (lock screen) and the DPU resource manager
+hands it the LCD's CTL, whose flush register still holds bits for the LCD
+interface that only an LCD vsync can consume: every e-ink commit timed out
+("vblank timeout: 41002841" for 7 s on 7 Oct 06:28) and the phone hard-reset.
+
+Power-off now only clears ACTIVE (panel and interface off as before) unless
+vendor.hwc.drm.power_off_teardown=1. Power-on re-applies the same mode, which
+the kernel treats as an ACTIVE-only change: the resources stay with the LCD.
+
+--- a/hwc/HwcDisplay.cpp
++++ b/hwc/HwcDisplay.cpp
+@@ -644,7 +644,17 @@ HwcDisplay::Error HwcDisplay::SetPowerMode(PowerMode mode) {
+   a_args.blocking = true;
+   a_args.power_mode = mode;
+   if (!enabled) {
+-    a_args.teardown = true;
++    // A6L (eink-round6): by default only ACTIVE=0 here; MODE_ID and the
++    // connector link stay set, so the kernel keeps this CRTC's display
++    // resources (msm DPU: CTL, LM, DSPP are only re-assigned when the mode or
++    // the connectors change, not when only ACTIVE does). A teardown released
++    // the LCD's CTL with a flush pending for the LCD interface that only the
++    // LCD can consume; the next e-ink modeset (lock screen while asleep) got
++    // that CTL and every e-ink commit then timed out ("vblank timeout:
++    // 41002841", 7 Oct 06:28) until the phone reset. The panel and the
++    // interface are switched off by ACTIVE=0 exactly as before.
++    // vendor.hwc.drm.power_off_teardown=1 restores the upstream teardown.
++    a_args.teardown = Properties::PowerOffTeardown();
+   }
+ 
+   const bool commit_success = ExecuteAtomicCommit(a_args).has_value();
+--- a/utils/properties.cpp
++++ b/utils/properties.cpp
+@@ -185,6 +185,15 @@ auto Properties::LeaseSocketName() -> std::string {
+   return {buf};
+ }
+ 
++/**
++ * Display power-off also detaches the connector and clears the mode (true), or
++ * only clears ACTIVE (false, the A6L default: the kernel keeps the CRTC's
++ * hardware blocks reserved for this display, see HwcDisplay::SetPowerMode).
++ */
++auto Properties::PowerOffTeardown() -> bool {
++  return (property_get_bool("vendor.hwc.drm.power_off_teardown", 0) != 0);
++}
++
+ auto Properties::DropDrmMasterAfterInit() -> bool {
+   return (property_get_bool("ro.vendor.hwc.drop_drm_master", 0) != 0);
+ }
+--- a/utils/properties.h
++++ b/utils/properties.h
+@@ -42,6 +42,7 @@ class Properties {
+   static auto ForceP3Support() -> bool;
+   static auto IgnoredConnectors() -> std::string;
+   static auto LeaseSocketName() -> std::string;
++  static auto PowerOffTeardown() -> bool;
+ };
+ 
+ }  // namespace android::drm_hwcomposer

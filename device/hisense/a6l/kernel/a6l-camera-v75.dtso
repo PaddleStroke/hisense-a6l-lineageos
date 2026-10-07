@@ -74,20 +74,28 @@
 	 * suspend while async CCI clients (gt9769) may still be transferring. The CCI driver enables
 	 * every listed clock (devm_clk_bulk_get_all) whenever it is runtime-active.
 	 */
-	clocks = <&mmcc CAMSS_TOP_AHB_CLK>,
-		 <&mmcc CAMSS_CCI_AHB_CLK>,
-		 <&mmcc CAMSS_CCI_CLK>,
-		 <&mmcc CAMSS_AHB_CLK>,
-		 <&mmcc MNOC_AHB_CLK>,
+	/*
+	 * hw-isp round 7: stock ORDER too (qcom,cci@ca0c000: mmssnoc_axi, mnoc_ahb, smmu_ahb, smmu_axi, camss_ahb_clk,
+	 * camss_top_ahb_clk, cci_src_clk, cci_ahb_clk, camss_cci_clk). clk_bulk enables in list order and disables in
+	 * reverse, so the MMSS NoC/SMMU clocks must come first: released last at CCI runtime suspend. With them last,
+	 * a CCI forced into runtime suspend during system suspend (after iommu@cd00000 dropped its votes) gated
+	 * mnoc_ahb before camss_ahb, and camss_ahb_clk could not halt ("status stuck at 'on'", clk-branch.c:88).
+	 * The CCI driver looks up "cci" by name; the order does not matter to it.
+	 */
+	clocks = <&mmcc MNOC_AHB_CLK>,
 		 <&mmcc BIMC_SMMU_AHB_CLK>,
-		 <&mmcc BIMC_SMMU_AXI_CLK>;
-	clock-names = "camss_top_ahb",
-		      "cci_ahb",
-		      "cci",
-		      "camss_ahb",
-		      "mnoc_ahb",
+		 <&mmcc BIMC_SMMU_AXI_CLK>,
+		 <&mmcc CAMSS_AHB_CLK>,
+		 <&mmcc CAMSS_TOP_AHB_CLK>,
+		 <&mmcc CAMSS_CCI_AHB_CLK>,
+		 <&mmcc CAMSS_CCI_CLK>;
+	clock-names = "mnoc_ahb",
 		      "smmu_ahb",
-		      "smmu_axi";
+		      "smmu_axi",
+		      "camss_ahb",
+		      "camss_top_ahb",
+		      "cci_ahb",
+		      "cci";
 };
 
 &cci_i2c0 {

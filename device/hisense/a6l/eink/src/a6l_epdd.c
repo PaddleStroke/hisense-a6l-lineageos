@@ -129,14 +129,15 @@ static void logline(const char *fmt, ...) {
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
-/* eink-round5: display-transition markers in the kernel log ("<6>a6l_epdd: ..."; /dev/kmsg is root:system 0620, printk.devkmsg=on).
+/* eink-round5: display-transition markers in the kernel log ("<6>a6l_epdd: ..."; printk.devkmsg=on). eink-round6: /dev/kmsg is
+ * 0600 root:root (first-stage init), so a system daemon cannot open it: /dev/kmsg_debug (0622, userdebug/eng) instead.
  * One timeline with the DPU/DSI/SMMU/PM messages for the round-5 repro (kmsg streamed to the laptop / fsync'ed on the
  * phone). Android builds only: host tests never write the host's kernel log. */
 static void kmark(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void kmark(const char *fmt, ...) {
 #ifdef __ANDROID__
     static int fd = -2;
-    if (fd == -2) fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd == -2) { fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC); if (fd < 0) fd = open("/dev/kmsg_debug", O_WRONLY | O_CLOEXEC); }
     if (fd < 0) return;
     char b[300]; int n = snprintf(b, sizeof b, "<6>a6l_epdd: "); va_list ap; va_start(ap, fmt);
     int m = vsnprintf(b + n, sizeof b - (size_t)n - 1, fmt, ap); va_end(ap);
@@ -793,6 +794,62 @@ static int drm_lease_pidfd(const char *lease_arg, int crtc_index) {
     if (lfd < 0) { LOG("WARN no DRM master process granted a lease (pidfd path)"); return -1; }
     close(dfd); dfd = lfd; return 0;
 }
+/* eink-round6: the LCD keeps its display pipeline, or the e-ink waits. The msm DPU assigns a CRTC its CTL/LM/DSPP at a
+ * modeset and keeps them while only ACTIVE changes. When the composer tears the LCD down at power-off (MODE_ID 0, connector
+ * detached), the LCD's CTL is free but its flush register still holds bits for the LCD interface (INTF_1) that only an
+ * LCD vsync consumes; an e-ink modeset in that window gets exactly that CTL (first free one) and every e-ink commit then
+ * waits 50 ms for a flush that never clears: 7 Oct 06:28, lock frame while asleep -> "vblank timeout: 41002841" x ~120,
+ * 7 s of 56 ms flips, the panel driven 5x too long per frame, then a hard reset after the CRTC was switched off. The
+ * composer patch 0004 (no teardown) keeps the LCD's resources; this guard covers a composer without it: while the LCD
+ * connector is detached ("enabled" = disabled in sysfs) no cold e-ink modeset is made, the command fails cleanly. */
+#ifdef __ANDROID__
+static const char *lcd_guard = "auto";	/* --lcd-guard auto|none|PATH */
+#else
+static const char *lcd_guard = "none";	/* host: tests pass a file */
+#endif
+static char lcd_guard_file[320]; static int lcd_guard_looked, guard_refusals, stalls_total;
+static int lcd_pipeline_released(void) {
+    if (!lcd_guard || !strcmp(lcd_guard, "none")) return 0;
+    if (strcmp(lcd_guard, "auto")) snprintf(lcd_guard_file, sizeof lcd_guard_file, "%s", lcd_guard);
+    else if (!lcd_guard_looked) {	/* the LCD connector: the card*-* directory whose modes list 1080x2340 */
+        lcd_guard_looked = 1; DIR *d = opendir("/sys/class/drm"); struct dirent *e;
+        while (d && (e = readdir(d)) && !lcd_guard_file[0]) {
+            if (strncmp(e->d_name, "card", 4) || !strchr(e->d_name, '-')) continue;
+            char p[300], buf[512] = {0}; snprintf(p, sizeof p, "/sys/class/drm/%s/modes", e->d_name); FILE *f = fopen(p, "r"); if (!f) continue;
+            size_t k = fread(buf, 1, sizeof buf - 1, f); fclose(f); buf[k] = 0;
+            if (strstr(buf, "1080x2340")) snprintf(lcd_guard_file, sizeof lcd_guard_file, "/sys/class/drm/%s/enabled", e->d_name);
+        }
+        if (d) closedir(d);
+        LOG("LCD pipeline guard: %s", lcd_guard_file[0] ? lcd_guard_file : "no 1080x2340 connector found (guard off)");
+    }
+    if (!lcd_guard_file[0]) return 0;
+    char v[32] = ""; FILE *f = fopen(lcd_guard_file, "r"); if (!f) return 0;
+    if (!fgets(v, sizeof v, f)) v[0] = 0; fclose(f);
+    return !strncmp(v, "disabled", 8);
+}
+/* 0 = go on; -1 = refused (reply set). Only a cold start (CRTC off) needs the check: a running e-ink CRTC owns its CTL. */
+static int cold_guard(const char *what, char *reply, size_t rn) {
+    if (started || dry || !lcd_pipeline_released()) return 0;
+    guard_refusals++;
+    KLOG("WARN %s refused: the LCD display pipeline is released (%s = disabled: composer power-off teardown); an e-ink modeset now would take the LCD's DPU CTL (vblank timeouts, 7 Oct reset)", what, lcd_guard_file);
+    snprintf(reply, rn, "ERR lcd-released: e-ink modeset refused while the LCD display pipeline is released");
+    return -1;
+}
+/* A flip normally completes at the next vblank (11.8 ms at 85 Hz). A stuck CTL flush makes the kernel give up after 50 ms
+ * per commit ("vblank timeout"), so the page flips still "complete" ~56 ms apart and the waveform runs 5x too slow: the
+ * panel goes black (7 Oct attempt 1) or shows nothing (attempt 2). --stall-ms N (35) / --stall-count N (3): that many
+ * flips in a row slower than N ms abort the update (rails off, ERR, panel unknown -> recovery clear next time). */
+static int stall_ms = 35, stall_count = 3, slow_run;
+static int flip_checked(uint32_t id) {
+    double t0 = now(); int rc = flip(id); if (rc) { slow_run = 0; return rc; }
+    double ms = (now() - t0) * 1000;
+    if (stall_ms <= 0 || ms <= stall_ms) { slow_run = 0; return 0; }
+    if (++slow_run < stall_count) return 0;
+    stalls_total++; slow_run = 0;
+    KLOG("FAIL e-ink scan-out stalled: %d page flips in a row took more than %d ms (last %.0f ms; kernel 'vblank timeout'?): update %d aborted", stall_count, stall_ms, ms, updates);
+    return -1;
+}
+static int idle_scans_stalled(int n) { int s0 = stalls_total; slow_run = 0; for (int i = 0; i < n; i++) { flip_checked(idle.id); if (stalls_total != s0) return 1; } return 0; }
 static int drm_start(void) {	/* modeset = panel prepare+enable = kernel bring-up (V73 panel driver) */
 #ifdef A6L_EPDD_HOSTTEST
     return a6l_test_modeset();
@@ -801,8 +858,12 @@ static int drm_start(void) {	/* modeset = panel prepare+enable = kernel bring-up
     for (int attempt = 1; attempt <= 3; attempt++) {
         kmark("e-ink CRTC %u modeset on (attempt %d)", crtc, attempt);
         if (drmModeSetCrtc(dfd, crtc, idle.id, 0, 0, &conn_id, 1, &mode_info)) { int e = errno; KLOG("FAIL setcrtc: %s", strerror(e)); if (lost_errno(e)) drm_lost = 1; return -1; }
-        for (int i = 0; i < 10; i++) flip(idle.id);
+        int stalled = idle_scans_stalled(10);	/* eink-round6: the idle scans after the modeset double as a vblank check */
         bringup_status(st, sizeof st); KLOG("bring-up %d: %s", attempt, st[0] ? st : "(no status attribute)");
+        if (stalled) {	/* eink-round6: no vblank on this CRTC (stale CTL flush): never drive the rails over it, never retry */
+            KLOG("FAIL e-ink CRTC %u: no vblank after the modeset (idle flips stalled): switched off again, update not driven", crtc);
+            drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); return -1;
+        }
         if (!st[0] || strstr(st, "bridge_ok=1")) return 0;
         drmModeSetCrtc(dfd, crtc, 0, 0, 0, NULL, 0, NULL); sleep(1);
     }
@@ -899,7 +960,7 @@ static int drive_job(int n, struct gen_job *job) {	/* scan out the n frames of t
         double lead_s = lead / 85.0, budget = last_gen_ms / 1000 - last_rails_on_ms / 1000 - lead_s;
         if (budget > 0) job_wait_until(job, job->t0 + budget);
     }
-    unsigned g0 = gaps; int rc = 0; double t1 = now(), susp0 = suspended_s();
+    unsigned g0 = gaps; int rc = 0; double t1 = now(), susp0 = suspended_s(); slow_run = 0;
     if (!warm && power(1)) {	/* F35: no waveform scanout without the rails; switch off whatever may have come up */
         LOG("FAIL rails not switched on: update %d not driven", updates);
         if (power(0)) { rails_off_fail++; LOG("FAIL rails not switched off after the failed switch-on"); }
@@ -908,26 +969,26 @@ static int drive_job(int n, struct gen_job *job) {	/* scan out the n frames of t
     }
     double rails_on_ms = (now() - t1) * 1000, tp = now();
     if (!warm) last_rails_on_ms = rails_on_ms;
-    for (int i = 0; i < lead && !rc && !warm; i++) rc = flip(idle.id);
+    for (int i = 0; i < lead && !rc && !warm; i++) rc = flip_checked(idle.id);
     int extra_idle = 0;
     if (job) {	/* all frames must exist before the first waveform frame; idle scans meanwhile drive nothing */
-        while (!rc && !job_done(job)) { rc = flip(idle.id); extra_idle++; }
+        while (!rc && !job_done(job)) { rc = flip_checked(idle.id); extra_idle++; }
         n = job->n;
         if (!rc && n <= 0) { LOG("FAIL update %d: frame generation failed", updates); rc = -1; }
     }
     double lead_ms = (now() - tp) * 1000; tp = now();
     unsigned gd = gaps;
-    for (int k = 0; k < n && !rc; k++) { struct fb *f = (k & 1) ? &fb2 : &fa; memcpy(f->map, frames[k], FRAME); rc = flip(f->id); }
+    for (int k = 0; k < n && !rc; k++) { struct fb *f = (k & 1) ? &fb2 : &fa; memcpy(f->map, frames[k], FRAME); rc = flip_checked(f->id); }
     double wave_ms = (now() - tp) * 1000; tp = now();
     gd = gaps - gd;
     double lost = suspended_s() - susp0;	/* eink-round4: a suspend cut the rails (panel suspend) mid-waveform */
     int hold = chain && !rc && lost <= 0.05 && tail > 1;
     if (hold) {	/* eink-round4 chain: idle frame now, reply now, rails off by serve() after the tail time unless chained */
-        rc = flip(idle.id);
+        rc = flip_checked(idle.id);
         if (!rc) { rails_held = 1; rails_hold_until = now() + (tail - 1) / 85.0; }
         else hold = 0;
     }
-    for (int i = 0; i < tail && !rc && !hold; i++) rc = flip(idle.id);
+    for (int i = 0; i < tail && !rc && !hold; i++) rc = flip_checked(idle.id);
     double tail_ms = (now() - tp) * 1000; tp = now();
     if (!rails_held && power(0) && power(0)) {	/* F35: every exit switches the rails off; a failure (after one retry) is an error */
         rails_off_fail++; LOG("FAIL rails not switched off after update %d", updates); rc = -1;
@@ -1075,6 +1136,7 @@ static int lock_restore(int off, char *reply, size_t rn) {
     int rc = 0;
     kmark("lock restore%s (lock picture %s)", off ? " off" : "", lock_on_panel ? "shown" : "already replaced");
     if (!lock_on_panel) snprintf(reply, rn, "OK lock restore: nothing to do");
+    else if (have_mirror && cold_guard("lock restore", reply, rn)) rc = -1;	/* eink-round6: kept pending, retried later */
     else if (!have_mirror) { lock_on_panel = 0; snprintf(reply, rn, "OK lock restore: no earlier picture, lock picture kept"); }
     else {
         lock_on_panel = 0; rc = recover();
@@ -1110,9 +1172,9 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     if (!strcmp(line, "quit")) { stop = 1; snprintf(reply, rn, "OK quitting"); return 0; }
     if (!strcmp(line, "status")) {
         char st[200]; bringup_status(st, sizeof st);
-        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d rails=%s crtc=%s crtc_wakelock=%s kernel_wakelock=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f lock=%s lock_frames=%d bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms, rails_held ? "held" : "off",
+        snprintf(reply, rn, "OK updates=%d fails=%d rails_off_fail=%d panel=%s last_ms=%d rails=%s crtc=%s crtc_wakelock=%s kernel_wakelock=%s drm=%s mode=%d idle_s=%.0f uptime_s=%.0f lock=%s lock_frames=%d lcd_guard=%s guard_refusals=%d stalls=%d bringup=%s", updates, fails_total, rails_off_fail, panel_unknown ? "unknown" : "known", last_ms, rails_held ? "held" : "off",
                  started ? "on" : "off", crtc_wl_held ? "held" : "free", !use_wakelock || dry ? "off" : wl_err ? strerror(wl_err) : "ok", dfd >= 0 ? (no_master ? "lessee" : "open") : "closed", mode, last_update_t ? now() - last_update_t : -1, now() - t_boot,
-                 lock_on_panel ? "on" : "off", lock_frames, st[0] ? st : "-");
+                 lock_on_panel ? "on" : "off", lock_frames, !strcmp(lcd_guard, "none") ? "none" : lcd_pipeline_released() ? "released" : "ok", guard_refusals, stalls_total, st[0] ? st : "-");
         return 0;
     }
     if (!strcmp(line, "power off")) { if (started) kmark("power off requested (mirror: LCD off / mirror off)"); crtc_off("requested"); snprintf(reply, rn, "OK crtc off"); return 0; }
@@ -1121,12 +1183,15 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
         if (!payload) { snprintf(reply, rn, "ERR lockframe needs a pixel payload (socket only)"); return -1; }
         if (!strcmp(mname, "force")) { snprintf(mname, sizeof mname, "reading"); snprintf(flag, sizeof flag, "force"); }
         if (flag[0] && strcmp(flag, "force")) { snprintf(reply, rn, "ERR unknown lockframe flag"); return -1; }
+        if (cold_guard("lock picture", reply, rn)) return -1;	/* eink-round6: nothing changed (picture, lock state) */
         rc = lock_frame(payload, w, h, mname[0] ? mode_by_name(mname, 3) : 3, flag[0] != 0);
         if (rc) snprintf(reply, rn, "ERR lock picture failed (see log)");
         else snprintf(reply, rn, "OK lock picture shown in %d ms (update %d), crtc off", last_ms, updates);
         return rc;
     }
     if (!strncmp(line, "mode ", 5)) { mode = mode_by_name(line + 5, mode); snprintf(reply, rn, "OK mode=%d", mode); return 0; }
+    /* eink-round6: every remaining command except "sleep" drives the panel: no cold modeset while the LCD pipeline is released */
+    if (strncmp(line, "sleep ", 6) && strncmp(line, "frametest ", 10) && cold_guard(line, reply, rn)) return -1;
     /* eink-lockscreen: any other picture replaces a lock picture ("refresh" redraws the current one and keeps the state) */
     if (!strcmp(line, "clear")) { lock_on_panel = 0; rc = clear_full(); }
     else if (!strncmp(line, "clear ", 6)) { lock_on_panel = 0; rc = clear_kind(line + 6); }
@@ -1276,6 +1341,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--idle-off") && v) idle_off_s = atoi(argv[++i]); else if (!strcmp(a, "--no-startup-clear")) startup_clear = 0;
         else if (!strcmp(a, "--wakelock")) wl = 1; else if (!strcmp(a, "--no-wakelock")) wl = 0;
         else if (!strcmp(a, "--crtc-wakelock") && v) crtc_wakelock_on = atoi(argv[++i]) != 0;
+        else if (!strcmp(a, "--lcd-guard") && v) lcd_guard = argv[++i];	/* eink-round6 */
+        else if (!strcmp(a, "--stall-ms") && v) stall_ms = atoi(argv[++i]); else if (!strcmp(a, "--stall-count") && v) stall_count = atoi(argv[++i]);
         else { fprintf(stderr, "usage: see source header (%s)\n", a); return 2; }
     }
     signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGPIPE, SIG_IGN); setvbuf(stdout, NULL, _IOLBF, 0);

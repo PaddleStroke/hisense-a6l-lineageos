@@ -75,6 +75,28 @@ int main(void) {
     EXPECT(exec_cmd("clear", NULL, reply, sizeof reply) == 0 && !lock_on_panel, "a clear replaces the lock picture too");
     memcpy(page, last_img, RGBA);	/* white panel after the clear; the next lock keeps it */
 
+    /* eink-round6: LCD display pipeline released (composer teardown) -> no cold e-ink modeset, nothing changed */
+    {
+        FILE *g = fopen("t_lcd_enabled", "w"); if (g) { fputs("disabled\n", g); fclose(g); }
+        lcd_guard = "t_lcd_enabled";
+        cmd("frame 720 1440 quality", 91); exec_cmd("power off", NULL, reply, sizeof reply);
+        static uint8_t keep[RGBA]; memcpy(keep, last_img, RGBA); int u0 = updates, m0 = n_modeset, lf0 = lock_frames;
+        EXPECT(cmd("lockframe 720 1440 reading", 71) != 0 && !strncmp(reply, "ERR lcd-released", 16) && updates == u0 && n_modeset == m0,
+               "LCD released: lock frame refused, no modeset, no update");
+        EXPECT(!lock_on_panel && lock_frames == lf0 && !memcmp(last_img, keep, RGBA) && !panel_unknown, "LCD released: picture, lock state and panel state untouched");
+        EXPECT(cmd("frame 720 1440 quality", 92) != 0 && updates == u0 && n_modeset == m0, "LCD released: a cold mirror frame is refused too");
+        exec_cmd("status", NULL, reply, sizeof reply);
+        EXPECT(strstr(reply, "lcd_guard=released") && strstr(reply, "guard_refusals=2"), "status reports lcd_guard=released, guard_refusals=2");
+        g = fopen("t_lcd_enabled", "w"); if (g) { fputs("enabled\n", g); fclose(g); }
+        EXPECT(cmd("lockframe 720 1440 reading", 72) == 0 && lock_on_panel && updates == u0 + 1, "LCD pipeline kept: lock frame shown");
+        g = fopen("t_lcd_enabled", "w"); if (g) { fputs("disabled\n", g); fclose(g); }
+        u0 = updates;
+        EXPECT(exec_cmd("lock restore off", NULL, reply, sizeof reply) != 0 && lock_on_panel && updates == u0 && !started, "LCD released: restore refused, lock picture kept (retried later), CRTC off");
+        started = 1;	/* a running e-ink CRTC owns its CTL: no check */
+        EXPECT(cmd("frame 720 1440 quality", 93) == 0, "LCD released but e-ink CRTC running: frame driven");
+        exec_cmd("power off", NULL, reply, sizeof reply); lock_on_panel = 0;
+        lcd_guard = "none"; unlink("t_lcd_enabled");
+    }
     /* restore off: woke up on the LCD */
     cmd("frame 720 1440 quality", 90); memcpy(page, last_img, RGBA);
     cmd("lockframe 720 1440 reading", 70);

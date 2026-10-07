@@ -36,3 +36,5 @@ allow init a6l_eink_lock_data_file:file create_file_perms;
 
 # eink-round5: display-transition markers in the kernel log
 allow a6l_einklock kmsg_device:chr_file w_file_perms;
+# eink-round6: /dev/kmsg is 0600 root:root, the markers go through /dev/kmsg_debug (0622 on userdebug builds)
+allow a6l_einklock kmsg_debug_device:chr_file w_file_perms;

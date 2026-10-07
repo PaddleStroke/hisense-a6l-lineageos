@@ -298,11 +298,11 @@ long long elk_next_target(double now, int period_s, double lead_s) {
 void elk_sm_init(struct elk_sm *s) { memset(s, 0, sizeof *s); }
 struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in) {
     struct elk_act a; memset(&a, 0, sizeof a);
-    int want = in->enabled && in->asleep_eink, awake_eink = in->on_eink && !in->asleep_eink;
-    a.arm = in->enabled && in->clock && in->on_eink;	/* armed on the e-ink even awake: a sleep missed by the poll is caught */
+    int want = in->enabled && (in->asleep_eink || in->lcd_idle), awake_eink = in->on_eink && !in->asleep_eink;
+    a.arm = in->enabled && in->clock && (in->on_eink || in->lcd_idle);	/* armed on the e-ink even awake: a sleep missed by the poll is caught */
     if (!s->locked) {
         if (s->restore_pending) {	/* eink-round5: the covered page returns only on the e-ink, 1 s after the wake-up */
-            if (in->asleep_eink && !in->enabled) { a.restore = 1; s->restore_pending = 0; }
+            if ((in->asleep_eink || in->lcd_idle) && !in->enabled) { a.restore = 1; s->restore_pending = 0; }	/* eink-round6: also LCD mode */
             else if (awake_eink) {
                 if (s->eink_since <= 0) s->eink_since = in->now;
                 if (in->now - s->eink_since >= ELK_RESTORE_DELAY_S) { a.restore = 1; s->restore_pending = 0; s->eink_since = 0; }
@@ -311,19 +311,22 @@ struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in) {
         if (!want) { s->asleep_since = 0; return a; }
         if (s->asleep_since <= 0 || in->resumed) s->asleep_since = in->now;	/* a suspend inside the entry window restarts it */
         a.hold = 1;
-        if (in->now - s->asleep_since < ELK_ENTRY_DELAY_S) return a;
-        s->locked = 1; s->drew = 0; s->frames = 0; s->last_clean = in->now; s->restore_pending = 0; s->eink_since = 0;
+        if (in->now - s->asleep_since < (in->asleep_eink ? ELK_ENTRY_DELAY_S : ELK_LCD_ENTRY_DELAY_S)) return a;
+        if (!in->asleep_eink && in->settling) return a;	/* eink-round6: LCD mode: not during an LCD power change */
+        s->locked = 1; s->drew = 0; s->frames = 0; s->last_clean = in->now; s->restore_pending = 0; s->eink_since = 0; s->deferred = 0;
         a.restore = 0; a.draw = 1; return a;
     }
     if (!want) {	/* woke up, left the e-ink, or the lock screen was disabled */
         if (s->drew) { s->restore_pending = 1; s->eink_since = awake_eink ? in->now : 0; }
-        s->locked = 0; s->drew = 0; s->asleep_since = 0; s->frames = 0;
-        if (s->restore_pending && in->asleep_eink) { a.restore = 1; s->restore_pending = 0; }	/* disabled while asleep */
+        s->locked = 0; s->drew = 0; s->asleep_since = 0; s->frames = 0; s->deferred = 0;
+        if (s->restore_pending && (in->asleep_eink || in->lcd_idle) && !in->enabled) { a.restore = 1; s->restore_pending = 0; }	/* disabled while not in use */
         return a;
     }
-    if ((in->timer_fired && in->clock) || in->changed) {
-        a.draw = 1;
-        a.force = in->timer_fired && in->clean_min > 0 && in->now - s->last_clean >= in->clean_min * 60.0 - 1.0;
+    int tick = (in->timer_fired && in->clock) || s->deferred == 2;	/* eink-round6: a deferred tick stays a tick */
+    if (tick || in->changed || s->deferred) {
+        if (in->settling) { s->deferred = tick ? 2 : s->deferred ? s->deferred : 1; return a; }	/* drawn once the display transition settled */
+        a.draw = 1; s->deferred = 0;
+        a.force = tick && in->clean_min > 0 && in->now - s->last_clean >= in->clean_min * 60.0 - 1.0;
     }
     return a;
 }

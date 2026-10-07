@@ -88,6 +88,7 @@ struct elk_sm {
     int frames;			/* lock frames since the lock began */
     int restore_pending;	/* eink-round5: a lock picture may still cover the mirror's page: "lock restore" once awake on the e-ink */
     double eink_since;		/* eink-round5: first time seen awake on the e-ink while a restore is pending (restore delay) */
+    int deferred;		/* eink-round6: a tick/settings redraw came during a display transition: drawn once it settled */
 };
 struct elk_in {
     int enabled, clock;
@@ -98,6 +99,8 @@ struct elk_in {
     int clean_min;
     double now;			/* monotonic seconds */
     int resumed;		/* eink-round5: the system was suspended since the previous step (CLOCK_BOOTTIME - MONOTONIC jumped) */
+    int lcd_idle;		/* eink-round6: LCD mode and the e-ink does not mirror it (persist.vendor.eink.mode != mirror) */
+    int settling;		/* eink-round6: a display transition (Android awake/asleep, screen switch) less than ELK_SETTLE_S ago */
 };
 struct elk_act {
     int draw, force;		/* send a lockframe (force = forced REGAL ghost cleanup, whole panel) */
@@ -117,6 +120,15 @@ struct elk_act {
  *   - lock disabled while asleep: "lock restore off" at once (no display transition). */
 #define ELK_ENTRY_DELAY_S 0.8
 #define ELK_RESTORE_DELAY_S 1.0
+/* eink-round6 (user, 7 Oct: "the e-ink is full white, it should have the lock screen with time on boot"): the lock picture
+ * is shown whenever the e-ink is not in use, as stock's poster (S2/S3: both screens off, and while the LCD is used after
+ * leaving the e-ink): also in LCD mode when the e-ink does not mirror the LCD - after boot, while the LCD is used, while
+ * Android sleeps on the LCD - with the minute ticks. Entry ELK_LCD_ENTRY_DELAY_S after LCD mode is seen (the mirror's
+ * "power off" and the switch go first). Ticks and settings redraws wait until ELK_SETTLE_S after the last display
+ * transition (no e-ink modeset in the middle of an LCD power change). Lock end: switched to the e-ink -> "lock restore"
+ * 1 s after (as round 5); mirror turned on in LCD mode -> the mirror redraws; lock disabled -> "lock restore off". */
+#define ELK_LCD_ENTRY_DELAY_S 2.0
+#define ELK_SETTLE_S 1.5
 void elk_sm_init(struct elk_sm *s);
 struct elk_act elk_step(struct elk_sm *s, const struct elk_in *in);
 void elk_sm_sent(struct elk_sm *s, const struct elk_act *a, double now);	/* a lockframe was sent (OK or not) */

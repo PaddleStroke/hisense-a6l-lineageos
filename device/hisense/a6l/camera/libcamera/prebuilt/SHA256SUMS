@@ -1,11 +1,11 @@
-525adb374451e3e2e52adb6a530fb8738a7c448966a9919855a9afe2f0afe595  ./BUILD-INFO.txt
+a0c0f826cd9d798e27824d155deb3efb057262c5ee421c3ccf7d0c2e42f1ef21  ./BUILD-INFO.txt
 6656bb75cf2c00e384ac353d4b3d207d84a6d2bca7e28c36829506d5aa7c6648  ./etc/libcamera/camera_hal.yaml
 90d23958434a68065d8c5072c2e10f5840a51180f4c960137ec951d8fd6f45ac  ./ipa-public-key.pem
-13b57fcc07081a03caf22e633a8ee30c5fb15b2844a3cb8269e1c5e9040a7206  ./lib64/hw/camera.libcamera.so
+72d50342fe527ba1eccd51ca04ef45fd30fcaaeaa7f2e143cbc46dc4f9a40569  ./lib64/hw/camera.libcamera.so
 5c3ad25ae2b5b53dc304df694250290262ba28a3a0acfc3dd0a0228b2d62a9fe  ./lib64/libcamera-base.so
 5d048ba2cbb7d3fba40bd759e104981ccc87c98ba6042754b7b2cef144651d19  ./lib64/libcamera.so
-d4db6a615b646dde78d94676dedd94a78ac4a1b343c5792dc0af7d8a35a837c6  ./lib64/libcamera/ipa/ipa_soft_simple.so
-c169fe0bab36389343afa7977330d79c5366e40b23a899f5709858493c38b0c6  ./lib64/libcamera/ipa/ipa_soft_simple.so.sign
+1ab9bff398e3c34ccb3a16c638a7ad0baed2a7be511137583195259be3151762  ./lib64/libcamera/ipa/ipa_soft_simple.so
+4dbeda67188a2cdf5e5ef56b765a13cc5008af8600a302ec978b6e397142a722  ./lib64/libcamera/ipa/ipa_soft_simple.so.sign
 9f805067e79622021181f66d7ff8a2060e785efa09aae573f40bf618300000bc  ./libexec/libcamera/soft_ipa_proxy
 d454119357e3781aff2aadf909cd55006a09307ce7e919c81f8dfb705952a1a5  ./share/libcamera/ipa/simple/hi846.yaml
 4f97552fd0d5e4ce8fbbf602782d37afecbcc469fd7a3117618d1eea86eddc5b  ./share/libcamera/ipa/simple/hi846_hwisp.yaml

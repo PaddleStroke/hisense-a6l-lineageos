@@ -6,3 +6,5 @@ vendor.dualux.prepare                 u:object_r:vendor_dualux_prop:s0 exact str
 vendor.dualux.restored_at             u:object_r:vendor_dualux_prop:s0
 # eink-lockscreen: set by init after copying a new lock-screen background (value = sys.a6l.eink.lock_bg_seq)
 vendor.dualux.lock_bg_seq             u:object_r:vendor_dualux_prop:s0
+# eink-round6: Android awake (1) / asleep (0) as seen by a6l_dualux (LCD dpms), read by a6l_einklock
+vendor.dualux.awake                   u:object_r:vendor_dualux_prop:s0

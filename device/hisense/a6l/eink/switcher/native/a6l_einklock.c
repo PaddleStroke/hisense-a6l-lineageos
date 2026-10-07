@@ -21,7 +21,10 @@
  *     the LCD only once the e-ink is used again (the e-ink keeps the lock picture meanwhile, as stock did); the lock entry
  *     comes 0.8 s after eink-asleep (wakelock held from the first sight, restarted after a suspend) and is re-checked
  *     right before the frame is sent (einklock_logic.h ELK_ENTRY_DELAY_S);
- *   - LCD mode: nothing (state lcd).
+ *   - LCD mode: nothing (state lcd). eink-round6: in LCD mode the e-ink shows the lock picture too unless it mirrors the
+ *     LCD (persist.vendor.eink.mode = mirror), with the minute ticks; 2 s after LCD mode is seen (so right after boot,
+ *     and after a switch to the LCD); ticks wait 1.5 s after a display transition (vendor.dualux.awake / state change).
+ *     persist.sys.a6l.eink.lock_lcd = 0 restores the round-5 behaviour (nothing in LCD mode).
  *   - RTC wake fallback (T0 on 6 Oct: the pm8xxx RTC alarm did not visibly wake s2idle): every tick taken while locked
  *     is checked for lateness; a tick > 20 s late (--late-s) = the alarm did not wake the system and ran at the next
  *     natural wake-up -> the picture switches to the date + small "Updated HH:MM" (refreshed at every natural wake-up),
@@ -92,14 +95,15 @@ static void logline(const char *fmt, ...) {
 #endif
 }
 #define LOG(...) logline(__VA_ARGS__)
-/* eink-round5: display-transition markers in the kernel log ("<6>a6l_einklock: ..."; /dev/kmsg is root:system 0620, printk.devkmsg=on).
+/* eink-round5: display-transition markers in the kernel log ("<6>a6l_einklock: ..."; printk.devkmsg=on). eink-round6: /dev/kmsg is
+ * 0600 root:root (first-stage init), so a system daemon cannot open it: /dev/kmsg_debug (0622, userdebug/eng) instead.
  * One timeline with the DPU/DSI/SMMU/PM messages for the round-5 repro (kmsg streamed to the laptop / fsync'ed on the
  * phone). Android builds only: host tests never write the host's kernel log. */
 static void kmark(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void kmark(const char *fmt, ...) {
 #ifdef __ANDROID__
     static int fd = -2;
-    if (fd == -2) fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
+    if (fd == -2) { fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC); if (fd < 0) fd = open("/dev/kmsg_debug", O_WRONLY | O_CLOEXEC); }
     if (fd < 0) return;
     char b[300]; int n = snprintf(b, sizeof b, "<6>a6l_einklock: "); va_list ap; va_start(ap, fmt);
     int m = vsnprintf(b + n, sizeof b - (size_t)n - 1, fmt, ap); va_end(ap);
@@ -281,7 +285,7 @@ int main(int argc, char **argv) {
     if (ep < 0 || epoll_ctl(ep, EPOLL_CTL_ADD, tfd, &ev)) { LOG("FAIL epoll: %s", strerror(errno)); return 1; }
     struct elk_sm sm; elk_sm_init(&sm);
     sm.restore_pending = 1;	/* a previous instance may have died while locked: restored once awake on the e-ink */
-    double t_start = mono(), gap_prev = boottime() - mono(); int holding = 0;
+    double t_start = mono(), gap_prev = boottime() - mono(), last_transition = -100; int holding = 0;
     LOG("start: enabled=%d clock=%d bg=%d period=%d s lead=%d ms socket=%s", cfg.enabled, cfg.clock, cfg.bg, period_s, lead_ms, epd_socket);
     while (!stop && (!exit_after || mono() - t_start < exit_after)) {
         struct epoll_event got; int n = epoll_wait(ep, &got, 1, 250), fired = 0;
@@ -304,6 +308,11 @@ int main(int argc, char **argv) {
         { char m[16]; prop_get("persist.sys.a6l.eink.lock_clock_mode", m, sizeof m); cfg.stale = elk_stale_variant(m, rtc_state); }
         char st[32]; prop_get("vendor.dualux.state", st, sizeof st);
         prop_get("vendor.dualux.lock_bg_seq", seq, sizeof seq);
+        /* eink-round6: LCD mode with the e-ink not mirroring = not in use; display transitions (awake/asleep, switches) */
+        char em[16], aw[8]; prop_get("persist.vendor.eink.mode", em, sizeof em); prop_get("vendor.dualux.awake", aw, sizeof aw);
+        int lcd_idle = !strcmp(st, "lcd") && strcmp(em, "mirror") && prop_int("persist.sys.a6l.eink.lock_lcd", 1) != 0;
+        { static char last_st[32], last_aw[8]; if (strcmp(st, last_st) || strcmp(aw, last_aw)) { last_transition = mono(); snprintf(last_st, sizeof last_st, "%s", st); snprintf(last_aw, sizeof last_aw, "%s", aw); } }
+        int settling = mono() - last_transition < ELK_SETTLE_S;
         int changed = !elk_cfg_equal(&cfg, &prev);
         if (atol(seq) != bg_seq) { bg_seq = atol(seq); load_bg(); changed |= cfg.bg == ELK_BG_IMAGE; }
         prev = cfg;
@@ -311,11 +320,13 @@ int main(int argc, char **argv) {
         double gap = boottime() - mono(); int resumed = gap - gap_prev > 0.5; gap_prev = gap;
         if (resumed && !strncmp(st, "eink", 4) && !sm.locked && sm.asleep_since > 0)
             LOG("system suspended before the lock entry (state %s): entry delay restarted", st);
-        struct elk_in in = {cfg.enabled, cfg.clock, !strcmp(st, "eink-asleep"), !strncmp(st, "eink", 4), fired, changed, cfg.clean_min, mono(), resumed};
+        struct elk_in in = {cfg.enabled, cfg.clock, !strcmp(st, "eink-asleep"), !strncmp(st, "eink", 4), fired, changed, cfg.clean_min, mono(), resumed, lcd_idle, settling};
         int was_locked = sm.locked;
         struct elk_act a = elk_step(&sm, &in);
-        if (a.hold && !holding) { wakelock(1); holding = 1; KLOG("asleep on the e-ink: lock entry in %.1f s (wakelock held)", ELK_ENTRY_DELAY_S); }
-        if (!was_locked && sm.locked) LOG("Android asleep on the e-ink: lock screen on");
+        if (a.hold && !holding) { wakelock(1); holding = 1;
+            if (in.asleep_eink) KLOG("asleep on the e-ink: lock entry in %.1f s (wakelock held)", ELK_ENTRY_DELAY_S);
+            else KLOG("LCD mode, e-ink not in use: lock entry in %.1f s (wakelock held)", ELK_LCD_ENTRY_DELAY_S); }
+        if (!was_locked && sm.locked) LOG("%s: lock screen on", in.asleep_eink ? "Android asleep on the e-ink" : "LCD mode, e-ink not in use");
         if (a.restore) {	/* awake on the e-ink: the mirror resumes, keep the CRTC up; still asleep (lock disabled): switch it off */
             char reply[256]; wakelock(1);
             int rc = transact(!strcmp(st, "eink") ? "lock restore" : "lock restore off", NULL, 0, reply, sizeof reply); wakelock(0); holding = 0;
@@ -323,9 +334,11 @@ int main(int argc, char **argv) {
             if (rc) elk_restore_failed(&sm, mono());
         }
         if (a.draw) {
-            char st2[32]; prop_get("vendor.dualux.state", st2, sizeof st2);	/* eink-round5: re-checked right before the frame */
-            if (strcmp(st2, "eink-asleep")) { KLOG("state %s just before the lock frame: not drawn (no e-ink modeset during a display transition)", st2[0] ? st2 : "empty"); if (!was_locked) elk_sm_abort(&sm); }
-            else { wakelock(1); draw(&cfg, a.force, !was_locked ? "lock entry" : fired ? "minute" : "settings changed"); elk_sm_sent(&sm, &a, mono()); }
+            char st2[32], em2[16]; prop_get("vendor.dualux.state", st2, sizeof st2);	/* eink-round5: re-checked right before the frame */
+            prop_get("persist.vendor.eink.mode", em2, sizeof em2);
+            int still = !strcmp(st2, "eink-asleep") || (in.lcd_idle && !strcmp(st2, "lcd") && strcmp(em2, "mirror"));	/* eink-round6 */
+            if (!still) { KLOG("state %s just before the lock frame: not drawn (no e-ink modeset during a display transition)", st2[0] ? st2 : "empty"); if (!was_locked) elk_sm_abort(&sm); }
+            else { wakelock(1); draw(&cfg, a.force, !was_locked ? (in.asleep_eink ? "lock entry" : "lock entry (LCD mode)") : fired ? "minute" : "settings changed / deferred"); elk_sm_sent(&sm, &a, mono()); }
             wakelock(0); holding = 0;
         } else if (holding && !a.hold) { wakelock(0); holding = 0; }
         if (a.arm) { if (!armed) timer_arm(elk_next_target(realtime(), period_s, lead_ms / 1000.0)); }

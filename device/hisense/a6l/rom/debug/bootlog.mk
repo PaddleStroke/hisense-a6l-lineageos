@@ -3,6 +3,10 @@
 # userdebug/eng ONLY: a user (release) build installs nothing from here.
 ifneq ($(TARGET_BUILD_VARIANT),user)
 PRODUCT_PACKAGES += a6l-media-ancillary a6l-log-ring
+# restart hang (7 Oct 2026, firmware/extracted/restart-hang-20261007/krec): synchronous kmsg recorder on raw reserve2
+PRODUCT_PACKAGES += a6l-krec
+PRODUCT_COPY_FILES += device/hisense/a6l/rom/debug/init.a6l.krec-debug.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.krec-debug.rc
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.a6l.krec=1 ro.vendor.a6l.krec.after_bc_s=60
 PRODUCT_COPY_FILES += \
     device/hisense/a6l/rom/debug/init.a6l.perfetto-debug.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.a6l.perfetto-debug.rc \
     device/hisense/a6l/rom/debug/init.a6l.bootlog-debug.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.bootlog-debug.rc \

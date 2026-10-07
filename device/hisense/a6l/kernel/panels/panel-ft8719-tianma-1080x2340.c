@@ -7,6 +7,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
+#include <linux/reboot.h>
 
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
@@ -19,10 +20,22 @@
 static bool skip_init;
 module_param(skip_init, bool, 0444);
 
+/* A6L reboot-hang CANDIDATE (6 Oct 2026, firmware/extracted/reboot-hang-20261006): apply only if test E1 (sysrq-b with
+ * the LCD switched off) reproduces the backlit-black hang. sysrq-b with the LCD on (always works) resets the SoC with the
+ * TDDI awake and its reset line released; an orderly restart (drm_atomic_helper_shutdown -> unprepare) leaves it in
+ * sleep-in with reset asserted and the rails still on (this driver has no rail control, stock cuts lab/ibb/vddio).
+ * restart_keep_awake=1: on SYSTEM_RESTART skip the sleep-in/reset in unprepare, and if the panel is already off when the
+ * restart starts, release its reset (power-on default state) from a reboot notifier. Power-off and suspend unchanged. */
+static bool restart_keep_awake = true;
+module_param(restart_keep_awake, bool, 0644);
+MODULE_PARM_DESC(restart_keep_awake, "On restart leave the panel awake / out of reset (A6L reboot-hang candidate)");
+
 struct ft8719_tianma_1080x2340 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct gpio_desc *reset_gpio;
+	struct notifier_block reboot_nb;
+	bool prepared;
 };
 
 static inline
@@ -100,6 +113,7 @@ static int ft8719_tianma_1080x2340_prepare(struct drm_panel *panel)
 		return ret;
 	}
 
+	ctx->prepared = true;
 	return 0;
 }
 
@@ -112,6 +126,12 @@ static int ft8719_tianma_1080x2340_unprepare(struct drm_panel *panel)
 	if (skip_init)
 		return 0;
 
+	ctx->prepared = false;
+	if (restart_keep_awake && system_state == SYSTEM_RESTART) {
+		dev_info(dev, "A6L restart: panel left awake, reset released\n");
+		return 0;
+	}
+
 	ret = ft8719_tianma_1080x2340_off(ctx);
 	if (ret < 0)
 		dev_err(dev, "Failed to un-initialize panel: %d\n", ret);
@@ -119,6 +139,18 @@ static int ft8719_tianma_1080x2340_unprepare(struct drm_panel *panel)
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 
 	return 0;
+}
+
+static int ft8719_tianma_1080x2340_reboot_notify(struct notifier_block *nb, unsigned long code, void *cmd)
+{
+	struct ft8719_tianma_1080x2340 *ctx = container_of(nb, struct ft8719_tianma_1080x2340, reboot_nb);
+
+	/* Runs before device_shutdown(). If the screen was already off, the TDDI sits in sleep-in with reset asserted. */
+	if (code == SYS_RESTART && restart_keep_awake && !ctx->prepared) {
+		gpiod_set_value_cansleep(ctx->reset_gpio, 0);
+		dev_info(&ctx->dsi->dev, "A6L restart: panel was off, reset released\n");
+	}
+	return NOTIFY_DONE;
 }
 
 static const struct drm_display_mode ft8719_tianma_1080x2340_mode = {
@@ -167,6 +199,11 @@ static int ft8719_tianma_1080x2340_probe(struct mipi_dsi_device *dsi)
 
 	ctx->dsi = dsi;
 	mipi_dsi_set_drvdata(dsi, ctx);
+
+	ctx->reboot_nb.notifier_call = ft8719_tianma_1080x2340_reboot_notify;
+	ret = devm_register_reboot_notifier(dev, &ctx->reboot_nb);
+	if (ret)
+		dev_warn(dev, "A6L: reboot notifier not registered: %d\n", ret);
 
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;

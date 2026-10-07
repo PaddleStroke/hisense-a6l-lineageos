@@ -1,0 +1,30 @@
+# A6L kmsg recorder (restart hang, 7 Oct 2026; firmware/extracted/restart-hang-20261007/README.md, krec/). Debug builds
+# only (rom/debug/bootlog.mk). /vendor/bin/a6l-krec copies every /dev/kmsg record (all levels, independent of the console
+# log level) to the raw partition reserve2 (GPT 57, 1 GiB, all zero in stock, unused) with O_DIRECT|O_DSYNC writes, so the
+# log of a boot that hard-hangs is on flash up to the last few ms. 16 slots of 16 MiB, one per boot and one per orderly
+# shutdown. Read from recovery: firmware/extracted/restart-hang-20261007/krec/tools/a6l-krec-pull.sh.
+# Boot run: started here at early-init (this file's action runs right after init.qcom.rc's early-init, which starts the
+# display group; a6l-modules.sh waits <= 5 s for /dev/a6l-krec.ready before its first insmod). Stops at
+# sys.boot_completed + ro.vendor.a6l.krec.after_bc_s (default 60 s), at 16 MiB, at 96 MiB written, or at uptime 900 s.
+# Shutdown run: "shutdown critical", so init starts it at the beginning of every shutdown/reboot (reboot.cpp starts all
+# shutdown-critical services); it records from that moment until the reset (or until eMMC writes fail in mmc .shutdown).
+on early-init && property:ro.vendor.a6l.krec=1
+    start a6l_krec
+
+on property:sys.boot_completed=1 && property:ro.vendor.a6l.krec=1
+    write /dev/a6l-krec.stop ${ro.vendor.a6l.krec.after_bc_s:-60}
+
+service a6l_krec /vendor/bin/a6l-krec --mode boot
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:su:s0
+
+service a6l_krec_shutdown /vendor/bin/a6l-krec --mode shutdown
+    user root
+    group root
+    disabled
+    oneshot
+    shutdown critical
+    seclabel u:r:su:s0

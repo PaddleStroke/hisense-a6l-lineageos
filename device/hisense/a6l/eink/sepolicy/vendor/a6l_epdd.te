@@ -48,3 +48,5 @@ allow a6l_epdd sysfs_batteryinfo:file r_file_perms;
 allow a6l_epdd sysfs_batteryinfo:lnk_file read;
 # eink-round5: display-transition markers in the kernel log
 allow a6l_epdd kmsg_device:chr_file w_file_perms;
+# eink-round6: /dev/kmsg is 0600 root:root, the markers go through /dev/kmsg_debug (0622 on userdebug builds)
+allow a6l_epdd kmsg_debug_device:chr_file w_file_perms;

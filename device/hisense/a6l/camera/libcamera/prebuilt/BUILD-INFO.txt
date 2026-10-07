@@ -48,3 +48,10 @@ VFE noise filter strength from the AE gain (persist.vendor.a6l.hwisp.nr, percent
 IPA = r6z + 0030..0038 (same key; core and IPA must be installed together: DebayerParams gained a field).
 Core 5d048ba2cbb7d3fba40bd759e104981ccc87c98ba6042754b7b2cef144651d19
 IPA d4db6a615b646dde78d94676dedd94a78ac4a1b343c5792dc0af7d8a35a837c6 sign c169fe0bab36389343afa7977330d79c5366e40b23a899f5709858493c38b0c6
+
+7 October hw-isp-20261006 round 7 (m4/): recording keeps 30 fps. HAL 0103 maps ANDROID_CONTROL_AE_TARGET_FPS_RANGE to
+FrameDurationLimits (Aperture video mode requests [30,30], the preview/still templates [15,30]); IPA 0039 lengthens the
+frame in low light only up to the request maximum (no FrameDurationLimits = no extension). HAL = r6z HAL + 0103 (the
+round-6 tree rebuilds the installed 13b57fcc byte-for-byte). Core 5d048ba2, camss, tunings unchanged. Same IPA key.
+HAL 72d50342fe527ba1eccd51ca04ef45fd30fcaaeaa7f2e143cbc46dc4f9a40569
+IPA 1ab9bff398e3c34ccb3a16c638a7ad0baed2a7be511137583195259be3151762 sign 4dbeda67188a2cdf5e5ef56b765a13cc5008af8600a302ec978b6e397142a722

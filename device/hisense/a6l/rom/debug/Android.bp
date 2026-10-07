@@ -6,3 +6,13 @@ cc_binary {
     srcs: ["a6l-log-ring.c"],
     cflags: ["-Wall", "-Wextra", "-Werror"],
 }
+
+// A6L restart-hang (7 Oct 2026, firmware/extracted/restart-hang-20261007/krec): synchronous kmsg recorder on the raw
+// partition reserve2, started at early-init (init.a6l.krec-debug.rc), userdebug/eng only (bootlog.mk).
+cc_binary {
+    name: "a6l-krec",
+    vendor: true,
+    compile_multilib: "64",
+    srcs: ["a6l-krec.c"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}

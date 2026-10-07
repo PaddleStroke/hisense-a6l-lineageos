@@ -13,7 +13,7 @@ void *Init_Eink_SWTcon(struct buf *ring, int n, uint32_t *cfg, void *flash, uint
 int ModeDecision_MirrorMode(struct buf *img, void *handle, int t1, int t2, int force, int mode);
 uint8_t Update_Display_Image(struct buf *b, void *handle);
 
-static int on_err, off_err_count, flip_fail_at = -1, nflips, rails_on, n_on, n_off;
+static int on_err, off_err_count, flip_fail_at = -1, nflips, rails_on, n_on, n_off, slow_from = -1, slow_ms, dark_ok;
 static int a6l_test_power(int on) {
     if (on) { n_on++; if (on_err) return -1; rails_on = 1; return 0; }
     n_off++; if (off_err_count > 0) { off_err_count--; return -1; }
@@ -27,7 +27,8 @@ static int a6l_test_flip(uint32_t id) {
     (void)id;
     if (suspend_at_flip >= 0 && nflips >= suspend_at_flip) { fake_suspended += 40; suspend_at_flip = -1; }
     if (flip_fail_at >= 0 && nflips >= flip_fail_at) return -1;
-    if (!rails_on) { printf("FAIL scanout with the rails off\n"); exit(1); }
+    if (!rails_on && !dark_ok) { printf("FAIL scanout with the rails off\n"); exit(1); }
+    if (slow_from >= 0 && nflips >= slow_from) usleep((useconds_t)slow_ms * 1000);	/* eink-round6: kernel vblank timeouts */
     nflips++; return 0;
 }
 
@@ -195,6 +196,22 @@ int main(void) {
     EXPECT(rails_off_fail >= 2 && panel_unknown && !rails_held, "chain: a failed delayed rails-off is counted and makes the panel unknown");
     off_err_count = 0;
     EXPECT(frame() == 0 && !panel_unknown, "chain: ... and the next frame recovers");
+    /* eink-round6: stalled scan-out (each flip ~56 ms: stale CTL flush) -> the update is aborted, rails off, panel unknown */
+    { int ov = overlap_gen; overlap_gen = 0; chain = 0; rails_release("test"); started = 1; nflips = 0; slow_from = lead + 2; slow_ms = 45; int s0 = stalls_total;
+      double t0 = now();
+      EXPECT(frame() != 0 && stalls_total == s0 + 1 && !rails_on && panel_unknown && (now() - t0) < 1.0, "stalled flips: update aborted after 3 slow flips (rails off, panel unknown, < 1 s)");
+      slow_from = -1;
+      EXPECT(frame() == 0 && !panel_unknown, "stalled flips: next frame recovers (recovery clear + picture)");
+      exec_cmd("power off", NULL, reply, sizeof reply); nflips = 0; slow_from = 0; slow_ms = 45; s0 = stalls_total;
+      EXPECT(frame() != 0 && stalls_total == s0 + 1 && !rails_on && nflips == 3, "stall from the first lead scan of a cold update: aborted after 3 flips, rails off, ERR");
+      slow_from = -1;
+      EXPECT(frame() == 0 && !panel_unknown, "  ... next frame (vblanks back): recovery clear + picture OK");
+      dark_ok = 1; nflips = 0; slow_from = 0; slow_ms = 45; s0 = stalls_total;
+      EXPECT(idle_scans_stalled(10) == 1 && nflips == 3 && stalls_total == s0 + 1, "post-modeset idle scans: no vblank -> stalled after 3 scans (drm_start switches the CRTC off, never drives)");
+      slow_from = -1; nflips = 0;
+      EXPECT(idle_scans_stalled(10) == 0 && nflips == 10, "post-modeset idle scans: normal vblanks -> not stalled (10 scans)");
+      dark_ok = 0;
+      overlap_gen = ov; chain = 1; }
     overlap_gen = 1; n_on = 0; rails_release("test");
     EXPECT(frame() == 0 && rails_held && n_on == 1, "chain + overlap-gen (rc defaults): cold frame OK, rails held");
     EXPECT(frame() == 0 && rails_held && n_on == 1 && !panel_unknown, "chain + overlap-gen: chained frame OK without a rails cycle");
