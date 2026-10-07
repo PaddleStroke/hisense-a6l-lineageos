@@ -1,0 +1,6 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G11): kdevtmpfs (183 r11 denials, all
+# dev="devtmpfs"). The kernel's devtmpfs is an internal mount on Android: /dev is the tmpfs first-stage init mounts and
+# ueventd creates the real nodes. Nodes for modules loaded after policy load are still mirrored into devtmpfs by
+# kdevtmpfs; a refused mirror is ignored by device_add() and invisible to userspace -> silence, do not grant.
+dontaudit kernel device:dir { create add_name remove_name write rmdir search setattr };
+dontaudit kernel device:{ chr_file blk_file } { create setattr getattr unlink };

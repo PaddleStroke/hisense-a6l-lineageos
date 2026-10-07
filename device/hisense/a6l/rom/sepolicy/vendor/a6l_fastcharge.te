@@ -8,4 +8,5 @@ allow a6l_chg_guard sysfs_a6l_chg_param:file rw_file_perms;
 # usb/sepolicy/vendor/genfs_contexts); the class dir + symlink are plain sysfs (already readable by the guard).
 allow a6l_chg_guard sysfs_udc:dir r_dir_perms;
 allow a6l_chg_guard sysfs_udc:lnk_file read;
-allow a6l_chg_guard sysfs_udc:file w_file_perms;
+# selinux-20261007: the guard also READS the gadget state (cat /sys/class/udc/<udc>/{state,function}: r11 log, 12 reads)
+allow a6l_chg_guard sysfs_udc:file rw_file_perms;

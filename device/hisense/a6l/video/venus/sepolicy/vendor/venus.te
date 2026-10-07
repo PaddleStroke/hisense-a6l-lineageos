@@ -1,0 +1,30 @@
+# venus-impl (6 Oct 2026). Written from the code paths; complete from `dmesg | grep avc` in the first permissive run.
+type sysfs_a6l_venus, sysfs_type, fs_type;
+
+# V4L2 Codec2 service (runs as mediacodec; system/sepolicy/vendor/mediacodec.te already allows video_device rw,
+# dmabuf heaps, gralloc/binder): discovery reads /sys/class/video4linux/* (generic sysfs dir + symlinks) and the Venus
+# node names; CAMSS node names (generic sysfs files) stay unreadable on purpose, so those nodes are skipped.
+allow mediacodec sysfs:dir r_dir_perms;
+allow mediacodec sysfs:lnk_file read;
+r_dir_file(mediacodec, sysfs_a6l_venus)
+get_prop(mediacodec, vendor_a6l_v4l2_codec2_prop)
+
+# prod2 cold power cycle: the core is powered (and its firmware loaded) only while a session is open; the first
+# REQBUFS of a session runtime-resumes it in the CALLER's task, i.e. the V4L2 Codec2 service (mediacodec), which then
+# runs request_firmware(qcom/venus-4.4/venus.mdt + .bNN) itself. (System resume runs it as kernel: a6l_firmware.te.)
+allow mediacodec a6l_firmware_file:dir search;
+allow mediacodec a6l_firmware_file:file r_file_perms;
+allow mediacodec a6l_firmware_file:system firmware_load;
+
+# Camera (CAMSS/ISP) node names are generic sysfs: the discovery skips them; do not log those reads.
+dontaudit mediacodec sysfs:file { open read getattr };
+
+# a6l-modules.sh misc: find the encoder node, chown/chmod it for the service, publish vendor.a6l.venus (vendor_a6l_prop)
+# insmod venus-core runs the firmware load (request_firmware -> qcom/venus-4.4/venus.mdt + .bNN) in the insmod task:
+# the a6l_modules domain needs the selinux-20261007 firmware type (rom/sepolicy/vendor/a6l_firmware.te, file.te).
+allow a6l_modules a6l_firmware_file:dir search;
+allow a6l_modules a6l_firmware_file:file r_file_perms;
+allow a6l_modules a6l_firmware_file:system firmware_load;
+r_dir_file(a6l_modules, sysfs_a6l_venus)
+allow a6l_modules video_device:chr_file { getattr setattr };
+allow a6l_modules video_device:dir r_dir_perms;

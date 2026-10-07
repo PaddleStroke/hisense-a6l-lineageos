@@ -1,0 +1,23 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, groups G4-G6): Mesa (freedreno) + minigbm gralloc
+# running in-process in every graphics client. The libraries are same_process_hal_file and the GPU device sysfs is
+# sysfs_gpu (rom/sepolicy/vendor/{file,genfs}_contexts); the rest is here.
+
+# Mesa os_get_option (vendor.mesa.*) and minigbm (vendor.minigbm.debug) are looked up in every client process.
+get_prop(domain, vendor_a6l_gfx_prop)
+
+# libdrm drmGetDevice2() for the display card (card1 = c901000.display-controller, below c900000.display-subsystem =
+# sysfs_a6l_drm): resolves /sys/dev/char/226:N, reads device/uevent + card uevent, readlinks device/subsystem.
+# r11: 108 dir search + uevent reads each for surfaceflinger, bootanim, system_app, platform_app; priv_app, gmscore_app,
+# system_server uevent reads. gpu_sphal_domain = appdomain (not isolated), surfaceflinger, bootanim, system_server,
+# mediaswcodec, allocator/composer HALs: the same set AOSP lets read sysfs_gpu. Read-only.
+allow gpu_sphal_domain sysfs_a6l_drm:dir search;
+allow gpu_sphal_domain sysfs_a6l_drm:file r_file_perms;
+allow gpu_sphal_domain sysfs_a6l_drm:lnk_file read;
+
+# Composer (drm_hwcomposer): allocates through the minigbm allocator HAL (r11: find IAllocator/default, binder call
+# hal_graphics_allocator_default; same as device/google/cuttlefish), hotplug uevents (netlink_kobject_uevent_socket x32),
+# lists /sys/class/backlight (class dir = generic sysfs; the WLED nodes themselves are sysfs_a6l_dualux after the
+# eink/switcher genfs path fix).
+hal_client_domain(hal_graphics_composer_default, hal_graphics_allocator)
+allow hal_graphics_composer_default self:netlink_kobject_uevent_socket create_socket_perms_no_ioctl;
+allow hal_graphics_composer_default sysfs:dir r_dir_perms;

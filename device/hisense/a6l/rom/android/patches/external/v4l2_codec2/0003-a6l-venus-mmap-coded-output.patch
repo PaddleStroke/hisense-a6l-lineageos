@@ -1,0 +1,99 @@
+--- a/v4l2/V4L2Encoder.cpp
++++ b/v4l2/V4L2Encoder.cpp
+@@ -8,12 +8,14 @@
+ #include <v4l2_codec2/v4l2/V4L2Encoder.h>
+ 
+ #include <stdint.h>
++#include <string.h>
+ #include <optional>
+ #include <vector>
+ 
+ #include <base/bind.h>
+ #include <base/files/scoped_file.h>
+ #include <base/memory/ptr_util.h>
++#include <cutils/properties.h>
+ #include <log/log.h>
+ #include <ui/Rect.h>
+ 
+@@ -24,6 +26,13 @@
+ 
+ namespace android {
+ 
++// A6L patch 0003: MMAP coded-output queue (Venus HFI 3xx static output buffer mode).
++static bool a6lOutputMMap() {
++    static const bool sMMap =
++            property_get_bool("ro.vendor.v4l2_codec2.encoder.output_mmap", false);
++    return sMMap;
++}
++
+ namespace {
+ 
+ // The maximum size for output buffer, which is chosen empirically for a 1080p video.
+@@ -831,6 +840,17 @@
+         return false;
+     }
+ 
++    if (a6lOutputMMap()) {
++        size_t mmapId = buffer->bufferId();
++        if (!std::move(*buffer).queueMMap()) {
++            ALOGE("Failed to queue output buffer using QueueMMap");
++            onError();
++            return false;
++        }
++        ALOGV("%s(): Queued MMAP buffer in output queue (bufferId: %zu)", __func__, mmapId);
++        return true;
++    }
++
+     std::unique_ptr<BitstreamBuffer> bitstreamBuffer;
+     mFetchOutputBufferCb.Run(mOutputBufferSize, &bitstreamBuffer);
+     if (!bitstreamBuffer) {
+@@ -931,14 +951,32 @@
+           ", bufferId: %zu, data size: %zu, EOS: %d)",
+           timestamp.InMicroseconds(), buffer->bufferId(), encodedDataSize, buffer->isLast());
+ 
+-    if (!mOutputBuffers[buffer->bufferId()]) {
+-        ALOGE("Failed to find output block associated with output buffer");
+-        onError();
+-        return false;
++    std::unique_ptr<BitstreamBuffer> bitstreamBuffer;
++    if (a6lOutputMMap()) {
++        if (encodedDataSize > 0) {
++            mFetchOutputBufferCb.Run(std::max<size_t>(mOutputBufferSize, encodedDataSize), &bitstreamBuffer);
++            if (!bitstreamBuffer) {
++                ALOGE("Failed to fetch output block");
++                onError();
++                return false;
++            }
++            const uint8_t* src = static_cast<const uint8_t*>(buffer->getPlaneMapping(0));
++            C2WriteView writeView = bitstreamBuffer->dmabuf->map().get();
++            if (!src || writeView.error() != C2_OK || writeView.size() < encodedDataSize) {
++                ALOGE("Failed to copy %zu coded bytes from the MMAP output buffer", encodedDataSize);
++                onError();
++                return false;
++            }
++            memcpy(writeView.data(), src + buffer->getPlaneDataOffset(0), encodedDataSize);
++        }
++    } else {
++        if (!mOutputBuffers[buffer->bufferId()]) {
++            ALOGE("Failed to find output block associated with output buffer");
++            onError();
++            return false;
++        }
++        bitstreamBuffer = std::move(mOutputBuffers[buffer->bufferId()]);
+     }
+-
+-    std::unique_ptr<BitstreamBuffer> bitstreamBuffer =
+-            std::move(mOutputBuffers[buffer->bufferId()]);
+     if (encodedDataSize > 0) {
+         if (!mInjectParamsBeforeIDR) {
+             // No need to inject SPS or PPS before IDR frames, we can just return the buffer as-is.
+@@ -1030,7 +1068,8 @@
+ 
+     // No memory is allocated here, we just generate a list of buffers on the output queue, which
+     // will hold memory handles to the real buffers.
+-    if (mOutputQueue->allocateBuffers(kOutputBufferCount, V4L2_MEMORY_DMABUF) <
++    if (mOutputQueue->allocateBuffers(kOutputBufferCount,
++                                      a6lOutputMMap() ? V4L2_MEMORY_MMAP : V4L2_MEMORY_DMABUF) <
+         kOutputBufferCount) {
+         ALOGE("Failed to create V4L2 output buffers.");
+         return false;

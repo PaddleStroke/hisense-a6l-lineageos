@@ -1,0 +1,42 @@
+--- a/v4l2/V4L2ComponentStore.cpp
++++ b/v4l2/V4L2ComponentStore.cpp
+@@ -22,9 +22,19 @@
+ #include <v4l2_codec2/components/ComponentStore.h>
+ #include <v4l2_codec2/v4l2/V4L2ComponentCommon.h>
+ #include <v4l2_codec2/v4l2/V4L2ComponentFactory.h>
++#include <v4l2_codec2/v4l2/V4L2Device.h>
+ 
+ namespace android {
+ 
++namespace {
++// A6L: only publish an encoder that a present V4L2 device can actually provide.
++bool hasEncoderDevice(VideoCodec codec) {
++    const bool present = !V4L2Device::queryEncodingCapabilities(codec).supportedProfiles.empty();
++    if (!present) ALOGW("No V4L2 encoder device for %s: not advertised", VideoCodecToString(codec));
++    return present;
++}
++}  // namespace
++
+ // static
+ std::shared_ptr<C2ComponentStore> V4L2ComponentStore::Create() {
+     ALOGV("%s()", __func__);
+@@ -38,13 +48,16 @@
+ 
+     auto builder = ComponentStore::Builder("android.componentStore.v4l2");
+ 
+-    if (property_get_bool("ro.vendor.v4l2_codec2.encoder.supported.h264", false))
++    if (property_get_bool("ro.vendor.v4l2_codec2.encoder.supported.h264", false) &&
++        hasEncoderDevice(VideoCodec::H264))
+         builder.encoder(V4L2ComponentName::kH264Encoder, VideoCodec::H264,
+                         &V4L2ComponentFactory::create);
+-    if (property_get_bool("ro.vendor.v4l2_codec2.encoder.supported.vp8", false))
++    if (property_get_bool("ro.vendor.v4l2_codec2.encoder.supported.vp8", false) &&
++        hasEncoderDevice(VideoCodec::VP8))
+         builder.encoder(V4L2ComponentName::kVP8Encoder, VideoCodec::VP8,
+                         &V4L2ComponentFactory::create);
+-    if (property_get_bool("ro.vendor.v4l2_codec2.encoder.supported.vp9", false))
++    if (property_get_bool("ro.vendor.v4l2_codec2.encoder.supported.vp9", false) &&
++        hasEncoderDevice(VideoCodec::VP9))
+         builder.encoder(V4L2ComponentName::kVP9Encoder, VideoCodec::VP9,
+                         &V4L2ComponentFactory::create);
+ 

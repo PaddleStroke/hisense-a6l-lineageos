@@ -1,0 +1,4 @@
+# venus-impl Stage C (7 Oct 2026): Venus hardware DECODER (venus-dec, same hfi3 prod venus-core). UNTESTED on the phone:
+# loaded by a6l-modules.sh misc only with persist.vendor.a6l.venus.dec=1 (default 0), after video.txt. No Codec2 decoder
+# component is enabled (ro.vendor.v4l2_codec2.decoder.supported.* unset), so Android playback stays on software decoders.
+venus-dec.ko

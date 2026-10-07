@@ -1,0 +1,86 @@
+--- a/v4l2/V4L2Device.cpp
++++ b/v4l2/V4L2Device.cpp
+@@ -12,6 +12,7 @@
+ #include <linux/v4l2-controls.h>
+ #include <v4l2_codec2/v4l2/V4L2Device.h>
+ 
++#include <dirent.h>
+ #include <fcntl.h>
+ #include <inttypes.h>
+ #include <linux/media.h>
+@@ -24,6 +25,7 @@
+ #include <utils/Trace.h>
+ 
+ #include <algorithm>
++#include <fstream>
+ #include <mutex>
+ #include <set>
+ #include <sstream>
+@@ -33,6 +35,7 @@
+ #include <base/posix/eintr_wrapper.h>
+ #include <base/strings/stringprintf.h>
+ #include <base/thread_annotations.h>
++#include <cutils/properties.h>
+ #include <utils/Log.h>
+ 
+ #include <v4l2_codec2/common/Fourcc.h>
+@@ -2563,24 +2566,55 @@
+         return sNoDevices;
+     }
+ 
+-    DeviceInfos deviceInfos;
+-    for (int i = 0; i < 10; ++i) {
+-        std::string path = base::StringPrintf("%s%d", kVideoDevicePattern, i);
++    // A6L (Venus on SDM660): the camera (CAMSS + hardware ISP) registers several /dev/video nodes
++    // before Venus, so the encoder has no fixed index and may be >= video10, and opening a CAMSS
++    // node powers its pipeline. Enumerate every node through sysfs and open only those whose driver
++    // name contains ro.vendor.v4l2_codec2.device_name_filter (default "venus", matching
++    // "qcom-venus-encoder" / "qcom-venus-decoder"). An empty filter scans every /dev/video* node.
++    char filter[PROPERTY_VALUE_MAX];
++    property_get("ro.vendor.v4l2_codec2.device_name_filter", filter, "venus");
++    std::vector<std::string> paths;
++    if (DIR* dir = opendir("/sys/class/video4linux")) {
++        while (struct dirent* ent = readdir(dir)) {
++            if (strncmp(ent->d_name, "video", 5) != 0) continue;
++            std::string name;
++            std::ifstream nameFile(std::string("/sys/class/video4linux/") + ent->d_name + "/name");
++            if (!nameFile || !std::getline(nameFile, name)) continue;
++            if (filter[0] != '\0' && name.find(filter) == std::string::npos) continue;
++            ALOGV("Candidate V4L2 node /dev/%s (%s)", ent->d_name, name.c_str());
++            paths.push_back(std::string("/dev/") + ent->d_name);
++        }
++        closedir(dir);
++    }
++    std::sort(paths.begin(), paths.end());
+ 
++    DeviceInfos deviceInfos;
++    for (const std::string& path : paths) {
+         scoped_refptr<V4L2Device> device = V4L2Device::create();
+         if (!device->openDevicePath(path, type)) {
++            ALOGW("Cannot open %s: %s", path.c_str(), strerror(errno));
+             continue;
+         }
+ 
+         const auto& supportedPixelformats = device->enumerateSupportedPixelformats(bufType);
+         if (!supportedPixelformats.empty()) {
+-            ALOGV("Found device: %s", path.c_str());
++            ALOGI("Found device: %s", path.c_str());
+             deviceInfos.push_back(std::make_pair(path, supportedPixelformats));
+         }
+ 
+         device->closeDevice();
+     }
+ 
++    // Do not cache an empty result: the venus modules may load (or the node permissions may be
++    // fixed) after the first query; a cached empty list would hide the encoder until restart.
++    if (deviceInfos.empty()) {
++        ALOGW("No V4L2 %s device found (name filter \"%s\")",
++              type == Type::kEncoder ? "encoder" : "decoder", filter);
++        static DeviceInfos sEmpty;
++        sEmpty.clear();
++        return sEmpty;
++    }
++
+     sDeviceInfosCache[type] = deviceInfos;
+ 
+     return sDeviceInfosCache[type];

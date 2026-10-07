@@ -38,3 +38,9 @@ allow init a6l_eink_lock_data_file:file create_file_perms;
 allow a6l_einklock kmsg_device:chr_file w_file_perms;
 # eink-round6: /dev/kmsg is 0600 root:root, the markers go through /dev/kmsg_debug (0622 on userdebug builds)
 allow a6l_einklock kmsg_debug_device:chr_file w_file_perms;
+
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G13): with persist.sys.locale unset the lock
+# screen falls back to ro.product.locale, which has no label in system/sepolicy (default_prop: vendor may not read it,
+# neverallow). Code fix proposed in the README (persist.sys.locale, else a built-in default; no ro.product.locale);
+# until then the read just fails (lock screen in the default language) - keep it out of the log.
+dontaudit a6l_einklock default_prop:file r_file_perms;

@@ -1,0 +1,7 @@
+# venus-impl: a6l-modules.sh misc loads rom/modules/video.txt (persist.vendor.a6l.venus=1), waits for the
+# "qcom-venus-encoder" node, gives it to the codec service (owner media) and publishes vendor.a6l.venus=ready|failed.
+# The V4L2 Codec2 store only advertises an encoder whose device exists (A6L patch 0002), so the service (started
+# earlier with class hal) is restarted once to pick the encoder up. Apps whose MediaCodecList was built before keep
+# the software encoder until they restart.
+on property:vendor.a6l.venus=ready
+    restart android-hardware-media-c2-v4l2-hal

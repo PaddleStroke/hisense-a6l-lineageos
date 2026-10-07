@@ -1,0 +1,16 @@
+# venus-impl (6 Oct 2026; Stage C 7 Oct: default ON): Qualcomm Venus hardware video codec (upstream venus, SDM660 HFI 3xx), H.264/HEVC/VP8 encoder.
+# Loaded by a6l-modules.sh misc when persist.vendor.a6l.venus=1 (the default; 0 = off switch). Needs the DTB with
+# &venus status okay (boot venus-impl-20261006) and /vendor/firmware/qcom/venus-4.4/venus.{mdt,b00..b04}.
+# Modules = venus-impl-20261006/stagec/modules: venus-core/enc/dec hfi3 prod (SDM660 HFI3 fixes, built against out-a6l-rom-r5,
+# CRCs checked) + v4l2-mem2mem/videobuf2-dma-contig from out-a6l-rom-r5/modinst (same build as the staged r5 set).
+# The V4L2 core modules are shared with camera.txt; load_list skips modules that are already loaded.
+mc.ko
+videodev.ko
+videobuf2-common.ko
+videobuf2-memops.ko
+videobuf2-v4l2.ko
+videobuf2-dma-contig.ko
+v4l2-mem2mem.ko
+venus-core.ko
+venus-enc.ko
+# venus-dec.ko: hardware decoder, not needed for recording; enable together with ro.vendor.v4l2_codec2.decoder.* later.

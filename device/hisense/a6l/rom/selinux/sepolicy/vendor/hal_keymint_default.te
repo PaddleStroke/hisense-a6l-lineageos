@@ -1,0 +1,2 @@
+# selinux-20261007 (group G8): KeyMint (nonsecure) reads ro.serialno for device-ID attestation (r11 x8).
+get_prop(hal_keymint_default, serialno_prop)

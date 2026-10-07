@@ -1,0 +1,5 @@
+# selinux-20261007 (group G2): rom/r6/thermal scanIio() opendir()s EVERY /sys/bus/iio/devices/iio:deviceN looking for
+# in_temp* channels (r11: 402 dir search/open/read on sysfs_a6l_remoteproc = SMGR devices, 50 on sysfs_a6l_epd =
+# TMD3702 iio:device4 at c176000.i2c/i2c-0/0-0049). Directory listing only: no file in those trees is opened.
+allow hal_thermal_default sysfs_a6l_remoteproc:dir search;
+allow hal_thermal_default { sysfs_a6l_iio sysfs_a6l_epd }:dir r_dir_perms;

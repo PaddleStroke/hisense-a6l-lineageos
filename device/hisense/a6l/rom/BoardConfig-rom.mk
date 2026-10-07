@@ -31,3 +31,6 @@ TARGET_FS_CONFIG_GEN += device/hisense/a6l/rom/config.fs
 
 # Bounded debug-only AVC stage measurements.
 SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += device/hisense/a6l/rom/media/sepolicy/system_ext/private
+
+# venus-impl (6 Oct 2026): V4L2 Codec2 service + Venus node hand-off policy
+include device/hisense/a6l/video/venus/BoardConfig-venus.mk

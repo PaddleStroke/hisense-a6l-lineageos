@@ -43,3 +43,34 @@ get_prop(a6l_modules, vendor_a6l_prop)
 set_prop(a6l_modules, vendor_a6l_prop)
 get_prop(a6l_modules, vendor_a6l_ro_prop)
 get_prop(a6l_modules, vendor_default_prop)
+
+# ---- selinux-20261007 (round 11 vendor, boot 10affa76, permissive; firmware/extracted/selinux-20261007/README.md) ----
+# The r11 rc files still carry `seclabel u:r:vendor_modprobe:s0`, so every a6l-modules.sh access below was logged as
+# vendor_modprobe (the entrypoint denial on a6l_modules_exec proves the file label is already on the image). With the rc
+# transform (tools/release/a6l_selinux_prep.py T1, A6L_SELINUX_PREP=1) the script runs here instead; these are the
+# accesses the r11 log shows that this domain did not have yet, plus what vendor_modprobe had silently from AOSP
+# (system/sepolicy/vendor/vendor_modprobe.te: proc_cmdline, kernel keyring search) that the script also uses.
+# stdio_to_kmsg on userdebug = /dev/kmsg_debug (child getattr from sleep/grep/insmod; TCGETS from the shell's isatty)
+allow a6l_modules kmsg_debug_device:chr_file { w_file_perms getattr };
+dontaudit a6l_modules { kmsg_device kmsg_debug_device }:chr_file ioctl;
+allow a6l_modules proc_cmdline:file r_file_perms;              # grep a6l.dpu_virtual_planes=1 /proc/cmdline
+allow a6l_modules kernel:key search;                           # module signature keyring (as vendor_modprobe)
+# insmod qrtr.ko: qrtr_ns_init() binds the QRTR control port in the insmod task -> CAP_NET_ADMIN (r11 33.99 s, right after
+# "NET: Registered PF_QIPCRTR protocol family" in r8/r10). Denied = no QRTR name service = no ADSP/SMGR/modem services.
+allow a6l_modules self:capability net_admin;
+# chmod 0664 on the SMGR IIO buffer files: CAP_FSETID is only checked to keep a setgid bit we never set
+dontaudit a6l_modules self:capability fsetid;
+# /proc/sys/kernel/printk: loglevel 7 around insmod msm.ko (restart-hang console trace), restored afterwards
+allow a6l_modules proc_a6l_printk:file rw_file_perms;
+# eink-round6e touch_rebind(): echo 1-0038 > /sys/bus/i2c/drivers/edt_ft5x06/bind (front touch lost its probe race)
+allow a6l_modules sysfs_a6l_touch:dir r_dir_perms;
+allow a6l_modules sysfs_a6l_touch:file w_file_perms;
+# misc group presence checks ([ -e .../brightness ], [ -e .../activate ]): e-ink frontlight and vibrator LED class devices
+allow a6l_modules sysfs_a6l_dualux:dir search;
+allow a6l_modules sysfs_a6l_dualux:file getattr;
+allow a6l_modules sysfs_a6l_vibrator:dir search;
+allow a6l_modules sysfs_a6l_vibrator:file getattr;
+# debug builds (ro.vendor.a6l.krec=1): wait for /dev/a6l-krec.ready, created by a6l-krec (su) and labelled a6l_dev_file
+# by the userdebug type_transition in rom/selinux/sepolicy/vendor/a6l_debug.te (was `device`: [ -e ] fails when enforcing
+# = the display group would wait its full 5 s on every debug boot)
+allow a6l_modules a6l_dev_file:file r_file_perms;

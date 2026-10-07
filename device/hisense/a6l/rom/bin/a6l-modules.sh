@@ -118,6 +118,26 @@ touch_rebind() {
     if [ -e "$t/driver" ]; then log "display: front touch 1-0038 probe had failed: re-bound after $k tries"
     else log "display: WARN front touch 1-0038 still unbound after $k tries (LCD touch dead: echo 1-0038 > /sys/bus/i2c/drivers/edt_ft5x06/bind with the LCD on)"; fi
 }
+# venus-impl (6 Oct 2026): after rom/modules/video.txt, wait (bounded, 5 s) for the Venus encoder node (any /dev/videoN:
+# the camera registers its nodes first), give it to the V4L2 Codec2 service (user media; ueventd made it system:camera) and
+# publish vendor.a6l.venus=ready (init.a6l.venus.rc then restarts the codec service) or =failed (software encoding stays).
+venus_ready() {
+    i=0; enc=""
+    while [ $i -lt 50 ] && [ -z "$enc" ]; do
+        for d in /sys/class/video4linux/video*; do
+            [ "$(cat $d/name 2>/dev/null)" = qcom-venus-encoder ] && enc=/dev/${d##*/}
+        done
+        [ -n "$enc" ] || sleep 0.1; i=$((i+1))
+    done
+    if [ -n "$enc" ] && [ -c "$enc" ]; then
+        chown media system "$enc"; chmod 0660 "$enc"
+        setprop vendor.a6l.venus.enc "$enc"; setprop vendor.a6l.venus ready
+        log "misc: venus encoder $enc ready after ${i}x0.1s ($(ls -l $enc | cut -d' ' -f1,3,4))"
+    else
+        setprop vendor.a6l.venus failed
+        log "misc: venus encoder node NOT found after ${i}x0.1s (see dmesg: qcom-venus firmware/probe) -> software encoding"
+    fi
+}
 case "$1" in
 display)
     # 1. e-ink PMIC (TPS65185; gpio42/56 are DT fixed regulators since V71)  2. GPU msm separate_gpu_kms=1
@@ -225,6 +245,11 @@ misc)
     # no camera HAL): loaded only with persist.vendor.a6l.camera=1. Nothing may dump camss/VFE registers of a
     # powered-off block (reset seen at stream-off, 25 Sep).
     if [ "$(getprop persist.vendor.a6l.camera)" = 1 ]; then load_list camera; else log "misc: camera stack NOT loaded (persist.vendor.a6l.camera != 1)"; fi
+    # venus-impl (6 Oct 2026): Venus hardware video codec, after the camera so the camera keeps its node numbers.
+    if [ "$(getprop persist.vendor.a6l.venus)" = 1 ]; then load_list video; venus_ready
+        # hardware decoder (untested; no Codec2 decoder enabled): only with persist.vendor.a6l.venus.dec=1
+        [ "$(getprop persist.vendor.a6l.venus.dec)" = 1 ] && load_list video-dec
+    else setprop vendor.a6l.venus off; log "misc: venus NOT loaded (persist.vendor.a6l.venus != 1)"; fi
     for l in /sys/class/leds/epd-backlight /sys/class/leds/*flash* /sys/class/leds/*torch*; do [ -e "$l/brightness" ] && log "misc: led ${l##*/}"; done
     # r5 review fix F49: VibratorOL's LED backend (init restarts vendor.qti.vibrator when this group stops)
     if [ -e /sys/class/leds/vibrator/activate ]; then log "misc: vibrator led ok"; else log "misc: vibrator led MISSING (VibratorOL will find no device)"; fi

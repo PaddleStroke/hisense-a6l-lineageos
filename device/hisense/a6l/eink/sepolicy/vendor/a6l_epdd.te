@@ -50,3 +50,12 @@ allow a6l_epdd sysfs_batteryinfo:lnk_file read;
 allow a6l_epdd kmsg_device:chr_file w_file_perms;
 # eink-round6: /dev/kmsg is 0600 root:root, the markers go through /dev/kmsg_debug (0622 on userdebug builds)
 allow a6l_epdd kmsg_debug_device:chr_file w_file_perms;
+
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G13): the stock TCON blob libtcon_eink.so
+# (dlopen'ed) reads sys.sysctl.GC_New_Refresh -> system_prop (r11 x8). Reading system_prop from a vendor domain is
+# neverallowed (system/sepolicy/private/property.te, compatible_property_only) and nothing sets that property on this ROM:
+# the blob falls back to its built-in default, as in permissive. Silence instead of granting.
+dontaudit a6l_epdd system_prop:file r_file_perms;
+# temperature() reads every /sys/class/hwmon/*/name: thermal-zone hwmon devices live under /sys/devices/virtual/thermal,
+# which rom/r6/sepolicy/vendor/genfs_contexts now labels sysfs_thermal (was generic sysfs, readable above)
+r_dir_file(a6l_epdd, sysfs_thermal)

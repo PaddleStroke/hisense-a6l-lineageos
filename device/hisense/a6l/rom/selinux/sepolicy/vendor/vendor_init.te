@@ -1,0 +1,12 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G9): vendor_init = vendor rc commands and the
+# /vendor/build.prop loader. r11 denials:
+# - vendor/build.prop + rc setprops of our own namespaces: ro.vendor.a6l.rom, persist.vendor.a6l.radio,
+#   ro.vendor.a6l.ril.data_parent, persist.vendor.eink.mode (and their reads)
+set_prop(vendor_init, vendor_a6l_prop)
+set_prop(vendor_init, vendor_a6l_ro_prop)
+set_prop(vendor_init, vendor_a6l_ril_prop)
+set_prop(vendor_init, vendor_eink_prop)
+# - init.qcom.rc early-init `write /proc/sys/kernel/printk_devkmsg on` (proc_a6l_printk: rom/sepolicy/vendor/genfs_contexts)
+allow vendor_init proc_a6l_printk:file w_file_perms;
+# - NOT handled here: the r11 read of init.svc.a6l_modules_adsp (platform-private init_service_status_private_prop, not
+#   visible to vendor policy). See README "remaining": rename the trigger services vendor.a6l_* if it matters.

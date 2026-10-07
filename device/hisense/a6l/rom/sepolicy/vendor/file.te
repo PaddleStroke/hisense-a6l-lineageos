@@ -34,3 +34,8 @@ allow init a6l_persist_file:filesystem { mount unmount relabelto relabelfrom get
 type sysfs_a6l_flash, sysfs_type, fs_type;
 # r5 review fix F49 (29 Sep 2026): a6l_gpio_vib LED class device "vibrator" (genfs_contexts path UNVERIFIED)
 type sysfs_a6l_vibrator, sysfs_type, fs_type;
+# ---- selinux-20261007 (firmware/extracted/selinux-20261007/README.md) ----
+type sysfs_a6l_touch, sysfs_type, fs_type;                         # /sys/bus/i2c/drivers/edt_ft5x06 (front touch re-bind)
+type proc_a6l_printk, fs_type, proc_type;                          # /proc/sys/kernel/printk{,_devkmsg,...} (was generic proc)
+type a6l_firmware_file, vendor_file_type, file_type;               # /vendor/firmware (kernel direct load + tqftpserv)
+type a6l_debug_exec, vendor_file_type, file_type;                  # rom/debug scripts started by init as su (userdebug)

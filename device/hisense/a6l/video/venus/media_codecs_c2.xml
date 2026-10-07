@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- venus-impl (6 Oct 2026): Venus hardware H.264 encoder through the V4L2 Codec2 HAL.
+     Only listed by MediaCodecList when the V4L2 store advertises it (Venus loaded, A6L patch 0002); otherwise this entry is
+     ignored and c2.android.avc.encoder (rank 512) stays the encoder.
+     rank 256 < 512: preferred over software for recording. Bounds = 1080p30 at most (244800 MB/s -> video_core_clk 320 MHz,
+     covered by the DT CX vote at NOM; >432000 MB/s would need 441.6/518.4 MHz and is NOT covered: do not raise beyond 1080p30
+     without the CX vote at NOM_L1/TURBO). Performance points are to be confirmed by venus-enc-bench (stage B) before release. -->
+<MediaCodecs>
+    <Encoders>
+        <MediaCodec name="c2.v4l2.avc.encoder" type="video/avc" rank="256">
+            <Limit name="size" min="96x96" max="1920x1088" />
+            <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-8160" />
+            <Limit name="blocks-per-second" range="1-244800" />
+            <Limit name="frame-rate" range="1-30" />
+            <Limit name="bitrate" range="1-20000000" />
+            <Limit name="concurrent-instances" max="1" />
+            <Limit name="performance-point-1920x1080" value="30" />
+            <Limit name="performance-point-1280x720" value="30" />
+        </MediaCodec>
+    </Encoders>
+</MediaCodecs>

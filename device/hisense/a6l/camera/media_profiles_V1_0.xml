@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A6L (lc2, 29 Sep 2026): minimal media profiles for the libcamera HAL (SoftISP on the CPU: 15 fps is the realistic video
+<!-- venus-impl (6 Oct 2026): 30 fps profiles for the Venus hardware encoder with the hardware ISP (NV12 ~30 fps);
+     rear cameras high = 1080p30 at 20 Mb/s (stock 20 Mb/s), 720p30 at 12 Mb/s (stock 14). Apply only after stage C passes.
+     A6L (lc2, 29 Sep 2026): minimal media profiles for the libcamera HAL (SoftISP on the CPU: 15 fps is the realistic video
      rate at 720p until the GPU debayer / binned sensor modes, docs/libcamera-plan-20260929.md M2/M6). Camera ids = the
      libcamera HAL ids (0/1 = imx576 / s5k3t1 in enumeration order, 2 = hi846 when it streams). Video recording itself is
      milestone M6 (NV12 SoftISP output is in patch 0004 but untested); these profiles only give CamcorderProfile sane values. -->
@@ -64,19 +66,23 @@
 <MediaSettings>
     <CamcorderProfiles cameraId="0">
         <EncoderProfile quality="low" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="1500000" width="640" height="480" frameRate="15" />
+            <Video codec="h264" bitRate="1500000" width="640" height="480" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="high" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="15" />
+            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="480p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="2000000" width="720" height="480" frameRate="15" />
+            <Video codec="h264" bitRate="2000000" width="720" height="480" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="720p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="15" />
+            <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+        <EncoderProfile quality="1080p" fileFormat="mp4" duration="30">
+            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <ImageEncoding quality="90" />
@@ -86,19 +92,23 @@
     </CamcorderProfiles>
     <CamcorderProfiles cameraId="1">
         <EncoderProfile quality="low" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="1500000" width="640" height="480" frameRate="15" />
+            <Video codec="h264" bitRate="1500000" width="640" height="480" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="high" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="15" />
+            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="480p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="2000000" width="720" height="480" frameRate="15" />
+            <Video codec="h264" bitRate="2000000" width="720" height="480" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="720p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="15" />
+            <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+        <EncoderProfile quality="1080p" fileFormat="mp4" duration="30">
+            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <ImageEncoding quality="90" />
@@ -108,19 +118,19 @@
     </CamcorderProfiles>
     <CamcorderProfiles cameraId="2">
         <EncoderProfile quality="low" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="1500000" width="640" height="480" frameRate="15" />
+            <Video codec="h264" bitRate="1500000" width="640" height="480" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="high" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="15" />
+            <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="480p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="2000000" width="720" height="480" frameRate="15" />
+            <Video codec="h264" bitRate="2000000" width="720" height="480" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="720p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="15" />
+            <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <ImageEncoding quality="90" />
@@ -131,9 +141,9 @@
     <EncoderOutputFileFormat name="3gp" />
     <EncoderOutputFileFormat name="mp4" />
     <VideoEncoderCap name="h264" enabled="true"
-        minBitRate="64000" maxBitRate="8000000"
-        minFrameWidth="176" maxFrameWidth="1280"
-        minFrameHeight="144" maxFrameHeight="720"
+        minBitRate="64000" maxBitRate="20000000"
+        minFrameWidth="176" maxFrameWidth="1920"
+        minFrameHeight="144" maxFrameHeight="1080"
         minFrameRate="15" maxFrameRate="30" />
     <AudioEncoderCap name="aac" enabled="true"
         minBitRate="8000" maxBitRate="96000"

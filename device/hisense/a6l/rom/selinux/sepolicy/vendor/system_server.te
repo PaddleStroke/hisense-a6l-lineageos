@@ -1,0 +1,7 @@
+# selinux-20261007 (group G12): platform domains on a6l vendor types (read-only).
+# InputReader enumerates the LEDs of input devices: the a6l_gpio_vib LED class device "vibrator" (sysfs_a6l_vibrator,
+# rom/sepolicy genfs) max_brightness (r11 x6). AOSP lets system_server read sysfs_leds; same access for our type.
+allow system_server sysfs_a6l_vibrator:dir search;
+allow system_server sysfs_a6l_vibrator:file r_file_perms;
+# ro.vendor.a6l.* (vendor_public_prop) read by system_server and by Launcher3 (priv_app) in r11 (x8 each).
+get_prop({ system_server priv_app }, vendor_a6l_ro_prop)

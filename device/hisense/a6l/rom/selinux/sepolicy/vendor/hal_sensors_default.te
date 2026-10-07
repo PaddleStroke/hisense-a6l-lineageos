@@ -1,0 +1,6 @@
+# selinux-20261007 (group G3): sensors.a6l walks /sys/bus/iio/devices/iio:device* (realpaths) and reads each `name`.
+# The SMGR devices themselves are sysfs_a6l_iio now (rom/sepolicy genfs; rw already in rom/sepolicy/vendor/hal_extras.te);
+# the path above them stays the ADSP remoteproc tree: search only, no access to its files (start/stop `state`).
+allow hal_sensors_default sysfs_a6l_remoteproc:dir search;
+# PM660 VADC iio:device5 (adc@3100 = sysfs_thermal, rom/r6 genfs): `name` read while scanning (r11 x4)
+r_dir_file(hal_sensors_default, sysfs_thermal)

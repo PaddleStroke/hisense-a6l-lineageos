@@ -1,5 +1,8 @@
-# UNVERIFIED sysfs paths (mainline 7.2 PM660L WLED "backlight" and the leds-pwm frontlight): the real paths are printed
+# selinux-20261007: WLED path fixed from the r11 denials (realpath .../0-03/800f000.spmi:pmic@3:leds@d800/backlight/backlight;
+# was "0-03:pmic@3:...", same SPMI naming fix as rom/sepolicy r5): composer bl_power/brightness and hal_light max_brightness
+# were generic sysfs. The frontlight path is confirmed by a6l_modules r11 denials (sysfs_a6l_dualux).
+# Originally UNVERIFIED sysfs paths (mainline 7.2 PM660L WLED "backlight" and the leds-pwm frontlight): the real paths are printed
 # by `readlink -f /sys/class/backlight/backlight /sys/class/leds/epd-backlight` (test D10). Wrong paths only mean the
 # nodes keep the generic `sysfs` label (fine while permissive).
-genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-03/0-03:pmic@3:leds@d800/backlight u:object_r:sysfs_a6l_dualux:s0
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-03/800f000.spmi:pmic@3:leds@d800/backlight u:object_r:sysfs_a6l_dualux:s0
 genfscon sysfs /devices/platform/a6l-epd-frontlight/leds u:object_r:sysfs_a6l_dualux:s0

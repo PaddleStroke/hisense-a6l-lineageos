@@ -1,0 +1,6 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G10)
+# AOSP init.rc: write /dev/sys/block/by-name/userdata/queue/discard_max_bytes (r11: open/write on generic sysfs
+# .../mmcblk1/queue/discard_max_bytes, neverallowed); the mmcblk1 tree is sysfs_devices_block (rom/sepolicy genfs).
+allow init sysfs_devices_block:file w_file_perms;
+# mount_all: /mnt/vendor/persist (fstab.qcom*) is mounted on the mnt_vendor_file directory fs_mgr creates
+allow init mnt_vendor_file:dir mounton;

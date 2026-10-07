@@ -5,3 +5,6 @@ persist.vendor.a6l.         u:object_r:vendor_a6l_prop:s0
 ro.vendor.a6l.              u:object_r:vendor_a6l_ro_prop:s0
 # Debug init owns the runtime-PM comparison; 0/1 only, existing ROM property type.
 persist.vendor.a6l.gpu.pm_hold u:object_r:vendor_a6l_prop:s0 exact enum 0 1
+# selinux-20261007: Mesa / minigbm runtime options (read by every graphics client; rom/selinux/sepolicy/vendor/graphics.te)
+vendor.mesa.                u:object_r:vendor_a6l_gfx_prop:s0
+vendor.minigbm.             u:object_r:vendor_a6l_gfx_prop:s0

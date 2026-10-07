@@ -1,0 +1,9 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G7): memfd objects get their own class.
+# Mainline 7.2 has no ashmem, so the ROM runs with sys.use_memfd=true and every ashmem region / HIDL-AIDL FMQ
+# ("memfd:MessageQueue") is a memfd. Without this capability the kernel labels memfds with the tmpfs type of the creator
+# (tmpfs / system_server_tmpfs / appdomain_tmpfs): r11 has 94 such denials (audioserver, system_server, platform_app,
+# mediaswcodec, hal_audio_default, hal_power_default, hal_sensors_default, hal_camera_default "memfd:softIsp_params").
+# system/sepolicy already carries the complete memfd_file rule set (domain self:memfd_file, hal_client_domain() and
+# binder peers both ways, app/system_server/surfaceflinger/audioserver/mediaswcodec ...) but does not turn the capability
+# on; the 7.2 kernel supports it (security/selinux/include/policycap_names.h "memfd_class").
+policycap memfd_class;

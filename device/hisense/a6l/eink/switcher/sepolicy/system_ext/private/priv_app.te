@@ -1,0 +1,3 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G12): Launcher3 (priv_app) reads the
+# A6LDisplaySwitcher settings/state (persist.sys.a6l.* / sys.a6l.dualux.*) in r11 (x8). Read-only, system-owned type.
+get_prop(priv_app, a6l_dualux_ctl_prop)

@@ -1,0 +1,5 @@
+ro.vendor.v4l2_codec2.encoder.supported.   u:object_r:vendor_a6l_v4l2_codec2_prop:s0 prefix bool
+ro.vendor.v4l2_codec2.decoder.supported.   u:object_r:vendor_a6l_v4l2_codec2_prop:s0 prefix bool
+ro.vendor.v4l2_codec2.device_name_filter   u:object_r:vendor_a6l_v4l2_codec2_prop:s0 exact string
+persist.vendor.v4l2_codec2.disable_vbr     u:object_r:vendor_a6l_v4l2_codec2_prop:s0 exact bool
+ro.vendor.v4l2_codec2.encoder.output_mmap   u:object_r:vendor_a6l_v4l2_codec2_prop:s0 exact bool

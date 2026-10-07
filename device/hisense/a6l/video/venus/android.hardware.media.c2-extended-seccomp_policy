@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Appended by SetUpMinijail to android.hardware.media.c2-default-seccomp_policy (arm64) for the V4L2 Codec2 service:
+# the libchrome/libevent message pump and V4L2DevicePoller (bionic maps epoll_wait -> epoll_pwait, eventfd -> eventfd2).
+# Same set as the 5 Oct candidate review; check `dmesg | grep 'type=1326'` (SECCOMP kill) at the first start.
+epoll_create1: 1
+epoll_ctl: 1
+epoll_pwait: 1
+eventfd2: 1

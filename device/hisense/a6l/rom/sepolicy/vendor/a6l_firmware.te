@@ -1,0 +1,12 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md): /vendor/firmware = a6l_firmware_file (file_contexts).
+# The kernel loads firmware directly from /vendor/firmware (firmware_class.path): r11 kernel denials on vendor_file for
+# qcom/a530_pm4.fw (GPU, in the opener's context), qcom/hisense/a6l/adsp.mdt/.bNN (remoteproc worker), tfa98xx.cnt
+# (speaker amp). AOSP only grants the kernel the ueventd sysfs fallback (kernel self:system firmware_load), so the
+# direct path needs the file type + system:firmware_load on it.
+allow kernel a6l_firmware_file:dir search;
+allow kernel a6l_firmware_file:file r_file_perms;
+allow kernel a6l_firmware_file:system firmware_load;
+# ueventd: firmware fallback loader (/vendor/firmware was vendor_file, readable by ueventd through AOSP rules)
+r_dir_file(ueventd, a6l_firmware_file)
+# tqftpserv serves the modem's files from /vendor/firmware (was r_dir_file(a6l_tqftpserv, vendor_file))
+r_dir_file(a6l_tqftpserv, a6l_firmware_file)

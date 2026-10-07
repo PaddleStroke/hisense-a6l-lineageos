@@ -34,10 +34,18 @@ PRODUCT_VENDOR_PROPERTIES += \
     debug.stagefright.c2inputsurface=-1 \
     ro.sf.lcd_density=400 \
     ro.surface_flinger.default_composition_pixel_format=5 \
-    service.sf.prime_shader_cache=false \
     ro.vendor.a6l.rom=v2 \
     persist.vendor.a6l.radio=1 \
     persist.sys.usb.config=adb
+
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G9): platform-owned properties may not be set
+# from /vendor (r11 vendor_init denials: set system_prop service.sf.prime_shader_cache, set use_memfd_prop sys.use_memfd;
+# the latter is neverallowed for vendor_init, the former is a platform property /vendor should not own). The system_ext
+# build.prop is loaded by init itself before early-init, so
+# sys.use_memfd (no ashmem on 7.2) is in place even earlier than the old `on init` setprop in init.qcom.rc.
+PRODUCT_SYSTEM_EXT_PROPERTIES += \
+    service.sf.prime_shader_cache=false \
+    sys.use_memfd=true
 
 # CameraX recording uses a persistent encoder surface. The software Codec2
 # service has no native input-surface factory; select Android's built-in AIDL
@@ -210,3 +218,7 @@ $(call inherit-product, device/hisense/a6l/rom/selinux/selinux.mk)
 # r6b boot fix (30 Sep 2026; docs/rom-r6b-bootfix-20260930.md): userdebug/eng-only persistent boot log
 # (/metadata/a6l/boot-kmsg.txt, a6l_bootlog service); a user build installs nothing from it
 $(call inherit-product, device/hisense/a6l/rom/debug/bootlog.mk)
+
+# venus-impl (6 Oct 2026; firmware/extracted/venus-impl-20261006): Venus hardware H.264 encoder via the V4L2 Codec2 HAL
+# (external/v4l2_codec2 + rom/android/patches/external/v4l2_codec2). persist.vendor.a6l.venus: 1 (default) on, 0 off.
+$(call inherit-product, device/hisense/a6l/video/venus/venus.mk)

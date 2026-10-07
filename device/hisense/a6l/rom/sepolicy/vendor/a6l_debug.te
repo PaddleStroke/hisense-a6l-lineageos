@@ -1,0 +1,10 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md): rom/debug tools of userdebug/eng builds
+# (rom/debug/bootlog.mk; never in user). Their rc services run with "seclabel u:r:su:s0" (su is permissive on userdebug),
+# but init still needs execute on the binary: r11 "init vendor_file:file execute" for a6l-krec, a6l-bootlog.sh,
+# a6l-iowatch.sh. Labelled a6l_debug_exec (file_contexts) instead of granting init execute on all of vendor_file.
+# a6l-krec (su) creates /dev/a6l-krec.ready, which a6l-modules.sh (a6l_modules) waits for: give it the /dev/a6l type
+# instead of the generic "device" type (r11: a6l-modules.sh/cat getattr/open/read on device:file /dev/a6l-krec.ready).
+userdebug_or_eng(`
+  allow init a6l_debug_exec:file { getattr open read execute map };
+  type_transition su device:file a6l_dev_file "a6l-krec.ready";
+')

@@ -139,8 +139,14 @@ esac
 # until watchdogd opens /dev/watchdog (init.a6l-watchdog.rc, opt-in persist.vendor.a6l.watchdog=1). QEMU-tested, not phone-tested.
 WG=$X/wdt-20260929; ( cd $WG && sha256sum -c --quiet SHA256SUMS ) || { echo "wdt SHA256SUMS mismatch"; exit 1; }
 cp $WG/$A6L_KERNEL/qcom-wdt.ko $P/lib/modules/qcom-wdt.ko
+# venus-impl (6 Oct 2026, firmware/extracted/venus-impl-20261006): Venus video codec modules for the r5 kernel only
+# (stagec: venus-core/enc/dec = hfi3 prod SDM660 fixes built against out-a6l-rom-r5; v4l2-mem2mem/videobuf2-dma-contig =
+# out-a6l-rom-r5/modinst; every import CRC checked vs Module.symvers; Stage B passed 7 Oct 2026 with these sources),
+# loaded by rom/modules/video.txt (+ video-dec.txt) from a6l-modules.sh misc. v67: both lists are skipped below.
+VI=$X/venus-impl-20261006/stagec; ( cd $VI/modules && sha256sum -c --quiet SHA256SUMS ) || { echo "venus modules SHA256SUMS mismatch"; exit 1; }
+if [ "$A6L_KERNEL" = r5 ]; then for m in v4l2-mem2mem videobuf2-dma-contig venus-core venus-enc venus-dec; do cp $VI/modules/$m.ko $P/lib/modules/$m.ko; done; fi
 # --- module lists: every listed module must exist; dependency order across the boot sequence ---
-for l in $T/modules/*.txt; do cp $l $P/etc/a6l/modules/; grep -v '^#' $l | awk 'NF{print $1}' | while read -r k; do [ -e $P/lib/modules/$k ] || { echo "MISSING $k in $(basename $l)"; exit 1; }; done; done
+for l in $T/modules/*.txt; do [ "$A6L_KERNEL" != r5 ] && case "$(basename $l)" in video.txt|video-dec.txt) true;; *) false;; esac && continue; cp $l $P/etc/a6l/modules/; grep -v '^#' $l | awk 'NF{print $1}' | while read -r k; do [ -e $P/lib/modules/$k ] || { echo "MISSING $k in $(basename $l)"; exit 1; }; done; done
 [ -e $P/lib/modules/q6routing-upstream.ko ]
 python3 - $P/lib/modules $T/modules <<'PY'
 import sys, os
@@ -181,6 +187,10 @@ mkdir -p $P/firmware/qcom/hisense/a6l $P/firmware/qcom/sensors
 cp $S/v68_bundle_adsp/firmware/adsp.* $P/firmware/qcom/hisense/a6l/
 cp $S/v71_bundle_sensors-adsp/firmware/qcom/sensors/sns.reg $P/firmware/qcom/sensors/
 cp $X/audio3-20260924/v75/audio3/firmware/tfa98xx.cnt $P/firmware/tfa98xx.cnt      # TFA9894 container (stock)
+# venus-impl: stock Venus firmware VIDEO.VE.4.4-00060 (Hisense-signed, PAS 9; segment hashes verified against the signed
+# hash table by venus-impl-20261006/tools/fw-verify.py), lowercase as qcom_mdt_load expects (qcom/venus-4.4/venus.mdt)
+( cd $VI/firmware && sha256sum -c --quiet SHA256SUMS ) || { echo "venus firmware SHA256SUMS mismatch"; exit 1; }
+mkdir -p $P/firmware/qcom/venus-4.4; cp $VI/firmware/venus.mdt $VI/firmware/venus.b0[0-4] $P/firmware/qcom/venus-4.4/
 # --- radio userspace, e-ink manual payload, tools, Mesa, adb key (as rom-v1) ---
 cp $S/v74_radio2/bin/* $P/a6l/radio/bin/
 cp -r $S/v74_bundle-v74/epd/. $P/a6l/epd/

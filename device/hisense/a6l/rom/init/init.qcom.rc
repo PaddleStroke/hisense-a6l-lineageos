@@ -36,8 +36,8 @@ on init
     write /dev/kmsg "A6L_STAGE init"
     # compatibility links used by stock-style paths
     symlink /dev/block/platform/soc@0/c0c4000.mmc /dev/block/bootdevice
-    # no ashmem on 7.2: memfd (same as the RAM bring-ups)
-    setprop sys.use_memfd true
+    # no ashmem on 7.2: memfd (same as the RAM bring-ups). selinux-20261007: sys.use_memfd=true now comes from the
+    # system_ext build.prop (rom/rom.mk): vendor_init may not set use_memfd_prop (neverallow).
 
 on fs
     write /dev/kmsg "A6L_STAGE fs: mount_all"

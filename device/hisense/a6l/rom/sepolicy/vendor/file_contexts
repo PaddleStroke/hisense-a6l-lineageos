@@ -52,3 +52,24 @@
 /dev/block/by-name/persist                  u:object_r:a6l_persist_block_device:s0
 /dev/block/by-name/(modemst1|modemst2|fsg|fsc)  u:object_r:a6l_modem_block_device:s0
 /dev/block/zram0                            u:object_r:swap_block_device:s0
+# ---- selinux-20261007 (firmware/extracted/selinux-20261007/README.md) ----
+# Graphics libraries loaded IN-PROCESS by every GL/Vulkan/gralloc client (surfaceflinger, bootanim, zygote, apps,
+# system_server, mediaswcodec): must be same_process_hal_file or the linker is denied (r11: libgallium_dri.so,
+# gralloc.minigbm.so, mapper.minigbm.so, libminigbm_gralloc.so, libdrm.so). /vendor/lib*/egl is already labelled by
+# system/sepolicy. Same set as device/generic/goldfish + the Mesa driver; vulkan.pastel.so INFERRED (not loaded in r11).
+/vendor/lib(64)?/libgallium_dri\.so                                       u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/libdrm\.so                                               u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/libminigbm_gralloc\.so                                   u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/libminigbm_gralloc4_utils\.so                            u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/hw/mapper\.minigbm\.so                                   u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/hw/gralloc\.minigbm\.so                                  u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/hw/android\.hardware\.graphics\.mapper@4\.0-impl\.minigbm\.so u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/hw/vulkan\.pastel\.so                                    u:object_r:same_process_hal_file:s0
+# Kernel firmware (direct load from /vendor/firmware: a530 GPU, ADSP mdt/bNN, tfa98xx.cnt; modem files via tqftpserv)
+/vendor/firmware(/.*)?                                                    u:object_r:a6l_firmware_file:s0
+# rom/debug (userdebug/eng only, bootlog.mk): started by init with seclabel su -> init needs execute (a6l_debug.te)
+/vendor/bin/a6l-krec                                                      u:object_r:a6l_debug_exec:s0
+/vendor/bin/a6l-bootlog\.sh                                               u:object_r:a6l_debug_exec:s0
+/vendor/bin/a6l-iowatch\.sh                                               u:object_r:a6l_debug_exec:s0
+/vendor/bin/a6l-gpu-coredump\.sh                                          u:object_r:a6l_debug_exec:s0
+/vendor/bin/a6l-pm-trace\.sh                                              u:object_r:a6l_debug_exec:s0

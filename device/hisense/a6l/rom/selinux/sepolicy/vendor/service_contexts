@@ -1,0 +1,8 @@
+# selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G6/G8)
+# IMapper stable-C instance of minigbm (mapper.minigbm.so): looked up by name by every gralloc client (r11: find on
+# default_android_service "mapper/minigbm" from surfaceflinger, bootanim, system_server, apps, mediaswcodec, composer).
+# As device/generic/goldfish and device/google/cuttlefish.
+mapper/minigbm                                                     u:object_r:hal_graphics_mapper_service:s0
+# Software gatekeeper also serves ISharedSecret/gatekeeper (keystore2 negotiates with every ISharedSecret instance).
+# As goldfish/cuttlefish.
+android.hardware.security.sharedsecret.ISharedSecret/gatekeeper    u:object_r:hal_gatekeeper_service:s0

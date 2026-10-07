@@ -1,0 +1,2 @@
+# Venus platform device (video4linux/videoN/name read by the V4L2 Codec2 discovery and a6l-modules.sh)
+genfscon sysfs /devices/platform/soc@0/cc00000.video-codec    u:object_r:sysfs_a6l_venus:s0

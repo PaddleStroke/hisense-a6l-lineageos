@@ -11,3 +11,9 @@ allow a6l_chg_guard { sysfs_a6l_power_supply sysfs_batteryinfo }:file rw_file_pe
 get_prop(a6l_chg_guard, vendor_a6l_prop)
 # r5 review fix F2 (28 Sep 2026): the guard publishes vendor.a6l.chg.state (zone/desired/applied[/err])
 set_prop(a6l_chg_guard, vendor_a6l_prop)
+
+# ---- selinux-20261007 (round 11, boot 10affa76; firmware/extracted/selinux-20261007/README.md) ----
+# Logged as vendor_modprobe (power/rom/init.a6l-power.rc seclabel; entrypoint denial on a6l_chg_guard_exec): own domain
+# once the rc transform drops the seclabel. stdio_to_kmsg on userdebug builds = /dev/kmsg_debug.
+allow a6l_chg_guard kmsg_debug_device:chr_file { w_file_perms getattr };
+dontaudit a6l_chg_guard { kmsg_device kmsg_debug_device }:chr_file ioctl;
