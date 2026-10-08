@@ -16,3 +16,11 @@ uid_sys_stats.ko
 # cpufreq-watchdog (29 Sep 2026, docs/cpufreq-watchdog-20260929.md): APSS hardware watchdog (H64). Probe only reads the block;
 # nothing is armed until watchdogd opens /dev/watchdog (opt-in persist.vendor.a6l.watchdog=1, after boot_completed).
 qcom-wdt.ko
+# wifi-20261008: cfg80211 (+ its dependency rfkill) must exist BEFORE wificond starts (class main). wificond resolves the
+# "nl80211" generic-netlink family exactly once at startup (NetlinkManager::Start, never retried); with cfg80211 loaded
+# later by a6l-radio.sh it keeps no family id for its whole life and every createClientInterface fails ("Failed to setup
+# iface in nl80211=wlan0"). cfg80211 alone does no RF (the RF gate stays persist.vendor.a6l.radio: modem + ath10k_snoc).
+# firmware_class.path=/vendor/firmware is written in early-init before this group starts, so regulatory.db loads.
+# radio.txt/bt.txt skip both (already loaded).
+rfkill.ko
+cfg80211.ko

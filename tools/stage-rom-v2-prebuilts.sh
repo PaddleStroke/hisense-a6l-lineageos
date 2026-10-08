@@ -145,6 +145,12 @@ cp $WG/$A6L_KERNEL/qcom-wdt.ko $P/lib/modules/qcom-wdt.ko
 # loaded by rom/modules/video.txt (+ video-dec.txt) from a6l-modules.sh misc. v67: both lists are skipped below.
 VI=$X/venus-impl-20261006/stagec; ( cd $VI/modules && sha256sum -c --quiet SHA256SUMS ) || { echo "venus modules SHA256SUMS mismatch"; exit 1; }
 if [ "$A6L_KERNEL" = r5 ]; then for m in v4l2-mem2mem videobuf2-dma-contig venus-core venus-enc venus-dec; do cp $VI/modules/$m.ko $P/lib/modules/$m.ko; done; fi
+# audio-silent-20261008 (8 Oct 2026, firmware/extracted/audio-silent-20261008/fix): the LPASS LPI TLMM loses its pad
+# configuration across system suspend (gpio4-7 ter_mi2s 0xd0 -> 0x2ca/0xca after one s2idle: silent speaker). r5 rebuilds
+# of pinctrl-lpass-lpi + pinctrl-sdm660-lpass-lpi = in-tree sources (a6l ter_mi2s included; base build == kernel-r5 set in
+# every allocated section) + a6l-lpi-resume-restore.patch (shadow of programmed registers, restored at resume_early/resume).
+AS=$X/audio-silent-20261008/fix; ( cd $AS && sha256sum -c --quiet SHA256SUMS ) || { echo "audio-silent fix SHA256SUMS mismatch"; exit 1; }
+if [ "$A6L_KERNEL" = r5 ]; then for m in pinctrl-lpass-lpi pinctrl-sdm660-lpass-lpi; do cp $AS/modules/$m.ko $P/lib/modules/$m.ko; done; fi
 # --- module lists: every listed module must exist; dependency order across the boot sequence ---
 for l in $T/modules/*.txt; do [ "$A6L_KERNEL" != r5 ] && case "$(basename $l)" in video.txt|video-dec.txt) true;; *) false;; esac && continue; cp $l $P/etc/a6l/modules/; grep -v '^#' $l | awk 'NF{print $1}' | while read -r k; do [ -e $P/lib/modules/$k ] || { echo "MISSING $k in $(basename $l)"; exit 1; }; done; done
 [ -e $P/lib/modules/q6routing-upstream.ko ]

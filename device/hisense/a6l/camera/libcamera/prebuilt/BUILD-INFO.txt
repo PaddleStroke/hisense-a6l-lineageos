@@ -55,3 +55,4 @@ frame in low light only up to the request maximum (no FrameDurationLimits = no e
 round-6 tree rebuilds the installed 13b57fcc byte-for-byte). Core 5d048ba2, camss, tunings unchanged. Same IPA key.
 HAL 72d50342fe527ba1eccd51ca04ef45fd30fcaaeaa7f2e143cbc46dc4f9a40569
 IPA 1ab9bff398e3c34ccb3a16c638a7ad0baed2a7be511137583195259be3151762 sign 4dbeda67188a2cdf5e5ef56b765a13cc5008af8600a302ec978b6e397142a722
+8 Oct 2026: lib64/hw/camera.libcamera.so -> 0a203bd4 (camera-twostream-20261008, patch 0104: covering source for mixed-aspect preview+video)

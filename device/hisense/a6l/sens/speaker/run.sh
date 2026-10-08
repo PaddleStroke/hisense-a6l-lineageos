@@ -64,7 +64,9 @@ TD=""; for d in /sys/bus/i2c/devices/*-0034; do [ -e "$d" ] && TD=$d; done
 tfa_real() { dmesg | grep -q "TFA9894 detected" && ! dmesg | grep -q "A6L_TFA_STUB" && [ -n "$TD" ] && [ -e "$TD/rw" ]; }
 rreg() { dd if="$T/regbytes" of="$TD/reg" conv=notrunc bs=1 skip=$1 count=1 2>/dev/null; dd if="$TD/rw" bs=2 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'; }
 regs() {  # $1 = label. 0x00 SYS_CTRL0 (b0 PWDN, b3 AMPE) 0x03 REV 0x10 STATUS0 (b0 VDDS b1 PLLS b2 OTDS b3 OVDS b4 UVDS b5 OCDS
-          # b6 CLKS b8 NOCLK b11 SWS b12 AMPS) 0x11 (b10 TDMERR) 0x12 (b6 MANOPER) 0x14 (b3-6 MANSTATE)
+          # b6 CLKS b8 NOCLK b9 ACS b11 SWS b12 AMPS) 0x11 (b10 TDMERR) 0x12 (b6 MANOPER) 0x14 (b3-6 MANSTATE)
+          # audio-silent-20261008: on TFA2 OTDS/OVDS/UVDS are "OK" flags (1 = no alarm; tfa_dsp.c tfa_status treats 0 as an
+          # error), OCDS is a sticky alarm (1 = over-current). Working amp on the phone: 0x785e (OT/OV/UV=1, OCDS=0).
   tfa_real || { echo "  TFA_REGS $1: skipped (no real TFA probe)"; return; }
   l=""; for r in 0 1 2 3 4 16 17 18 19 20; do l="$l $(printf %02x $r)=$(rreg $r)"; done; echo "  TFA_REGS $1:$l"
   s=$(rreg 16); [ -n "$s" ] || return; v=$((0x$s)); m=$(rreg 20); ms=$(( (0x${m:-0} >> 3) & 15 ))
@@ -155,7 +157,7 @@ spk)
   GOOD=""; PROT=0; NSNAP=0; for sn in 1 2 3; do sleep 0.5; LASTSTAT=""; regs "during$sn"; [ -n "$LASTSTAT" ] || continue
     NSNAP=$((NSNAP+1)); v=$LASTSTAT
     [ $((v>>6&1)) = 1 ] && [ $((v>>8&1)) = 0 ] && [ $((v>>12&1)) = 1 ] && GOOD=$sn
-    { [ $((v>>2&1)) = 1 ] || [ $((v>>4&1)) = 1 ] || [ $((v>>5&1)) = 1 ]; } && PROT=$((PROT+1)); done
+    { [ $((v>>2&1)) = 0 ] || [ $((v>>3&1)) = 0 ] || [ $((v>>4&1)) = 0 ] || [ $((v>>5&1)) = 1 ]; } && PROT=$((PROT+1)); done
   DAD=$(ls -d /sys/kernel/debug/asoc/* 2>/dev/null | grep -i a6l | head -n 1)
   [ -n "$DAD" ] && find "$DAD" -path '*dapm*' -type f 2>/dev/null | grep -iE "/(TERT_MI2S_RX|Tertiary MI2S Playback|TERT_MI2S_RX Audio Mixer|MM_DL1|MultiMedia1 Playback|AIF Playback|OUTL|OUTR|SPK|Speaker|bias_level)" | head -n 15 |
     while read -r w; do echo "  DAPM ${w#$DAD/}: $(head -n 1 "$w")"; done
@@ -166,7 +168,7 @@ spk)
   # verdict (fixes-20260927): FAIL only for a real error (stream error, or a protection flag in 2+ snapshots). A missing or
   # not-yet-running snapshot is not a failure: the stream ran, the ear decides (27 Sep: tone heard, check said FAIL).
   if [ $rc != 0 ]; then echo "A6L_SPK_TONE_FAIL level=-$LEVEL dBFS: tinyplay rc=$rc (stream error, see KLOG above)"
-  elif [ $PROT -ge 2 ]; then echo "A6L_SPK_TONE_FAIL level=-$LEVEL dBFS: protection flag (OTDS/UVDS/OCDS) in $PROT of $NSNAP snapshots"
+  elif [ $PROT -ge 2 ]; then echo "A6L_SPK_TONE_FAIL level=-$LEVEL dBFS: protection alarm (OTDS/OVDS/UVDS=0 or OCDS=1) in $PROT of $NSNAP snapshots"
   elif [ -n "$GOOD" ]; then echo "A6L_SPK_TONE_PASS level=-$LEVEL dBFS (stream ran; amp clocked and enabled in snapshot $GOOD of $NSNAP)"
   else echo "A6L_SPK_TONE_PLAYED level=-$LEVEL dBFS (stream ran rc=0; amp state not confirmed: $NSNAP register snapshots, none with CLKS=1 NOCLK=0 AMPS=1): PASS if Pierre heard it"; fi
   echo "ASK PIERRE: heard a 1 kHz tone from the LOUDSPEAKER (not the earpiece, not the headset)? faint/ok/loud/distorted/nothing";;
