@@ -151,6 +151,9 @@ if [ "$A6L_KERNEL" = r5 ]; then for m in v4l2-mem2mem videobuf2-dma-contig venus
 # every allocated section) + a6l-lpi-resume-restore.patch (shadow of programmed registers, restored at resume_early/resume).
 AS=$X/audio-silent-20261008/fix; ( cd $AS && sha256sum -c --quiet SHA256SUMS ) || { echo "audio-silent fix SHA256SUMS mismatch"; exit 1; }
 if [ "$A6L_KERNEL" = r5 ]; then for m in pinctrl-lpass-lpi pinctrl-sdm660-lpass-lpi; do cp $AS/modules/$m.ko $P/lib/modules/$m.ko; done; fi
+# round 15: snd-soc-sm8250 + a6l-sm8250-be-wakeup-source.patch (wakeup source "a6l_audio_be" while any DSP back end is started:
+# no system suspend with a running AFE port). Built against the kernel-r5 set (audio4 base, parity-checked), so only for audio4.
+if [ "$A6L_KERNEL" = r5 ] && [ "$A6L_AUDIO_SET" = audio4 ]; then cp $AS/modules/snd-soc-sm8250.ko $P/lib/modules/snd-soc-sm8250.ko; fi
 # --- module lists: every listed module must exist; dependency order across the boot sequence ---
 for l in $T/modules/*.txt; do [ "$A6L_KERNEL" != r5 ] && case "$(basename $l)" in video.txt|video-dec.txt) true;; *) false;; esac && continue; cp $l $P/etc/a6l/modules/; grep -v '^#' $l | awk 'NF{print $1}' | while read -r k; do [ -e $P/lib/modules/$k ] || { echo "MISSING $k in $(basename $l)"; exit 1; }; done; done
 [ -e $P/lib/modules/q6routing-upstream.ko ]
