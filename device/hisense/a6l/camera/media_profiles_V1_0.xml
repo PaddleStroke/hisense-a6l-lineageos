@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- venus-impl (6 Oct 2026): 30 fps profiles for the Venus hardware encoder with the hardware ISP (NV12 ~30 fps);
+<!-- 8 Oct 2026: high = 720p30 on every camera. The libcamera HAL rejects a 1920x1080 video stream next to the
+     1600x1200 preview (configureStreams: inputs/outputs not supported), so 1080p entries stay out until it supports that pair.
+     venus-impl (6 Oct 2026): 30 fps profiles for the Venus hardware encoder with the hardware ISP (NV12 ~30 fps);
      rear cameras high = 1080p30 at 20 Mb/s (stock 20 Mb/s), 720p30 at 12 Mb/s (stock 14). Apply only after stage C passes.
      A6L (lc2, 29 Sep 2026): minimal media profiles for the libcamera HAL (SoftISP on the CPU: 15 fps is the realistic video
      rate at 720p until the GPU debayer / binned sensor modes, docs/libcamera-plan-20260929.md M2/M6). Camera ids = the
@@ -70,7 +72,7 @@
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="high" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
+            <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="480p" fileFormat="mp4" duration="30">
@@ -79,10 +81,6 @@
         </EncoderProfile>
         <EncoderProfile quality="720p" fileFormat="mp4" duration="30">
             <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
-            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
-        </EncoderProfile>
-        <EncoderProfile quality="1080p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <ImageEncoding quality="90" />
@@ -96,7 +94,7 @@
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="high" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
+            <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="480p" fileFormat="mp4" duration="30">
@@ -105,10 +103,6 @@
         </EncoderProfile>
         <EncoderProfile quality="720p" fileFormat="mp4" duration="30">
             <Video codec="h264" bitRate="12000000" width="1280" height="720" frameRate="30" />
-            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
-        </EncoderProfile>
-        <EncoderProfile quality="1080p" fileFormat="mp4" duration="30">
-            <Video codec="h264" bitRate="20000000" width="1920" height="1080" frameRate="30" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <ImageEncoding quality="90" />
