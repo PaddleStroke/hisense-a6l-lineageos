@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# A6L debug builds (rom/debug/bootlog.mk, userdebug/eng only): kernel-log access for `adb shell dmesg` (no adb root on
+# Lineage userdebug). Moved out of init.a6l.bootlog-debug.rc by selinux-20261007 pass 2: a vendor rc runs as vendor_init,
+# which may not write proc_security; on system_ext main init does it. /dev/kmsg 0644 stays in the vendor rc.
+on post-fs-data
+    write /proc/sys/kernel/dmesg_restrict 0
+
+on property:sys.boot_completed=1
+    write /proc/sys/kernel/dmesg_restrict 0

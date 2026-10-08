@@ -60,3 +60,9 @@ genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmi
 genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmic@0:pon@800/800f000.spmi:pmic@0:pon@800:pwrkey/wakeup u:object_r:sysfs_wakeup:s0
 genfscon sysfs /devices/platform/hall-sensor/wakeup                        u:object_r:sysfs_wakeup:s0
 genfscon sysfs /devices/platform/a6l-buttons/wakeup                        u:object_r:sysfs_wakeup:s0
+# ---- selinux-20261007 pass 2 (round 12 avc, vendor cc41d1d0; firmware/extracted/selinux-20261007/round12/README.md) ----
+# TMD3702 rear ALS/proximity (iio:device4, instantiated by a6l-modules.sh on c176000.i2c): an IIO sensor, not e-ink power.
+# sensors.a6l reads every IIO `name` (r12: hal_sensors_default sysfs_a6l_epd search + name read x15).
+genfscon sysfs /devices/platform/soc@0/c176000.i2c/i2c-0/0-0049            u:object_r:sysfs_a6l_iio:s0
+# RTC alarmtimer wakeup source (r12 realpath .../rtc@6000/rtc/rtc0/alarmtimer.0.auto/wakeup/wakeup1/name, system_suspend x4)
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmic@0:rtc@6000/rtc/rtc0/alarmtimer.0.auto/wakeup u:object_r:sysfs_wakeup:s0

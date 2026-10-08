@@ -28,3 +28,7 @@ allow a6l_modules a6l_firmware_file:system firmware_load;
 r_dir_file(a6l_modules, sysfs_a6l_venus)
 allow a6l_modules video_device:chr_file { getattr setattr };
 allow a6l_modules video_device:dir r_dir_perms;
+
+# selinux-20261007 pass 2 (round 12): /vendor/build.prop ro.vendor.v4l2_codec2.* (venus.mk) are loaded in the vendor_init
+# context (r12: set ro.vendor.v4l2_codec2.encoder.supported.h264 denied; in enforcing the store would advertise nothing)
+set_prop(vendor_init, vendor_a6l_v4l2_codec2_prop)

@@ -7,5 +7,5 @@ service a6l_chg_guard /vendor/bin/a6l-chg-guard.sh
     stdio_to_kmsg
     seclabel u:r:vendor_modprobe:s0
 
-on property:init.svc.a6l_modules_misc=stopped && property:persist.vendor.a6l.charger=1
+on property:init.svc.vendor.a6l_modules_misc=stopped && property:persist.vendor.a6l.charger=1
     start a6l_chg_guard

@@ -16,5 +16,5 @@ service vendor.camera.provider /vendor/bin/hw/android.hardware.camera.provider-s
     setenv LIBCAMERA_LOG_LEVELS *:INFO
     disabled
 
-on property:init.svc.a6l_modules_misc=stopped
+on property:init.svc.vendor.a6l_modules_misc=stopped
     start vendor.camera.provider

@@ -59,3 +59,6 @@ dontaudit a6l_epdd system_prop:file r_file_perms;
 # temperature() reads every /sys/class/hwmon/*/name: thermal-zone hwmon devices live under /sys/devices/virtual/thermal,
 # which rom/r6/sepolicy/vendor/genfs_contexts now labels sysfs_thermal (was generic sysfs, readable above)
 r_dir_file(a6l_epdd, sysfs_thermal)
+# selinux-20261007 pass 2: the e-ink/LCD connector scans fopen /sys/class/drm/<every entry>/modes, including the GPU's
+# card0/renderD128 (5000000.gpu = sysfs_gpu since pass 1; was generic sysfs): path search only
+allow a6l_epdd sysfs_gpu:dir search;

@@ -1,4 +1,4 @@
-A6L rc enforcing-readiness patch, REGENERATED 30 Sep 2026 (r6c; was r6b boot fix / 29 Sep selinux-release) from the current tree by
+A6L rc enforcing-readiness patch, REGENERATED 7 Oct 2026 (selinux-20261007 pass 2: vendor.a6l_modules_* service names; was r6c 30 Sep) from the current tree by
   python3 tools/release/a6l_selinux_prep.py diff device/hisense/a6l > device/hisense/a6l/rom/sepolicy/rc-enforcing.patch
 Reference only: builds use A6L_SELINUX_PREP=1 (pipeline prep applies the same transform to the TREE copy). Do NOT git-apply
 it to the repo (the default permissive build keeps the explicit seclabels). docs/selinux-release-20260929.md
@@ -11,7 +11,7 @@ it to the repo (the default permissive build keeps the explicit seclabels). docs
      stdio_to_kmsg
 -    seclabel u:r:vendor_modprobe:s0
  
- on property:init.svc.a6l_modules_misc=stopped && property:persist.vendor.a6l.charger=1
+ on property:init.svc.vendor.a6l_modules_misc=stopped && property:persist.vendor.a6l.charger=1
      start a6l_chg_guard
 --- a/device/hisense/a6l/rom/init/init.qcom.rc
 +++ b/device/hisense/a6l/rom/init/init.qcom.rc
@@ -25,7 +25,7 @@ it to the repo (the default permissive build keeps the explicit seclabels). docs
  import /vendor/etc/init/hw/init.a6l.usb.rc
  
  on early-init
-@@ -105,18 +108,6 @@
+@@ -99,18 +102,6 @@
      exec_background - system system -- /system/bin/settings put system screen_off_timeout 2147483647
      exec_background - system system -- /system/bin/svc power stayon true
  
@@ -44,7 +44,7 @@ it to the repo (the default permissive build keeps the explicit seclabels). docs
  # ---- modules --------------------------------------------------------------------------------------------------
  service a6l_modules_display /vendor/bin/a6l-modules.sh display
      user root
-@@ -124,7 +115,6 @@
+@@ -118,7 +109,6 @@
      disabled
      oneshot
      stdio_to_kmsg
@@ -52,23 +52,23 @@ it to the repo (the default permissive build keeps the explicit seclabels). docs
  
  # r6b boot fix: bounded wait for the display group (post-fs-data, charger mode); see a6l-modules.sh displaywait
  service a6l_display_wait /vendor/bin/a6l-modules.sh displaywait done 45
-@@ -133,7 +123,6 @@
+@@ -127,7 +117,6 @@
      disabled
      oneshot
      stdio_to_kmsg
 -    seclabel u:r:vendor_modprobe:s0
  
- service a6l_modules_adsp /vendor/bin/a6l-modules.sh adsp
-     user root
-@@ -141,7 +130,6 @@
+ # selinux-20261007 pass 2: the adsp/misc/offcharge services are named vendor.* because vendor rc files trigger on their
+ # init.svc.* state. init parses property triggers of /vendor rc files in the vendor_init context and, in ENFORCING mode,
+@@ -140,7 +129,6 @@
      disabled
      oneshot
      stdio_to_kmsg
 -    seclabel u:r:vendor_modprobe:s0
  
  # rom-v2: fuel gauge, vibrator, flash LED, frontlight, cameras (probe only) after the ADSP/audio group; charger gated
- on property:init.svc.a6l_modules_adsp=stopped
-@@ -161,7 +149,6 @@
+ on property:init.svc.vendor.a6l_modules_adsp=stopped
+@@ -160,7 +148,6 @@
      disabled
      oneshot
      stdio_to_kmsg
@@ -76,7 +76,7 @@ it to the repo (the default permissive build keeps the explicit seclabels). docs
  
  # H49 (r5, 28 Sep 2026): off-mode charging. init triggers `charger` instead of late-init (no fs/post-fs-data/boot), so
  # none of the `on boot` module groups run. Minimal path: fuel gauge + charger group (rom/modules/charger.txt, when
-@@ -180,7 +167,6 @@
+@@ -179,7 +166,6 @@
      disabled
      oneshot
      stdio_to_kmsg
@@ -84,7 +84,7 @@ it to the repo (the default permissive build keeps the explicit seclabels). docs
  
  service a6l_bootinfo /vendor/bin/a6l-modules.sh bootinfo
      user root
-@@ -188,7 +174,6 @@
+@@ -187,7 +173,6 @@
      disabled
      oneshot
      stdio_to_kmsg
@@ -92,7 +92,7 @@ it to the repo (the default permissive build keeps the explicit seclabels). docs
  
  # ---- radio (modem, Wi-Fi, Bluetooth): OFF unless Pierre enables it --------------------------------------------
  # adb shell setprop persist.vendor.a6l.radio 1   (then reboot, or: adb shell setprop ctl.start a6l_radio)
-@@ -204,25 +189,21 @@
+@@ -203,25 +188,21 @@
      disabled
      oneshot
      stdio_to_kmsg

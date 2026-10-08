@@ -5,7 +5,7 @@
 # animation from /vendor/etc/res/values/charger/animation.txt + /vendor/etc/res/images/charger/*.png = LineageOS charger
 # images (vendor/lineage/charger). Those already come from vendor/lineage/config/common_mobile.mk; listed here so the product
 # does not depend on it. Density bucket: rom/charger/BoardConfig-charger.mk. Kernel/module side: init.qcom.rc `on charger`
-# (a6l_modules_offcharge + a6l_chg_guard, H49).
+# (vendor.a6l_modules_offcharge + a6l_chg_guard, H49).
 PRODUCT_PACKAGES += \
     android.hardware.health-service.example \
     charger_res_images \

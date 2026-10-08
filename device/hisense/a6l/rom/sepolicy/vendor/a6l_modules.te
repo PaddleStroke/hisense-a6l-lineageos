@@ -74,3 +74,6 @@ allow a6l_modules sysfs_a6l_vibrator:file getattr;
 # by the userdebug type_transition in rom/selinux/sepolicy/vendor/a6l_debug.te (was `device`: [ -e ] fails when enforcing
 # = the display group would wait its full 5 s on every debug boot)
 allow a6l_modules a6l_dev_file:file r_file_perms;
+# selinux-20261007 pass 2 (round 12): `[ -e /sys/class/drm/renderD128 ]` resolves into 5000000.gpu/drm (sysfs_gpu since
+# pass 1). Denied in enforcing = "NO renderD128 -> EGL angle (software)" for the whole boot. Directories only.
+allow a6l_modules sysfs_gpu:dir r_dir_perms;

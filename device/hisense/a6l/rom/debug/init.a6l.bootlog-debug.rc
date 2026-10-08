@@ -30,7 +30,8 @@ service a6l_bootlog /vendor/bin/a6l-bootlog.sh
 #  - a6l_iowatch: IO-stall detector (heartbeat write+fsync on /metadata and /data every 5 s; A6L_IOSTALL + sysrq w/l to the
 #    kernel log when one does not complete within 15 s), /vendor/bin/a6l-iowatch.sh.
 on post-fs-data
-    write /proc/sys/kernel/dmesg_restrict 0
+    # selinux-20261007 pass 2: dmesg_restrict 0 moved to rom/debug/init.a6l.system-debug.rc (system_ext = init):
+    # vendor_init may not write proc_security (r11/r12 denials)
     chmod 0644 /dev/kmsg
     write /proc/sys/kernel/printk_devkmsg on
     start a6l_iowatch
@@ -53,7 +54,6 @@ service a6l_bootlog_data /vendor/bin/a6l-bootlog.sh
     setenv A6L_BL_PM_TRACE /dev/null
 
 on property:sys.boot_completed=1
-    write /proc/sys/kernel/dmesg_restrict 0
     chmod 0644 /dev/kmsg
     # Debug console flushing delayed wake by7.2s. Keep full kmsg on disk while
     # printing only emergency messages after boot; other printk fields stay put.

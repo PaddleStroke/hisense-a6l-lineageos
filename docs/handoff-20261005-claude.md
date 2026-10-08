@@ -667,3 +667,31 @@ still running.
   video playback in Gallery + audio (AIDL bufferpool2 path), LCD->e-ink switch time (0042), retest the LCD->e-ink page
   behaviour (0039/0041), optional reader sleep (Screen lock: None). Then attended: cpufreq SAW test, mdss_ahb fix,
   SELinux pass 2 (round 14) + an enforcing test boot.
+
+### 8 Oct afternoon/evening — rounds 14-20: speaker, Wi-Fi, e-ink, CPU DVFS, hardware decoder
+
+Full feature matrix: `docs/port-status.md` (top section, kept current). Key findings, in order of discovery:
+- Speaker silent after sleep (audio-silent-20261008): one suspend reset the LPASS LPI speaker pads (gpio4-7 0xd0 -> 0x2ca)
+  when a stream ran across the suspend. Fix: pinctrl-lpass-lpi restores pads on resume + snd-soc-sm8250 holds a wakeup
+  source while any DSP back end runs. Verified by Pierre (round 16).
+- Wi-Fi (wifi-20261008): (1) system_server's Nl80211Native initialises once before cfg80211 loaded -> cfg80211 + rfkill
+  moved to the early base list (round 15). (2) Suspend while associated tore the link down -> WLAN PD crash (takes the
+  modem down) -> WoWLAN triggers in wpa_supplicant_overlay.conf (round 17). (3) Wi-Fi off crashed the WLAN PD: the
+  TXBF vdev param sent after VDEV_DOWN (bisected from a debug_mask=0x700132 trace); ath10k_core 0005 disassoc_quirks=1
+  skips it (live A/B: 4 passes, control crashes) -> round 21.
+- E-ink (eink-round8-20261008): mirror capture guard was the switch cost (not the theme); 0045 benign flips (tore) ->
+  0048 exact verification -> 0051 no stitched planes; hwc 0006 GPU compose on the e-ink; 0047/0050 contrast; 0049 dark
+  keyguard text; 0053 no carrier marquee; 0052 `a6l_eink_mirror --send dump` writes /data/vendor/epd/last-frame.pgm
+  (a6l-eink-dump.sh) for remote checks; 0054 logs every e-ink setting change (lock_clock had flipped to 0 between 08:36
+  and 09:16 on 8 Oct, writer unknown - probably the Settings toggle).
+- CPU DVFS (cpufreq-20261007 rev 13b): the L2 SAW AVS init (stock AVS_LIMIT 0x4580458 / AVS_CTL 0x1010031) was what kept
+  the OSM at ~300 MHz. With a6l_saw_init=1: both clusters to the top on fused open-loop voltages; sweep + 3 min all-core
+  + 1080p-encode stress OK. In the ROM since round 19 (rom/modules/cpufreq.txt, pinned taskset 1, tested parameters).
+  One unexplained hard freeze: cpufreq (fused) loaded by hand + b11d live venus module swaps.
+- Venus decoder (venus-impl-20261006 prod5c-e, Codec2 0007-0009): shared subcore power toggling (prod5c), unknown -1x-1
+  size (prod5d/e), filled_len minus data_offset, no CAPTURE G_FMT before headers (0007), MMAP bitstream input + csd merge
+  (0008), ByteBuffer recycling pool (0009). b11d ACCEPT=1. Round 20: venus before cpufreq in misc + `restart media` on
+  vendor.a6l.venus=ready (system_ext rc), so MediaCodecList has the c2.v4l2 codecs at boot.
+- Camera IQ (camera-iq-20261008): see port-status camera row; V1 tuning A/B and core patch 0105 pending.
+- Disk: C: hit 0 bytes free (128 GB of per-round images); superseded *.img/*.erofs deleted with Pierre's OK (94 GB).
+- WSL default user changed to a6l: run tree edits and builds as root (`wsl -u root`); out/ is root-owned.

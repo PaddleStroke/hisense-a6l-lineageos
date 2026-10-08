@@ -64,3 +64,10 @@ allow a6l_dualux sysfs_a6l_dualux:dir r_dir_perms;
 allow a6l_dualux kmsg_device:chr_file w_file_perms;
 # eink-round6: /dev/kmsg is 0600 root:root, the markers go through /dev/kmsg_debug (0622 on userdebug builds)
 allow a6l_dualux kmsg_debug_device:chr_file w_file_perms;
+
+# selinux-20261007 pass 2 (round 12): with the WLED genfs path fixed (pass 1) the composer's walk to
+# .../leds@d800/backlight/backlight/{bl_power,brightness} crosses sysfs_a6l_dualux directories (r12 search x181)
+allow hal_graphics_composer_default sysfs_a6l_dualux:dir search;
+# pass 2: /sys/class/drm also lists the GPU's card0/renderD128 (5000000.gpu = sysfs_gpu since pass 1); the connector scan
+# opens <entry>/dpms for every entry: path search only (was generic sysfs, readable)
+allow a6l_dualux sysfs_gpu:dir search;

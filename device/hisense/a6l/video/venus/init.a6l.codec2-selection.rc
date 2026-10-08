@@ -9,3 +9,8 @@ on property:persist.vendor.a6l.venus=1
 
 on property:persist.vendor.a6l.venus=0
     setprop media.c2.hal.selection hidl
+
+# round 20 (8 Oct 2026): the media service caches MediaCodecList at its first query. When the V4L2 codecs appear later
+# (vendor.a6l.venus=ready restarts the Codec2 HAL), restart it so apps see c2.v4l2.* without a reboot.
+on property:vendor.a6l.venus=ready && property:sys.boot_completed=1
+    restart media

@@ -248,14 +248,6 @@ adsp)
 misc)
     # rom-v2: fuel gauge, vibrator, flash LED, e-ink frontlight, cameras (probe only); charger only when enabled
     load_list misc
-    # cpufreq-20261007: CPU DVFS (CPRh + OSM). Default ON; persist.vendor.a6l.cpufreq=0 keeps the boot-chain clocks
-    # (adb is up long before this group, so a bad build can be switched off from a running system before it loads).
-    if [ "$(getprop persist.vendor.a6l.cpufreq)" != 0 ]; then
-        load_list cpufreq
-        for p in /sys/devices/system/cpu/cpufreq/policy*; do [ -d "$p" ] && log "misc: cpufreq ${p##*/} $(cat $p/scaling_driver 2>/dev/null) $(cat $p/scaling_governor 2>/dev/null) [$(cat $p/cpuinfo_min_freq 2>/dev/null)-$(cat $p/cpuinfo_max_freq 2>/dev/null)] cur $(cat $p/scaling_cur_freq 2>/dev/null)"; done
-    else
-        log "misc: cpufreq NOT loaded (persist.vendor.a6l.cpufreq=0; boot-chain CPU clocks)"
-    fi
     if [ "$(getprop persist.vendor.a6l.charger)" = 1 ]; then load_list charger; else log "misc: charger driver NOT loaded (persist.vendor.a6l.charger != 1; PMIC defaults)"; fi
     # merge2 (25 Sep): camera3 stack is EXPERIMENTAL (probe PASS; IMX576 streams but VFE0 status1 bit29 fires every frame;
     # no camera HAL): loaded only with persist.vendor.a6l.camera=1. Nothing may dump camss/VFE registers of a
@@ -268,6 +260,16 @@ misc)
         [ "$(getprop persist.vendor.a6l.venus.dec)" = 1 ] && load_list video-dec
         venus_ready
     else setprop vendor.a6l.venus off; log "misc: venus NOT loaded (persist.vendor.a6l.venus != 1)"; fi
+    # round 20 (8 Oct 2026): AFTER venus - the cpufreq init takes ~20 s; before venus it pushed vendor.a6l.venus=ready past
+    # the media service's first codec-list build (no c2.v4l2 codecs until mediaserver restarted).
+    # cpufreq-20261007: CPU DVFS (CPRh + OSM). Default ON; persist.vendor.a6l.cpufreq=0 keeps the boot-chain clocks
+    # (adb is up long before this group, so a bad build can be switched off from a running system before it loads).
+    if [ "$(getprop persist.vendor.a6l.cpufreq)" != 0 ]; then
+        load_list cpufreq
+        for p in /sys/devices/system/cpu/cpufreq/policy*; do [ -d "$p" ] && log "misc: cpufreq ${p##*/} $(cat $p/scaling_driver 2>/dev/null) $(cat $p/scaling_governor 2>/dev/null) [$(cat $p/cpuinfo_min_freq 2>/dev/null)-$(cat $p/cpuinfo_max_freq 2>/dev/null)] cur $(cat $p/scaling_cur_freq 2>/dev/null)"; done
+    else
+        log "misc: cpufreq NOT loaded (persist.vendor.a6l.cpufreq=0; boot-chain CPU clocks)"
+    fi
     for l in /sys/class/leds/epd-backlight /sys/class/leds/*flash* /sys/class/leds/*torch*; do [ -e "$l/brightness" ] && log "misc: led ${l##*/}"; done
     # r5 review fix F49: VibratorOL's LED backend (init restarts vendor.qti.vibrator when this group stops)
     if [ -e /sys/class/leds/vibrator/activate ]; then log "misc: vibrator led ok"; else log "misc: vibrator led MISSING (VibratorOL will find no device)"; fi

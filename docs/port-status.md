@@ -1,5 +1,43 @@
 # A6L port checklist
 
+## Current status — 8 Oct 2026 evening (installed: round 20; round 21 building)
+
+Installed: boot 10affa76 (force-normal cmdline, Venus CX DTB, cpufreq OSM nodes) + vendor d5b19d23 + system 51699e79
+(round 20). Kits: `/home/pierrelouis/A6L-usb-20260915/rom-r7c-round*-20261006` on the laptop; builds and audits in
+`firmware/extracted/pm-logging-20261005/round*-{vendor,system}-*` (build-round12-image.py, audit-round*-*.py,
+stage-round4-kit.py). Handoff detail: `docs/handoff-20261005-claude.md`. SELinux: permissive (prep rules, pass 1).
+
+Legend: **OK** = verified on the phone (by Pierre where noted) · **PARTIAL** = works with known gaps · **UNTESTED** = built in,
+not yet exercised · **OPEN** = not working / not started.
+
+| Area | Status | Evidence / notes | Next |
+|---|---|---|---|
+| Boot, restart with USB (warm-boot backlit black) | OK | charger-mode trap fixed by `androidboot.mode=normal` (fa8ff3c); every reboot on 7-8 Oct normal | — |
+| LCD display, touch, GPU | OK | — | — |
+| E-ink mirror, LCD<->e-ink switch | OK (Pierre) | switch fast (0042/0045/0048 + hwc 0006 GPU compose); tears fixed (0048/0051); sleep-screen clock OK (lock_clock was 0, now 1; 0054 logs who changes it); carrier marquee off on e-ink (0053) | per-app reader sleep + mirror idle back-off (eink-round9) |
+| E-ink reader sleep (Android sleeps between pages) | UNTESTED | 0044 phase 1, Settings > E-ink, default off, needs Screen lock None; vol keys wake + turn page | attended test + `a6l-reader-power.sh`; allowlist (round 9 agent) |
+| CPU frequency (CPRh + OSM DVFS) | OK | rev 13b: L2 SAW AVS init was the missing piece; both clusters to top (1843/2208 MHz) on fused open-loop voltages (silver 612-900 mV, gold 692-940 mV); sweep, 3 min all-core + 1080p encode stress OK; loaded at boot (round 19+); opt-out `persist.vendor.a6l.cpufreq=0` | closed loop CPR later; one unexplained freeze (cpufreq + live venus module swap), watch |
+| Hardware video encoder (Venus H.264) | OK (Pierre) | Aperture 720p/1080p, High@4.1, 30 fps; cold power cycle (prod3+), sleep OK | — |
+| Hardware video decoder (H.264/HEVC/VP8/VP9) | OK | prod5e + Codec2 0007-0009, b11d ACCEPT=1 (Surface 1080p ~140 fps, bit-exact); codecs listed at boot (round 20: venus before cpufreq + media restart) | Pierre: Gallery playback smoothness |
+| Camera: 3 sensors, photo/video, 1080p (two-stream HAL fix) | PARTIAL | works (HAL 0a203bd4). Image-quality root causes found (camera-iq-20261008): hw-ISP black point = red channel value applied to all channels before WB (yellow/green tint growing into shadows, main+front); per-camera control cache leaks CCM/tone curve between cameras; tone curve reloaded only at stream start; videos full-range BT.601 tagged limited BT.709 (clipped highlights, +15% contrast) | live A/B tuning V1 (blackPoint 0, shared tone curve) with Pierre; core patch 0105 (libcamera.so only); video range tag fix |
+| Speaker / audio playback | OK (Pierre) | after-sleep silence fixed (round 16: LPI pad restore on resume + sm8250 BE wakeup source) | — |
+| Microphone / recording audio | OK | tinycap + Aperture audio track | — |
+| Wi-Fi (WCN3990 / ath10k) | OK | connects at boot (cfg80211 early); WoWLAN at suspend (no teardown crash); Wi-Fi-off crash root-caused (TXBF reset after VDEV_DOWN) and fixed in ath10k_core 0005 quirks=1 (live A/B: 4 passes, control crashes) | round 21 ships it; verify toggle/airplane |
+| Modem / mobile data / calls / VoLTE | UNTESTED | radio on (`persist.vendor.a6l.radio=1`); "Invalid Card" with no SIM; modem restarts were Wi-Fi-PD crashes | test with a SIM (data, calls, SMS, VoLTE) |
+| Bluetooth | UNTESTED | stack present | pair + audio test |
+| GNSS, sensors (accel, gyro, prox/light, hall) | UNTESTED (partly seen working earlier) | — | quick check |
+| Suspend / battery | PARTIAL | s2idle works; "hard LOCKUP" watchdog reports in s2idle are false positives; mdss_ahb_clk stuck-on warning at suspend (cosmetic); backlit-black panel on timer-only wakes (bug, power) | power measurement; mdss fix (mdss-ahb-20261007) |
+| SELinux enforcing | OPEN | pass 1 shipped (permissive); pass 2 (service renames vendor.a6l_modules_*) in round 21 | collect avc on round 21, then attended enforcing test boot |
+| Google apps / Play Protect | OK | device registered (GSF id), message gone | — |
+
+### Known caveats for daily use
+- Don't rely on unattended overnight use until round 21 (Wi-Fi off/airplane fixed) is verified.
+- Playback/recording of heavy video while the CPU is pinned at max is untested beyond the 3 min stress.
+
+---
+
+## History (dated, older first-paragraph summaries)
+
 Latest 4 October evening: r7c logger-only vendor update is installed. All29
 runtime pins pass. Both fixed rings accept fresh CRC-checked markers through
 38minutes awake with stable2.1MiB metadata headroom. Phone stays awake on LCD

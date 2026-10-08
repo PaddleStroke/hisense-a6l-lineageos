@@ -1,0 +1,6 @@
+# selinux-20261007 pass 2 (round 12): debug builds keep `adb shell dmesg` / `dmesg -w` (no adb root on Lineage userdebug).
+# rom/debug makes /dev/kmsg 0644 + dmesg_restrict 0 (now from system_ext: rom/debug/init.a6l.system-debug.rc); toybox dmesg
+# reads /dev/kmsg. The syslog(2) fallback (kernel:system syslog_read) is neverallowed for shell (app.te) and stays denied.
+userdebug_or_eng(`
+  allow shell kmsg_device:chr_file r_file_perms;
+')

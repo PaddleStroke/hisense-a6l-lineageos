@@ -9,6 +9,7 @@ PRODUCT_COPY_FILES += device/hisense/a6l/rom/debug/init.a6l.krec-debug.rc:$(TARG
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.a6l.krec=1 ro.vendor.a6l.krec.after_bc_s=60
 PRODUCT_COPY_FILES += \
     device/hisense/a6l/rom/debug/init.a6l.perfetto-debug.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.a6l.perfetto-debug.rc \
+    device/hisense/a6l/rom/debug/init.a6l.system-debug.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.a6l.system-debug.rc \
     device/hisense/a6l/rom/debug/init.a6l.bootlog-debug.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.bootlog-debug.rc \
     device/hisense/a6l/rom/debug/a6l-bootlog.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-bootlog.sh \
     device/hisense/a6l/rom/debug/a6l-pm-trace.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-pm-trace.sh \

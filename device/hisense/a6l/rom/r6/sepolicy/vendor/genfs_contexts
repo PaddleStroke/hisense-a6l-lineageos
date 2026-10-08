@@ -7,3 +7,6 @@ genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmi
 # the thermal class devices, so every thermal_zoneN/{type,temp} and cooling_deviceN/{max,cur}_state was generic sysfs
 # (r11: hal_thermal_default sysfs:file read x69, logged once per permission). hal_thermal_a6l.te already reads sysfs_thermal.
 genfscon sysfs /devices/virtual/thermal                                    u:object_r:sysfs_thermal:s0
+# selinux-20261007 pass 2 (round 12): second PM660 ADC (adc@4500, iio:device6, in_temp0_label): the thermal HAL scans every
+# IIO in_temp* channel (r12: hal_thermal_default generic sysfs read x72). Temperature data -> sysfs_thermal.
+genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmic@0:adc@4500 u:object_r:sysfs_thermal:s0

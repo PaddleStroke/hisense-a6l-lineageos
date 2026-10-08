@@ -71,26 +71,20 @@ on post-fs-data
     exec_start a6l_display_wait
     setprop persist.graphics.egl ${vendor.a6l.gpu:-angle}
 
-# merge2 (25 Sep 2026, Astra R14): the laptop's adb key is pre-trusted ONLY in the explicit debug variant
-# (rom/debug/adbkey.mk, pipeline A6L_DEBUG_ADBKEY=1 -> ro.vendor.a6l.debug.adbkey=1 + /vendor/etc/a6l/adb_keys).
-# A release image ships no key and never writes /data/misc/adb/adb_keys: ADB needs the on-screen authorization and a
-# revocation survives reboot.
-on post-fs-data && property:ro.vendor.a6l.debug.adbkey=1
-    mkdir /data/misc/adb 02750 system shell
-    copy /vendor/etc/a6l/adb_keys /data/misc/adb/adb_keys
-    chown system shell /data/misc/adb/adb_keys
-    chmod 0640 /data/misc/adb/adb_keys
+# merge2 (25 Sep 2026, Astra R14): debug-variant adb key pre-trust (ro.vendor.a6l.debug.adbkey=1) moved to
+# rom/debug/init.a6l.adbkey-debug.rc on system_ext by selinux-20261007 pass 2: writing /data/misc/adb (core data) from a
+# vendor rc runs as vendor_init, which Treble forbids (r11/r12 adb_keys_file denials); system_ext rc = init.
 
 on boot
     write /dev/kmsg "A6L_STAGE boot"
     # rom-v2: vibrator = a6l_gpio_vib (misc group). r5 review fix F49: VibratorOL drives its LED class device
-    # /sys/class/leds/vibrator (DAC from vendor-etc/ueventd.rc); see the a6l_modules_misc=stopped trigger below.
+    # /sys/class/leds/vibrator (DAC from vendor-etc/ueventd.rc); see the vendor.a6l_modules_misc=stopped trigger below.
     # r5 review fix F13: the flash LED (/sys/class/leds/white:flash, leds-qcom-flash, loaded later by the misc group) gets
     # its ownership from ueventd when the device appears (vendor-etc/ueventd.rc), not from a chown here that runs too early.
     # LCD backlight (pm660l WLED) writable by system (lights HAL / settings)
     chown system system /sys/class/backlight/backlight/brightness
     chmod 0664 /sys/class/backlight/backlight/brightness
-    start a6l_modules_adsp
+    start vendor.a6l_modules_adsp
 
 on property:sys.boot_completed=1
     write /dev/kmsg "A6L_ROM_BOOT_COMPLETED"
@@ -135,7 +129,12 @@ service a6l_display_wait /vendor/bin/a6l-modules.sh displaywait done 45
     stdio_to_kmsg
     seclabel u:r:vendor_modprobe:s0
 
-service a6l_modules_adsp /vendor/bin/a6l-modules.sh adsp
+# selinux-20261007 pass 2: the adsp/misc/offcharge services are named vendor.* because vendor rc files trigger on their
+# init.svc.* state. init parses property triggers of /vendor rc files in the vendor_init context and, in ENFORCING mode,
+# drops the whole action when vendor_init may not read the property ("unexported property trigger"): init.svc.a6l_* is
+# platform-private (r12 denial), init.svc.vendor.* is always actionable. Was: no misc group (fuel gauge, vibrator,
+# frontlight, cameras, Venus, charger guard) in an enforcing boot.
+service vendor.a6l_modules_adsp /vendor/bin/a6l-modules.sh adsp
     user root
     group root
     disabled
@@ -144,18 +143,18 @@ service a6l_modules_adsp /vendor/bin/a6l-modules.sh adsp
     seclabel u:r:vendor_modprobe:s0
 
 # rom-v2: fuel gauge, vibrator, flash LED, frontlight, cameras (probe only) after the ADSP/audio group; charger gated
-on property:init.svc.a6l_modules_adsp=stopped
-    start a6l_modules_misc
+on property:init.svc.vendor.a6l_modules_adsp=stopped
+    start vendor.a6l_modules_misc
 
 # r5 review fix F49 (29 Sep 2026): vendor.qti.vibrator (class hal) probes its devices ONCE in its constructor, normally
 # before the misc group has loaded a6l_gpio_vib.ko -> no device -> on() "succeeds" with no effect. Restart it once the
 # misc group (insmod probes synchronously) is done, so it finds /sys/class/leds/vibrator. `restart` starts it if it is
 # not running yet; the framework's vibrator HalController reconnects after the restart (capabilities unchanged:
 # CAP_ON_CALLBACK with or without a device).
-on property:init.svc.a6l_modules_misc=stopped
+on property:init.svc.vendor.a6l_modules_misc=stopped
     restart vendor.qti.vibrator
 
-service a6l_modules_misc /vendor/bin/a6l-modules.sh misc
+service vendor.a6l_modules_misc /vendor/bin/a6l-modules.sh misc
     user root
     group root
     disabled
@@ -166,15 +165,15 @@ service a6l_modules_misc /vendor/bin/a6l-modules.sh misc
 # H49 (r5, 28 Sep 2026): off-mode charging. init triggers `charger` instead of late-init (no fs/post-fs-data/boot), so
 # none of the `on boot` module groups run. Minimal path: fuel gauge + charger group (rom/modules/charger.txt, when
 # persist.vendor.a6l.charger=1 - its build default in charger mode, /data is not mounted) and then the charge guard,
-# exactly like the normal-boot chain (a6l_modules_misc stopped -> a6l_chg_guard). No ADSP/audio/radio/camera. The display
+# exactly like the normal-boot chain (vendor.a6l_modules_misc stopped -> a6l_chg_guard). No ADSP/audio/radio/camera. The display
 # group (early-init) and the health HAL's `vendor.charger` service (class charger) are started by the stock paths.
 on charger
-    start a6l_modules_offcharge
+    start vendor.a6l_modules_offcharge
 
-on property:init.svc.a6l_modules_offcharge=stopped && property:persist.vendor.a6l.charger=1
+on property:init.svc.vendor.a6l_modules_offcharge=stopped && property:persist.vendor.a6l.charger=1
     start a6l_chg_guard
 
-service a6l_modules_offcharge /vendor/bin/a6l-modules.sh offcharge
+service vendor.a6l_modules_offcharge /vendor/bin/a6l-modules.sh offcharge
     user root
     group root
     disabled

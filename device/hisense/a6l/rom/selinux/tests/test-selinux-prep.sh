@@ -51,18 +51,21 @@ exp "C1 charger packages" "$(grep -c -E '^    (android.hardware.health-service.e
 d1=$(sed -n 's/^TARGET_SCREEN_DENSITY ?= *//p' $DV/rom/charger/BoardConfig-charger.mk); d2=$(grep -o 'ro.sf.lcd_density=[0-9]*' $DV/rom/rom.mk | cut -d= -f2)
 exp "C2 charger density == ro.sf.lcd_density (duplicate prop must be equal)" "$d1" "$d2"
 exp "C3 charger_vendor may open the KMS node (gpu_device)" "$(grep -c '^allow charger_vendor gpu_device:chr_file rw_file_perms;' $DV/rom/selinux/sepolicy/vendor/charger_vendor.te)" 1
-exp "C4 on charger path intact" "$(grep -c -E '^on charger$|^    start a6l_modules_offcharge$' $DV/rom/init/init.qcom.rc)" 2
+exp "C4 on charger path intact" "$(grep -c -E '^on charger$|^    start vendor.a6l_modules_offcharge$' $DV/rom/init/init.qcom.rc)" 2
 # ---- updater placeholders
 exp "U1 release URI https + {device}" "$(grep -c 'lineage.updater.uri=https://raw.githubusercontent.com/.*/updater/{device}.json' $DV/rom/release/release.mk)" 1
 exp "U2 non-release placeholder URI (unpublished)" "$(grep -c 'lineage.updater.uri=https://.*/updater/unpublished/{device}.json' $DV/rom/android/android.mk)" 1
 exp "U3 feed placeholder is an empty v2 list" "$(python3 -c "import json;print(json.load(open('$DV/rom/release/updater/a6l.json'))==[])")" True
 # ---- avc planner on the fixture
+ls -lR $DV/rom/selinux/sepolicy $DV/rom/sepolicy $DV/eink/sepolicy > $W/policy-before.txt 2>/dev/null
 python3 $R/tools/release/a6l-avc-plan.py --repo $R --ps $DV/rom/selinux/tests/fixtures/ps-AZ.txt --out $W/plan $DV/rom/selinux/tests/fixtures/avc-sample.txt > $W/plan.txt
 exp "A1 plan summary" "$(tail -1 $W/plan.txt)" "A6L_AVC_PLAN groups=10 allow=3 label=2 neverallow=3 platform=1 debug=1 blocking=1"
 exp "A2 system exec flagged NEVERALLOW" "$(sed -n '/^## NEVERALLOW/,/^## /p' $W/plan.txt | grep -c 'a6l_radio_ctl system_file')" 1
 exp "A3 epdd rule proposed in its owning dir" "$(cat $W/plan/proposed/eink/sepolicy/vendor/a6l_epdd.te | grep -c 'allow a6l_epdd a6l_spidev_device:chr_file { ioctl read write };')" 1
 exp "A4 vendor_modprobe process reported" "$(grep -c 'a6l-radio.sh runs as vendor_modprobe' $W/plan.txt)" 1
-exp "A5 planner never writes into the repo" "$(ls $DV/rom/selinux/sepolicy/vendor | grep -c -v -E '^(README.txt|charger_vendor.te)$')" 0
+# selinux-20261007: rom/selinux/sepolicy/vendor now holds reviewed rules (pass 1/2), so A5 compares the policy dirs
+# before/after the planner run instead of expecting an empty directory
+exp "A5 planner never writes into the repo" "$(cmp -s $W/policy-before.txt <(ls -lR $DV/rom/selinux/sepolicy $DV/rom/sepolicy $DV/eink/sepolicy 2>/dev/null) && echo unchanged)" unchanged
 # ---- init service domains against the real policy (needs the Lineage tree for system/sepolicy)
 if [ -d $L/system/sepolicy ]; then
   for m in "" --prep; do

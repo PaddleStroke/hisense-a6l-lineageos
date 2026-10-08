@@ -51,7 +51,7 @@ exp "F13 every /sys rule has 5+ fields" "$(awk '$1 ~ /^\/sys\// && NF < 5' $UE |
 for a in activate duration state; do
   exp "F49 ueventd leds/vibrator $a" "$(awk -v a=$a '$1=="/sys/class/leds/vibrator" && $2==a {print $3, $4, $5}' $UE)" "0664 system system"
 done
-exp "F49 vibrator HAL restarted after the misc group" "$(block '^on property:init.svc.a6l_modules_misc=stopped$' | grep -c '^ *restart vendor.qti.vibrator$')" 1
+exp "F49 vibrator HAL restarted after the misc group" "$(block '^on property:init.svc.vendor.a6l_modules_misc=stopped$' | grep -c '^ *restart vendor.qti.vibrator$')" 1
 exp "F49 misc group loads a6l_gpio_vib" "$(grep -v '^#' $D/modules/misc.txt | grep -c '^a6l_gpio_vib.ko$')" 1
 exp "F49 hal_vibrator may write the vibrator LED" "$(grep -c '^allow hal_vibrator_default sysfs_a6l_vibrator:file rw_file_perms;' $D/sepolicy/vendor/hal_extras.te)" 1
 exp "F49 vibrator LED genfs label" "$(grep -c '^genfscon sysfs /devices/platform/a6l-vibrator .*sysfs_a6l_vibrator' $D/sepolicy/vendor/genfs_contexts)" 1
@@ -178,10 +178,10 @@ exp "B11 bootlog publishes vendor.a6l.bootlog=running" "$(grep -c '^setprop vend
 exp "B10 cmdline log_buf_len=4M" "$(grep -c "printk.devkmsg=on log_buf_len=4M'" $D/../../../../tools/Prepare-RomV2Boot.py)" 1
 exp "B10 ramoops overlay merged by the DT build" "$(grep -c 'a6l-watchdog-v75 a6l-ramoops-v75"' $D/../../../../tools/build-rom-v2-dt.sh)/$(grep -c 'compatible = \"ramoops\"' $D/../kernel/a6l-ramoops-v75.dtso)" 1/1
 # ---- H49
-exp "H49 on charger starts offcharge" "$(block '^on charger$' | grep -c 'start a6l_modules_offcharge')" 1
+exp "H49 on charger starts offcharge" "$(block '^on charger$' | grep -c 'start vendor.a6l_modules_offcharge')" 1
 exp "H49 on charger starts nothing else" "$(block '^on charger$' | grep -c 'start ')" 1
-exp "H49 guard after offcharge (charger enabled)" "$(block '^on property:init.svc.a6l_modules_offcharge=stopped && property:persist.vendor.a6l.charger=1$' | grep -c 'start a6l_chg_guard')" 1
-exp "H49 offcharge service defined" "$(grep -c '^service a6l_modules_offcharge /vendor/bin/a6l-modules.sh offcharge$' $RC)" 1
+exp "H49 guard after offcharge (charger enabled)" "$(block '^on property:init.svc.vendor.a6l_modules_offcharge=stopped && property:persist.vendor.a6l.charger=1$' | grep -c 'start a6l_chg_guard')" 1
+exp "H49 offcharge service defined" "$(grep -c '^service vendor.a6l_modules_offcharge /vendor/bin/a6l-modules.sh offcharge$' $RC)" 1
 off=$(awk '/^offcharge\)/{f=1;next} f && /^ *;;/{f=0} f' $MS | grep -v '^ *#')
 exp "H49 offcharge loads the charger group" "$(grep -c 'load_list charger' <<< "$off")" 1
 exp "H49 offcharge loads no other group" "$(grep -o 'load_list [a-z]*' <<< "$off" | sort -u | tr '\n' ' ')" "load_list charger "
@@ -203,7 +203,12 @@ exp "R6E-2 config.fs: /vendor/a6l/radio/bin/* 0755" "$(awk '/^\[vendor\/a6l\/rad
 exp "R6E-2 BoardConfig-rom.mk uses config.fs" "$(tr -d '\r' < $D/BoardConfig-rom.mk | grep -c '^TARGET_FS_CONFIG_GEN += device/hisense/a6l/rom/config.fs$')" 1
 DR=$(tr -d '\r' < $D/debug/init.a6l.bootlog-debug.rc)
 pfd=$(awk '/^on post-fs-data$/{f=1;next} /^(on|service) /{f=0} f' <<< "$DR")
-exp "R6E-3 debug rc: dmesg_restrict 0, /dev/kmsg 0644, iowatch at post-fs-data" "$(grep -c -E '^ *(write /proc/sys/kernel/dmesg_restrict 0|chmod 0644 /dev/kmsg|start a6l_iowatch)$' <<< "$pfd")" 3
+exp "R6E-3 debug rc: /dev/kmsg 0644, iowatch at post-fs-data" "$(grep -c -E '^ *(chmod 0644 /dev/kmsg|start a6l_iowatch)$' <<< "$pfd")" 2
+# selinux-20261007 pass 2: dmesg_restrict 0 is written from system_ext (main init; vendor_init may not write proc_security)
+SD=$(tr -d '\r' < $D/debug/init.a6l.system-debug.rc)
+exp "R6E-3 system_ext debug rc: dmesg_restrict 0 at post-fs-data and boot_completed" "$(grep -c -E '^ *write /proc/sys/kernel/dmesg_restrict 0$' <<< "$SD")" 2
+exp "R6E-3 no dmesg_restrict write left in the vendor debug rc" "$(grep -c 'write /proc/sys/kernel/dmesg_restrict' <<< "$DR")" 0
+exp "R6E-3 bootlog.mk installs the system_ext debug rc" "$(tr -d '\r' < $D/debug/bootlog.mk | awk '/^ifneq/{f=1} /^endif/{f=0} f' | grep -c 'init.a6l.system-debug.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.a6l.system-debug.rc')" 1
 exp "R6E-3 iowatch service (su, not oneshot)" "$(awk '/^service a6l_iowatch /{f=1;next} /^(on|service) /{f=0} f' <<< "$DR" | grep -c -E '^ *(seclabel u:r:su:s0|disabled|oneshot)$')" 2
 exp "R6E-3 bootlog.mk installs the detector (userdebug only block)" "$(tr -d '\r' < $D/debug/bootlog.mk | awk '/^ifneq/{f=1} /^endif/{f=0} f' | grep -c 'a6l-iowatch.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-iowatch.sh')" 1
 # simulated stall: the /metadata heartbeat blocks on a FIFO for 8 s (LIMIT 3 s) -> report + sysrq w,l, then recovered

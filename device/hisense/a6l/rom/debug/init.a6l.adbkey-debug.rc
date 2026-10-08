@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# A6L DEBUG VARIANT ONLY (rom/debug/adbkey.mk, pipeline A6L_DEBUG_ADBKEY=1): pre-trust the laptop's adb key.
+# Moved from rom/init/init.qcom.rc (vendor rc = vendor_init, may not write core data /data/misc/adb) by
+# selinux-20261007 pass 2: installed on system_ext, so main init runs it (init may write adb_keys_file and read
+# /vendor/etc/a6l/adb_keys = vendor_configs_file). A release image ships neither the key nor this file.
+on post-fs-data && property:ro.vendor.a6l.debug.adbkey=1
+    mkdir /data/misc/adb 02750 system shell
+    copy /vendor/etc/a6l/adb_keys /data/misc/adb/adb_keys
+    chown system shell /data/misc/adb/adb_keys
+    chmod 0640 /data/misc/adb/adb_keys

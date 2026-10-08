@@ -35,17 +35,18 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.sf.lcd_density=400 \
     ro.surface_flinger.default_composition_pixel_format=5 \
     ro.vendor.a6l.rom=v2 \
-    persist.vendor.a6l.radio=1 \
-    persist.sys.usb.config=adb
+    persist.vendor.a6l.radio=1
 
 # selinux-20261007 (firmware/extracted/selinux-20261007/README.md, group G9): platform-owned properties may not be set
 # from /vendor (r11 vendor_init denials: set system_prop service.sf.prime_shader_cache, set use_memfd_prop sys.use_memfd;
 # the latter is neverallowed for vendor_init, the former is a platform property /vendor should not own). The system_ext
 # build.prop is loaded by init itself before early-init, so
 # sys.use_memfd (no ashmem on 7.2) is in place even earlier than the old `on init` setprop in init.qcom.rc.
+# Pass 2 (round 12): persist.sys.usb.config=adb too (system_prop, vendor_init set denied; was PRODUCT_VENDOR_PROPERTIES).
 PRODUCT_SYSTEM_EXT_PROPERTIES += \
     service.sf.prime_shader_cache=false \
-    sys.use_memfd=true
+    sys.use_memfd=true \
+    persist.sys.usb.config=adb
 
 # CameraX recording uses a persistent encoder surface. The software Codec2
 # service has no native input-surface factory; select Android's built-in AIDL

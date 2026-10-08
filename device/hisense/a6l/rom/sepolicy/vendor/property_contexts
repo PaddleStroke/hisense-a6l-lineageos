@@ -8,3 +8,6 @@ persist.vendor.a6l.gpu.pm_hold u:object_r:vendor_a6l_prop:s0 exact enum 0 1
 # selinux-20261007: Mesa / minigbm runtime options (read by every graphics client; rom/selinux/sepolicy/vendor/graphics.te)
 vendor.mesa.                u:object_r:vendor_a6l_gfx_prop:s0
 vendor.minigbm.             u:object_r:vendor_a6l_gfx_prop:s0
+# selinux-20261007 pass 2 (round 12): SurfaceFlinger reads vendor.display.vds_allow_hwc at start (SurfaceFlinger.cpp,
+# r12 surfaceflinger vendor_default_prop open/getattr/map); readable by every domain like the other graphics options
+vendor.display.vds_allow_hwc u:object_r:vendor_a6l_gfx_prop:s0 exact bool
