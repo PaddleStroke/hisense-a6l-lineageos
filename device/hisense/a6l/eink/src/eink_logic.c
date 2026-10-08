@@ -406,6 +406,7 @@ int front_follow_step(struct front_follow *f, int front_off) {
 /* ---------------- 9. per-plane copy policy (eink-round5) ---------------- */
 size_t pcopy_chunk(size_t knob_bytes, size_t n) { (void)n; return knob_bytes ? knob_bytes : GUARDED_COPY_CHUNK; }
 int pcache_usable(double age_s, int same_geometry) { return same_geometry && age_s >= 0 && age_s <= PCACHE_MAX_AGE_S; }
+int pcache_usable_instead_of_stitch(double age_s, int same_geometry) { return same_geometry && age_s >= 0 && age_s <= PCACHE_STITCH_MAX_AGE_S; }
 /* copy [from, n) from src in chunks, checking the plane after each one. Returns 0 = complete; 1 = flipped, *seam = start
  * of the chunk after which the flip was seen (that chunk is suspect: it is copied again from the new buffer); -1 = error */
 static int pcopy_run(uint8_t *dst, const uint8_t *src, size_t from, size_t n, size_t chunk, const struct pcopy_ops *ops,

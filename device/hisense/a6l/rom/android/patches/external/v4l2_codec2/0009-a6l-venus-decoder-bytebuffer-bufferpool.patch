@@ -1,0 +1,61 @@
+--- a/components/DecodeComponent.cpp
++++ b/components/DecodeComponent.cpp
+@@ -12,9 +12,11 @@
+ #include <linux/videodev2.h>
+ #include <stdint.h>
+ 
++#include <atomic>
+ #include <memory>
+ 
+ #include <C2.h>
++#include <C2BufferPriv.h>
+ #include <C2PlatformSupport.h>
+ #include <Codec2Mapper.h>
+ #include <SimpleC2Interface.h>
+@@ -198,7 +200,25 @@
+     auto poolId = mIntfImpl->getBlockPoolId();
+     ALOGI("Using C2BlockPool ID = %" PRIu64 " for allocating output buffers", poolId);
+     std::shared_ptr<C2BlockPool> blockPool;
+-    auto status = GetCodec2BlockPool(poolId, std::move(sharedThis), &blockPool);
++    c2_status_t status = C2_NOT_FOUND;
++    // A6L patch 0009: ByteBuffer mode (BASIC_GRAPHIC): recycled, bufferpool2-backed gralloc buffers.
++    if (poolId == C2BlockPool::BASIC_GRAPHIC && !mIsSecure &&
++        property_get_bool("vendor.a6l.c2dec.bytebuffer_pool", true)) {
++        static std::atomic<C2BlockPool::local_id_t> sNextLocalId{C2BlockPool::PLATFORM_START + 0xA6100};
++        std::shared_ptr<C2Allocator> allocator;
++        status = GetCodec2PlatformAllocatorStore()->fetchAllocator(C2PlatformAllocatorStore::GRALLOC,
++                                                                   &allocator);
++        if (status == C2_OK && allocator) {
++            blockPool = std::make_shared<C2PooledBlockPool>(allocator, sNextLocalId++,
++                                                            C2PooledBlockPool::VER_AIDL2);
++            ALOGI("ByteBuffer output: bufferpool2 gralloc pool %" PRIu64 " instead of the basic pool",
++                  blockPool->getLocalId());
++        } else {
++            ALOGW("No gralloc allocator (%d), keeping the basic graphic pool", status);
++            status = C2_NOT_FOUND;
++        }
++    }
++    if (!blockPool) status = GetCodec2BlockPool(poolId, std::move(sharedThis), &blockPool);
+     if (status != C2_OK) {
+         ALOGE("Graphic block allocator is invalid: %d", status);
+         reportError(status);
+--- a/components/VideoFramePool.cpp
++++ b/components/VideoFramePool.cpp
+@@ -74,6 +74,17 @@
+     case V4L2AllocatorId::SECURE_LINEAR: {
+         std::shared_ptr<_C2BlockPoolData> blockPoolData =
+                 _C2BlockFactory::GetGraphicBlockPoolData(block);
++        // A6L patch 0009: a basic (non-pooled) graphic block has no pool data - fail, do not crash.
++        if (!blockPoolData) {
++            ALOGE("C2GraphicBlock without pool data (basic graphic pool): buffers cannot be recycled.");
++            return std::nullopt;
++        }
++        if (blockPoolData->getType() == _C2BlockPoolData::TYPE_BUFFERPOOL2) {
++            // AIDL bufferpool2: the same allocation (dmabuf) comes back when recycled.
++            auto dmabufId = android::getDmabufId(block.handle()->data[0]);
++            if (!dmabufId) return std::nullopt;
++            return dmabufId.value();
++        }
+         if (blockPoolData->getType() != _C2BlockPoolData::TYPE_BUFFERPOOL) {
+             ALOGE("Obtained C2GraphicBlock is not bufferpool-backed.");
+             return std::nullopt;

@@ -1,0 +1,65 @@
+--- a/v4l2/V4L2Decoder.cpp
++++ b/v4l2/V4L2Decoder.cpp
+@@ -226,6 +226,22 @@
+     ALOGV("%s()", __func__);
+     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
+ 
++    // A6L: stateful decoders may refuse CAPTURE G_FMT until the headers are parsed (V4L2 stateful
++    // decoder spec; upstream venus-dec returns -EINVAL). Those get the classic flow: the CAPTURE
++    // queue is set up at the first V4L2_EVENT_SOURCE_CHANGE (changeResolution()).
++    {
++        struct v4l2_format probe;
++        memset(&probe, 0, sizeof(probe));
++        probe.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
++        if (mDevice->ioctl(VIDIOC_G_FMT, &probe) != 0) {
++            ALOGI("CAPTURE format unknown before the stream headers (errno %d): no initial output "
++                  "buffer, waiting for the first resolution change",
++                  errno);
++            mNoInitialOutput = true;
++            return true;
++        }
++    }
++
+     if (!setupMinimalOutputFormat()) {
+         ALOGE("Failed to set minimal resolution for initial output buffers");
+         return false;
+@@ -367,7 +383,7 @@
+     // To determine if the DRC is pending, the access to the frame data is
+     // required. It's not possible to access the frame directly for the secure
+     // playback, so this check must be skipped. b/279834186
+-    if (!mIsSecure && mInitialEosBuffer && !mPendingDRC)
++    if (!mIsSecure && (mInitialEosBuffer || mNoInitialOutput) && !mPendingDRC)
+         mPendingDRC = waitForDRC(buffer->dmabuf, mCodec);
+ 
+     if (!mIsSecure && (mCodec == VideoCodec::H264 || mCodec == VideoCodec::HEVC))
+@@ -429,6 +445,18 @@
+                 return;
+             }
+ 
++            // A6L: without an initial output buffer the CAPTURE queue only streams after the
++            // first resolution change. If no key frame was queued, none will come: finish the
++            // drain now (same rule as the initial-EOS case below).
++            if (mNoInitialOutput && !mOutputQueue->isStreaming() && !mPendingDRC) {
++                ALOGV("Terminate drain, because there was no stream (no initial output)");
++                auto request = std::move(mDecodeRequests.front());
++                mDecodeRequests.pop();
++                mTaskRunner->PostTask(FROM_HERE, ::base::BindOnce(std::move(request.decodeCb),
++                                                                  VideoDecoder::DecodeStatus::kOk));
++                return;
++            }
++
+             // If output queue is not streaming, then device is unable to notify
+             // whenever draining is finished. (EOS frame cannot be dequeued).
+             // This is likely to happen in the event of that the first resolution
+--- a/v4l2/include/v4l2_codec2/v4l2/V4L2Decoder.h
++++ b/v4l2/include/v4l2_codec2/v4l2/V4L2Decoder.h
+@@ -112,6 +112,9 @@
+ 
+     // Contains the initial EOS buffer, until DRC event is dequeued.
+     sp<GraphicBuffer> mInitialEosBuffer;
++    // A6L: the driver refuses CAPTURE setup before the stream headers (Venus): no initial EOS
++    // buffer, the CAPTURE queue is first set up at the first resolution change.
++    bool mNoInitialOutput = false;
+ 
+     std::queue<DecodeRequest> mDecodeRequests;
+     std::map<int32_t, DecodeCB> mPendingDecodeCbs;

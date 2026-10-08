@@ -609,8 +609,25 @@ static void test_benign_flips(void) {
     CHECK(res == PCOPY_OK && !memcmp(dst, b, N), "one changed byte above the seam: the copy is exactly the new frame, never mixed (res %d)", res);
 }
 
+/* eink-round8c: a marquee band changing at every flip (round 18 keyguard "Invalid Card" text): the copy policy never
+ * returns OK with a mix; and the last consistent copy is preferred over a stitch for up to 3 s */
+static void test_marquee(void) {
+    enum { N = 2 * 1024 * 1024 + 11 };
+    static uint8_t a[N], b[N], c[N], dst[N];
+    for (size_t i = 0; i < N; i++) a[i] = b[i] = c[i] = (uint8_t)(i * 7 + 3);
+    for (size_t i = 0; i < 65536; i++) { a[i] = 0x10; b[i] = 0x20; c[i] = 0x30; }	/* the scrolling text band */
+    struct redraw r = {{a, b, c}, 0, 2, 0, 0}; struct pcopy_stats st;
+    int res = plane_copy_policy(dst, N, 256 * 1024, PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &rd_ops, &r, &st);
+    int exact = !memcmp(dst, a, N) || !memcmp(dst, b, N) || !memcmp(dst, c, N);
+    CHECK(res != PCOPY_OK || exact, "marquee: never PCOPY_OK with a mixed picture (res %d exact %d benign %d)", res, exact, st.benign);
+    int band_one = 1; for (size_t i = 1; i < 65536; i++) band_one &= dst[i] == dst[0];
+    CHECK(band_one && !memcmp(dst + 65536, a + 65536, N - 65536), "marquee: the changing band comes from one frame, the rest is the constant picture");
+    CHECK(pcache_usable_instead_of_stitch(2.9, 1) && !pcache_usable_instead_of_stitch(3.1, 1) && !pcache_usable_instead_of_stitch(1.0, 0) && !pcache_usable(0.6, 1),
+          "stitch replaced by the last consistent copy up to 3 s (same geometry); the torn fallback bound stays 0.5 s");
+}
+
 int main(void) {
-    test_benign_flips(); test_guarded_copy(); test_drawer_capture(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
+    test_marquee(); test_benign_flips(); test_guarded_copy(); test_drawer_capture(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
     test_tone(); test_policy_release_settle(); test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
     printf("%s: %d checks, %d failures\n", fails ? "EINK_LOGIC_TESTS_FAIL" : "EINK_LOGIC_TESTS_PASS", checks, fails);
     return fails != 0;

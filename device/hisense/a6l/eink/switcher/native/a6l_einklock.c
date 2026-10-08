@@ -293,7 +293,7 @@ int main(int argc, char **argv) {
     struct elk_sm sm; elk_sm_init(&sm);
     sm.restore_pending = 1;	/* a previous instance may have died while locked: restored once awake on the e-ink */
     double t_start = mono(), gap_prev = boottime() - mono(), last_transition = -100; int holding = 0;
-    LOG("start: enabled=%d clock=%d bg=%d period=%d s lead=%d ms socket=%s", cfg.enabled, cfg.clock, cfg.bg, period_s, lead_ms, epd_socket);
+    KLOG("start: enabled=%d clock=%d bg=%d period=%d s lead=%d ms socket=%s", cfg.enabled, cfg.clock, cfg.bg, period_s, lead_ms, epd_socket);
     while (!stop && (!exit_after || mono() - t_start < exit_after)) {
         struct epoll_event got; int n = epoll_wait(ep, &got, 1, 250), fired = 0;
         if (n < 0 && errno != EINTR) { LOG("FAIL epoll_wait: %s", strerror(errno)); break; }
@@ -333,6 +333,8 @@ int main(int argc, char **argv) {
         { char pr[96]; if (prop_get("vendor.dualux.prepare", pr, sizeof pr) > 0) last_transition = mono(); }
         int settling = mono() - last_transition < ELK_SETTLE_S;
         int changed = !elk_cfg_equal(&cfg, &prev);
+        if (cfg.clock != prev.clock || cfg.enabled != prev.enabled)	/* eink-round8c: visible in the kernel log too */
+            KLOG("lock screen settings: enabled=%d clock=%d (persist.sys.a6l.eink.lock / .lock_clock)", cfg.enabled, cfg.clock);
         if (atol(seq) != bg_seq) { bg_seq = atol(seq); load_bg(); changed |= cfg.bg == ELK_BG_IMAGE; }
         prev = cfg;
         /* eink-round5: a system suspend since the previous loop (CLOCK_MONOTONIC stops in s2idle, CLOCK_BOOTTIME does not) */

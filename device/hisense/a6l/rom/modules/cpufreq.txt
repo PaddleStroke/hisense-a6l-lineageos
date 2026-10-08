@@ -1,0 +1,12 @@
+# cpufreq-20261007 (docs: firmware/extracted/cpufreq-20261007): SDM660 CPU DVFS = CPRh voltage controller + OSM cpufreq,
+# out-of-tree modules built against the r5 ROM kernel (vermagic 7.2.3-a6l-probe+, import CRCs checked).
+# Needs the boot DT marked /chosen/hisense,a6l-cpufreq = "osm-20261007" (boot-cpufreq-osm-venus.img); on an older DT both
+# modules load and bind nothing. Order matters: CPRh (voltages) before the OSM driver. Full stock frequency tables
+# (speed bin 0/1), stock fused open-loop voltages, schedutil (kernel default), DT thermal cooling-maps (70 C passive).
+# Not unloadable. Opt-out (next boot): setprop persist.vendor.a6l.cpufreq 0. Closed loop, once validated: append
+# "a6l_closed_loop=1" to the a6l_cpr3.ko line.
+# rev 13b (8 Oct 2026, validated on the phone: both clusters to the top index, fused open loop silver 612-900 mV / gold
+# 692-940 mV, sweep + 2 min all-core bench, thermal cooling active): the L2 SAW AVS init (a6l_saw_init=1, stock
+# AVS_LIMIT/AVS_CTL) is what lets CPRh drive the PMIC; without it the clock stays at ~300 MHz. Parameters = the tested ones.
+a6l_cpr3.ko a6l_step_delay_ms=700
+a6l_cpufreq_osm.ko a6l_step_delay_ms=700 a6l_domains=3 a6l_saw_init=1 a6l_set_alt=1

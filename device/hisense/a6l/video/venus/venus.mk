@@ -22,7 +22,9 @@
 # b10b: the HFI 3xx firmware reports no crop (1920x1080 H.264 decodes as 1920x1088): patch 0006 takes the visible rect
 # from the SPS when the driver gives none. b10b (8 Oct): 1080p 136-147 fps, every MD5 matches -> dec=1 once b10c passes.
 # Inherited from rom/rom.mk; sepolicy via BoardConfig-venus.mk.
-# Round 18 (8 Oct 2026): decoder default back to 0 - Codec2 playback stalls (venus "HW is overloaded" with no client fps;
+# Round 19 (8 Oct 2026): decoder ON again - prod5e (unknown size -> 320x240, filled_len minus data_offset) + Codec2
+# 0007 (no CAPTURE G_FMT before headers) + 0008 (MMAP bitstream input, csd merged) + 0009 (ByteBuffer pool): b11d ACCEPT=1
+# (Surface 1080p 136-145 fps, every frame bit-exact, HAL never died). Previously (round 18): decoder default back to 0 - Codec2 playback stalls (venus "HW is overloaded" with no client fps;
 # patch 0007 fixes the early CAPTURE G_FMT) - Gallery could not play anything with dec=1 on round 17.
 A6L_VENUS_DIR := device/hisense/a6l/video/venus
 
@@ -42,7 +44,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.v4l2_codec2.device_name_filter=venus \
     ro.vendor.v4l2_codec2.encoder.output_mmap=true \
     persist.vendor.a6l.venus=1 \
-    persist.vendor.a6l.venus.dec=0
+    persist.vendor.a6l.venus.dec=1
 
 PRODUCT_COPY_FILES += \
     $(A6L_VENUS_DIR)/media_codecs_c2.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_c2.xml \

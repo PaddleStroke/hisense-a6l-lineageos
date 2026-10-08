@@ -392,6 +392,36 @@ static void img_from_u8(const uint8_t *px, int w, int h) {
     }
     input_dither_ms = 0; input_pack_ms = (now() - t0) * 1000;
 }
+/* eink-round8c: "dump" / "dumpring N" (any build type; the socket is root/system only). The 8-bit grey picture of the last
+ * update (frame, lock picture or lock restore) as received, before dither, written as a PGM under A6L_TRACE_DIR
+ * (/data/vendor/epd, a6l_epd_data_file): last-frame.pgm on "dump", dump-NN.pgm for each of the next updates on
+ * "dumpring N" (ring of N files, 0 = off). Lets the e-ink output be checked remotely (tears, the lock clock):
+ *   adb root; adb shell /vendor/bin/a6l_eink_mirror --send dump; adb pull /data/vendor/epd/last-frame.pgm */
+static uint8_t *last_grey, *mirror_grey; static int last_gw, last_gh, mirror_gw, mirror_gh, dump_ring_n, dump_ring_i;
+static char last_grey_kind[24];
+static void grey_note(const uint8_t *px, int w, int h, const char *kind) {
+    if (!last_grey && !(last_grey = malloc(IW * IH))) return;
+    memcpy(last_grey, px, (size_t)w * h); last_gw = w; last_gh = h;
+    snprintf(last_grey_kind, sizeof last_grey_kind, "%s", kind);
+}
+static int grey_write(const char *name, int update, char *reply, size_t rn) {
+    if (!last_grey || !last_gw) { if (reply) snprintf(reply, rn, "ERR dump: no picture yet"); return -1; }
+    char path[sizeof(A6L_TRACE_DIR) + 48], tmp[sizeof path + 8];
+    snprintf(path, sizeof path, "%s/%s", A6L_TRACE_DIR, name); snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0640);
+    if (fd < 0) { if (reply) snprintf(reply, rn, "ERR dump %s: %s", tmp, strerror(errno)); return -1; }
+    char hdr[160]; int hn = snprintf(hdr, sizeof hdr, "P5\n# a6l_epdd update=%d kind=%s boot_ms=%.0f\n%d %d\n255\n", update, last_grey_kind, trace_boot_ms(), last_gw, last_gh);
+    int bad = trace_write_all(fd, hdr, (size_t)hn) || trace_write_all(fd, last_grey, (size_t)last_gw * last_gh);
+    if (close(fd)) bad = 1;
+    if (bad || rename(tmp, path)) { unlink(tmp); if (reply) snprintf(reply, rn, "ERR dump %s: write failed", path); return -1; }
+    if (reply) snprintf(reply, rn, "OK dump %s update=%d kind=%s %dx%d", path, update, last_grey_kind, last_gw, last_gh);
+    return 0;
+}
+static void grey_ring(void) {	/* after each successful update */
+    if (dump_ring_n <= 0) return;
+    char name[32]; snprintf(name, sizeof name, "dump-%02d.pgm", dump_ring_i % dump_ring_n); dump_ring_i++;
+    char r[256]; if (grey_write(name, updates, r, sizeof r)) LOG("WARN %s", r);
+}
 static int load_grey(const uint8_t *px, int w, int h) {	/* v4 "frame" command */
     double t0 = now();
     if (!size_ok(w, h)) { LOG("FAIL frame %dx%d: need 1440x720 or 720x1440", w, h); return -1; }
@@ -1123,7 +1153,8 @@ static int lock_clean;
 static int lock_frame(const uint8_t *payload, int w, int h, int m, int force) {
     if (!size_ok(w, h)) { LOG("FAIL lockframe %dx%d: need 1440x720 or 720x1440", w, h); return -1; }
     if (!lock_on_panel) {
-        if (have_last && (mirror_img || (mirror_img = malloc(RGBA)))) { memcpy(mirror_img, last_img, RGBA); mirror_mode = last_mode; have_mirror = 1; }
+        if (have_last && (mirror_img || (mirror_img = malloc(RGBA)))) { memcpy(mirror_img, last_img, RGBA); mirror_mode = last_mode; have_mirror = 1;
+            if (last_grey && (mirror_grey || (mirror_grey = malloc(IW * IH)))) { memcpy(mirror_grey, last_grey, (size_t)last_gw * last_gh); mirror_gw = last_gw; mirror_gh = last_gh; } }
         else have_mirror = 0;
         LOG("lock screen: first lock picture (%s)", have_mirror ? "the current picture is kept for the restore" : "no earlier picture to keep");
     }
@@ -1131,6 +1162,7 @@ static int lock_frame(const uint8_t *payload, int w, int h, int m, int force) {
     int rc = recover();
     if (!rc) rc = load_grey(payload, w, h);
     if (!rc) {
+        grey_note(payload, w, h, force ? "lock-clean" : "lock");	/* eink-round8c */
         memcpy(last_img, img.data, RGBA); have_last = 1; last_mode = m; lock_on_panel = 1; lock_frames++;
         rc = run_update(force, m, force ? "lock-clean" : "lock");
     }
@@ -1172,6 +1204,7 @@ static int lock_restore(int off, char *reply, size_t rn) {
     else {
         lock_on_panel = 0; rc = recover();
         if (!rc) { memcpy(img.data, mirror_img, RGBA); memcpy(last_img, mirror_img, RGBA); have_last = 1; last_mode = mirror_mode; rc = run_update(lock_clean, lock_clean ? 2 : mirror_mode, lock_clean ? "lock-restore-clean" : "lock-restore"); }
+        if (!rc && mirror_grey) { grey_note(mirror_grey, mirror_gw, mirror_gh, "lock-restore"); grey_ring(); }	/* eink-round8c */
         if (rc) snprintf(reply, rn, "ERR lock restore failed (see log)");
         else snprintf(reply, rn, "OK lock restore: earlier picture redrawn in %d ms (update %d)", last_ms, updates);
     }
@@ -1200,6 +1233,9 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
         return 0;
     }
     if (!strcmp(line, "ping")) { snprintf(reply, rn, "OK pong"); return 0; }
+    if (!strcmp(line, "dump")) return grey_write("last-frame.pgm", updates, reply, rn);	/* eink-round8c */
+    if (!strncmp(line, "dumpring ", 9)) { int k = atoi(line + 9); dump_ring_n = k < 0 ? 0 : k > 64 ? 64 : k; dump_ring_i = 0;
+        snprintf(reply, rn, "OK dumpring %d (%s/dump-NN.pgm after each update)", dump_ring_n, A6L_TRACE_DIR); return 0; }
     if (!strcmp(line, "quit")) { stop = 1; snprintf(reply, rn, "OK quitting"); return 0; }
     if (!strcmp(line, "status")) {
         char st[200]; bringup_status(st, sizeof st);
@@ -1217,7 +1253,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
         if (cold_guard("lock picture", reply, rn)) return -1;	/* eink-round6: nothing changed (picture, lock state) */
         rc = lock_frame(payload, w, h, mname[0] ? mode_by_name(mname, 3) : 3, flag[0] != 0);
         if (rc) snprintf(reply, rn, "ERR lock picture failed (see log)");
-        else snprintf(reply, rn, "OK lock picture shown in %d ms (update %d), crtc off", last_ms, updates);
+        else { snprintf(reply, rn, "OK lock picture shown in %d ms (update %d), crtc off", last_ms, updates); grey_ring(); }
         return rc;
     }
     if (!strncmp(line, "mode ", 5)) { mode = mode_by_name(line + 5, mode); snprintf(reply, rn, "OK mode=%d", mode); return 0; }
@@ -1240,6 +1276,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
         trace_poll();
         if (!rc && size_ok(w,h)) trace_capture(payload,w,h,m,clean,line);
         if (!rc) rc = load_grey(payload, w, h);
+        if (!rc) grey_note(payload, w, h, clean ? "frame-clean" : "frame");	/* eink-round8c */
         if (!rc) { trace_post(); lock_on_panel = 0; }
         if (!rc && clean) {
             /* Stock ghost clearing forces GC16 on the actual page. Reserve
@@ -1260,7 +1297,7 @@ static int exec_cmd(const char *line, const uint8_t *payload, char *reply, size_
     else if (sscanf(line, "show %511s %31s", path, mname) >= 1) { m = mode_by_name(mname, mode); lock_on_panel = 0; rc = show(path, m); }
     else { LOG("unknown command '%s'", line); snprintf(reply, rn, "ERR unknown command"); return -1; }
     if (rc) snprintf(reply, rn, "ERR update failed (see log)");
-    else snprintf(reply, rn, "OK shown in %d ms (update %d)", last_ms, updates);
+    else { snprintf(reply, rn, "OK shown in %d ms (update %d)", last_ms, updates); if (!strncmp(line, "frame ", 6)) grey_ring(); }
     trace_finish(rc,reply,exact_trace.drive_attempted);
     return rc;
 }

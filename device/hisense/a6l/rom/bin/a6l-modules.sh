@@ -53,7 +53,10 @@ load_list() {
         log "$1: insmod $ko ..."
         # restart-hang-20261007: show msm.ko init steps (info level) on the boot console, so a stuck boot names its last step
         [ "$ko" = msm.ko ] && { pk=$(cat /proc/sys/kernel/printk); echo 7 > /proc/sys/kernel/printk; }
-        if insmod "$M/$ko" $params; then log "$1: insmod $ko ok"; else log "$1: insmod $ko FAILED rc=$?"; fails=$((fails+1)); fi
+        # cpufreq-20261007 rev 13b (8 Oct 2026): the CPRh/OSM init runs on the calling CPU and reprograms both clusters;
+        # loaded pinned to cpu0 (silver), exactly as the validated phone runs (run-cpufreq.sh: taskset 1 insmod).
+        ts=""; [ "$1" = cpufreq ] && ts="taskset 1"
+        if $ts insmod "$M/$ko" $params; then log "$1: insmod $ko ok"; else log "$1: insmod $ko FAILED rc=$?"; fails=$((fails+1)); fi
         [ "$ko" = msm.ko ] && echo "$pk" > /proc/sys/kernel/printk
     done < "$L/$1.txt"
     log "$1: done fails=$fails"
@@ -245,6 +248,14 @@ adsp)
 misc)
     # rom-v2: fuel gauge, vibrator, flash LED, e-ink frontlight, cameras (probe only); charger only when enabled
     load_list misc
+    # cpufreq-20261007: CPU DVFS (CPRh + OSM). Default ON; persist.vendor.a6l.cpufreq=0 keeps the boot-chain clocks
+    # (adb is up long before this group, so a bad build can be switched off from a running system before it loads).
+    if [ "$(getprop persist.vendor.a6l.cpufreq)" != 0 ]; then
+        load_list cpufreq
+        for p in /sys/devices/system/cpu/cpufreq/policy*; do [ -d "$p" ] && log "misc: cpufreq ${p##*/} $(cat $p/scaling_driver 2>/dev/null) $(cat $p/scaling_governor 2>/dev/null) [$(cat $p/cpuinfo_min_freq 2>/dev/null)-$(cat $p/cpuinfo_max_freq 2>/dev/null)] cur $(cat $p/scaling_cur_freq 2>/dev/null)"; done
+    else
+        log "misc: cpufreq NOT loaded (persist.vendor.a6l.cpufreq=0; boot-chain CPU clocks)"
+    fi
     if [ "$(getprop persist.vendor.a6l.charger)" = 1 ]; then load_list charger; else log "misc: charger driver NOT loaded (persist.vendor.a6l.charger != 1; PMIC defaults)"; fi
     # merge2 (25 Sep): camera3 stack is EXPERIMENTAL (probe PASS; IMX576 streams but VFE0 status1 bit29 fires every frame;
     # no camera HAL): loaded only with persist.vendor.a6l.camera=1. Nothing may dump camss/VFE registers of a

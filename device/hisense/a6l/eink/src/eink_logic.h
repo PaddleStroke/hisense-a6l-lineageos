@@ -254,4 +254,9 @@ int plane_copy_policy(uint8_t *dst, size_t n, size_t chunk, int retries, int max
 /* last consistent copy of a plane: usable instead of a stitched/torn one only if it is recent and of the same buffer
  * geometry (any FB id of that plane: a BufferQueue cycles 3 buffers, round 4 required the same id) */
 int pcache_usable(double age_s, int same_geometry);
+int pcache_usable_instead_of_stitch(double age_s, int same_geometry);	/* eink-round8c */
 #define PCACHE_MAX_AGE_S 0.5
+/* eink-round8c (round 18: one line artefact per ~30 s on the keyguard): a STITCHED or TORN plane is never sent to the
+ * e-ink while the plane's last consistent copy is at most this old - a slightly stale but whole picture instead of
+ * bands of different frames. Beyond it (the plane changed during every copy for 3 s) the stitch is used, with a WARN. */
+#define PCACHE_STITCH_MAX_AGE_S 3.0

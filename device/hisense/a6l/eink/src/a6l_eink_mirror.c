@@ -474,13 +474,16 @@ static int capture_plane(struct pl *q, uint32_t plane_id, uint32_t crtc, int k, 
             pc->buf = scanout_copy; pc->cap = scanout_copy_n; scanout_copy = b; scanout_copy_n = c; pixels = pc->buf;
             pc->valid = 1; pc->id = q->fb; pc->fmt = d.fmt; pc->w = d.w; pc->h = d.h; pc->pitch = d.pitch; pc->t = now(); pc->geo = *q;
         }
-    } else if ((r == PCOPY_TORN || r == PCOPY_STITCHED) && pc && pcache_usable(now() - pc->t, pc->valid && pc->fmt == d.fmt && pc->w == d.w && pc->h == d.h &&
+    } else if ((r == PCOPY_TORN || r == PCOPY_STITCHED) && pc && pcache_usable_instead_of_stitch(now() - pc->t, pc->valid && pc->fmt == d.fmt && pc->w == d.w && pc->h == d.h &&
                                                      pc->pitch == d.pitch && pl_same_geometry(&pc->geo, q))) {
         /* eink-round8b: also instead of a STITCHED copy. A stitch is bands of consecutive frames with clean seams - fine
          * on an LCD (a vsync tear), but on the e-ink a moving edge cut by a seam stays as a stepped black/white line until
          * the next update (round 17 video, 8 Oct). The plane's last consistent copy (<= 0.5 s old) is shown instead. */
         pixels = pc->buf; *torn = 2;	/* still flipping after 12 switches: its last consistent copy (<= 0.5 s), never a torn one */
-    } else *torn = r == PCOPY_STITCHED ? 1 : 3;
+    } else {
+        *torn = r == PCOPY_STITCHED ? 1 : 3;
+        static unsigned warned; if (!(warned++ % 20)) LOG("WARN plane %d: no consistent copy for %.1f s: %s copy used (%u)", k, pc && pc->valid ? now() - pc->t : -1.0, *torn == 1 ? "stitched" : "torn", warned);
+    }
     if (r != PCOPY_OK && (*torn == 3 || st.switches > 6)) LOG("WARN plane %d: %d buffer switches during one copy (%s)", k, st.switches, *torn == 3 ? "torn" : "stitched");
     /* F41: reflection, rotation, scaling and the plane's blend equation (eink_logic.c plane_compose, host-tested) */
     struct plane_geo g2 = {q->cx, q->cy, q->cw, q->ch, q->sx, q->sy, q->sw, q->sh, q->rot, q->alpha, q->blend};

@@ -17,6 +17,9 @@ public final class SettingsProvider extends ContentProvider {
         if ("set".equals(method)) {
             String value = extras == null ? null : extras.getString("value");
             if (!SettingsValues.valid(arg, value)) throw new IllegalArgumentException("Invalid e-ink setting");
+            // eink-round8c: who changed what (round 18: persist.sys.a6l.eink.lock_clock was found at 0 with no trace)
+            android.util.Log.i(Dualux.TAG, "setting " + arg + " = " + value + " (caller uid " + android.os.Binder.getCallingUid()
+                    + " " + getCallingPackage() + ")");
             if ("theme".equals(arg)) PerScreenAppearance.get(getContext()).setTheme(value);
             else Dualux.set(SettingsValues.property(arg), value);
             /* eink-lockscreen: "lcd" = export the LCD wallpaper for the e-ink lock screen now (and after each change);

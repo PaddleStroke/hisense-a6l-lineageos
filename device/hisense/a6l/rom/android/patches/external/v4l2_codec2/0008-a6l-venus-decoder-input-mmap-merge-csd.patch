@@ -1,0 +1,182 @@
+--- a/v4l2/V4L2Decoder.cpp
++++ b/v4l2/V4L2Decoder.cpp
+@@ -18,6 +18,7 @@
+ #include <base/files/scoped_file.h>
+ #include <base/memory/ptr_util.h>
+ #include <log/log.h>
++#include <cutils/properties.h>
+ #include <utils/Trace.h>
+ 
+ #include <v4l2_codec2/common/Common.h>
+@@ -65,6 +66,33 @@
+     return false;
+ }
+ 
++// A6L patch 0008: true if the buffer holds NAL units but no slice (only SPS/PPS/VPS/SEI/AUD...).
++bool isParameterSetsOnly(const uint8_t* data, size_t size, VideoCodec codec) {
++    size_t nals = 0;
++    if (codec == VideoCodec::H264) {
++        H264NalParser parser(data, size);
++        while (parser.locateNextNal()) {
++            if (parser.length() == 0) continue;
++            nals++;
++            const uint8_t t = parser.type();
++            if (t >= 1 && t <= 5) return false;
++        }
++    } else if (codec == VideoCodec::HEVC) {
++        HEVCNalParser parser(data, size);
++        while (parser.locateNextNal()) {
++            if (parser.length() == 0) continue;
++            nals++;
++            if (parser.type() <= 31) return false;
++        }
++    } else {
++        return false;
++    }
++    return nals > 0;
++}
++
++constexpr size_t kNumInputBuffersMmap = 8;
++constexpr size_t kInputBufferSizeMmap = 4 * 1024 * 1024;
++
+ }  // namespace
+ 
+ // static
+@@ -202,15 +230,29 @@
+         return false;
+     }
+ 
++    // A6L patch 0008: MMAP bitstream buffers (copy) unless vendor.a6l.c2dec.input_mmap=false.
++    mInputMmap = property_get_bool("vendor.a6l.c2dec.input_mmap", true);
++    mMergeCsd = mInputMmap && property_get_bool("vendor.a6l.c2dec.merge_csd", true) &&
++                (mCodec == VideoCodec::H264 || mCodec == VideoCodec::HEVC);
++    ALOGI("Bitstream input: %s, parameter sets %s", mInputMmap ? "MMAP copy" : "DMABUF import",
++          mMergeCsd ? "merged into the next frame" : "queued as sent");
++
+     // Setup the input format.
+-    auto format = mInputQueue->setFormat(inputPixelFormat, ui::Size(), inputBufferSize, 0);
++    auto format = mInputQueue->setFormat(
++            inputPixelFormat, ui::Size(),
++            mInputMmap ? std::min(inputBufferSize, kInputBufferSizeMmap) : inputBufferSize, 0);
+     if (!format) {
+         ALOGE("Failed to call IOCTL to set input format.");
+         return false;
+     }
+     ALOG_ASSERT(format->fmt.pix_mp.pixelformat == inputPixelFormat);
+ 
+-    if (mInputQueue->allocateBuffers(kNumInputBuffers, V4L2_MEMORY_DMABUF) == 0) {
++    if (mInputMmap) {
++        if (mInputQueue->allocateBuffers(kNumInputBuffersMmap, V4L2_MEMORY_MMAP) == 0) {
++            ALOGE("Failed to allocate MMAP input buffers.");
++            return false;
++        }
++    } else if (mInputQueue->allocateBuffers(kNumInputBuffers, V4L2_MEMORY_DMABUF) == 0) {
+         ALOGE("Failed to allocate input buffer.");
+         return false;
+     }
+@@ -494,6 +536,17 @@
+             return;
+         }
+ 
++        if (mInputMmap) {
++            if (mInputQueue->freeBuffersCount() == 0 && !(mMergeCsd && mDecodeRequests.front().buffer)) {
++                ALOGV("There is no free input buffer.");
++                return;
++            }
++            auto request = std::move(mDecodeRequests.front());
++            mDecodeRequests.pop();
++            if (!queueInputMmap(std::move(request))) return;
++            continue;
++        }
++
+         auto dma_buf_id = getDmabufId(mDecodeRequests.front().buffer->dmabuf.handle()->data[0]);
+         if (!dma_buf_id) {
+             ALOGE("Failed to get dmabuf id");
+@@ -563,6 +616,73 @@
+     }
+ }
+ 
++// A6L patch 0008: copy one bitstream buffer (plus pending parameter sets) into a free MMAP buffer.
++// Returns false when decoding must pause (no free buffer: the request is put back) or failed (onError called).
++bool V4L2Decoder::queueInputMmap(DecodeRequest request) {
++    const int32_t bitstreamId = request.buffer->id;
++    C2ReadView view = request.buffer->dmabuf.map().get();
++    if (view.error() != C2_OK) {
++        ALOGE("Failed to map input buffer, bitstreamId=%d", bitstreamId);
++        std::move(request.decodeCb).Run(VideoDecoder::DecodeStatus::kError);
++        onError();
++        return false;
++    }
++    const uint8_t* data = view.data();
++    const size_t size = std::min<size_t>(request.buffer->size, view.capacity());
++
++    if (mMergeCsd && isParameterSetsOnly(data, size, mCodec)) {
++        ALOGV("bitstreamId=%d: %zu bytes of parameter sets, merged into the next frame", bitstreamId,
++              size);
++        mPendingParamSets.insert(mPendingParamSets.end(), data, data + size);
++        mTaskRunner->PostTask(FROM_HERE, ::base::BindOnce(std::move(request.decodeCb),
++                                                          VideoDecoder::DecodeStatus::kOk));
++        return true;
++    }
++
++    std::optional<V4L2WritableBufferRef> inputBuffer = mInputQueue->getFreeBuffer();
++    if (!inputBuffer) {
++        ALOGV("There is no free input buffer.");
++        std::queue<DecodeRequest> rest;
++        rest.push(std::move(request));
++        while (!mDecodeRequests.empty()) {
++            rest.push(std::move(mDecodeRequests.front()));
++            mDecodeRequests.pop();
++        }
++        std::swap(mDecodeRequests, rest);
++        return false;
++    }
++    const size_t total = mPendingParamSets.size() + size;
++    const size_t planeSize = inputBuffer->getPlaneSize(0);
++    uint8_t* dst = static_cast<uint8_t*>(inputBuffer->getPlaneMapping(0));
++    if (!dst || total > planeSize) {
++        ALOGE("Input of %zu bytes does not fit the %zu-byte MMAP buffer (mapping %p)", total, planeSize,
++              dst);
++        std::move(request.decodeCb).Run(VideoDecoder::DecodeStatus::kError);
++        onError();
++        return false;
++    }
++    if (!mPendingParamSets.empty()) {
++        memcpy(dst, mPendingParamSets.data(), mPendingParamSets.size());
++        ALOGV("bitstreamId=%d: %zu bytes of parameter sets prepended", bitstreamId,
++              mPendingParamSets.size());
++    }
++    memcpy(dst + mPendingParamSets.size(), data, size);
++    mPendingParamSets.clear();
++
++    ALOGV("QBUF (MMAP) to input queue, bitstreamId=%d, %zu bytes", bitstreamId, total);
++    inputBuffer->setTimeStamp({.tv_sec = bitstreamId});
++    inputBuffer->setPlaneDataOffset(0, 0);
++    inputBuffer->setPlaneBytesUsed(0, total);
++    if (!std::move(*inputBuffer).queueMMap()) {
++        ALOGE("%s(): Failed to QBUF to input queue, bitstreamId=%d", __func__, bitstreamId);
++        std::move(request.decodeCb).Run(VideoDecoder::DecodeStatus::kError);
++        onError();
++        return false;
++    }
++    mPendingDecodeCbs.insert(std::make_pair(bitstreamId, std::move(request.decodeCb)));
++    return true;
++}
++
+ void V4L2Decoder::flush() {
+     ATRACE_CALL();
+     ALOGV("%s()", __func__);
+--- a/v4l2/include/v4l2_codec2/v4l2/V4L2Decoder.h
++++ b/v4l2/include/v4l2_codec2/v4l2/V4L2Decoder.h
+@@ -115,6 +115,11 @@
+     // A6L: the driver refuses CAPTURE setup before the stream headers (Venus): no initial EOS
+     // buffer, the CAPTURE queue is first set up at the first resolution change.
+     bool mNoInitialOutput = false;
++    // A6L patch 0008: bitstream copied into driver MMAP buffers; parameter-set-only inputs merged forward.
++    bool mInputMmap = false;
++    bool mMergeCsd = false;
++    std::vector<uint8_t> mPendingParamSets;
++    bool queueInputMmap(DecodeRequest request);
+ 
+     std::queue<DecodeRequest> mDecodeRequests;
+     std::map<int32_t, DecodeCB> mPendingDecodeCbs;

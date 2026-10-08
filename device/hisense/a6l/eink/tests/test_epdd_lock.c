@@ -6,6 +6,7 @@
  * on the panel (any later frame/clear cancels it), "off" switches the CRTC off again; failures leave the panel unknown and
  * the restore goes through the usual recovery clear. */
 #define A6L_EPDD_HOSTTEST 1
+#define A6L_TRACE_DIR "/tmp/a6l_epdd_lock_test_dump"
 #define main a6l_epdd_main
 #include "../src/a6l_epdd.c"
 #undef main
@@ -146,6 +147,28 @@ int main(void) {
         EXPECT(exec_cmd("warm", NULL, reply, sizeof reply) != 0 && strstr(reply, "lcd-released") && !started && n_modeset == m0,
                "warm while the LCD pipeline is released: refused, no modeset");
         lcd_guard = "none"; unlink("/tmp/a6l_epdd_lock_test_guard");
+    }
+
+    /* eink-round8c: "dump" writes the grey picture of the last update as received (frame, lock, lock restore) */
+    {
+        lock_clean = 0; mkdir(A6L_TRACE_DIR, 0755);
+        cmd("frame 720 1440 quality", 123);
+        EXPECT(exec_cmd("dump", NULL, reply, sizeof reply) == 0 && strstr(reply, "kind=frame") && strstr(reply, "720x1440"), "dump after a frame: OK, kind=frame");
+        char p[256]; snprintf(p, sizeof p, "%s/last-frame.pgm", A6L_TRACE_DIR); FILE *f = fopen(p, "rb"); static uint8_t got[IW * IH + 256]; size_t n = f ? fread(got, 1, sizeof got, f) : 0; if (f) fclose(f);
+        int hdr = n > 21 && !memcmp(got, "P5\n# a6l_epdd update=", 21); const uint8_t *px = got + n - (size_t)IW * IH;
+        int same = n > (size_t)IW * IH; for (size_t i = 0; same && i < (size_t)IW * IH; i++) same &= px[i] == 123;
+        EXPECT(hdr && same, "dump file: PGM with the update header and exactly the received pixels");
+        cmd("lockframe 720 1440 reading", 77);
+        EXPECT(exec_cmd("dump", NULL, reply, sizeof reply) == 0 && strstr(reply, "kind=lock "), "dump after a lock picture: kind=lock");
+        EXPECT(exec_cmd("lock restore", NULL, reply, sizeof reply) == 0 && exec_cmd("dump", NULL, reply, sizeof reply) == 0 && strstr(reply, "kind=lock-restore"), "dump after the restore: the covered page (kind=lock-restore)");
+        f = fopen(p, "rb"); n = f ? fread(got, 1, sizeof got, f) : 0; if (f) fclose(f); px = got + n - (size_t)IW * IH;
+        EXPECT(n > (size_t)IW * IH && px[0] == 123 && px[IW * IH - 1] == 123, "restore dump shows the page that was under the lock picture");
+        EXPECT(exec_cmd("dumpring 2", NULL, reply, sizeof reply) == 0, "dumpring 2");
+        cmd("frame 720 1440 quality", 50); cmd("frame 720 1440 quality", 60); cmd("frame 720 1440 quality", 70);
+        snprintf(p, sizeof p, "%s/dump-00.pgm", A6L_TRACE_DIR); f = fopen(p, "rb"); n = f ? fread(got, 1, sizeof got, f) : 0; if (f) fclose(f);
+        EXPECT(n > (size_t)IW * IH && got[n - 1] == 70, "ring of 2: dump-00 holds the 3rd frame (overwritten in turn)");
+        exec_cmd("dumpring 0", NULL, reply, sizeof reply);
+        exec_cmd("power off", NULL, reply, sizeof reply);
     }
 
     printf("A6L_EPDD_LOCK_TEST %s\n", fails ? "FAIL" : "PASS");
