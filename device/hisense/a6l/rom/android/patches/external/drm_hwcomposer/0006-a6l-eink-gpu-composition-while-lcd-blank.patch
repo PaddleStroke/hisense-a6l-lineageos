@@ -1,0 +1,53 @@
+From: A6L port maintainers
+Subject: [PATCH] hwc: GPU-compose everything while the e-ink is the screen (vendor.dualux.lcd_blank=1)
+
+a6l_eink_mirror reads the LCD planes to draw the rear e-ink. With the device
+planes in use it copies one buffer per layer (wallpaper/white layer,
+launcher, status bar...) and alpha-composites them itself. Round 15 (8 Oct)
+measured 427-972 ms per capture with 3 planes (compose 136-601 ms; the
+scaled LCD wallpaper is the slow case, combo c) against 274 ms with one
+plane (HW overlays disabled, combo e: compose 61-75 ms). While
+vendor.dualux.lcd_blank=1 the LCD backlight is held off and nothing on the
+LCD is visible, so every layer is composed by the GPU into the client
+target and the mirror copies one plane. LCD mode is unchanged.
+vendor.hwc.drm.a6l_eink_gpu_only=0 turns it off.
+
+--- a/compositor/GenericCompositionPlanner.cpp
++++ b/compositor/GenericCompositionPlanner.cpp
+@@ -19,6 +19,8 @@
+ #include <tuple>
+ #include <vector>
+ 
++#include <android-base/properties.h>
++
+ #include "compositor/FlatteningController.h"
+ #include "compositor/LayerData.h"
+ #include "drm/DrmPlane.h"
+@@ -29,6 +31,18 @@ namespace android::drm_hwcomposer {
+ 
+ namespace {
+ 
++// Hisense A6L (eink-round8): while the rear e-ink is the active screen a6l_dualux sets vendor.dualux.lcd_blank=1 (LCD
++// backlight held off, nothing on the LCD is visible). Compose every layer with the GPU into the client target then:
++// a6l_eink_mirror reads the LCD planes to draw the e-ink, and one composed plane costs it one buffer copy instead of
++// one per layer plus its own alpha compositing (round 15, 8 Oct: capture 274 ms with one plane against 427-972 ms
++// with three, compose 61-75 ms against 136-601 ms). LCD mode is unchanged. vendor.hwc.drm.a6l_eink_gpu_only=0 turns
++// it off.
++bool A6lEinkGpuOnly() {
++  static android::base::CachedBoolProperty lcd_blank("vendor.dualux.lcd_blank");
++  static android::base::CachedBoolProperty knob("vendor.hwc.drm.a6l_eink_gpu_only");
++  return lcd_blank.Get(false) && knob.Get(true);
++}
++
+ const HwcLayer* GetCursorLayer(const std::vector<const HwcLayer*>& layers) {
+   auto it = std::find_if(layers.begin(), layers.end(),
+                          [&](auto* layer) -> bool {
+@@ -146,7 +160,7 @@ std::tuple<size_t, size_t> GenericCompositionPlanner::GetClientLayers(
+ 
+ bool GenericCompositionPlanner::IsClientLayer(const ICompositorDisplay* display,
+                                               const HwcLayer* layer) {
+-  return !HardwareSupportsLayerType(layer->GetSfType()) ||
++  return A6lEinkGpuOnly() || !HardwareSupportsLayerType(layer->GetSfType()) ||
+          !layer->IsLayerUsableAsDevice() || display->CtmByGpu() ||
+          (layer->GetLayerData().pi.RequireScalingOrPhasing() &&
+           display->ForcedScalingWithGpu());

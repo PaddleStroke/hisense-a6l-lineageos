@@ -230,7 +230,21 @@ struct pcopy_ops {
     int (*still)(void *ctx, uint32_t gen);
 };
 enum pcopy_res { PCOPY_ERR = -1, PCOPY_OK = 0, PCOPY_STITCHED = 1, PCOPY_TORN = 2, PCOPY_GONE = 3 };
-struct pcopy_stats { int attempts, checks, switches, geometry_changes; size_t first_seam; };
+struct pcopy_stats { int attempts, checks, switches, geometry_changes; size_t first_seam; int benign; };
+/* eink-round8 (round 15, 8 Oct: EVERY capture on the e-ink was discarded once and forced 0.4-1.0 s later - "capture
+ * discarded (a plane flipped during each copy of it (stitched))" then "capture forced after 1 discards (0.5 s)", 14-23
+ * times per 40 s switch window, all combos): an LCD layer redraws ~20 times a second while the page itself does not
+ * change (10 buffer switches in 29 vblanks during one capture; the e-ink saw no motion), so every plane copy saw a flip,
+ * retried twice, stitched, and the capture guard then held the picture back for its never-starve time. That was 0.5-2 s
+ * of the 1.2-3 s from mirror ON to the first e-ink page, and the same again on every page swipe.
+ * A flip is BENIGN when the new buffer reads the same as EVERYTHING copied so far, up to and including the chunk the flip
+ * was detected in (eink-round8b: 0045 compared only that chunk, and round 17 showed tear lines: a picture change above
+ * the seam chunk was let through). The copy then continues from that chunk in the new buffer (on screen, so never a
+ * buffer being re-rendered); the result is an exact copy of the buffer shown at the end, so a capture whose flips were
+ * all benign is consistent (PCOPY_OK). Any difference: handled as before (retry, then stitch, then the guard).
+ * pcopy_set_benign(0) (--benign-flips 0, persist.vendor.eink.benign_flips) restores the round-5 behaviour. */
+#define PCOPY_MAX_BENIGN 64
+void pcopy_set_benign(int on);
 #define PCOPY_RETRIES 2				/* whole-plane retries before stitching (as round 4's PLANE_RETRIES) */
 #define PCOPY_MAX_SWITCHES 12
 #define PCOPY_STITCH_CHUNK (256u << 10)		/* final attempt: at most 256 KiB between checks (~60 rows of 1080 px) */

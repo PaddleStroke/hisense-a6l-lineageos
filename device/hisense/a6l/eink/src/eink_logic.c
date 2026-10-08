@@ -420,6 +420,8 @@ static int pcopy_run(uint8_t *dst, const uint8_t *src, size_t from, size_t n, si
     }
     return 0;
 }
+static int pcopy_benign_on = 1;
+void pcopy_set_benign(int on) { pcopy_benign_on = on != 0; }
 int plane_copy_policy(uint8_t *dst, size_t n, size_t chunk, int retries, int max_switches,
                       const struct pcopy_ops *ops, void *ctx, struct pcopy_stats *st) {
     struct pcopy_stats z; if (!st) st = &z;
@@ -435,6 +437,21 @@ int plane_copy_policy(uint8_t *dst, size_t n, size_t chunk, int retries, int max
         int final = attempt >= retries;
         size_t ch = final && chunk > PCOPY_STITCH_CHUNK ? PCOPY_STITCH_CHUNK : chunk, seam = 0;
         int c = pcopy_run(dst, px, 0, n, ch, ops, ctx, gen, st, &seam);
+        while (c == 1 && pcopy_benign_on && st->benign < PCOPY_MAX_BENIGN) {	/* eink-round8: same pixels at the seam? */
+            size_t len = n - seam < ch ? n - seam : ch;
+            ops->close(ctx);
+            r = ops->open(ctx, &px, &gen);
+            if (r < 0) return PCOPY_ERR;
+            if (r == 1) return PCOPY_GONE;
+            if (r == 2) { st->geometry_changes++; seam = 0; break; }	/* other geometry: nothing above the seam is valid */
+            /* eink-round8b (round 17, 8 Oct: tear lines on the e-ink with 0045): the new buffer must equal EVERYTHING copied
+             * so far, not only the seam chunk. Then the result is an exact copy of the buffer on screen at the end (the
+             * rows above the seam read the same in it), whatever the producer changed: never a mix of two frames.
+             * Costs one more read of the copied part per flip, far below the guard's 0.4-1.0 s. */
+            if (memcmp(dst, px, seam + len)) break;			/* any difference: the round-5 path (retry, stitch, guard) */
+            st->benign++;
+            c = pcopy_run(dst, px, seam, n, ch, ops, ctx, gen, st, &seam);
+        }
         if (c <= 0) { ops->close(ctx); return c ? PCOPY_ERR : PCOPY_OK; }
         if (!final) { ops->close(ctx); continue; }	/* flipped during its own copy: copy the buffer it shows now */
         /* final attempt: stitch. Rows [0, seam) were read while `gen` was on screen (checked after each chunk). */

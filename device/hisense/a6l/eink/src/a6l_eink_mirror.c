@@ -39,6 +39,8 @@
  *        [--copy-guard-kib N] (eink-round3: drm source copies each plane in N KiB chunks and re-reads the plane set between
  *        chunks, so an A->B->A buffer flip during the copy discards the torn capture; default 1024; eink-round5: 0 = 1024,
  *        the check can no longer be switched off; a plane that flips during every copy is stitched, see plane_copy_policy)
+ *        [--benign-flips 0|1] (eink-round8, default 1: a plane flip that left the pixels at the copy position unchanged
+ *        continues the copy from the new buffer instead of retrying/stitching/discarding; eink_logic.h PCOPY_MAX_BENIGN)
  *        [--guard-max N,MS] (eink-round4: a capture whose LCD plane layout changed, or whose plane kept flipping during its
  *        own copy, is discarded at most N times in a row / for MS since the first discard, then the newest capture is
  *        accepted; default 3,400; 0,0 = never discard. Content flips of OTHER planes no longer discard anything)
@@ -281,6 +283,7 @@ static size_t guard_chunk = GUARDED_COPY_CHUNK;	/* --copy-guard-kib N; eink-roun
 static int keep_crtc_front_off;			/* --keep-crtc-front-off: old behaviour (e-ink CRTC stays on) */
 static struct cap_guard cguard;			/* eink-round4: discard bound, the mirror never starves */
 static int guard_max_discards = CAP_GUARD_MAX_DISCARDS, guard_max_ms = CAP_GUARD_MAX_MS;	/* --guard-max N,MS */
+static int cap_benign;	/* eink-round8: benign flips during the current capture (logged with the capture stages) */
 static struct front_follow front_ff;
 #ifndef NO_DRM
 static int drm_fd = -1;
@@ -458,7 +461,7 @@ static int capture_plane(struct pl *q, uint32_t plane_id, uint32_t crtc, int k, 
     double ts = now(), s0 = *sync_ms; struct pcopy_stats st;
     int r = plane_copy_policy(scanout_copy, bytes, pcopy_chunk(guard_chunk, bytes), PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &dpc_ops, &d, &st);
     *copy_ms += (now() - ts) * 1000 - (*sync_ms - s0);
-    *checks += st.checks; *switches += st.switches;
+    *checks += st.checks; *switches += st.switches; cap_benign += st.benign;
     if (d.layout_changed) *layout_changed = 1;
     if (r == PCOPY_ERR) { LOG("WARN plane %d copy: tuple/buffer query failed: %s", k, strerror(d.err)); return -1; }
     if (r == PCOPY_GONE) return 1;
@@ -471,8 +474,11 @@ static int capture_plane(struct pl *q, uint32_t plane_id, uint32_t crtc, int k, 
             pc->buf = scanout_copy; pc->cap = scanout_copy_n; scanout_copy = b; scanout_copy_n = c; pixels = pc->buf;
             pc->valid = 1; pc->id = q->fb; pc->fmt = d.fmt; pc->w = d.w; pc->h = d.h; pc->pitch = d.pitch; pc->t = now(); pc->geo = *q;
         }
-    } else if (r == PCOPY_TORN && pc && pcache_usable(now() - pc->t, pc->valid && pc->fmt == d.fmt && pc->w == d.w && pc->h == d.h &&
+    } else if ((r == PCOPY_TORN || r == PCOPY_STITCHED) && pc && pcache_usable(now() - pc->t, pc->valid && pc->fmt == d.fmt && pc->w == d.w && pc->h == d.h &&
                                                      pc->pitch == d.pitch && pl_same_geometry(&pc->geo, q))) {
+        /* eink-round8b: also instead of a STITCHED copy. A stitch is bands of consecutive frames with clean seams - fine
+         * on an LCD (a vsync tear), but on the e-ink a moving edge cut by a seam stays as a stepped black/white line until
+         * the next update (round 17 video, 8 Oct). The plane's last consistent copy (<= 0.5 s old) is shown instead. */
         pixels = pc->buf; *torn = 2;	/* still flipping after 12 switches: its last consistent copy (<= 0.5 s), never a torn one */
     } else *torn = r == PCOPY_STITCHED ? 1 : 3;
     if (r != PCOPY_OK && (*torn == 3 || st.switches > 6)) LOG("WARN plane %d: %d buffer switches during one copy (%s)", k, st.switches, *torn == 3 ? "torn" : "stitched");
@@ -530,6 +536,7 @@ static int capture_drm(void) {
         if (opaque) { first = k; break; }
     }
     int layout_changed = 0, torn = 0, torn_plane = -1, switches = 0, checks = 0;
+    cap_benign = 0;
     for (int k = first; k < n; k++) {
         struct pl *q = &pls[k]; int t = 0;
         int r = capture_plane(q, before.planes[q->ri].id, crtc, k, &t, &layout_changed, &sync_ms, &copy_ms, &compose_ms, &checks, &switches);
@@ -564,8 +571,8 @@ static int capture_drm(void) {
             seq_before_ok?"":"unavailable:",(unsigned long long)seq_before,
             seq_after_ok?"":"unavailable:",(unsigned long long)seq_after,switches,checks);
     captures++;
-    if (captures <= 3 || sync_ms + copy_ms + compose_ms > 250 || captures % 120 == 0)
-        LOG("capture stages: planes=%d culled=%d sync=%.0f ms copy=%.0f ms compose=%.0f ms", n, first, sync_ms, copy_ms, compose_ms);
+    if (captures <= 3 || sync_ms + copy_ms + compose_ms > 250 || captures % 120 == 0 || (cap_benign && captures % 20 == 0))
+        LOG("capture stages: planes=%d culled=%d sync=%.0f ms copy=%.0f ms compose=%.0f ms benign_flips=%d", n, first, sync_ms, copy_ms, compose_ms, cap_benign);
     return 0;
 }
 #else
@@ -1133,6 +1140,7 @@ int main(int argc, char **argv) {
         else if (OPT("--touch-transform")) snprintf(transform_forced, sizeof transform_forced, "%s", v);
         else if (OPT("--front")) { if (sscanf(v, "%dx%d", &front_w, &front_h) != 2) return 2; }
         else if (!strcmp(a,"--auto-small-regal")) auto_small_regal=1;
+        else if (OPT("--benign-flips")) pcopy_set_benign(atoi(v));	/* eink-round8 */
         else if (OPT("--copy-guard-kib")) guard_chunk = atoi(v) > 0 ? (size_t)atoi(v) * 1024 : 0;	/* round5: 0 = default (see pcopy_chunk) */
         else if (OPT("--pipeline")) pipeline = atoi(v) != 0;
         else if (OPT("--guard-max")) {	/* eink-round4: N discards / MS since the first one, then the newest capture is accepted */

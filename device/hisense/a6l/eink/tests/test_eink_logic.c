@@ -563,8 +563,54 @@ static void test_policy_split(void) {
     }
     CHECK(same && a.consec == b.consec && a.last_change == b.last_change, "policy: step == observe + decide");
 }
+/* eink-round8: a producer redrawing the SAME picture ~20 times a second (round 15: every capture saw flips, all of them
+ * discarded, none of them changed the page). Three BufferQueue slots with identical content, a flip every `every`
+ * checks. Benign flips: one attempt, an exact copy, PCOPY_OK. Round-5 behaviour (benign off): retries, then STITCHED. */
+struct redraw { const uint8_t *slot[3]; int shown, every, calls, opens; };
+static int rd_open(void *p, const uint8_t **px, uint32_t *gen) { struct redraw *r = p; r->opens++; *px = r->slot[r->shown % 3]; *gen = 100 + (uint32_t)(r->shown % 3); return 0; }
+static void rd_close(void *p) { (void)p; }
+static int rd_still(void *p, uint32_t gen) { struct redraw *r = p; if (++r->calls % r->every == 0) r->shown++; return 100 + (uint32_t)(r->shown % 3) == gen; }
+static const struct pcopy_ops rd_ops = {rd_open, rd_close, rd_still};
+static void test_benign_flips(void) {
+    enum { N = 4 * 1024 * 1024 + 77 };
+    static uint8_t a[N], b[N], c[N], dst[N];
+    for (size_t i = 0; i < N; i++) a[i] = b[i] = c[i] = (uint8_t)(i * 131 + 9);
+    struct redraw r = {{a, b, c}, 0, 2, 0, 0}; struct pcopy_stats st;
+    int res = plane_copy_policy(dst, N, 512 * 1024, PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &rd_ops, &r, &st);
+    CHECK(res == PCOPY_OK && st.attempts == 1 && st.benign >= 3 && !memcmp(dst, a, N),
+          "benign flips: identical redraws every 2 checks -> one attempt, exact copy, consistent (res %d attempts %d benign %d)", res, st.attempts, st.benign);
+    pcopy_set_benign(0);
+    struct redraw r0 = {{a, b, c}, 0, 2, 0, 0};
+    res = plane_copy_policy(dst, N, 512 * 1024, PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &rd_ops, &r0, &st);
+    CHECK((res == PCOPY_STITCHED || res == PCOPY_TORN) && st.attempts == PCOPY_RETRIES + 1 && st.benign == 0,
+          "benign off (round 5): retries, then stitched/torn (res %d attempts %d)", res, st.attempts);
+    pcopy_set_benign(1);
+    /* a real change at every flip (an animation): never benign, round-5 path (retries, stitch) */
+    for (size_t i = 0; i < N; i++) { b[i] = (uint8_t)(i * 131 + 10); c[i] = (uint8_t)(i * 131 + 11); }
+    struct redraw r2 = {{a, b, c}, 0, 3, 0, 0};
+    res = plane_copy_policy(dst, N, 512 * 1024, PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &rd_ops, &r2, &st);
+    CHECK(res != PCOPY_ERR && res != PCOPY_OK && st.benign == 0 && st.attempts == PCOPY_RETRIES + 1,
+          "real change at every flip: never benign, retries then stitched as in round 5 (res %d benign %d attempts %d)", res, st.benign, st.attempts);
+    for (size_t i = 0; i < N; i++) c[i] = a[i];
+    /* eink-round8b: identical except the top region (round 17 tear lines: 0045 let such a flip through on the seam chunk
+     * alone). The flip a -> b is NOT benign (b differs above the seam): the copy restarts from b; the later flip b -> b'
+     * (same pixels) is benign. The result is exactly b - never a's top over b's rest. */
+    for (size_t i = 0; i < N; i++) b[i] = a[i];
+    memset(b, 0xEE, 4096);
+    struct redraw r3 = {{a, b, b}, 0, 6, 0, 0};
+    res = plane_copy_policy(dst, N, 512 * 1024, PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &rd_ops, &r3, &st);
+    CHECK(res == PCOPY_OK && st.benign >= 1 && st.attempts == 2 && !memcmp(dst, b, N),
+          "change above the seam: not benign (restart from the new frame), then a benign same-pixel flip: exact copy of the newest frame (res %d benign %d attempts %d)", res, st.benign, st.attempts);
+    /* a change in a single row anywhere above the seam is never let through */
+    for (size_t i = 0; i < N; i++) { b[i] = a[i]; c[i] = a[i]; }
+    b[1234567] ^= 0xFF; c[1234567] ^= 0xFF;
+    struct redraw r4 = {{a, b, c}, 0, 6, 0, 0};
+    res = plane_copy_policy(dst, N, 512 * 1024, PCOPY_RETRIES, PCOPY_MAX_SWITCHES, &rd_ops, &r4, &st);
+    CHECK(res == PCOPY_OK && !memcmp(dst, b, N), "one changed byte above the seam: the copy is exactly the new frame, never mixed (res %d)", res);
+}
+
 int main(void) {
-    test_guarded_copy(); test_drawer_capture(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
+    test_benign_flips(); test_guarded_copy(); test_drawer_capture(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
     test_tone(); test_policy_release_settle(); test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
     printf("%s: %d checks, %d failures\n", fails ? "EINK_LOGIC_TESTS_FAIL" : "EINK_LOGIC_TESTS_PASS", checks, fails);
     return fails != 0;

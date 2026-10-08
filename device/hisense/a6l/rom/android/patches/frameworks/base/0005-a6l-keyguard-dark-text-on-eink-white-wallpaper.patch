@@ -1,0 +1,64 @@
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
+@@ -952,10 +952,22 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+     // ================================================================================
+     // Constructing the view
+     // ================================================================================
++    // A6L: re-pick the keyguard theme when the active screen or the e-ink wallpaper mode changes (property callback:
++    // any process may set the properties; only a change of the predicate re-themes).
++    private volatile boolean mA6lEinkWhite;
++
+     protected void makeStatusBarView() {
+         updateDisplaySize(); // populates mDisplayMetrics
+         updateResources();
++        mA6lEinkWhite = com.android.systemui.util.A6lEinkWallpaper.whiteOnEink();
+         updateTheme();
++        SystemProperties.addChangeCallback(() -> {
++            boolean white = com.android.systemui.util.A6lEinkWallpaper.whiteOnEink();
++            if (white != mA6lEinkWhite) {
++                mA6lEinkWhite = white;
++                mMainExecutor.execute(this::updateTheme);
++            }
++        });
+ 
+         setUpShade();
+         getNotificationShadeWindowView().setOnTouchListener(getStatusBarWindowTouchListener());
+@@ -1955,7 +1967,9 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+ 
+         // Lock wallpaper defines the color of the majority of the views, hence we'll use it
+         // to set our default theme.
+-        final boolean lockDarkText = mColorExtractor.getNeutralColors().supportsDarkText();
++        // A6L: on the rear e-ink the keyguard text sits on WM's white wallpaper layer, not on the lock wallpaper.
++        final boolean lockDarkText = mColorExtractor.getNeutralColors().supportsDarkText()
++                || com.android.systemui.util.A6lEinkWallpaper.whiteOnEink();
+         final int themeResId = lockDarkText ? R.style.Theme_SystemUI_LightWallpaper
+                 : R.style.Theme_SystemUI;
+         if (mContext.getThemeResId() != themeResId) {
+diff --git a/packages/SystemUI/src/com/android/systemui/util/A6lEinkWallpaper.java b/packages/SystemUI/src/com/android/systemui/util/A6lEinkWallpaper.java
+new file mode 100644
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/util/A6lEinkWallpaper.java
+@@ -0,0 +1,22 @@
++// SPDX-License-Identifier: Apache-2.0
++package com.android.systemui.util;
++
++import android.os.SystemProperties;
++
++/**
++ * A6L only. While the rear e-ink is the screen, WindowManager shows a white wallpaper layer there (frameworks/base
++ * 0002, persist.sys.a6l.eink.wallpaper=white) instead of the wallpaper whose colours SystemUI extracted. The keyguard
++ * then picked its light-text theme from the (dark) LCD lock wallpaper: the big clock (system_accent1_100) and the date
++ * were drawn near-white on white and vanished on the e-ink (8 Oct 2026, round 17 video "3:10" invisible).
++ */
++public final class A6lEinkWallpaper {
++    private A6lEinkWallpaper() { }
++
++    /** True when the keyguard text sits on the e-ink's white wallpaper layer: use the dark-text theme. */
++    public static boolean whiteOnEink() {
++        if (SystemProperties.get("ro.vendor.a6l.rom.build", "").isEmpty()) return false;
++        if (!SystemProperties.get("vendor.dualux.state", "lcd").startsWith("eink")) return false;
++        return !"lcd".equals(SystemProperties.get("persist.sys.a6l.eink.wallpaper", "white"))
++                && SystemProperties.getBoolean("persist.sys.a6l.eink.keyguard_dark_text", true);
++    }
++}

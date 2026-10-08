@@ -41,6 +41,9 @@ final class Dualux {
     static final String P_LOCK_24H = "persist.sys.a6l.eink.lock_24h";       // mirrored from Android by LockSync
     // eink-round11 reader sleep: 1 = no keyguard at all (Screen lock: None), so a6l_dualux may sleep between pages
     static final String P_READER_OK = "sys.a6l.dualux.reader_ok";
+    // eink-round8: 1 = raise the Material contrast level on the e-ink at each switch (round 2 behaviour); "always" = keep
+    // it raised on both screens (no per-switch overlay regeneration); default 0 = never (see PerScreenAppearance)
+    static final String MATERIAL_CONTRAST = "persist.sys.a6l.eink.material_contrast";
     static final int DEFAULT_CLEAR_EVERY = 10;   // a6l_eink.rc default (--clear-every 10)
 
     private static Method sGet, sSet;

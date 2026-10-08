@@ -20,8 +20,10 @@
 # Decoder (prod4, 8 Oct 2026): venus-dec + c2.v4l2.{avc,hevc,vp9,vp8}.decoder (rank 256), advertised only when the decoder
 # node exists (patch 0005). persist.vendor.a6l.venus.dec=0 until stage-b10-dec passes (MD5 vs ffmpeg), then 1.
 # b10b: the HFI 3xx firmware reports no crop (1920x1080 H.264 decodes as 1920x1088): patch 0006 takes the visible rect
-# from the SPS when the driver gives none. Keep dec=0 until stage-b10b shows >= 30 fps at 1080p (-N) and MD5 matches.
+# from the SPS when the driver gives none. b10b (8 Oct): 1080p 136-147 fps, every MD5 matches -> dec=1 once b10c passes.
 # Inherited from rom/rom.mk; sepolicy via BoardConfig-venus.mk.
+# Round 18 (8 Oct 2026): decoder default back to 0 - Codec2 playback stalls (venus "HW is overloaded" with no client fps;
+# patch 0007 fixes the early CAPTURE G_FMT) - Gallery could not play anything with dec=1 on round 17.
 A6L_VENUS_DIR := device/hisense/a6l/video/venus
 
 PRODUCT_SOONG_NAMESPACES += external/v4l2_codec2

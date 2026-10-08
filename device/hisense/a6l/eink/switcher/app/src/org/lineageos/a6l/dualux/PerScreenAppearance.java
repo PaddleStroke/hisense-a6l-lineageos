@@ -129,7 +129,17 @@ final class PerScreenAppearance {
             // themed-redraw deadline and every switch waited for the daemon's 3 s fail-open (6 Oct 17:01:44-47). It is
             // applied by the 500 ms bookkeeping right after the switch; the e-ink then shows one more update.
             if (!switching) {
-                String written = mContrast.update(eink && !"lcd".equals(theme()));
+                // eink-round8: the Material contrast level is no longer raised for the e-ink by default. Each write
+                // regenerates the theme overlays (Config changes=80000000 ASSETS_PATHS, twice), 2-4 s after every switch
+                // in both directions: round 15 (8 Oct) measured 35-38 skipped frames / a 704 ms HWUI frame on the LCD
+                // and one more e-ink update, right when the user starts to unlock or swipe. The mirror's tone curve
+                // (24/232/gamma 1.5) already darkens text for the paper. MATERIAL_CONTRAST=1 restores the round-2 behaviour.
+                // eink-round8b: "always" = the high contrast stays on BOTH screens while the e-ink theme is light/dark:
+                // one overlay regeneration when the setting changes (or at boot), none at switches.
+                String materialContrast = Dualux.get(Dualux.MATERIAL_CONTRAST, "0");
+                boolean wanted = !"lcd".equals(theme())
+                        && ("always".equals(materialContrast) || ("1".equals(materialContrast) && eink));
+                String written = mContrast.update(wanted);
                 if (written != null) Log.i(Dualux.TAG, "contrast_level -> " + written + " (" + (eink ? "e-ink" : "LCD") + ", screen settled)");
             }
             String animationState = eink ? "1" : "0";

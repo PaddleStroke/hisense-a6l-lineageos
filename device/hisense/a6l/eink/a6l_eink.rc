@@ -32,7 +32,7 @@ service vendor.a6l_epdd /vendor/bin/hw/a6l_epdd --socket a6l_epd --no-master --d
     # Display work may use all CPUs; do not confine it to system-background.
     task_profiles ProcessCapacityNormal
 
-service vendor.a6l_eink /vendor/bin/a6l_eink_mirror --source drm --auto-small-regal --wait-prop sys.boot_completed=1 --epd-socket /dev/socket/a6l_epd --interval ${persist.vendor.eink.interval_ms:-100} --clear-every ${persist.vendor.eink.clear_every:-10} --fit ${persist.vendor.eink.fit:-stretch} --key-dev ${persist.vendor.eink.key_dev:-none} --tone ${persist.vendor.eink.tone:-24,232,150} --copy-guard-kib ${persist.vendor.eink.copy_guard_kib:-1024} --guard-max ${persist.vendor.eink.guard_max:-3,400} --pipeline ${persist.vendor.eink.pipeline:-1}
+service vendor.a6l_eink /vendor/bin/a6l_eink_mirror --source drm --auto-small-regal --wait-prop sys.boot_completed=1 --epd-socket /dev/socket/a6l_epd --interval ${persist.vendor.eink.interval_ms:-100} --clear-every ${persist.vendor.eink.clear_every:-10} --fit ${persist.vendor.eink.fit:-stretch} --key-dev ${persist.vendor.eink.key_dev:-none} --tone ${persist.vendor.eink.tone:-24,232,150} --copy-guard-kib ${persist.vendor.eink.copy_guard_kib:-1024} --guard-max ${persist.vendor.eink.guard_max:-3,400} --benign-flips ${persist.vendor.eink.benign_flips:-1} --pipeline ${persist.vendor.eink.pipeline:-1}
     class hal
     user system
     group system graphics input uhid
