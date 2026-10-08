@@ -1,9 +1,9 @@
 # A6L port checklist
 
-## Current status — 8 Oct 2026 evening (installed: round 20; round 21 building)
+## Current status — 8 Oct 2026 late evening (installed: round 21)
 
-Installed: boot 10affa76 (force-normal cmdline, Venus CX DTB, cpufreq OSM nodes) + vendor d5b19d23 + system 51699e79
-(round 20). Kits: `/home/pierrelouis/A6L-usb-20260915/rom-r7c-round*-20261006` on the laptop; builds and audits in
+Installed: boot 10affa76 (force-normal cmdline, Venus CX DTB, cpufreq OSM nodes) + vendor 3281849b + system b3bd442c
+(round 21: round 20 + ath10k 0005 Wi-Fi-off fix + SELinux pass 2). Kits: `/home/pierrelouis/A6L-usb-20260915/rom-r7c-round*-20261006` on the laptop; builds and audits in
 `firmware/extracted/pm-logging-20261005/round*-{vendor,system}-*` (build-round12-image.py, audit-round*-*.py,
 stage-round4-kit.py). Handoff detail: `docs/handoff-20261005-claude.md`. SELinux: permissive (prep rules, pass 1).
 
@@ -22,16 +22,16 @@ not yet exercised · **OPEN** = not working / not started.
 | Camera: 3 sensors, photo/video, 1080p (two-stream HAL fix) | PARTIAL | works (HAL 0a203bd4). Image-quality root causes found (camera-iq-20261008): hw-ISP black point = red channel value applied to all channels before WB (yellow/green tint growing into shadows, main+front); per-camera control cache leaks CCM/tone curve between cameras; tone curve reloaded only at stream start; videos full-range BT.601 tagged limited BT.709 (clipped highlights, +15% contrast) | live A/B tuning V1 (blackPoint 0, shared tone curve) with Pierre; core patch 0105 (libcamera.so only); video range tag fix |
 | Speaker / audio playback | OK (Pierre) | after-sleep silence fixed (round 16: LPI pad restore on resume + sm8250 BE wakeup source) | — |
 | Microphone / recording audio | OK | tinycap + Aperture audio track | — |
-| Wi-Fi (WCN3990 / ath10k) | OK | connects at boot (cfg80211 early); WoWLAN at suspend (no teardown crash); Wi-Fi-off crash root-caused (TXBF reset after VDEV_DOWN) and fixed in ath10k_core 0005 quirks=1 (live A/B: 4 passes, control crashes) | round 21 ships it; verify toggle/airplane |
+| Wi-Fi (WCN3990 / ath10k) | OK | connects at boot (cfg80211 early); WoWLAN at suspend (no teardown crash); Wi-Fi-off crash root-caused (TXBF reset after VDEV_DOWN) and fixed in ath10k_core 0005 quirks=1 (live A/B: 4 passes, control crashes) | verified on round 21: Wi-Fi off/on, no fatal |
 | Modem / mobile data / calls / VoLTE | UNTESTED | radio on (`persist.vendor.a6l.radio=1`); "Invalid Card" with no SIM; modem restarts were Wi-Fi-PD crashes | test with a SIM (data, calls, SMS, VoLTE) |
 | Bluetooth | UNTESTED | stack present | pair + audio test |
 | GNSS, sensors (accel, gyro, prox/light, hall) | UNTESTED (partly seen working earlier) | — | quick check |
 | Suspend / battery | PARTIAL | s2idle works; "hard LOCKUP" watchdog reports in s2idle are false positives; mdss_ahb_clk stuck-on warning at suspend (cosmetic); backlit-black panel on timer-only wakes (bug, power) | power measurement; mdss fix (mdss-ahb-20261007) |
-| SELinux enforcing | OPEN | pass 1 shipped (permissive); pass 2 (service renames vendor.a6l_modules_*) in round 21 | collect avc on round 21, then attended enforcing test boot |
+| SELinux enforcing | OPEN | pass 1 shipped (permissive); pass 2 in round 21 (module groups OK under vendor.a6l_modules_*); round 21 avc: 2903 lines, 97% one a6l_diag rule | pass 3, then attended enforcing test boot |
 | Google apps / Play Protect | OK | device registered (GSF id), message gone | — |
 
 ### Known caveats for daily use
-- Don't rely on unattended overnight use until round 21 (Wi-Fi off/airplane fixed) is verified.
+- Round 21: Wi-Fi off/airplane no longer crash the modem.
 - Playback/recording of heavy video while the CPU is pinned at max is untested beyond the 3 min stress.
 
 ---
