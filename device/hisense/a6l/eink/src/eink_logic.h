@@ -148,6 +148,22 @@ void tone_lut(uint8_t lut[256], int contrast, int black_clip, int white_clip, in
  * and coloured artwork come out as negatives: opt-in (persist.sys.a6l.eink.invert = 1). */
 void tone_lut_invert(uint8_t lut[256]);
 
+/* ---------------- eink-round9: idle capture back-off ----------------
+ * On the e-ink the mirror captured every 100 ms (rc --interval 100) whatever happened. One drm capture + resize costs
+ * 0.25-0.5 s of CPU (round 15: copy 150-380 ms, compose 60-180 ms, resize 40-60 ms), so captures ran back to back and
+ * held about one CPU core for a page that does not change. Back-off: after `knee` captures in a row with no change the
+ * interval steps to 250 ms, after 2*knee to 500 ms, after 3*knee to 1000 ms (capped by max_ms, never below base). Any
+ * change, input, key, screen switch or appearance request resets it to the base interval. While backed off, the mirror
+ * reads the LCD plane set every base interval (FB ids + geometry, one ioctl per plane, no pixel copy) and captures at
+ * once when a buffer was flipped: what an app draws is seen as fast as before, typing and scrolling keep their latency.
+ * max_ms <= base disables it (persist.vendor.eink.idle_max_ms, default 1000; persist.vendor.eink.idle_knee, default 10). */
+struct idle_bo { int base_ms, knee, max_ms; unsigned unchanged; };
+void idle_bo_init(struct idle_bo *b, int base_ms, int knee, int max_ms);
+void idle_bo_capture(struct idle_bo *b, int unchanged);	/* after each capture: unchanged = no damage vs the previous one */
+void idle_bo_reset(struct idle_bo *b);			/* change, input, switch */
+int idle_bo_interval_ms(const struct idle_bo *b);
+int idle_bo_backed_off(const struct idle_bo *b);		/* interval above the base: probe the scanout */
+
 /* ---------------- 6. capture integrity and CRTC following (eink-round3-20261006) ---------------- */
 #include <stddef.h>
 /* A scanout buffer is copied out of write-combined memory in 60-180 ms per 1080x2340 plane (logged "copy=" stage), i.e.

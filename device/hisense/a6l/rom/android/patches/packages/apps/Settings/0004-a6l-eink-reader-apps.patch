@@ -1,0 +1,47 @@
+diff --git a/src/com/android/settings/display/A6lEinkPreferences.java b/src/com/android/settings/display/A6lEinkPreferences.java
+index 052395a..05e86a1 100644
+--- a/src/com/android/settings/display/A6lEinkPreferences.java
++++ b/src/com/android/settings/display/A6lEinkPreferences.java
+@@ -14,6 +14,7 @@ import android.os.Looper;
+ import android.util.Log;
+ import android.widget.Toast;
+ 
++import androidx.preference.EditTextPreference;
+ import androidx.preference.ListPreference;
+ import androidx.preference.Preference;
+ import androidx.preference.PreferenceCategory;
+@@ -95,6 +96,14 @@ final class A6lEinkPreferences {
+         toggle(lock, "lock_battery", "lock_battery");
+         /* eink-round11: reader sleep (vendor a6l_dualux): Android sleeps between page turns while the e-ink keeps the page */
+         toggle(lock, "reader_sleep", "reader_sleep");
++        /* eink-round9: reader sleep only for reader apps (default), all apps, or the user's list */
++        list(lock, "reader_apps", "reader_apps", new String[]{"readers", "all", "custom"},
++                "reader_apps_readers", "reader_apps_all", "reader_apps_custom");
++        EditTextPreference readerList = new EditTextPreference(mContext);
++        readerList.setTitle(text("reader_list"));
++        readerList.setDialogTitle(text("reader_list"));
++        readerList.setSummaryProvider(EditTextPreference.SimpleSummaryProvider.getInstance());
++        bind(lock, readerList, "reader_list");
+         PreferenceCategory refresh = section(parent, "refresh_section", "sec_refresh");
+         list(refresh, "refresh", "sec_refresh", new String[]{"stock", "auto", "quality", "partial", "fast", "fastest"},
+                 "mode_stock", "mode_auto", "mode_quality", "mode_partial", "mode_fast", "mode_fastest");
+@@ -198,6 +207,7 @@ final class A6lEinkPreferences {
+             Preference pref = item.getValue();
+             if (pref instanceof ListPreference) ((ListPreference) pref).setValue(value);
+             else if (pref instanceof SwitchPreferenceCompat) ((SwitchPreferenceCompat) pref).setChecked("1".equals(value));
++            else if (pref instanceof EditTextPreference) ((EditTextPreference) pref).setText(value);
+             else if (pref instanceof SeekBarPreference) {
+                 try { ((SeekBarPreference) pref).setProgress(Integer.parseInt(value)); }
+                 catch (NumberFormatException e) { Log.w("A6lEinkPreferences", "Invalid numeric setting", e); }
+@@ -224,6 +234,11 @@ final class A6lEinkPreferences {
+         for (String key : new String[]{"lock_bg", "lock_clock", "lock_battery"}) mValues.get(key).setEnabled(lockOn);
+         mLockPick.setVisible("image".equals(mSnapshot.getString("lock_bg", "white")));
+         mLockPick.setEnabled(lockOn);
++        /* eink-round9: the app choice only matters with reader sleep on; the list only for "custom" */
++        boolean readerOn = "1".equals(mSnapshot.getString("reader_sleep", "0"));
++        mValues.get("reader_apps").setEnabled(readerOn);
++        mValues.get("reader_list").setVisible("custom".equals(mSnapshot.getString("reader_apps", "readers")));
++        mValues.get("reader_list").setEnabled(readerOn);
+     }
+     /** eink-lockscreen: the controller's photo-picker activity (no UI of its own) stores the chosen picture. */
+     private void pickLockPicture() {

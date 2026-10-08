@@ -72,6 +72,11 @@
     <string name="lock_pick">Choose the picture…</string>
     <string name="lock_clock">Show the time and date (wakes the phone once a minute)</string>
     <string name="lock_battery">Show the battery level</string>
+    <string name="reader_apps">Reader sleep for</string>
+    <string name="reader_apps_readers">Reader apps only (KOReader, Kindle, Moon+ Reader, Play Books, ReadEra, Librera...)</string>
+    <string name="reader_apps_all">All apps</string>
+    <string name="reader_apps_custom">My list of apps</string>
+    <string name="reader_list">My reader apps (package names, comma-separated)</string>
     <string name="reader_sleep">Reader sleep: the phone sleeps between pages, the page stays; volume keys turn the page (needs Screen lock: None)</string>
     <string name="lock_pick_done">E-ink lock screen picture updated</string>
     <string name="lock_pick_failed">This picture cannot be used</string>

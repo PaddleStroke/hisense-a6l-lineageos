@@ -72,5 +72,7 @@ timeout 60 python3 "$S/tests/touch_guard_test.py" ./mirror 'frames/f%d.raw' "$W"
 timeout 60 python3 "$S/tests/prewarm_test.py" ./mirror 'frames/f%d.raw' "$W" > prewarm.out 2>&1 && grep -q "PREWARM_TEST PASS" prewarm.out && ok "mirror-prewarm (warm at the e-ink request, first frame at the warm reply)" || { ko mirror-prewarm; cat prewarm.out; }
 # eink-round11: opt-in inverted rendering (persist.sys.a6l.eink.invert = 1)
 timeout 60 python3 "$S/tests/invert_test.py" ./mirror 'frames/f%d.raw' "$W" > invert.out 2>&1 && grep -q "INVERT_TEST PASS" invert.out && ok "mirror-invert (persist.sys.a6l.eink.invert)" || { ko mirror-invert; cat invert.out; }
+# eink-round9: idle capture back-off (static page: ~34 captures in 12 s instead of ~115)
+timeout 60 python3 "$S/tests/idle_backoff_test.py" ./mirror frames/f0.raw "$W" > idle_backoff.out 2>&1 && grep -q "IDLE_BACKOFF_TEST PASS" idle_backoff.out && ok "mirror-idle-backoff ($(grep -o 'captures in 12 s.*' idle_backoff.out))" || { ko mirror-idle-backoff; cat idle_backoff.out; }
 echo "EINK3_HOST_TESTS pass=$pass fail=$fail (workdir $W)"
 [ $fail = 0 ]

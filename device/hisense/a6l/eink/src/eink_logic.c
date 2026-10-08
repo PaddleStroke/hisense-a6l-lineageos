@@ -267,6 +267,20 @@ static double tone_pow(double x, double g) {
     while (m-- > 0) e *= 0.5;
     return e;
 }
+void idle_bo_init(struct idle_bo *b, int base_ms, int knee, int max_ms) {
+    b->base_ms = base_ms > 0 ? base_ms : 100; b->knee = knee > 0 ? knee : 10; b->max_ms = max_ms; b->unchanged = 0;
+}
+void idle_bo_capture(struct idle_bo *b, int unchanged) { if (!unchanged) b->unchanged = 0; else if (b->unchanged < 1000000u) b->unchanged++; }
+void idle_bo_reset(struct idle_bo *b) { b->unchanged = 0; }
+int idle_bo_interval_ms(const struct idle_bo *b) {
+    static const int ladder[4] = {0, 250, 500, 1000};
+    if (b->max_ms <= b->base_ms) return b->base_ms;
+    unsigned level = b->unchanged / (unsigned)b->knee; if (level > 3) level = 3;
+    int v = level ? ladder[level] : b->base_ms;
+    if (v > b->max_ms) v = b->max_ms;
+    return v < b->base_ms ? b->base_ms : v;
+}
+int idle_bo_backed_off(const struct idle_bo *b) { return idle_bo_interval_ms(b) > b->base_ms; }
 void tone_lut_invert(uint8_t lut[256]) {
     for (int i = 0; i < 128; i++) { uint8_t t = lut[i]; lut[i] = lut[255 - i]; lut[255 - i] = t; }
 }

@@ -186,8 +186,37 @@ final class PerScreenMemory {
     /** eink-round11 reader sleep: a6l_dualux may put Android to sleep between pages only when waking it shows the
      * reader again, i.e. no keyguard at all (Screen lock: None). A swipe or secure keyguard would come up at every
      * wake-up and take the page turn; the system UID cannot use the KeyguardLock API. */
-    private String mReaderOk;
+    private String mReaderOk, mReaderFg;
+    /** eink-round9: the custom reader list lives in the app's device-protected preferences (a property holds 91 chars). */
+    static String readerList(Context c) {
+        return c.createDeviceProtectedStorageContext().getSharedPreferences("per_screen", Context.MODE_PRIVATE).getString("reader_list", "");
+    }
+    static void setReaderList(Context c, String list) {
+        c.createDeviceProtectedStorageContext().getSharedPreferences("per_screen", Context.MODE_PRIVATE).edit().putString("reader_list", list).apply();
+    }
+    /** eink-round9: the foreground app, for the reader-sleep allowlist (system uid: all tasks are visible). */
+    @SuppressWarnings("deprecation")
+    private String foregroundPackage() {
+        try {
+            android.app.ActivityManager am = mCtx.getSystemService(android.app.ActivityManager.class);
+            java.util.List<android.app.ActivityManager.RunningTaskInfo> t = am == null ? null : am.getRunningTasks(1);
+            if (t == null || t.isEmpty() || t.get(0).topActivity == null) return null;
+            return t.get(0).topActivity.getPackageName();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+    private void publishReaderForeground() {
+        String v, pkg = null, mode = Dualux.get(Dualux.READER_APPS, "readers");
+        if (!"1".equals(Dualux.get(Dualux.READER_SLEEP, "0")) || !Dualux.isEink()) v = "0";	// nothing to arm
+        else v = ReaderApps.allowed(pkg = foregroundPackage(), mode, readerList(mCtx)) ? "1" : "0";
+        if (v.equals(mReaderFg)) return;
+        mReaderFg = v;
+        Dualux.set(Dualux.P_READER_FG, v);
+        if (pkg != null || "1".equals(v)) Log.i(Dualux.TAG, "reader sleep " + ("1".equals(v) ? "armed" : "not armed") + " for " + pkg + " (reader_apps=" + mode + ")");
+    }
     private void publishReaderOk() {
+        publishReaderForeground();
         boolean ok;
         try {
             ok = new com.android.internal.widget.LockPatternUtils(mCtx).isLockScreenDisabled(android.os.UserHandle.myUserId());

@@ -50,3 +50,9 @@ allow a6l_modules sysfs_a6l_flash:file r_file_perms;
 get_prop(hal_wifi_default, vendor_a6l_prop)
 # selinux-20261007 pass 3 (round 21): libwifi-hal-a6l also reads ro.vendor.a6l.* (vendor_a6l_ro_prop, r21 x8)
 get_prop(hal_wifi_default, vendor_a6l_ro_prop)
+# selinux-20261007 pass 4 (round 22): the HAL sets vendor.wlan.firmware.version / driver.version
+set_prop(hal_wifi_default, vendor_a6l_wifi_prop)
+# wpa_supplicant runs `user root` here (rom/v2/init.a6l.wifibt.rc; AOSP: user wifi + capabilities NET_ADMIN NET_RAW) and
+# os_program_init() drops itself to uid/gid wifi (setgroups/setgid/setuid, r22 x10). Denied = it keeps running as root;
+# allowed = the intended drop. Cleaner later: run it as AOSP does (user wifi, capabilities) and drop this rule.
+allow hal_wifi_supplicant_default self:global_capability_class_set { setuid setgid };

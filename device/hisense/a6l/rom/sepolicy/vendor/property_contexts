@@ -11,3 +11,6 @@ vendor.minigbm.             u:object_r:vendor_a6l_gfx_prop:s0
 # selinux-20261007 pass 2 (round 12): SurfaceFlinger reads vendor.display.vds_allow_hwc at start (SurfaceFlinger.cpp,
 # r12 surfaceflinger vendor_default_prop open/getattr/map); readable by every domain like the other graphics options
 vendor.display.vds_allow_hwc u:object_r:vendor_a6l_gfx_prop:s0 exact bool
+# selinux-20261007 pass 4: set by the wifi HAL (WifiChip debug info)
+vendor.wlan.firmware.version u:object_r:vendor_a6l_wifi_prop:s0 exact string
+vendor.wlan.driver.version   u:object_r:vendor_a6l_wifi_prop:s0 exact string

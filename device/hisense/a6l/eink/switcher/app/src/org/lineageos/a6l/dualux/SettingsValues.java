@@ -5,7 +5,7 @@ package org.lineageos.a6l.dualux;
 final class SettingsValues {
     static final String[] KEYS = {"refresh", "clear_every", "contrast", "fl_enable",
             "fl_max", "fl_gamma", "ekey", "mirror_lcd", "per_screen", "wallpaper",
-            "lock", "lock_bg", "lock_clock", "lock_battery", "reader_sleep"};
+            "lock", "lock_bg", "lock_clock", "lock_battery", "reader_sleep", "reader_apps"};
     private SettingsValues() { }
 
     static String property(String key) {
@@ -26,6 +26,7 @@ final class SettingsValues {
             case "lock_clock": return "persist.sys.a6l.eink.lock_clock";
             case "lock_battery": return "persist.sys.a6l.eink.lock_battery";
             case "reader_sleep": return "persist.sys.a6l.eink.reader_sleep";	// eink-round11, default off
+            case "reader_apps": return "persist.sys.a6l.eink.reader_apps";	// eink-round9 (8 Oct): readers | all | custom
             default: throw new IllegalArgumentException("Unknown setting");
         }
     }
@@ -38,6 +39,7 @@ final class SettingsValues {
             case "lock_bg": return "white";
             case "fl_max": return "100";
             case "ekey": return "sleep";
+            case "reader_apps": return "readers";
             case "wallpaper": return "white";
             default: return "0";
         }
@@ -49,6 +51,7 @@ final class SettingsValues {
             case "theme": return oneOf(value, "light", "dark", "lcd");
             case "refresh": return oneOf(value, "stock", "auto", "quality", "partial", "fast", "fastest");
             case "ekey": return oneOf(value, "sleep", "clear");
+            case "reader_apps": return oneOf(value, "readers", "all", "custom");
             case "wallpaper": return oneOf(value, "white", "lcd");
             case "fl_enable": case "mirror_lcd": case "per_screen": case "lock": case "lock_clock": case "lock_battery": case "reader_sleep": return oneOf(value, "0", "1");
             case "lock_bg": return oneOf(value, "white", "black", "image", "lcd");

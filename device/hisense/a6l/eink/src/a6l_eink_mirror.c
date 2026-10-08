@@ -39,6 +39,9 @@
  *        [--copy-guard-kib N] (eink-round3: drm source copies each plane in N KiB chunks and re-reads the plane set between
  *        chunks, so an A->B->A buffer flip during the copy discards the torn capture; default 1024; eink-round5: 0 = 1024,
  *        the check can no longer be switched off; a plane that flips during every copy is stitched, see plane_copy_policy)
+ *        [--idle-max-ms N] [--idle-knee N] (eink-round9: capture back-off on an unchanged page, 100 -> 250 -> 500 ->
+ *        N ms after knee, 2*knee, 3*knee unchanged captures; a flipped LCD buffer, input or switch snaps back; default
+ *        1000 / 10; rc: persist.vendor.eink.idle_max_ms / idle_knee, read live; N <= --interval = off)
  *        [--benign-flips 0|1] (eink-round8, default 1: a plane flip that left the pixels at the copy position unchanged
  *        continues the copy from the new buffer instead of retrying/stitching/discarding; eink_logic.h PCOPY_MAX_BENIGN)
  *        [--guard-max N,MS] (eink-round4: a capture whose LCD plane layout changed, or whose plane kept flipping during its
@@ -493,6 +496,23 @@ static int capture_plane(struct pl *q, uint32_t plane_id, uint32_t crtc, int k, 
     *compose_ms += (now() - ts) * 1000;
     return rc;
 }
+static uint64_t scan_sig;	/* eink-round9: signature of the plane set at the last capture */
+/* eink-round9: FB ids + geometry of the planes on the LCD CRTC (no pixels): a new buffer = something was drawn */
+static uint64_t scan_signature(const struct a6l_plane_snapshot *s, uint32_t crtc) {
+    uint64_t h = 1469598103934665603ull;
+    for (unsigned i = 0; i < s->count; i++) {
+        if (!a6l_plane_on_crtc(&s->planes[i], crtc)) continue;
+        h = (h ^ s->planes[i].id) * 1099511628211ull;
+        for (int f = 0; f < PF_N; f++) h = (h ^ s->planes[i].v[f]) * 1099511628211ull;
+    }
+    return h;
+}
+static int scanout_changed(void) {	/* 1 = flipped / changed / unknown (capture), 0 = same buffers as at the last capture */
+    if (drm_fd < 0) return 1;
+    uint32_t crtc = 0; int w = 0, h = 0; struct a6l_plane_snapshot s;
+    if (!lcd_crtc(&crtc, &w, &h) || a6l_plane_snapshot_read(drm_fd, crtc, &s)) return 1;
+    return scan_signature(&s, crtc) != scan_sig;
+}
 static int capture_drm(void) {
     double sync_ms = 0, copy_ms = 0, compose_ms = 0;
     static unsigned captures;
@@ -504,6 +524,7 @@ static int capture_drm(void) {
     int sr=a6l_plane_snapshot_read(drm_fd,crtc,&before);
     if(sr>0)return CAP_FRONT_OFF;
     if(sr<0){LOG("WARN capture tuple required query failed: %s",strerror(errno));return -1;}
+    scan_sig = scan_signature(&before, crtc);	/* eink-round9 */
     lw=(int)before.width;lh=(int)before.height;
     uint64_t seq_before=0,seq_after=0,seq_ns;
     int seq_before_ok=!drmCrtcGetSequence(drm_fd,crtc,&seq_before,&seq_ns);
@@ -580,6 +601,7 @@ static int capture_drm(void) {
 }
 #else
 static int capture_drm(void) { LOG("FAIL built without DRM"); return -1; }
+static int scanout_changed(void) { return 1; }	/* eink-round9: no probe without DRM */
 #endif
 
 /* After the framework's committed-buffer ACK, allow a scanout to advance
@@ -724,6 +746,7 @@ static void touch_gate_page_shown(void);	/* eink-round10 */
 /* eink-round11 reader sleep: the last page change on the e-ink (frame ACK) or rear-touch press, CLOCK_MONOTONIC s;
  * published as vendor.eink.activity while persist.sys.a6l.eink.reader_sleep = 1 (a6l_dualux's idle timer) */
 static double activity_t, touch_activity_t; static int reader_sleep_on;
+static struct idle_bo ibo; static int idle_max_ms = 1000, idle_knee = 10;	/* eink-round9 */
 static void cmd_result(int ok, const char *why) {
     if (inflight == INF_WARM) {	/* eink-round11: no picture involved: the panel state, backoff and policy are untouched */
         if (!ok) LOG("e-ink warm-up not done (%s): the first frame brings the CRTC up", why ? why : "error");
@@ -1082,7 +1105,7 @@ static int release_settling(const struct pol_state *ps) {	/* 0005 settle window 
 }
 static double capture_interval(const struct pol_state *ps) {
     /* the settle needs one unchanged capture pair after the lift: take them back to back, not interval_ms apart */
-    return release_settling(ps) ? 0.03 : interval_ms / 1000.0;
+    return release_settling(ps) ? 0.03 : idle_bo_interval_ms(&ibo) / 1000.0;	/* eink-round9: back-off */
 }
 /* Damage against the panel picture, appearance tagging, policy decision and queueing of the capture held in out/cur_t
  * (the latest one). Returns 1 when a frame was queued. */
@@ -1144,6 +1167,7 @@ int main(int argc, char **argv) {
         else if (OPT("--front")) { if (sscanf(v, "%dx%d", &front_w, &front_h) != 2) return 2; }
         else if (!strcmp(a,"--auto-small-regal")) auto_small_regal=1;
         else if (OPT("--benign-flips")) pcopy_set_benign(atoi(v));	/* eink-round8 */
+        else if (OPT("--idle-max-ms")) idle_max_ms = atoi(v); else if (OPT("--idle-knee")) idle_knee = atoi(v);	/* eink-round9 */
         else if (OPT("--copy-guard-kib")) guard_chunk = atoi(v) > 0 ? (size_t)atoi(v) * 1024 : 0;	/* round5: 0 = default (see pcopy_chunk) */
         else if (OPT("--pipeline")) pipeline = atoi(v) != 0;
         else if (OPT("--guard-max")) {	/* eink-round4: N discards / MS since the first one, then the newest capture is accepted */
@@ -1183,6 +1207,7 @@ int main(int argc, char **argv) {
     LOG("capture guard: every plane copy checked against its own buffer every %zu KiB%s; never-starve bound %d discards / %d ms; a plane flipping during every copy is stitched (eink-round5)",
         pcopy_chunk(guard_chunk, 0) / 1024, guard_chunk ? "" : " (--copy-guard-kib 0 is no longer honoured: default)", guard_max_discards, guard_max_ms);
     int active = 0, paused = 0, frame = 0, fails = 0; double next_cap = now(), next_props = now();
+    idle_bo_init(&ibo, interval_ms, idle_knee, idle_max_ms); double next_probe = now(), touch_seen = 0; int bo_logged = 0;	/* eink-round9 */
     LOG("start: source=%s interval=%d mode=%s reading=%d clear-every=%d active=%s fit=%s%s", source, interval_ms, mode_name(mode), reading, pcfg.clear_every, pcfg.active_mode, fit == FIT_STRETCH ? "stretch" : fit == FIT_CROP ? "crop" : "letterbox", dry ? " DRY" : "");
     LOG("tone: black clip %d, white clip %d, gamma %.2f; release settle %d ms (max %d ms)", tone_black, tone_white, tone_gamma / 100.0, pcfg.release_quiet_ms, pcfg.release_max_ms);
     while (!stop && (!frames_max || frame < frames_max)) {
@@ -1192,6 +1217,8 @@ int main(int argc, char **argv) {
         /* mode transitions */
         if (t >= next_props) { next_props = t + (use_props && prop_int("sys.a6l.dualux.theme_sync", 0) ? 0.05 : 0.5); int m1, r1; read_props(&m1, &r1);
             if (use_props && !active && mode != EINK_MIRROR) prewarm_check(t);	/* eink-round11 */
+            if (use_props) { int mx = prop_int("persist.vendor.eink.idle_max_ms", idle_max_ms), kn = prop_int("persist.vendor.eink.idle_knee", idle_knee);	/* eink-round9 */
+                if (mx != ibo.max_ms || kn != ibo.knee) { ibo.max_ms = mx; ibo.knee = kn > 0 ? kn : 10; LOG("idle back-off: max %d ms, knee %d captures%s", mx, ibo.knee, mx <= ibo.base_ms ? " (off)" : ""); } }
             if (use_props) { reader_sleep_on = prop_int("persist.sys.a6l.eink.reader_sleep", 0) == 1;	/* eink-round11 */
                 touch_lock(); double ta = touch_activity_t; touch_unlock(); if (ta > activity_t) activity_t = ta;
                 static double published; if (reader_sleep_on && activity_t > published) { char b[32]; snprintf(b, sizeof b, "%.3f", activity_t); prop_set("vendor.eink.activity", b); published = activity_t; } }
@@ -1211,7 +1238,7 @@ int main(int argc, char **argv) {
          * every screen switch reset it, so with frequent switches the periodic ghost cleanup never came) */
         if (mode == EINK_MIRROR && !active) { active = 1; if (!refresh_mode[0]) pcfg.reading = reading; { int keep_reading_n = ps.reading_n, keep_clean_n = ps.clean_n; pol_init(&ps, &pcfg, t); ps.reading_n = keep_reading_n; ps.clean_n = keep_clean_n; } policy_epoch++; have_prev = have_shown = 0; staged.valid = 0;
             if (use_props) touch_guard_ms = prop_int("sys.a6l.eink.touch_guard_ms", touch_guard_ms);
-            touch_lock(); touch_enable("mirror ON", 1); touch_unlock(); LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; }
+            touch_lock(); touch_enable("mirror ON", 1); touch_unlock(); LOG("mirror ON%s", reading ? " (reading)" : ""); next_cap = t; idle_bo_reset(&ibo); }
         if (mode != EINK_MIRROR && active) { active = 0; staged.valid = 0; policy_epoch++; touch_lock(); forward = 0; touch_release_all(); touch_unlock(); qn = 0; queue_cmd("power off", 0); LOG("mirror OFF (e-ink keeps the last picture)"); }
         if (!dry && epd < 0) epd_connect();
         { static double next_touch_scan; touch_lock(); if (touch_fd < 0 && t >= next_touch_scan) { next_touch_scan = t + 5; input_quiet = 1; touch_attach(); input_quiet = 0; } touch_unlock(); }
@@ -1223,6 +1250,7 @@ int main(int argc, char **argv) {
         if (touch_wake[0] >= 0) { iw = n; p[n++] = (struct pollfd){touch_wake[0], POLLIN, 0}; }
         if (epd >= 0) { ie = n; p[n++] = (struct pollfd){epd, POLLIN, 0}; }
         double until = active && !busy && !qn ? (staged.valid ? t : next_cap) : t + 0.1; if (ks.down) until = t + 0.05;
+        if (active && idle_bo_backed_off(&ibo) && next_probe < until) until = next_probe > t ? next_probe : t;	/* eink-round9 */
         if (active && busy && pipeline && precap_cmd_t != cmd_t) {	/* eink-round4: wake for the pipelined capture */
             double due = precapture_due(); if (due < next_cap) due = next_cap;
             if (due < until) until = due > t ? due : t;
@@ -1236,6 +1264,7 @@ int main(int argc, char **argv) {
         enum key_action ka = KA_NONE;
         if (r > 0 && ik >= 0 && (p[ik].revents & (POLLIN | POLLHUP | POLLERR))) ka = key_input();
         if (!ka) ka = key_tick(&ks, now());
+        if (ka) idle_bo_reset(&ibo);	/* eink-round9 */
         if (ka == KA_TOGGLE) { int nm = mode == EINK_MIRROR ? EINK_OFF : EINK_MIRROR; LOG("e-ink key: %s", mode_name(nm));
             if (mode_forced >= 0) mode_forced = nm; mode = nm; if (use_props) prop_set(P_MODE, mode_name(nm)); }
         if (ka == KA_CLEAR) { LOG("e-ink key long press: refresh");
@@ -1260,6 +1289,20 @@ int main(int argc, char **argv) {
             if (decide_capture(&ps, &staged, "staged")) pump();
             next_cap = now() + capture_interval(&ps);
             continue;
+        }
+        /* eink-round9: back-off. Input (a forwarded rear contact or a release) and an appearance request snap back; while
+         * backed off the plane set is probed every base interval and a flipped buffer is captured at once */
+        if (active) {
+            if (!have_shown) idle_bo_reset(&ibo);	/* a resend is pending (panel picture unknown): keep the base cadence */
+            touch_lock(); double ta = touch_activity_t; int rp = release_pending; touch_unlock();
+            char ap[96]; appearance_snapshot(ap, sizeof ap);
+            if (ta > touch_seen || rp || ap[0]) { touch_seen = ta; if (idle_bo_backed_off(&ibo)) next_cap = now(); idle_bo_reset(&ibo); }
+            if (idle_bo_backed_off(&ibo) && now() >= next_probe) {
+                next_probe = now() + interval_ms / 1000.0;
+                if (strcmp(source, "drm") || scanout_changed()) { if (!strcmp(source, "drm")) { idle_bo_reset(&ibo); next_cap = now(); } }
+            }
+            int lvl = idle_bo_interval_ms(&ibo);
+            if (lvl != bo_logged) { if (lvl > interval_ms || bo_logged > interval_ms) LOG("idle: capture interval %d ms (%u unchanged captures)", lvl, ibo.unchanged); bo_logged = lvl; }
         }
         if (!active || now() < next_cap) continue;
         int precapture = 0;
@@ -1304,7 +1347,7 @@ int main(int argc, char **argv) {
          * the LCD power-on (7 Oct 12:14:04: "front screen on: resumed" 479.84 -> "e-ink CRTC 70 modeset" 480.19 -> "power
          * off" 481.43, with LCD vblank timeouts around it). Re-read the mode before the first frame after a pause. */
         if (paused && use_props && mode_forced < 0) { char mv[16]; if (prop_get(P_MODE, mv, sizeof mv) > 0 && mode_parse(mv, mode) != EINK_MIRROR) { next_props = 0; continue; } }
-        if (paused) { KLOG("front screen on: resumed"); paused = 0; touch_lock(); touch_enable("front screen on", 0); touch_unlock(); }
+        if (paused) { KLOG("front screen on: resumed"); paused = 0; touch_lock(); touch_enable("front screen on", 0); touch_unlock(); idle_bo_reset(&ibo); }
         fails = 0; double tcap = now() - t0;
         double tr = now(); resample(); cur_land = out_w > out_h; tiles(cur_t); double tresample = now() - tr;
         est_capture_s = 0.7 * est_capture_s + 0.3 * (tcap + tresample);
@@ -1324,6 +1367,7 @@ int main(int argc, char **argv) {
         /* Equal tile averages can hide real text changes. Keep exact damage
          * for submission and quiet timing, but do not invent a motion burst. */
         int pixel_motion = have_prev && prev_land == cur_land && pixel_damage(out, prev_pixels);
+        idle_bo_capture(&ibo, have_prev && moving == 0 && !pixel_motion);	/* eink-round9 */
         pol_observe(&ps, now(), moving);	/* eink-round4: motion history at capture time (decision may come later) */
         if (pixel_motion && moving == 0) ps.last_change = now();
         memcpy(prev_t, cur_t, NT); memcpy(prev_pixels, out, sizeof prev_pixels); have_prev = 1; prev_land = cur_land;

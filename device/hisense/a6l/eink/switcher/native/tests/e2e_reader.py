@@ -82,6 +82,11 @@ try:
     time.sleep(1.0); check(count(SLEEP) == n, 'idle timer restarted: no immediate second request')
     put(p / 'sys.a6l.dualux.reader_ok', 0); n = count(SLEEP); time.sleep(6.5)
     check(count(SLEEP) == n, 'reader_ok = 0 (a keyguard is set): never')
+    # eink-round9: the foreground app is not in the reader allowlist -> never; allowed again -> it sleeps
+    put(p / 'sys.a6l.dualux.reader_ok', 1); put(p / 'sys.a6l.dualux.reader_fg', 0); n = count(SLEEP); time.sleep(6.5)
+    check(count(SLEEP) == n, 'reader_fg = 0 (foreground app not a reader app): never')
+    put(p / 'sys.a6l.dualux.reader_fg', 1)
+    check(wait(lambda: count(SLEEP) == n + 1, 7), 'reader_fg = 1: reader sleep again')
     print('READER_E2E PASS', checks)
 finally:
     proc.terminate(); proc.wait(timeout=3); log.close(); os.close(kf); os.close(vf)

@@ -16,6 +16,12 @@ public final class SettingsProvider extends ContentProvider {
                 "android.permission.WRITE_SECURE_SETTINGS", "Privileged e-ink settings");
         if ("set".equals(method)) {
             String value = extras == null ? null : extras.getString("value");
+            if ("reader_list".equals(arg)) {	// eink-round9: the custom reader list (too long for a property: app preference)
+                if (!ReaderApps.validList(value)) throw new IllegalArgumentException("Invalid reader list");
+                PerScreenMemory.setReaderList(getContext(), value);
+                android.util.Log.i(Dualux.TAG, "setting reader_list = " + value + " (caller uid " + android.os.Binder.getCallingUid() + ")");
+                return snapshot();
+            }
             if (!SettingsValues.valid(arg, value)) throw new IllegalArgumentException("Invalid e-ink setting");
             // eink-round8c: who changed what (round 18: persist.sys.a6l.eink.lock_clock was found at 0 with no trace)
             android.util.Log.i(Dualux.TAG, "setting " + arg + " = " + value + " (caller uid " + android.os.Binder.getCallingUid()
@@ -33,8 +39,13 @@ public final class SettingsProvider extends ContentProvider {
         } else if (!"get".equals(method)) {
             throw new IllegalArgumentException("Unknown settings operation");
         }
+        return snapshot();
+    }
+
+    private Bundle snapshot() {
         Bundle result = new Bundle();
         result.putString("state", Dualux.state());
+        result.putString("reader_list", PerScreenMemory.readerList(getContext()));	// eink-round9
         result.putString("theme", PerScreenAppearance.get(getContext()).theme());
         for (String key : SettingsValues.KEYS) {
             result.putString(key, Dualux.get(SettingsValues.property(key), SettingsValues.defaultValue(key)));

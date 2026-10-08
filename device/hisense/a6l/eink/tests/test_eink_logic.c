@@ -626,8 +626,28 @@ static void test_marquee(void) {
           "stitch replaced by the last consistent copy up to 3 s (same geometry); the torn fallback bound stays 0.5 s");
 }
 
+static void test_idle_backoff(void) {	/* eink-round9 */
+    struct idle_bo b; idle_bo_init(&b, 100, 10, 1000);
+    int ok = 1; for (int i = 0; i < 9; i++) { idle_bo_capture(&b, 1); ok &= idle_bo_interval_ms(&b) == 100; }
+    CHECK(ok && !idle_bo_backed_off(&b), "idle: base interval for the first 9 unchanged captures");
+    idle_bo_capture(&b, 1); CHECK(idle_bo_interval_ms(&b) == 250 && idle_bo_backed_off(&b), "idle: 250 ms after 10 (knee)");
+    for (int i = 0; i < 10; i++) idle_bo_capture(&b, 1); CHECK(idle_bo_interval_ms(&b) == 500, "idle: 500 ms after 20");
+    for (int i = 0; i < 10; i++) idle_bo_capture(&b, 1); CHECK(idle_bo_interval_ms(&b) == 1000, "idle: 1000 ms after 30");
+    for (int i = 0; i < 100; i++) idle_bo_capture(&b, 1); CHECK(idle_bo_interval_ms(&b) == 1000, "idle: capped at max");
+    idle_bo_capture(&b, 0); CHECK(idle_bo_interval_ms(&b) == 100, "idle: any change snaps back to the base interval");
+    for (int i = 0; i < 40; i++) idle_bo_capture(&b, 1); idle_bo_reset(&b); CHECK(idle_bo_interval_ms(&b) == 100, "idle: input/switch reset");
+    idle_bo_init(&b, 100, 10, 500); for (int i = 0; i < 40; i++) idle_bo_capture(&b, 1); CHECK(idle_bo_interval_ms(&b) == 500, "idle: max 500 caps the ladder");
+    idle_bo_init(&b, 100, 10, 0); for (int i = 0; i < 40; i++) idle_bo_capture(&b, 1); CHECK(idle_bo_interval_ms(&b) == 100 && !idle_bo_backed_off(&b), "idle: max 0 = off");
+    idle_bo_init(&b, 250, 4, 1000); for (int i = 0; i < 4; i++) idle_bo_capture(&b, 1); CHECK(idle_bo_interval_ms(&b) == 250 && !idle_bo_backed_off(&b), "idle: never below the base interval");
+    /* captures per minute on a static page, from the first unchanged capture: 10 x 0.1 + 10 x 0.25 + 10 x 0.5 s = 8.5 s,
+     * then 1 per second: 30 + 51 = 81 instead of 600 at 100 ms */
+    idle_bo_init(&b, 100, 10, 1000); double t = 0; int n = 0;
+    while (t < 60.0) { t += idle_bo_interval_ms(&b) / 1000.0; idle_bo_capture(&b, 1); n++; }
+    CHECK(n >= 78 && n <= 84, "idle: %d captures in a static minute (600 without back-off)", n);
+}
+
 int main(void) {
-    test_marquee(); test_benign_flips(); test_guarded_copy(); test_drawer_capture(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
+    test_idle_backoff(); test_marquee(); test_benign_flips(); test_guarded_copy(); test_drawer_capture(); test_front_follow(); test_cap_guard(); test_area_resize(); test_policy_split();
     test_tone(); test_policy_release_settle(); test_policy_stock(); test_policy_auto(); test_policy_rate(); test_policy_reading(); test_explicit_fast_modes(); test_keys(); test_tmap(); test_plane();
     printf("%s: %d checks, %d failures\n", fails ? "EINK_LOGIC_TESTS_FAIL" : "EINK_LOGIC_TESTS_PASS", checks, fails);
     return fails != 0;

@@ -64,7 +64,7 @@ def scenario(name):
     th = threading.Thread(target=serve); th.start()
     try:
         r = subprocess.run([mirror, '--source', 'file:' + raw, '--epd-socket', path, '--no-props', '--mode', 'mirror',
-                            '--key-dev', 'none', '--touch-dev', 'none', '--interval', '50', '--frames', '140',
+                            '--key-dev', 'none', '--touch-dev', 'none', '--interval', '50', '--frames', '140', '--idle-max-ms', '0',  # eink-round9: a fixed capture count
                             '--reply-timeout', '1000'], capture_output=True, text=True, timeout=60)
     finally:
         stop.set(); th.join(2); srv.close()

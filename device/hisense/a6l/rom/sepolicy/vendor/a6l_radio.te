@@ -95,3 +95,22 @@ dontaudit { a6l_radio_ctl a6l_diag a6l_rmtfs a6l_tqftpserv } { kmsg_device kmsg_
 allow a6l_diag { sysfs_a6l_remoteproc sysfs_a6l_iio }:dir r_dir_perms;
 allow a6l_diag { sysfs_a6l_remoteproc sysfs_a6l_iio }:file r_file_perms;
 allow a6l_diag { sysfs_a6l_remoteproc sysfs_a6l_iio }:lnk_file read;
+
+# ---- selinux-20261007 pass 4 (round 22 avc, vendor 4f0b9938; firmware/extracted/selinux-20261007/round22/README.md) ----
+# tqftpserv serves the modem's config/firmware files: translate.c reads /sys/module/firmware_class/parameters/path
+# (= /vendor/firmware, labelled sysfs_a6l_fw_path) and every /sys/class/remoteproc/<rproc>/firmware attribute to find the
+# directory of the remoteproc firmware. r22: path read x13, /sys/class/remoteproc list x6, 15700000.remoteproc search x3.
+# Denied (enforcing) = only /lib/firmware is tried -> the modem gets none of its files from /vendor/firmware.
+allow a6l_tqftpserv sysfs_a6l_fw_path:file r_file_perms;
+allow a6l_tqftpserv sysfs:dir r_dir_perms;
+allow a6l_tqftpserv sysfs:lnk_file read;
+r_dir_file(a6l_tqftpserv, sysfs_a6l_remoteproc)
+# The radio binaries live in /vendor/a6l/radio/bin, outside every linkerconfig dir.* entry, so the bionic linker
+# realpath()s each entry in turn (/data/local/tmp, /data/local/tests/{product,...}) while choosing a namespace section
+# (r22: rmtfs search/read/getattr on shell_data_file, shell_test_data_file + dac_read_search). An unreadable entry is
+# skipped: same result as permissive. Core data / dac_read_search are neverallowed for vendor domains -> silence.
+dontaudit { a6l_rmtfs a6l_tqftpserv a6l_diag a6l_radio_ctl } { shell_data_file shell_test_data_file }:dir { search read open getattr };
+dontaudit { a6l_rmtfs a6l_tqftpserv a6l_diag a6l_radio_ctl } self:global_capability_class_set { dac_override dac_read_search };
+# `exec $B/rmtfs` from a6l-radio.sh (domain_auto_trans): fds inherited from the a6l_radio_ctl shell (r22 rmtfs fd use x2;
+# tqftpserv and diag-router are started the same way, inferred)
+allow { a6l_rmtfs a6l_tqftpserv a6l_diag } a6l_radio_ctl:fd use;

@@ -5,3 +5,6 @@ vendor_public_prop(vendor_a6l_ro_prop)         # ro.vendor.a6l.* (build markers,
 # Read in EVERY GL/gralloc client process; unlabelled vendor.* = vendor_default_prop, which coredomain/appdomain may not
 # read (r11: surfaceflinger, bootanim, system_server, system_app, platform_app, priv_app, gmscore_app, mediaswcodec).
 vendor_public_prop(vendor_a6l_gfx_prop)
+# selinux-20261007 pass 4: AOSP wifi HAL publishes vendor.wlan.{firmware,driver}.version (r22: hal_wifi_default set denied
+# on vendor_default_prop, which only init/vendor_init may set: neverallow)
+vendor_internal_prop(vendor_a6l_wifi_prop)

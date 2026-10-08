@@ -373,7 +373,11 @@ static void reader_tick(double t) {
         key_tap(k, k == KEY_VOLUMEUP ? "VOLUME_UP (page turn)" : "VOLUME_DOWN (page turn)");
     }
     if (reader_armed && S.awake && t - reader_last_req > 3.0) { reader_set(0, "Android stayed awake (call, wake lock?): idle timer restarted"); reader_last_act = t; }
-    struct dx_reader_in in = {reader_enabled, prop_get("sys.a6l.dualux.reader_ok", v, sizeof v) > 0 && !strcmp(v, "1"), reader_idle_s, t, reader_last_act, reader_last_req};
+    /* eink-round9: and only for an allowed foreground app (sys.a6l.dualux.reader_fg, the app's reader allowlist; unset =
+     * an app without the allowlist: all apps, as 0044) */
+    int ok = prop_get("sys.a6l.dualux.reader_ok", v, sizeof v) > 0 && !strcmp(v, "1");
+    if (ok && prop_get("sys.a6l.dualux.reader_fg", v, sizeof v) > 0 && strcmp(v, "1")) ok = 0;
+    struct dx_reader_in in = {reader_enabled, ok, reader_idle_s, t, reader_last_act, reader_last_req};
     if (dx_reader_due(&S, &in)) {
         reader_last_req = t; reader_set(1, "no page change or key on the e-ink");
         KLOG("reader sleep: %.0f s idle on the e-ink: Android sleeps, the page stays", t - reader_last_act);

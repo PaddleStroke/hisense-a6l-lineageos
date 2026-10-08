@@ -73,3 +73,7 @@
 /vendor/bin/a6l-iowatch\.sh                                               u:object_r:a6l_debug_exec:s0
 /vendor/bin/a6l-gpu-coredump\.sh                                          u:object_r:a6l_debug_exec:s0
 /vendor/bin/a6l-pm-trace\.sh                                              u:object_r:a6l_debug_exec:s0
+# selinux-20261007 pass 4 (round 22): debug krec markers. init's `write` (vendor_init) labels a new file from
+# file_contexts via setfscreatecon, which overrides the pass-3 type_transition (r22 still showed device:file create/write
+# on /dev/a6l-krec.stop). Same type for the ready marker (created by a6l-krec as su, type_transition, unchanged).
+/dev/a6l-krec\.(ready|stop)                 u:object_r:a6l_dev_file:s0

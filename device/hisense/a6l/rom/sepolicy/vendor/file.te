@@ -39,3 +39,5 @@ type sysfs_a6l_touch, sysfs_type, fs_type;                         # /sys/bus/i2
 type proc_a6l_printk, fs_type, proc_type;                          # /proc/sys/kernel/printk{,_devkmsg,...} (was generic proc)
 type a6l_firmware_file, vendor_file_type, file_type;               # /vendor/firmware (kernel direct load + tqftpserv)
 type a6l_debug_exec, vendor_file_type, file_type;                  # rom/debug scripts started by init as su (userdebug)
+# selinux-20261007 pass 4: /sys/module/firmware_class/parameters/path (read by tqftpserv to locate /vendor/firmware)
+type sysfs_a6l_fw_path, sysfs_type, fs_type;
