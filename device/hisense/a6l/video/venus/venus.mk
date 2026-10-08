@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # venus-impl (6 Oct 2026; firmware/extracted/venus-impl-20261006/README.md): hardware H.264 encoding on the SDM660 Venus
 # (upstream venus V4L2 stateful encoder) through the ChromeOS/AOSP V4L2 Codec2 HAL: external/v4l2_codec2 (in the Lineage
-# tree, rev 6685af1c) + A6L patches rom/android/patches/external/v4l2_codec2/0001-0003 (find the encoder by driver name via
+# tree, rev 6685af1c) + A6L patches rom/android/patches/external/v4l2_codec2/0001-0006 (find the encoder by driver name via
 # sysfs, never open camera nodes, any /dev/videoN; advertise the encoder only when the device exists; MMAP coded output).
 # Kernel side: boot DTB with &venus okay + per-Venus CX vote (boot-venus-cx.img), rom/modules/video.txt loaded by
 # a6l-modules.sh misc when persist.vendor.a6l.venus=1, firmware /vendor/firmware/qcom/venus-4.4 (stage-rom-v2-prebuilts.sh).
@@ -17,7 +17,10 @@
 # next open (warm HFI3 resume leaves the firmware deaf, out8); venus_core.a6l_keep_on=1 (insmod param) = always powered.
 # output_mmap: the HFI3 firmware uses static output buffers -> coded output through fixed MMAP buffers + copy (patch 0003).
 # HEVC encode: the firmware supports it, but external/v4l2_codec2 has no HEVC encoder component -> H.264 only.
-# Decoder: venus-dec.ko is staged (persist.vendor.a6l.venus.dec=1 loads it) but untested; no Codec2 decoder is enabled.
+# Decoder (prod4, 8 Oct 2026): venus-dec + c2.v4l2.{avc,hevc,vp9,vp8}.decoder (rank 256), advertised only when the decoder
+# node exists (patch 0005). persist.vendor.a6l.venus.dec=0 until stage-b10-dec passes (MD5 vs ffmpeg), then 1.
+# b10b: the HFI 3xx firmware reports no crop (1920x1080 H.264 decodes as 1920x1088): patch 0006 takes the visible rect
+# from the SPS when the driver gives none. Keep dec=0 until stage-b10b shows >= 30 fps at 1080p (-N) and MD5 matches.
 # Inherited from rom/rom.mk; sepolicy via BoardConfig-venus.mk.
 A6L_VENUS_DIR := device/hisense/a6l/video/venus
 
@@ -30,6 +33,10 @@ PRODUCT_PACKAGES += \
 
 PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.v4l2_codec2.encoder.supported.h264=true \
+    ro.vendor.v4l2_codec2.decoder.supported.h264=true \
+    ro.vendor.v4l2_codec2.decoder.supported.hevc=true \
+    ro.vendor.v4l2_codec2.decoder.supported.vp9=true \
+    ro.vendor.v4l2_codec2.decoder.supported.vp8=true \
     ro.vendor.v4l2_codec2.device_name_filter=venus \
     ro.vendor.v4l2_codec2.encoder.output_mmap=true \
     persist.vendor.a6l.venus=1 \

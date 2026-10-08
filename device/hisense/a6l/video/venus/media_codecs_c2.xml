@@ -20,4 +20,59 @@
             <Limit name="performance-point-1280x720" value="30" />
         </MediaCodec>
     </Encoders>
+    <!-- venus-impl prod4 (8 Oct 2026): Venus hardware decoders (venus-dec, persist.vendor.a6l.venus.dec=1). Listed only when
+         the V4L2 store advertises them (decoder node present, A6L patch 0005); otherwise the software decoders stay.
+         Bounds: the DT CX vote (NOM) covers video_core_clk <= 404 MHz = load <= 432000 MB/s (1080p up to ~52 fps), so
+         blocks-per-second is capped there; 1080p60 content falls back to software until the vote is raised to NOM_PLUS. -->
+    <Decoders>
+        <MediaCodec name="c2.v4l2.avc.decoder" type="video/avc" rank="256">
+            <Limit name="size" min="96x96" max="1920x1088" />
+            <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-8160" />
+            <Limit name="blocks-per-second" range="1-432000" />
+            <Limit name="frame-rate" range="1-60" />
+            <Limit name="bitrate" range="1-40000000" />
+            <Limit name="concurrent-instances" max="4" />
+            <Feature name="adaptive-playback" />
+            <Limit name="performance-point-1920x1080" value="30" />
+            <Limit name="performance-point-1280x720" value="60" />
+        </MediaCodec>
+        <MediaCodec name="c2.v4l2.hevc.decoder" type="video/hevc" rank="256">
+            <Limit name="size" min="96x96" max="1920x1088" />
+            <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-8160" />
+            <Limit name="blocks-per-second" range="1-432000" />
+            <Limit name="frame-rate" range="1-60" />
+            <Limit name="bitrate" range="1-40000000" />
+            <Limit name="concurrent-instances" max="4" />
+            <Feature name="adaptive-playback" />
+            <Limit name="performance-point-1920x1080" value="30" />
+        </MediaCodec>
+        <MediaCodec name="c2.v4l2.vp9.decoder" type="video/x-vnd.on2.vp9" rank="256">
+            <Limit name="size" min="96x96" max="1920x1088" />
+            <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-8160" />
+            <Limit name="blocks-per-second" range="1-432000" />
+            <Limit name="frame-rate" range="1-60" />
+            <Limit name="bitrate" range="1-40000000" />
+            <Limit name="concurrent-instances" max="4" />
+            <Feature name="adaptive-playback" />
+            <Limit name="performance-point-1920x1080" value="30" />
+        </MediaCodec>
+        <MediaCodec name="c2.v4l2.vp8.decoder" type="video/x-vnd.on2.vp8" rank="256">
+            <Limit name="size" min="96x96" max="1920x1088" />
+            <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-8160" />
+            <Limit name="blocks-per-second" range="1-432000" />
+            <Limit name="frame-rate" range="1-60" />
+            <Limit name="bitrate" range="1-40000000" />
+            <Limit name="concurrent-instances" max="4" />
+            <Feature name="adaptive-playback" />
+            <Limit name="performance-point-1920x1080" value="30" />
+        </MediaCodec>
+    </Decoders>
 </MediaCodecs>

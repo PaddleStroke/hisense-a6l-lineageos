@@ -131,6 +131,11 @@ venus_ready() {
     done
     if [ -n "$enc" ] && [ -c "$enc" ]; then
         chown media:camera "$enc"; chmod 0660 "$enc"  # owner media (codec2 HAL), group camera as ueventd sets for video*
+        dec=""; for d in /sys/class/video4linux/video*; do [ "$(cat $d/name 2>/dev/null)" = qcom-venus-decoder ] && dec=/dev/${d##*/}; done
+        if [ -n "$dec" ] && [ -c "$dec" ]; then
+            chown media:camera "$dec"; chmod 0660 "$dec"; setprop vendor.a6l.venus.dec "$dec"
+            log "misc: venus decoder $dec ($(ls -l $dec | cut -d' ' -f1,3,4))"
+        fi
         setprop vendor.a6l.venus.enc "$enc"; setprop vendor.a6l.venus ready
         log "misc: venus encoder $enc ready after ${i}x0.1s ($(ls -l $enc | cut -d' ' -f1,3,4))"
     else
@@ -246,9 +251,11 @@ misc)
     # powered-off block (reset seen at stream-off, 25 Sep).
     if [ "$(getprop persist.vendor.a6l.camera)" = 1 ]; then load_list camera; else log "misc: camera stack NOT loaded (persist.vendor.a6l.camera != 1)"; fi
     # venus-impl (6 Oct 2026): Venus hardware video codec, after the camera so the camera keeps its node numbers.
-    if [ "$(getprop persist.vendor.a6l.venus)" = 1 ]; then load_list video; venus_ready
-        # hardware decoder (untested; no Codec2 decoder enabled): only with persist.vendor.a6l.venus.dec=1
+    if [ "$(getprop persist.vendor.a6l.venus)" = 1 ]; then load_list video
+        # hardware decoder (prod4, persist.vendor.a6l.venus.dec=1): loaded before venus_ready so that the Codec2 HAL restart
+        # on vendor.a6l.venus=ready already sees the decoder node (the V4L2 store enumerates devices once, at creation)
         [ "$(getprop persist.vendor.a6l.venus.dec)" = 1 ] && load_list video-dec
+        venus_ready
     else setprop vendor.a6l.venus off; log "misc: venus NOT loaded (persist.vendor.a6l.venus != 1)"; fi
     for l in /sys/class/leds/epd-backlight /sys/class/leds/*flash* /sys/class/leds/*torch*; do [ -e "$l/brightness" ] && log "misc: led ${l##*/}"; done
     # r5 review fix F49: VibratorOL's LED backend (init restarts vendor.qti.vibrator when this group stops)
