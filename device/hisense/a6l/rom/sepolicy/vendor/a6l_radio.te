@@ -20,6 +20,9 @@ allow a6l_radio_ctl a6l_rmtfs_mem_device:chr_file getattr;
 # wlan0 MAC from /persist/wlan_mac.bin. NOTE: `ip link set` is /system/bin/ip = a system executable that a vendor domain
 # may not run (Treble neverallow): in enforcing the MAC step must move to a6l_macs (see release-prep doc 3.4).
 r_dir_file(a6l_radio_ctl, a6l_persist_file)
+# wifi-20261008: fstab.qcom mounts persist WITHOUT context=, so its files keep their stock xattr label (seen live:
+# mnt_vendor_file on wlan_mac.bin, permissive avc from a6l_macs). Read it under either label.
+r_dir_file(a6l_radio_ctl, mnt_vendor_file)
 get_prop(a6l_radio_ctl, vendor_a6l_prop)
 set_prop(a6l_radio_ctl, ctl_start_prop)
 set_prop(a6l_radio_ctl, ctl_stop_prop)
@@ -63,6 +66,7 @@ type a6l_macs, domain;
 init_daemon_domain(a6l_macs)
 allow a6l_macs a6l_modem_block_device:blk_file r_file_perms;
 r_dir_file(a6l_macs, a6l_persist_file)
+r_dir_file(a6l_macs, mnt_vendor_file)    # wifi-20261008: see a6l_radio_ctl above
 allow a6l_macs self:udp_socket create_socket_perms;
 allowxperm a6l_macs self:udp_socket ioctl { SIOCGIFHWADDR SIOCSIFHWADDR SIOCGIFFLAGS SIOCSIFFLAGS };
 allow a6l_macs self:bluetooth_socket create_socket_perms_no_ioctl;
@@ -77,3 +81,17 @@ allow hal_bluetooth_default self:capability net_admin;
 allow hal_bluetooth_default a6l_rfkill_device:chr_file rw_file_perms;
 # r5 review fix F8 (28 Sep 2026): a6l-radio.sh start publishes vendor.a6l.radio.state (starting/up/failed:<reason>)
 set_prop(a6l_radio_ctl, vendor_a6l_prop)
+
+# ---- selinux-20261007 pass 3 (round 21 avc, vendor 3281849b; firmware/extracted/selinux-20261007/round21/README.md) ----
+# stdio_to_kmsg on userdebug = /dev/kmsg_debug (r21: a6l-radio.sh/grep/sleep getattr+write x24, diag-router getattr x2);
+# rmtfs/tqftpserv have stdio_to_kmsg too (no r21 denial: they only write on errors; inferred). TCGETS ioctl = isatty only.
+allow { a6l_radio_ctl a6l_diag a6l_rmtfs a6l_tqftpserv } kmsg_debug_device:chr_file { w_file_perms getattr };
+dontaudit { a6l_radio_ctl a6l_diag a6l_rmtfs a6l_tqftpserv } { kmsg_device kmsg_debug_device }:chr_file ioctl;
+# diag-router finds the modem/ADSP DIAG channels with libudev (peripheral-rpmsg.c: enumerate rpmsg devices, realpath to the
+# device, sysattr "name" / parent "rpmsg_name"). The rpmsg devices sit below the remoteprocs: MSS
+# 4080000.remoteproc/remoteproc/remoteproc1/...glink-edge.DATA2 (sysfs_a6l_remoteproc) and the ADSP IPCRTR subtree
+# (sysfs_a6l_iio since pass 1). r21: 2825 dir-search lines, re-polled every second. Without it the router sees no
+# peripheral (the comment above: "the modem starves without it"). Read-only; the attribute reads are inferred (libudev).
+allow a6l_diag { sysfs_a6l_remoteproc sysfs_a6l_iio }:dir r_dir_perms;
+allow a6l_diag { sysfs_a6l_remoteproc sysfs_a6l_iio }:file r_file_perms;
+allow a6l_diag { sysfs_a6l_remoteproc sysfs_a6l_iio }:lnk_file read;

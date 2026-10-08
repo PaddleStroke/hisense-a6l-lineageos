@@ -1,9 +1,9 @@
 # A6L port checklist
 
-## Current status — 8 Oct 2026 late evening (installed: round 21)
+## Current status — 8 Oct 2026 night (installed: round 22)
 
-Installed: boot 10affa76 (force-normal cmdline, Venus CX DTB, cpufreq OSM nodes) + vendor 3281849b + system b3bd442c
-(round 21: round 20 + ath10k 0005 Wi-Fi-off fix + SELinux pass 2). Kits: `/home/pierrelouis/A6L-usb-20260915/rom-r7c-round*-20261006` on the laptop; builds and audits in
+Installed: boot 10affa76 (force-normal cmdline, Venus CX DTB, cpufreq OSM nodes) + vendor 4f0b9938 + system b3bd442c
+(round 22: round 20 + ath10k 0005 Wi-Fi-off fix + SELinux passes 2 and 3). Kits: `/home/pierrelouis/A6L-usb-20260915/rom-r7c-round*-20261006` on the laptop; builds and audits in
 `firmware/extracted/pm-logging-20261005/round*-{vendor,system}-*` (build-round12-image.py, audit-round*-*.py,
 stage-round4-kit.py). Handoff detail: `docs/handoff-20261005-claude.md`. SELinux: permissive (prep rules, pass 1).
 
@@ -27,7 +27,7 @@ not yet exercised · **OPEN** = not working / not started.
 | Bluetooth | UNTESTED | stack present | pair + audio test |
 | GNSS, sensors (accel, gyro, prox/light, hall) | UNTESTED (partly seen working earlier) | — | quick check |
 | Suspend / battery | PARTIAL | s2idle works; "hard LOCKUP" watchdog reports in s2idle are false positives; mdss_ahb_clk stuck-on warning at suspend (cosmetic); backlit-black panel on timer-only wakes (bug, power) | power measurement; mdss fix (mdss-ahb-20261007) |
-| SELinux enforcing | OPEN | pass 1 shipped (permissive); pass 2 in round 21 (module groups OK under vendor.a6l_modules_*); round 21 avc: 2903 lines, 97% one a6l_diag rule | pass 3, then attended enforcing test boot |
+| SELinux enforcing | OPEN | pass 1 shipped (permissive); pass 2 in round 21 (module groups OK under vendor.a6l_modules_*); pass 3 in round 22: kernel avc 905 -> 37 (radio helpers, supplicant cap, 2 props) | pass 4, then attended enforcing test boot (boot-only flash of boot-10affa76-enforcing.img 9f96cd55; fallback = permissive 10affa76) |
 | Google apps / Play Protect | OK | device registered (GSF id), message gone | — |
 
 ### Known caveats for daily use

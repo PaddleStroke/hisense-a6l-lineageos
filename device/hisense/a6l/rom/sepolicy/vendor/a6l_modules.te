@@ -77,3 +77,8 @@ allow a6l_modules a6l_dev_file:file r_file_perms;
 # selinux-20261007 pass 2 (round 12): `[ -e /sys/class/drm/renderD128 ]` resolves into 5000000.gpu/drm (sysfs_gpu since
 # pass 1). Denied in enforcing = "NO renderD128 -> EGL angle (software)" for the whole boot. Directories only.
 allow a6l_modules sysfs_gpu:dir r_dir_perms;
+# selinux-20261007 pass 3 (round 21): cfg80211.ko (wifi-20261008 0001: loaded by the misc group before wificond) creates
+# its .builtin_regdb_keys keyring in the insmod task (key labelled a6l_modules, write), and the regulatory worker later
+# searches it to verify regulatory.db (kernel search). Denied = no signed regdb -> world regulatory domain only.
+allow a6l_modules self:key write;
+allow kernel a6l_modules:key search;

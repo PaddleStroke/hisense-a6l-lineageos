@@ -5,3 +5,5 @@ allow system_server sysfs_a6l_vibrator:dir search;
 allow system_server sysfs_a6l_vibrator:file r_file_perms;
 # ro.vendor.a6l.* (vendor_public_prop) read by system_server and by Launcher3 (priv_app) in r11 (x8 each).
 get_prop({ system_server priv_app }, vendor_a6l_ro_prop)
+# pass 3 (round 21): SystemUI (platform_app) reads ro.vendor.a6l.* too (x8)
+get_prop(platform_app, vendor_a6l_ro_prop)

@@ -14,3 +14,6 @@ set_prop(hal_usb_gadget_default, vendor_a6l_usb_prop)
 # init.a6l.usb.rc: early adb (before the HAL) writes soft_connect; the managed/hal flags
 allow vendor_init sysfs_udc:file w_file_perms;
 set_prop(vendor_init, vendor_a6l_usb_prop)
+# selinux-20261007 pass 3 (round 21): the HAL lstat()s the function links of the active config
+# (/config/usb_gadget/g1/configs/b.1/f1, r21 x2); AOSP grants configfs lnk_file create/unlink/read only.
+allow hal_usb_gadget_default configfs:lnk_file getattr;

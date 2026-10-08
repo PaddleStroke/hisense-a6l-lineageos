@@ -8,3 +8,9 @@ userdebug_or_eng(`
   allow init a6l_debug_exec:file { getattr open read execute map };
   type_transition su device:file a6l_dev_file "a6l-krec.ready";
 ')
+# selinux-20261007 pass 3 (round 21): init.a6l.krec-debug.rc `write /dev/a6l-krec.stop` at boot_completed runs as
+# vendor_init and created a generic `device` file (r21 create/write x4). Give it the /dev/a6l type (a6l-krec is su).
+userdebug_or_eng(`
+  type_transition vendor_init device:file a6l_dev_file "a6l-krec.stop";
+  allow vendor_init a6l_dev_file:file create_file_perms;
+')

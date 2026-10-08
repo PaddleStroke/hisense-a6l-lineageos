@@ -48,3 +48,5 @@ allow a6l_modules sysfs_a6l_flash:file r_file_perms;
 # vendor.a6l.wlan.state=ready (a6l-radio.sh, after the persist MAC write) and reads persist.vendor.a6l.radio.
 # nl80211 (netlink_generic_socket), SIOCETHTOOL and sysfs reads are already granted to hal_wifi by system/sepolicy.
 get_prop(hal_wifi_default, vendor_a6l_prop)
+# selinux-20261007 pass 3 (round 21): libwifi-hal-a6l also reads ro.vendor.a6l.* (vendor_a6l_ro_prop, r21 x8)
+get_prop(hal_wifi_default, vendor_a6l_ro_prop)

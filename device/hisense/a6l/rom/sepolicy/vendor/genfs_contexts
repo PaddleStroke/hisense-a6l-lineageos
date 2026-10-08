@@ -66,3 +66,5 @@ genfscon sysfs /devices/platform/a6l-buttons/wakeup                        u:obj
 genfscon sysfs /devices/platform/soc@0/c176000.i2c/i2c-0/0-0049            u:object_r:sysfs_a6l_iio:s0
 # RTC alarmtimer wakeup source (r12 realpath .../rtc@6000/rtc/rtc0/alarmtimer.0.auto/wakeup/wakeup1/name, system_suspend x4)
 genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmic@0:rtc@6000/rtc/rtc0/alarmtimer.0.auto/wakeup u:object_r:sysfs_wakeup:s0
+# selinux-20261007 pass 3 (round 21): sound card wakeup source (system_suspend read .../platform/sound/wakeup/wakeup22/name)
+genfscon sysfs /devices/platform/sound/wakeup                              u:object_r:sysfs_wakeup:s0
