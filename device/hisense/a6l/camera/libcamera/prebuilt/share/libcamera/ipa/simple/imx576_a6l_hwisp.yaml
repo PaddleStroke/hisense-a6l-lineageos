@@ -1,3 +1,11 @@
+# camera-iq-20261008 V2d = V2c + 0112 tone (README "Blacks and grain (9 Oct)", blacks/tonefit2.txt):
+# gamma 2.65, contrast 1.125, blackPoint 0.012 (soft toe + slope limit in core 0112).
+# NEEDS core 0112 (r11): on r10d the 0105 hard toe crushes the shadows with this blackPoint.
+# camera-iq-20261008 V2c = V2b-af0108 + stock-like tone (9 Oct desk pair, detail/ and README "Detail and tone vs
+# stock"): gamma 2.6, contrast 1.2, blackPoint 0.005, saturation 1.15, Agc target 0.20 / lowLight 0.13.
+# NEEDS core 0105 (r8 or later): blackPoint is a post-WB toe there; on the installed core it tints shadows.
+# camera-iq-20261008 V2b-af0108 = V2b + AF changes for the simple IPA with patch 0108.
+# camera-iq-20261008 V2b = V2 + the V1b changes.
 # A6L hw-ISP (VFE 4.8 PIX path, round 6 = round 5 + chroma denoise + low-light frame extension): IMX576 = r3-A + CCT-keyed stock CCM table (cctawb Ccm block).
 # CCM / WB gains / LUT are applied by the VFE through DebayerHwIsp; statistics come from the NV12 output
 # (inverse LUT/CCM/WB; AF focus measure in the linear domain). Needs IPA be807526 (camera round 3, 0030-0035).
@@ -20,10 +28,8 @@ algorithms:
   # the first AWB result, so the first frame(s) use the H matrix.
   - Ccm:
       ccms:
-        - ct: 2788   # stock H: gains r 1.059 b 4.0
-          ccm: [    1.3265,   -0.2573,   -0.0693,
-                    -0.3956,    1.1593,    0.2363,
-                    -0.1536,   -1.5377,    2.6913 ]
+        # camera-iq V2: stock H (2788) matrix removed (B row 2.69/-1.54 amplifies any blue deficit and noise);
+        # the A matrix below is used for every CCT <= 3395.
         - ct: 3395   # stock A: gains r 1.39 b 2.947
           ccm: [    1.3651,   -0.2199,   -0.1452,
                     -0.1967,    1.0949,    0.1018,
@@ -44,10 +50,15 @@ algorithms:
       # Tone fitted to the decoded stock default gamma table (02/06): stock midtones are brighter and its
       # shoulder softer than gamma 2.2 + contrast 1.2. blackPoint (0032) = toe, equal on all channels after WB.
       # drcStrength (0032): give back half of any Agc highlight cut to the midtones by raising gamma.
-      gamma: 2.54
-      contrast: 1.2
-      blackPoint: 0.008
-      drcStrength: 0.5
+      gamma: 2.65         # camera-iq V2d (V2c 2.6): fitted with the 0112 soft toe
+      # V2b was: gamma: 3.2          # camera-iq V1b: with contrast 1.3 = mild shadow/mid lift vs V1 (0.05 -> 64 vs 55, 0.18 -> 122 vs 115)
+      contrast: 1.125     # camera-iq V2d (V2c 1.2)
+      # V2b was: contrast: 1.3       # camera-iq V1b (V1 1.4): softer shoulder too (0.7 -> 236 vs 240)
+      blackPoint: 0.012   # camera-iq V2d (V2c 0.005): soft toe in 0112; removes the ~0.012 dark floor (veil,
+                          # black plastic) that V2c rendered at 25-35 codes; stock renders it at 3-14
+      # V2b was: blackPoint: 0.0     # camera-iq V1: DebayerHwIsp applies blackLevel.r() to ALL channels pre-WB -> B crushed under warm light
+      saturation: 1.15    # camera-iq V2c: stock is ~18 % more colourful (also amplifies any AWB cast)
+      drcStrength: 0.0    # camera-iq V1: the VFE LUT is only reloaded at the next stream start -> keep it constant
       drcPivot: 0.18
       # Round 6 (0037 keys, camera round 3 r3-B values): NV12 chroma denoise, applied by DebayerHwIsp while it copies
       # the CbCr plane from the VFE buffer (no extra pass); stronger at high gain, the limit protects colour edges.
@@ -61,14 +72,16 @@ algorithms:
       # 0031. target = stock luma target 50/255 x missing-LSC frame-mean factor 1.532
       # x 0.74 (matched front pair, subject patches): 0.222.
       # Installed IPA: fixed 0.4 (= +0.86 EV brighter than this).
-      target: 0.22
-      lowLightTarget: 0.145   # stock low-light zone ratio 0.66
+      target: 0.20        # camera-iq V2c (V2b 0.22): stock mids ~10 % darker; slightly shorter exposures
+      # V2b was: target: 0.22        # camera-iq V1b: back to the installed value
+      lowLightTarget: 0.13    # camera-iq V2c (V2b 0.145)
+      # V2b was: lowLightTarget: 0.145   # camera-iq V1b: back to the installed value
       lowLightGainStart: 4.0
       lowLightGainEnd: 8.0
       # keep the brightest 2 % below 90 % of the white-balanced clip level, at most 1 EV under target
       highlightQuantile: 0.98
       highlightTarget: 0.9
-      highlightMaxCut: 1.0
+      highlightMaxCut: 0.5    # camera-iq V1b (was 1.0; DRC is off): bright monitor/window darkens the scene at most 0.5 EV
       # Round 3 (0035): faster convergence that stays stable even if a decision sees the previous exposure
       # (offline model rerun/agc-sim-stdout.txt, 'mild'). Deployed: convergence 0.5, maxStep 1.5, no split.
       convergence: 0.6
@@ -83,28 +96,45 @@ algorithms:
       maxFrameDuration: 66667
       frameExtensionGain: 4.0
   - Af:
+      # camera-iq 9 Oct (r8/af-*.txt): a > 2 m scene peaks at dac ~290 and the ~20 cm run at ~335; no run peaked
+      # below 250. infinityDac/macroDac stay the stock no-OTP values (they also define the dioptre scale reported to
+      # Android); only the scan floor and the rest position move.
       infinityDac: 227
       macroDac: 627
-      infinityMargin: -0.25
+      infinityMargin: 0.0   # scan floor 227 (was -0.25 = 127, a range nothing on this unit focuses in)
       macroMargin: 0.05
       macroDioptres: 10.0
-      defaultDioptres: 0.2
-      coarseSteps: 12
-      fineSteps: 2   # round 3 (R2: 4)
+      defaultDioptres: 1.4   # rest / failed-scan position 283 = the measured far focus (was 0.2 = 235)
+      coarseSteps: 10        # coarse step 42 DAC (was 12 x 44 over 127..647)
+      fineSteps: 2
       settleFrames: 3
       minContrast: 0.0001
       minPeakRatio: 1.10
       stopRatio: 0.70
-      rescanDrop: 0.65
-      rescanRise: 1.60
-      rescanCount: 2   # round 3 (R2: 3); stableRatio below confirms a settled scene
-      # Round 3 (0034): local continuous rescans from a focused position, scene-stability gate, keep focus
-      # after a trigger lock/cancel. (fineSteps above: 2 per side, full sweep <= 16 measurements instead of 20.)
+      # Monitoring: at a fixed lens the measure varies 14-50 % frame to frame (mostly single-frame dips) and the
+      # reference is the scan maximum (noise-biased high), so 2 samples < 0.65 x ref triggered rescans every few s.
+      rescanDrop: 0.6    # on the 5-sample median (0108)
+      rescanRise: 2.0
+      rescanCount: 6   # ~0.8 s sustained, plus the 5-sample median
       localStep: 40
       localMaxSteps: 8
       localDrop: 0.90
       localMinRatio: 1.4
-      stableRatio: 0.15
-      stableWait: 3
+      stableRatio: 0.25
+      stableWait: 4
       keepFocusOnResume: true
+      # IPA patch 0108 keys (ignored by the installed IPA 1ab9bff3). Simulated in af-sim/ (sim-output.txt).
+      samplesCoarse: 1       # measurements per coarse position (upper median)
+      samplesFine: 2         # per fine position: the larger of 2 (rejects single-frame dips)
+      samplesLocal: 2
+      peakFit: true          # fine pass centred on the coarse parabola; final = LS parabola over coarse+fine
+      fineMinRatio: 0.5      # fine peak < 0.5 x coarse peak: outlier, one full rescan
+      lumaSkipRatio: 0.25    # drop scan samples taken during an AE step (raw mean jumped > 25 %)
+      monitorWindow: 5       # continuous AF compares the median of the last 5 measurements (~0.7 s)
+      refSamples: 4          # reference = median of the first 4 measurements at the final position
+      rescanHysteresis: 0.5  # count resets only back above 0.8 x ref (and below 1.5 x ref)
+      sceneChange: 0.3       # scene brightness (raw / exposure x gain) off by > 1.3x also counts
+      settleStats: 0
+      largeMoveDac: 150      # one extra stats discarded after a move >= 150 DAC and after the session's first move
+      startupSkipStats: 1    # first valid stats after stream start ignored
 ...

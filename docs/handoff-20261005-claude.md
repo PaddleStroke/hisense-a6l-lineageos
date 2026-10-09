@@ -742,3 +742,33 @@ Checklist: docs/port-status.md (feature matrix at the top). Access: phone via ss
   4. A/B props: detail 2/3, lnr, cnr, toe, softtoe (README "Blacks and grain").
   5. If OK, ship r11 + r9b + r9 IPA + V2d in the next vendor round.
 - **Proper fix for the ABF inversion:** kernel 0004 should use s = 80·nr_session/nr.
+
+## 9 Oct 2026 afternoon: camera verdict (Pierre) and round 25
+
+**Live test of core r11 + HAL r9b + IPA r9 + V2d, verdict "image quality acceptable/good on all 3 cameras; front and wide equivalent to stock".**
+Open items, not started:
+1. **Colour "filter dance" at camera open.** The preview cycles through colour casts about every 0.5 s before settling: ~1-2 s on main, ~10 s on front (it started again afterwards), 5-10 s when returning to main. NEW with r11/V2d. Suspects:
+   - AWB oscillation with 0106 robust stats (awb=1) combined with 0112 (chroma pass / noise estimate / ABF compensation feedback);
+   - LUT or CCM switching per frame.
+
+   Bisect with props: awb 0/1, cnr 0, abffix 0, detail 3, softtoe 0 (reopen the camera after each).
+2. **Too bright.** The main camera needed about -3 on the app's exposure slider to match stock in this scene. Lower the Agc target (V2d 0.20 -> ~0.15?) or add highlight protection. Stock also exaggerates contrast (makes dust stand out), so don't copy that.
+3. **AE is slow.** Desk -> window or outdoor -> indoor: stock adapts almost instantly, ours is blinded ~2 s, on all cameras. Speed up the simple IPA Agc convergence (step size / damping, first-frame metering, possibly exposure+gain jump on large errors).
+
+**Round 25 (building; not flashed or audited yet):** vendor = round 24 + camera stack in device/hisense/a6l/camera/libcamera/prebuilt:
+- libcamera.so 10699e89 (r11);
+- hw/camera.libcamera.so 0ea0ca71 (r9b);
+- ipa_soft_simple.so{,.sign} 2e6e0a80 / 59b02aad (r9);
+- V2d yamls (imx576 42deccac);
+- persist.vendor.a6l.hwisp.awb=1;
+- chg-guard Q9.
+
+Build output: firmware/extracted/pm-logging-20261005/round25-vendor-20261009 (log round25-vendor-build-run.log).
+
+Next steps:
+1. Audit: `sed s#round23-vendor-20261009#round24-vendor-20261009# audit-round24-vendor.py > audit-round25-vendor.py`, then update the `pins` dict (lib64/libcamera.so 10699e89, IPA 2e6e0a80, imx576 yaml 42deccac).
+2. Run it with the expected-changed list: the camera files above, bin/a6l-chg-guard.sh, build.prop, odm/etc/build.prop, odm_dlkm/etc/build.prop, vendor_dlkm/etc/build.prop.
+3. `stage-round4-kit.py round25 round25-vendor-20261009 round23-system-20261009 round24`.
+4. Flash with scratchpad flash24.sh, the tag changed to round25. It sets no stay-awake.
+
+NOT in round 25 (staged, untested): voice speaker fix (voice-speaker-20261009), crash-capture items (kernel.panic=5, a6l_diag 0400).
