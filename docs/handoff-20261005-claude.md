@@ -730,3 +730,15 @@ chmod 0400 the a6l_diag node.
 - battery life.
 
 Checklist: docs/port-status.md (feature matrix at the top). Access: phone via ssh `-F tools/a6l-laptop-ssh.conf a6l-laptop`, then `adb -s 1e529013`.
+
+**Update (blacks/grain agent finished):** not a range or pedestal bug.
+- **Blacks:** the tone-curve toe is infinitely steep at black (~20 codes), plus a ~0.012 linear dark floor that stock removes (~10 codes).
+- **Grain:** 0111 coring sat below the 8x noise. Also, kernel 0004's live ABF strength is inverted (rising gain weakens it).
+- **Fix:** core patch 0112 (soft toe with capped slope, luma NR inside the enhancer, second chroma pass, ABF compensation) + tuning/V2d (V2d-warm). Offline: 0.5 % luma 32-34 -> 4-6, grain at stock level.
+- **Next:**
+  1. Pierre runs `wsl -u root bash /mnt/c/Users/Pierre/Desktop/A6L/firmware/extracted/camera-iq-20261008/scripts/49-core-build-r11-blacks-grain.sh` (stages prebuilt-r11).
+  2. Push it, then `corelib r11; ipa r9; hal r9b; bind V2d`.
+  3. Open, close and reopen the camera before judging (the LUT changes only at stream start).
+  4. A/B props: detail 2/3, lnr, cnr, toe, softtoe (README "Blacks and grain").
+  5. If OK, ship r11 + r9b + r9 IPA + V2d in the next vendor round.
+- **Proper fix for the ABF inversion:** kernel 0004 should use s = 80·nr_session/nr.
