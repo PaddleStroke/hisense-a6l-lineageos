@@ -27,7 +27,11 @@ PRODUCT_COPY_FILES += \
 # r6g: recovery off-screen CopyTex tests fail on the a5xx 2D copy path.
 # The generic GPU blit path passes all 338 format/copy cases. Android UI and
 # stability validation are pending; this keeps FD512 shader rendering active.
+# 9 Oct 2026: ro.opengles.version was unset -> PackageManager reported reqGlEsVersion=0x0 and Play Store marked GLES-2+
+# apps (Google Maps) "not compatible". 196609 = GLES 3.1 = what Mesa FD512 exposes (SurfaceFlinger: OpenGL ES 3.1
+# Mesa 26.1); the ANGLE software fallback also exposes 3.x.
 PRODUCT_VENDOR_PROPERTIES += \
+    ro.opengles.version=196609 \
     debug.mesa.fd.mesa.debug=sysmem,noblit \
     debug.renderengine.backend=skiaglthreaded \
     debug.hwui.renderer=skiagl \
