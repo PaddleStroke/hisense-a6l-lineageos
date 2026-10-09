@@ -1,0 +1,16 @@
+make: Entering directory '/home/a6l/kernel/a6l-rom-r5-src'
+make[1]: Entering directory '/home/a6l/kernel/out-a6l-rom-r5/oot/tfa'
+  CC [M]  src/tfa98xx.o
+src/tfa98xx.c:15:9: warning: 'pr_fmt' macro redefined [-Wmacro-redefined]
+   15 | #define pr_fmt(fmt) "%s(): " fmt, __func__
+      |         ^
+/home/a6l/kernel/a6l-rom-r5-src/include/linux/printk.h:401:9: note: previous definition is here
+  401 | #define pr_fmt(fmt) fmt
+      |         ^
+1 warning generated.
+  LD [M]  snd-soc-tfa98xx.o
+  MODPOST Module.symvers
+  CC [M]  snd-soc-tfa98xx.mod.o
+  LD [M]  snd-soc-tfa98xx.ko
+make[1]: Leaving directory '/home/a6l/kernel/out-a6l-rom-r5/oot/tfa'
+make: Leaving directory '/home/a6l/kernel/a6l-rom-r5-src'

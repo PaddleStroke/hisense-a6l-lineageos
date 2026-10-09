@@ -1,0 +1,11 @@
+make: Entering directory '/home/a6l/kernel/a6l-rom-r5-src'
+make[1]: Entering directory '/home/a6l/scratch/voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6'
+  CC [M]  q6voice.o
+  CC [M]  q6cvp.o
+  MODPOST Module.symvers
+  CC [M]  q6voice.mod.o
+  CC [M]  q6cvp.mod.o
+  LD [M]  q6voice.ko
+  LD [M]  q6cvp.ko
+make[1]: Leaving directory '/home/a6l/scratch/voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6'
+make: Leaving directory '/home/a6l/kernel/a6l-rom-r5-src'

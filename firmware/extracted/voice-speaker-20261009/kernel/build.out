@@ -1,0 +1,36 @@
+patching file src/tfa98xx.c
+patching file sound/soc/qcom/qdsp6/q6cvp.h
+patching file sound/soc/qcom/qdsp6/q6cvp.c
+patching file sound/soc/qcom/qdsp6/q6voice.c
+PROTECTED_UNCHANGED (canonical out dirs)
+== baseline rebuilds vs ROM prebuilts
+BASELINE_IDENTICAL snd-soc-tfa98xx
+BASELINE_IDENTICAL q6cvp
+BASELINE_IDENTICAL q6voice
+BASELINE_IDENTICAL q6voice-dai
+q6voice-dai: rebuilt against the new q6voice = identical to the ROM one (not shipped)
+== compile lines / warnings (patched builds)
+  CC [M]  src/tfa98xx.o
+  LD [M]  snd-soc-tfa98xx.o
+  MODPOST Module.symvers
+  CC [M]  snd-soc-tfa98xx.mod.o
+  LD [M]  snd-soc-tfa98xx.ko
+  CC [M]  q6voice.o
+  CC [M]  q6cvp.o
+  MODPOST Module.symvers
+  CC [M]  q6voice.mod.o
+  CC [M]  q6cvp.mod.o
+  LD [M]  q6voice.ko
+  LD [M]  q6cvp.ko
+== overlay upper (source files written)
+./out-a6l-rom-r5/oot/tfa/snd-soc-tfa98xx.mod.c
+./out-a6l-rom-r5/oot/tfa/src/tfa98xx.c
+./voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6/q6cvp.c
+./voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6/q6cvp.h
+./voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6/q6cvp.mod.c
+./voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6/q6voice-dai.mod.c
+./voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6/q6voice.c
+./voice-controls-20261003-063728/candidate/sound/soc/qcom/qdsp6/q6voice.mod.c
+595c58fd402f5d3ed3e4b0b80bbd58845024b300bff146b5b2a7d646137cf4e1  q6cvp.ko
+86cc29400d9bfe7bd9a93b3896b0e9e725eb7e00d9fd16fbfd84b43b9a6e7a93  q6voice.ko
+1f68eb8d776a7f97c047d523aa7efa432ea2ed59e96dff26cc3617d47fbc9175  snd-soc-tfa98xx.ko

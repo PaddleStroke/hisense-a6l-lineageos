@@ -1,0 +1,37 @@
+== snd-soc-tfa98xx: 412616 B (ROM 412616 B)
+  vermagic new=[7.2.3-a6l-probe+ SMP preempt mod_unload modversions aarch64] rom=[7.2.3-a6l-probe+ SMP preempt mod_unload modversions aarch64]
+  depends new=[snd-soc-core,snd-pcm] rom=[snd-soc-core,snd-pcm]
+  srcversion new=[6160AC7A3F7C11A6A6F5A6B] rom=[0E6E59E314786C7B15E17D7]
+  parm: pcm_no_constraint:do not use constraints for PCM parameters; (int);pcm_sample_format:PCM sample format: 0=S16_LE, 1=S24_LE, 2=S32_LE, 3=dynamic; (int);no_reset:do not use the reset line; for debugging via user; (int);no_start:do not start the work queue; for debugging via user; (int);dflt_prof_name: (charp);trace_level:TFA98xx debug trace level (0=off, bits:1=verbose,2=regdmesg,3=regftrace,4=timing). (int);fw_name:TFA98xx DSP firmware (container file) name. (charp);
+  imports 105, crc mismatches 0, unknown 0; new imports vs ROM: 
+== q6cvp: 17224 B (ROM 15640 B)
+  vermagic new=[7.2.3-a6l-probe+ SMP preempt mod_unload modversions aarch64] rom=[7.2.3-a6l-probe+ SMP preempt mod_unload modversions aarch64]
+  depends new=[q6voice-common,snd-q6dsp-common,apr] rom=[q6voice-common,snd-q6dsp-common,apr]
+  srcversion new=[147F6B5C5272F6717BD9DCE] rom=[37BAECDC833B5006FED62B9]
+  parm: 
+  imports 10, crc mismatches 0, unknown 0; new imports vs ROM: 
+== q6voice: 25784 B (ROM 23712 B)
+  vermagic new=[7.2.3-a6l-probe+ SMP preempt mod_unload modversions aarch64] rom=[7.2.3-a6l-probe+ SMP preempt mod_unload modversions aarch64]
+  depends new=[q6mvm,q6cvp,q6afe,q6voice-common] rom=[q6mvm,q6cvp,q6afe,q6voice-common]
+  srcversion new=[724F39A52B640E83FD8952F] rom=[0E6A48426EFB4788EFBBEAF]
+  parm: rx_vol_nsteps:A6L steps announced with VSS_IVOLUME_CMD_SET_NUMBER_OF_STEPS (a6l-q6voiced -V 5 = 6 steps) (int);rx_vol_mode:A6L RX volume command: -1 auto, 0 SET_STEP, 1 NUMBER_OF_STEPS+SET_STEP, 2 RX_VOLUME_INDEX (int);cvd_mode:-1 auto (DT, then MVM version query), 0 legacy, 1 CVD 2.3 (int);
+  imports 33, crc mismatches 0, unknown 0; new imports vs ROM: q6cvp_set_num_vol_steps q6cvp_set_rx_vol_index 
+== q6voice exports (consumed by the ROM q6voice-dai): baseline vs new
+  q6voice export CRCs unchanged
+== q6cvp exports: changed/new
+0a1
+> 0x178b153a	q6cvp_set_rx_vol_index	q6cvp	EXPORT_SYMBOL_GPL	
+6a8
+> 0x6c048ed2	q6cvp_set_num_vol_steps	q6cvp	EXPORT_SYMBOL_GPL	
+== ROM q6voice-dai imports from q6voice vs new q6voice exports
+  ok q6voice_create
+  ok q6voice_get_rx_vol_step
+  ok q6voice_set_rx_vol_step
+  ok q6voice_get_tx_mute
+  ok q6voice_set_tx_mute
+  ok q6voice_get_topology
+  ok q6voice_set_topology
+  ok q6voice_get_port
+  ok q6voice_set_port
+  ok q6voice_start
+  ok q6voice_stop

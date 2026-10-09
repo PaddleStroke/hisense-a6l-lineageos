@@ -1,0 +1,25 @@
+A6L voice-speaker-20261009: snd-soc-tfa98xx: no rate constraint from a DPCM back end (it lands on the front end).
+Apply in the TFA module source dir (/home/a6l/audio3/tfa = out-a6l-rom-r5/oot/tfa) with patch -p1.
+
+--- a/src/tfa98xx.c
++++ b/src/tfa98xx.c
+@@ -2469,6 +2469,19 @@
+ 		return -EINVAL;
+ 	}
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,7,0)
++	/*
++	 * A6L (voice-speaker-20261009): a DPCM back end shares the runtime of the front end that opened it
++	 * (soc-pcm dpcm_be_dai_startup: be_substream->runtime = fe_substream->runtime), so a rate list added here
++	 * constrains the FRONT END. The back-end rate is set by the machine driver's be_hw_params_fixup (sm8250: 48 kHz)
++	 * and tfa98xx_hw_params() still checks it against the selected profile. With the list, every front end whose own
++	 * rate is not a profile rate failed HW_PARAMS with -EINVAL and no log line: VoiceMMode1 (q6voice-dai, 8 kHz mono
++	 * only) routed to TERTIARY_MI2S_RX = in-call speakerphone dead (the call went silent both ways).
++	 */
++	if (snd_soc_substream_to_rtd(substream)->dai_link->no_pcm)
++		return 0;
++#endif
++
+ 	basename = kzalloc(MAX_CONTROL_NAME, GFP_KERNEL);
+ 	if (!basename)
+ 		return -ENOMEM;

@@ -1,0 +1,153 @@
+A6L voice-speaker-20261009 (optional experiment): q6cvp/q6voice RX volume fallbacks (rx_vol_mode).
+Apply on top of a6l-q6voice-tx-mute-v75 + a6l-q6voice-rx-volume-v75 (deployed set, voice-controls-20261003-063728) with patch -p1.
+
+--- a/sound/soc/qcom/qdsp6/q6cvp.h
++++ b/sound/soc/qcom/qdsp6/q6cvp.h
+@@ -20,5 +20,8 @@
+ int q6cvp_set_mute(struct q6voice_session *cvp, bool tx, bool mute, u16 ramp_ms);
+ /* A6L r5 (F37): VSS_IVOLUME_CMD_SET_STEP, direction RX (downlink volume step of the vocproc) */
+ int q6cvp_set_rx_vol_step(struct q6voice_session *cvp, u32 step, u16 ramp_ms);
++/* A6L voice-speaker-20261009: volume experiments (VSS_IVOLUME_CMD_SET_NUMBER_OF_STEPS, VSS_IVOCPROC_CMD_SET_RX_VOLUME_INDEX) */
++int q6cvp_set_num_vol_steps(struct q6voice_session *cvp, u32 steps);
++int q6cvp_set_rx_vol_index(struct q6voice_session *cvp, u16 index);
+ 
+ #endif /*_Q6_CVP_H */
+--- a/sound/soc/qcom/qdsp6/q6cvp.c
++++ b/sound/soc/qcom/qdsp6/q6cvp.c
+@@ -61,6 +61,16 @@
+  * device calibration (stock HAL: Android voice volume 0..1 -> step 0..5).
+  */
+ #define VSS_IVOLUME_CMD_SET_STEP			0x000112C2
++/*
++ * A6L voice-speaker-20261009: SET_STEP fails with APR status 1 (EFAILED, not 3 EUNSUPPORTED) on every step, before and
++ * after MVM start: the command exists but the vocproc has nothing to index (stock registers the ACDB volume table with
++ * VSS_IVOCPROC_CMD_REGISTER_VOL_CALIBRATION_DATA; this driver registers no calibration). Two in-band alternatives of the
++ * same interface family, tried by q6voice (module parameter rx_vol_mode) to settle it on the phone:
++ *   VSS_IVOLUME_CMD_SET_NUMBER_OF_STEPS (u32 steps), the client's step count, sent before SET_STEP;
++ *   VSS_IVOCPROC_CMD_SET_RX_VOLUME_INDEX (u16 index), the pre-SET_STEP vocproc volume command (msm-3.x voice.c).
++ */
++#define VSS_IVOLUME_CMD_SET_NUMBER_OF_STEPS		0x000112C1
++#define VSS_IVOCPROC_CMD_SET_RX_VOLUME_INDEX		0x000110EE
+ 
+ #define VSS_NUM_CHANNELS_MAX 8
+ 
+@@ -195,6 +205,16 @@
+ 	u16 ramp_duration_ms;
+ } __packed;
+ 
++struct vss_ivolume_cmd_set_number_of_steps_cmd {
++	struct apr_hdr hdr;
++	u32 value;
++} __packed;
++
++struct vss_ivocproc_cmd_set_volume_index_cmd {
++	struct apr_hdr hdr;
++	u16 vol_index;
++} __packed;
++
+ struct q6voice_session *q6cvp_session_create(enum q6voice_path_type path,
+ 					     u16 tx_port, u16 rx_port,
+ 					     u32 tx_topo, u32 rx_topo)
+@@ -362,6 +382,30 @@
+ }
+ EXPORT_SYMBOL_GPL(q6cvp_set_rx_vol_step);
+ 
++int q6cvp_set_num_vol_steps(struct q6voice_session *cvp, u32 steps)
++{
++	struct vss_ivolume_cmd_set_number_of_steps_cmd cmd;
++
++	cmd.hdr.pkt_size = sizeof(cmd);
++	cmd.hdr.opcode = VSS_IVOLUME_CMD_SET_NUMBER_OF_STEPS;
++	cmd.value = steps;
++
++	return q6voice_common_send(cvp, &cmd.hdr);
++}
++EXPORT_SYMBOL_GPL(q6cvp_set_num_vol_steps);
++
++int q6cvp_set_rx_vol_index(struct q6voice_session *cvp, u16 index)
++{
++	struct vss_ivocproc_cmd_set_volume_index_cmd cmd;
++
++	cmd.hdr.pkt_size = sizeof(cmd);
++	cmd.hdr.opcode = VSS_IVOCPROC_CMD_SET_RX_VOLUME_INDEX;
++	cmd.vol_index = index;
++
++	return q6voice_common_send(cvp, &cmd.hdr);
++}
++EXPORT_SYMBOL_GPL(q6cvp_set_rx_vol_index);
++
+ static int q6cvp_probe(struct apr_device *adev)
+ {
+ 	return q6voice_common_probe(adev, Q6VOICE_SERVICE_CVP);
+--- a/sound/soc/qcom/qdsp6/q6voice.c
++++ b/sound/soc/qcom/qdsp6/q6voice.c
+@@ -21,6 +21,20 @@
+ module_param(cvd_mode, int, 0644);
+ MODULE_PARM_DESC(cvd_mode, "-1 auto (DT, then MVM version query), 0 legacy, 1 CVD 2.3");
+ 
++/*
++ * A6L voice-speaker-20261009: the CVP rejects VSS_IVOLUME_CMD_SET_STEP with APR EFAILED (no volume calibration
++ * registered). Runtime-writable experiment, logged as "A6L_Q6VOICE rx volume ...":
++ *   rx_vol_mode -1 = auto: SET_STEP; on failure SET_NUMBER_OF_STEPS(rx_vol_nsteps) + SET_STEP; on failure
++ *                    SET_RX_VOLUME_INDEX (each ADSP failure is one quick APR error reply)
++ *                0 = SET_STEP only (the r5 F37 behaviour), 1 = SET_NUMBER_OF_STEPS + SET_STEP, 2 = SET_RX_VOLUME_INDEX
++ */
++static int rx_vol_mode = -1;
++module_param(rx_vol_mode, int, 0644);
++MODULE_PARM_DESC(rx_vol_mode, "A6L RX volume command: -1 auto, 0 SET_STEP, 1 NUMBER_OF_STEPS+SET_STEP, 2 RX_VOLUME_INDEX");
++static int rx_vol_nsteps = 6;
++module_param(rx_vol_nsteps, int, 0644);
++MODULE_PARM_DESC(rx_vol_nsteps, "A6L steps announced with VSS_IVOLUME_CMD_SET_NUMBER_OF_STEPS (a6l-q6voiced -V 5 = 6 steps)");
++
+ #define VSS_IVOCPROC_TOPOLOGY_ID_NONE		0x00010F70
+ #define VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS		0x00010F71
+ #define VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT		0x00010F77
+@@ -107,6 +121,30 @@
+ 		 v->cvd_v2_3 ? "CVD 2.3" : "legacy (CVD <= 2.2)");
+ }
+ 
++/* A6L voice-speaker-20261009: downlink volume step on the vocproc with the rx_vol_mode fallbacks; 0 or -errno */
++static int q6voice_cvp_rx_volume(struct device *dev, struct q6voice_session *cvp, int step, u16 ramp_ms)
++{
++	int mode = rx_vol_mode, n, r1, ret = -EINVAL;
++
++	if (mode <= 0) {
++		ret = q6cvp_set_rx_vol_step(cvp, step, ramp_ms);
++		if (!ret || mode == 0)
++			return ret;
++	}
++	if (mode < 0 || mode == 1) {
++		n = clamp(rx_vol_nsteps, 1, Q6VOICE_RX_VOL_STEP_MAX + 1);
++		r1 = q6cvp_set_num_vol_steps(cvp, n);
++		ret = q6cvp_set_rx_vol_step(cvp, min(step, n - 1), ramp_ms);
++		dev_info(dev, "A6L_Q6VOICE rx volume SET_NUMBER_OF_STEPS(%d): %d, then SET_STEP(%d): %d\n",
++			 n, r1, min(step, n - 1), ret);
++		if (!ret || mode == 1)
++			return ret;
++	}
++	ret = q6cvp_set_rx_vol_index(cvp, step);
++	dev_info(dev, "A6L_Q6VOICE rx volume SET_RX_VOLUME_INDEX(%d): %d\n", step, ret);
++	return ret;
++}
++
+ static int q6voice_path_start(struct q6voice_path *p)
+ {
+ 	struct device *dev = p->v->dev;
+@@ -173,7 +211,7 @@
+ 	 * recreates the session). Not fatal: the call proceeds at the DSP default level and the error is logged.
+ 	 */
+ 	if (p->rx_vol_step >= 0) {
+-		int vret = q6cvp_set_rx_vol_step(cvp, p->rx_vol_step, 0);
++		int vret = q6voice_cvp_rx_volume(dev, cvp, p->rx_vol_step, 0);
+ 
+ 		dev_info(dev, "A6L_Q6VOICE path %d rx volume step %d restore: %d\n", p->type, p->rx_vol_step, vret);
+ 	}
+@@ -349,7 +387,7 @@
+ 	mutex_lock(&p->lock);
+ 	if (p->runtime && p->runtime->started == 3) {
+ 		cvp = p->runtime->sessions[Q6VOICE_SERVICE_CVP];
+-		ret = cvp ? q6cvp_set_rx_vol_step(cvp, step, 20) : -ENODEV;
++		ret = cvp ? q6voice_cvp_rx_volume(v->dev, cvp, step, 20) : -ENODEV;
+ 		dev_info(v->dev, "A6L_Q6VOICE path %d rx volume step %d (live): %d\n", path, step, ret);
+ 	}
+ 	if (!ret)

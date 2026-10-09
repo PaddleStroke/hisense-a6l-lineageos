@@ -695,3 +695,38 @@ Full feature matrix: `docs/port-status.md` (top section, kept current). Key find
 - Camera IQ (camera-iq-20261008): see port-status camera row; V1 tuning A/B and core patch 0105 pending.
 - Disk: C: hit 0 bytes free (128 GB of per-round images); superseded *.img/*.erofs deleted with Pierre's OK (94 GB).
 - WSL default user changed to a6l: run tree edits and builds as root (`wsl -u root`); out/ is root-owned.
+
+## 9 Oct 2026 midday handoff (usage nearly exhausted)
+
+**Phone:** round 24 installed (vendor 92ba5aa6, system 83226f56 unchanged): pmi8998_fg live-status fix (e0587abf), chg-guard Q8,
+ro.opengles.version=196609 (Maps installs). Stay-awake off, no wakelocks held.
+**Tree, not yet built:** chg-guard Q9 (safety net; commit 10fac64), synced into the WSL tree.
+
+**Camera (live bind mounts only; lost on reboot).** Staging in firmware/extracted/camera-iq-20261008:
+- core prebuilt-r10d/lib64/libcamera.so 9658f630 (= lc-c + 0104-0107 + 0109 + 0111; script 48);
+- HAL prebuilt-r9b/lib64/hw/camera.libcamera.so 0ea0ca71 (0109 + template-size fix);
+- IPA prebuilt-r9/lib64/libcamera/ipa/ipa_soft_simple.so{,.sign} 2e6e0a80 (0108 + 0110, signed by Pierre);
+- tuning tuning/V2c (also V2c-warm, -short); props persist.vendor.a6l.hwisp.awb=1 sharp=100 detail=2.
+
+Rebind: push the dirs to /data/local/tmp/iq, then `sh iq-ab.sh bind V2c; corelib r10d; ipa r9; hal r9b`.
+Verified by Pierre: tap-to-focus, AF no longer hunts, neutral colour. Still open: lifted blacks (0.5 % luma 34 vs stock 3)
+and grain at 8x. An agent was writing 0112 + tuning/V2d + scripts/49 (README "Blacks and grain"); check whether it finished.
+To ship: copy core/HAL/IPA(.sign)/tuning into device/hisense/a6l/camera/libcamera/prebuilt (+ WSL tree), then build a
+vendor round. Builds that need the IPA key must be run by Pierre (the classifier blocks them for Claude).
+
+**Voice.** Speaker in calls is silent: tfa98xx 48 kHz rate list on the 8 kHz voice FE. Fix staged in
+firmware/extracted/voice-speaker-20261009 (phone/vs-swap.sh param|tfa|daemon); needs a SIM call to test. Volume steps fail
+(probe module 0003).
+
+**Stability.** One spontaneous reset at 11:32 (black about 2 s, then boot logo), during the first cellular-data session. Kit in
+firmware/extracted/crash-20261009. Run pon-reason.sh BEFORE rebooting after any reset. Next round: kernel.panic=5, and
+chmod 0400 the a6l_diag node.
+
+**Other open items:**
+- USB drops while the phone sleeps (dwc3 not kept in L2);
+- e-ink reader-sleep test (Pierre);
+- SELinux enforcing boot;
+- GPS and data with Wi-Fi off untested;
+- battery life.
+
+Checklist: docs/port-status.md (feature matrix at the top). Access: phone via ssh `-F tools/a6l-laptop-ssh.conf a6l-laptop`, then `adb -s 1e529013`.
