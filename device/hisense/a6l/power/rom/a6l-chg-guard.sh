@@ -60,6 +60,12 @@
 #     (/sys/class/udc/<udc>/state not configured/addressed/default/suspended). Unplugged (online!=1), [Unknown], [SDP],
 #     [CDP] or any other type never disconnect; our own earlier disconnect is kept while unplugged (the next APSD sees free
 #     D+/D-, as before) and undone on anything but [DCP] (or on a host-side bus state, e.g. a DCP misreport on a host).
+#  Q8 (9 Oct 2026, firmware/extracted/bms-20261009): moving the cable from the laptop to a wall charger leaves the UDC
+#     state "configured" (the manual-connect UDC never sees the host go away), so host_seen() stayed true on the wall
+#     charger, the pull-up was never released, APSD kept reporting OCP and QC never ran (5 V only). The APSD result is
+#     fresher than the UDC state: on [DCP] with an APSD result of OCP/FLOAT (D+/D- disturbed; a USB host gives SDP/CDP
+#     and the driver refuses hvdcp_rerun there) the stale host state is ignored. Self-correcting: if the rerun reports
+#     SDP/CDP (a host after all), usb_type leaves [DCP] and the pull-up is reconnected by the branch below.
 BAT=${BAT:-/sys/class/power_supply/qcom-battery}; CHG=${CHG:-/sys/class/power_supply/pm660-charger}
 PERIOD=${PERIOD:-15}; RETRY=${RETRY:-3}
 # P1: the period is slept in TICKS slices of TICK s (default 1 s; a fractional PERIOD = one slice, as before)
@@ -80,6 +86,10 @@ pu=""; pu_off=0; rr=0; hvlast=""; gb_prev=0
 # Q1-Q5 helpers. Properties are read at every evaluation (setprop takes effect without a restart); env overrides (tests).
 prop() { getprop "$1" 2>/dev/null; }
 qc_on() { v=${QC:-$(prop persist.vendor.a6l.chg.qc)}; [ "$v" != 0 ]; }
+apsd_disturbed() {  # Q8: APSD result (hvdcp_status apsd=0xSS/0xRR) has OCP (0x02) or FLOAT (0x10)
+    x=$(rd $HVP/hvdcp_status); x=${x#*apsd=0x}; x=${x#*/0x}; x=${x%% *}
+    case "$x" in [0-9a-fA-F][0-9a-fA-F]) [ $(( 0x$x & 0x12 )) -ne 0 ];; *) return 1;; esac
+}
 pu_managed() { v=${PULLUP:-$(prop persist.vendor.a6l.chg.pullup)}; [ "$v" != 0 ]; }
 hv_avail() { [ -e $HVP/hvdcp_enable ]; }
 hv_get() { case "$(rd $HVP/hvdcp_enable)" in Y|1) echo 1;; N|0) echo 0;; esac; }
@@ -129,7 +139,7 @@ pullup() {          # Q4: gadget D+ pull-up off on wall chargers / unplugged, on
     if [ "$(rd $CHG/online)" != 1 ]; then
         rr=0; pu_off=0                                                # Q7: unplugged/unknown never disconnects
         host_seen && [ "$pu" = disconnect ] && pu_write connect
-    elif host_seen; then
+    elif host_seen && ! { case "$ty" in *'[DCP]'*) apsd_disturbed;; *) false;; esac; }; then
         pu_off=0; [ "$pu" = disconnect ] && pu_write connect         # Q7: a host is on the bus, whatever usb_type says
     else case "$ty" in
         *'[DCP]'*)
