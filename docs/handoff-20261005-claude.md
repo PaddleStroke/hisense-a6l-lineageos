@@ -832,3 +832,20 @@ NOT yet pushed: the laptop SSH (192.168.1.22) timed out.
 To load r12: push prebuilt-r12, tuning/V2e*, scripts/iq-ab.sh to /data/local/tmp/iq, then `sh iq-ab.sh bind V2e; corelib r12; ipa r12`
 (the HAL r9b is already in round 25). Then run test plan C (README "Colour dance, brightness, AE speed").
 Keep the live voice-speaker swap: no reboot before Pierre's call test.
+
+**9 Oct ~21:20, r12 + V2e/V2f live test (Pierre):** colour dance GONE, AE speed FAST. Remaining issue: a scene with a lamp
+in frame is far too dark, while stock keeps the room visible.
+- Key observation: it depends on the previous camera. Cold open directly on wide = OK; main -> switch to wide = very dark
+  and stays dark (repeatable).
+- Log (wide, dark case): `A6L_AE2 ... mean 0.114 clipped 0.026 effective 0.198 target 0.235 ... converged`. The 0114
+  clip boost (3x) makes clipped pixels inflate the effective mean, so the real mean is held at half the target.
+- Hypothesis: 0113 reads back WB/black from the shared VFE at open, and after a camera switch that is still the main
+  camera's state. So the wide's clip level / white-balanced clip threshold is wrong -> too many pixels count as
+  clipped -> clip boost -> dark. Same class of bug as F2 / 0105 (shared VFE state across cameras).
+- Next:
+  1. Confirm with `setprop persist.vendor.a6l.hwisp.aefast 0` (or the clip-boost knob, see README) and repeat main -> wide.
+  2. Fix 0113's readback: per-camera state, or invalidate on camera change.
+  3. Compute clip from the camera's own WB, cap clipBoost (e.g. 1.5) and/or ignore the boost when clipped > ~1 %.
+- V2f (highlightQuantile 0.995, highlightTarget 0.9, highlightMaxCut 0.5) made no visible difference. Keep it or V2e;
+  the clip boost dominates.
+- Live state: r12 core 65cf6ef6 + IPA 56e026e9 + V2f bound; voice speaker swap still live. No reboot before Pierre's call test.
