@@ -797,3 +797,31 @@ audioserver back. Pierre will test a call with speaker later, BEFORE any reboot:
 
 If OK: put the patched .ko into rom/prebuilt/vendor/lib/modules (WSL tree + workspace), apply daemon/0001, and build a vendor round.
 Also confirm normal media playback on the speaker still works with the patched TFA.
+
+## 9 Oct 2026 evening: colour dance, brightness, AE speed (analysis + round 12 staged, offline)
+
+Details: firmware/extracted/camera-iq-20261008/README.md, section "Colour dance, brightness, AE speed (9 Oct)". Nothing ran on the phone; no key step was run.
+
+**Root causes:**
+1. **Colour dance.** The core inverts the NV12 AWB statistics with the VFE state "written two process() calls ago". The kernel latches a write at the next start of frame, so that model is wrong as soon as the CPU runs 2-3 frames behind the sensor. That happens at open, and r11's 0111/0112 CPU cost makes it last. The undamped r9 AWB then loops as g[n+1] = c + g[n] - g[n-1]: a marginal oscillation, one cast every ~0.4 s.
+   - The host sim (ae-sim/) reproduces 1-2 s on main and ~10 s at high load.
+   - Frame 0 was also inverted with gains 1 while the kernel replays the previous camera's values.
+2. **Too bright.** Highlight protection was capped at 0.5 EV; front/wide targets are high. The slider's -3 steps = -1 EV, the end of its range. In the 11:10 pair the mids already matched stock, and stock compresses highlights (not copied).
+3. **AE slow.** At most 1 EV per decision every 4th processed frame. The new exposure is based on the DelayedControls guess, which is wrong under a processing backlog (sensor written directly): double steps, overshoot.
+
+**Staged:**
+- core 0113 (frame/VFE-state association by timestamps, kernel read-back at open, SwIspStats::a6lFlags in padding, per-open awb knob, optional centre metering);
+- IPA 0114 (damped AWB with a direct first estimate and per-camera restore; fast AE with a log-domain jump and settle detection; aeev offset);
+- tuning V2e / V2e-warm (highlight cut 1.25 EV at 0.85 white; main target 0.17, front 0.22, wide 0.235; r9 AE keys);
+- keyless check scripts/50a: 0 warnings, HAL unchanged 0ea0ca71, IPA unsigned 56e026e9;
+- sim: r12 settles colour in 0.14 s with no reversals, and AE in 0.4-0.7 s without overshoot (r11: 0.8-1.4 s, 0.5 EV overshoot under load).
+
+**Next (Pierre):**
+1. Push scripts/iq-ab.sh and tuning/V2e*, then run test plan A: bisect with cnr 0 / detail 0 / abffix 0 / softtoe 0 / awb 0 + `iq-ab.sh restart`. If cnr/detail shorten the dance, the CPU-backlog cause is confirmed.
+2. Test plan B: bind V2e and count the slider steps still needed vs stock per camera.
+3. Build r12: `wsl -u root -e bash -c 'tr -d "\r" < /mnt/c/Users/Pierre/Desktop/A6L/firmware/extracted/camera-iq-20261008/scripts/50-build-r12-core-ipa.sh > /tmp/50.sh; bash /tmp/50.sh'`. Check "Verified OK" twice, "key copy removed" twice, and that the unsigned IPA matches 56e026e9.
+4. Push prebuilt-r12, then `corelib r12; ipa r12; bind V2e` and run plan C with `iq-ab.sh trace start|save`:
+   - A6L_HWSTATE lag > 33 ms and "r11 model DIFFERENT" confirm the cause;
+   - assoc 0 + awbspeed 100 + awbrestore 0 should bring the dance back;
+   - tune aeev per camera.
+5. If good: ship r12 core + signed IPA + V2e in the next vendor round (the HAL stays r9b).
