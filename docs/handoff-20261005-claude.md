@@ -787,3 +787,13 @@ Next session:
 1. The colour dance at open, the brightness and AE speed (above).
 2. The SIM speaker test.
 3. Crash capture.
+
+**9 Oct ~14:20: voice speaker fix applied LIVE on round 25** (until reboot): `sh vs-swap.sh tfa` (patched snd-soc-tfa98xx,
+srcversion 6160AC7A…) + `sh vs-swap.sh daemon` (a6l-q6voiced 5ac5a184 bind-mounted), from /data/local/tmp/vs. Card re-bound and
+audioserver back. Pierre will test a call with speaker later, BEFORE any reboot:
+- does it hear the far end on the loudspeaker;
+- does the far end still hear him;
+- toggle speaker 3x, then mute.
+
+If OK: put the patched .ko into rom/prebuilt/vendor/lib/modules (WSL tree + workspace), apply daemon/0001, and build a vendor round.
+Also confirm normal media playback on the speaker still works with the patched TFA.
