@@ -860,3 +860,26 @@ in frame is far too dark, while stock keeps the room visible.
 - Fix in core (0113 follow-up): always write the camera's own LUT at configure on a camera change (invalidate the LUT cache
   across cameras; don't trust the kernel readback for a different camera), and verify with the readback.
 - aefast restored to 1. Live state otherwise unchanged (r12 + V2f, voice swap live).
+
+**9 Oct ~22:00, camera-switch tone: root cause found, core 0115 built keyless (not on the phone):**
+- Cause: the kernel programs the VFE RGB LUT only at STREAMON, from the LUT written last by ANY camera. A LUT written
+  while streaming is stored for the next stream start (camss m4 `vfe48_isp_s_ctrl`, `a6l_isp_live_lut=0`).
+  DebayerHwIsp wrote controls only from process(), i.e. after STREAMON. So each session renders with the PREVIOUS
+  session's LUT: main -> wide = main's V2f curve for the whole wide session.
+- Proof: cold-wide luma 30/54/79/139, sent through the wide LUT^-1 and then the main LUT, predicts 3/25/60/132;
+  measured 2/23/58/129.
+- The cold "open on wide" is right only because the previous session (end of the last app run) was the wide.
+- 0113's WB/CCM read-back is not the cause (live controls, frames 0-1 only, modelled correctly).
+- Fix, core 0115 (`camera-iq-20261008/core-patch/0115-...own-tone-at-stream-start.patch`, `edit-0115.py`):
+  - configure() (before STREAMON) writes this camera's own LUT/black/WB/CCM (per-camera `own_`, filled only by its own
+    applyParams), or the LUT from its tuning file on its first session;
+  - the read-back is still the stats model, but is never adopted as the camera's own;
+  - no IPA change.
+- Keyless (scripts/51a): 0 warnings, HAL unchanged (0ea0ca71), dynsym +3.
+- Host test lut-session/: r12 has 8 wrong-curve sessions (main->wide, wide->main, front->main...), 0115 has 0.
+- Pierre:
+  - build `scripts/51-build-r13-core.sh` (key), then push prebuilt-r13 and run `sh iq-ab.sh corelib r13` (IPA r12,
+    HAL r9b and V2f stay);
+  - test plan in README "Camera switch keeps previous tone curve (9 Oct)": main->wide photo == cold wide photo;
+    `0115 own state written` at every configure.
+- The "lamp scene too dark" report should be this same bug: recheck it on r13.
