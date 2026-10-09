@@ -825,3 +825,10 @@ Details: firmware/extracted/camera-iq-20261008/README.md, section "Colour dance,
    - assoc 0 + awbspeed 100 + awbrestore 0 should bring the dance back;
    - tune aeev per camera.
 5. If good: ship r12 core + signed IPA + V2e in the next vendor round (the HAL stays r9b).
+
+**r12 built by Pierre (9 Oct, "Verified OK")**: staged in camera-iq-20261008/prebuilt-r12/lib64 (libcamera.so + ipa .so/.sign).
+NOT yet pushed: the laptop SSH (192.168.1.22) timed out.
+
+To load r12: push prebuilt-r12, tuning/V2e*, scripts/iq-ab.sh to /data/local/tmp/iq, then `sh iq-ab.sh bind V2e; corelib r12; ipa r12`
+(the HAL r9b is already in round 25). Then run test plan C (README "Colour dance, brightness, AE speed").
+Keep the live voice-speaker swap: no reboot before Pierre's call test.
