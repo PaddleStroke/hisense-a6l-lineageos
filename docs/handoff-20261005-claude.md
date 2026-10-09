@@ -883,3 +883,19 @@ in frame is far too dark, while stock keeps the room visible.
   - test plan in README "Camera switch keeps previous tone curve (9 Oct)": main->wide photo == cold wide photo;
     `0115 own state written` at every configure.
 - The "lamp scene too dark" report should be this same bug: recheck it on r13.
+
+**Round 26 plan (to flash 10 Oct):**
+1. Pierre runs scripts/51-build-r13-core.sh -> prebuilt-r13/lib64/libcamera.so.
+2. Copy into device/hisense/a6l/camera/libcamera/prebuilt (workspace + WSL tree):
+   - core prebuilt-r13 libcamera.so;
+   - IPA prebuilt-r12/lib64/libcamera/ipa/ipa_soft_simple.so{,.sign} (56e026e9);
+   - tuning/V2f/simple/*.yaml.
+
+   HAL stays r9b 0ea0ca71.
+3. Build-script pin: copy build-round25-image.py to build-round26-image.py with the libcamera pin = the r13 hash.
+4. Audit: audit-round26 from audit-round25 (baseline round25-vendor-20261009, pins = r13 core / 56e026e9 IPA / V2f imx576 yaml hash).
+5. Stage: stage-round4-kit.py round26 round26-vendor-20261009 round23-system-20261009 round25.
+6. Flash: flash25.sh with tag round26.
+7. Voice speaker fix: add only if Pierre's call test (live swap, before the reboot) passes:
+   - the patched snd-soc-tfa98xx.ko into rom/prebuilt/vendor/lib/modules;
+   - daemon patch 0001.
