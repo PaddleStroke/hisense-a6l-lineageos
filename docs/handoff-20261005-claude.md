@@ -772,3 +772,18 @@ Next steps:
 4. Flash with scratchpad flash24.sh, the tag changed to round25. It sets no stay-awake.
 
 NOT in round 25 (staged, untested): voice speaker fix (voice-speaker-20261009), crash-capture items (kernel.panic=5, a6l_diag 0400).
+
+**Round 25 FLASHED 9 Oct 14:08** (vendor e83b52ab, readback verified; system 83226f56 unchanged). Camera stack now permanent:
+- libcamera.so 10699e89;
+- HAL 0ea0ca71;
+- IPA r9;
+- tuning V2d;
+- persist.vendor.a6l.hwisp.awb=1;
+- chg-guard Q9.
+
+Audit passed: only the camera files, the guard and build.props changed. Build script copy: pm-logging-20261005/build-round25-image.py (libcamera pin updated); audit: audit-round25-vendor.py.
+
+Next session:
+1. The colour dance at open, the brightness and AE speed (above).
+2. The SIM speaker test.
+3. Crash capture.
