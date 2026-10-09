@@ -849,3 +849,14 @@ in frame is far too dark, while stock keeps the room visible.
 - V2f (highlightQuantile 0.995, highlightTarget 0.9, highlightMaxCut 0.5) made no visible difference. Keep it or V2e;
   the clip boost dominates.
 - Live state: r12 core 65cf6ef6 + IPA 56e026e9 + V2f bound; voice speaker swap still live. No reboot before Pierre's call test.
+
+**Refined (21:28, aefast=0 test):** with fast AE off, wide is still dark after main -> wide, so it is NOT the clip boost.
+- Photos in camera-iq-20261008/r12-switch, same unmoved scene. Luma 25/50/75 %: cold-open wide 53/78/140; main -> wide 22/57/130.
+  Highlights about equal, shadows crushed => wrong TONE CURVE, not exposure: the wide session runs with the MAIN camera's
+  LUT (V2d/V2e soft toe, blackPoint 0.012, gamma).
+- The VFE LUT is shared and only (re)loaded at stream start; on a camera switch the wide's LUT is not written, or the kernel
+  replays main's.
+- Check in the log: A6L_HWISP LUT lines and 0105/0112 LUT build per session.
+- Fix in core (0113 follow-up): always write the camera's own LUT at configure on a camera change (invalidate the LUT cache
+  across cameras; don't trust the kernel readback for a different camera), and verify with the readback.
+- aefast restored to 1. Live state otherwise unchanged (r12 + V2f, voice swap live).
