@@ -66,6 +66,11 @@
 #     fresher than the UDC state: on [DCP] with an APSD result of OCP/FLOAT (D+/D- disturbed; a USB host gives SDP/CDP
 #     and the driver refuses hvdcp_rerun there) the stale host state is ignored. Self-correcting: if the rerun reports
 #     SDP/CDP (a host after all), usb_type leaves [DCP] and the pull-up is reconnected by the branch below.
+#  Q9 (9 Oct 2026, round 24 regression): at boot on the LAPTOP the APSD ran with the gadget pull-up already up and read
+#     OCP, Q8 trusted it, disconnected, and USB stayed off (no adb until a re-plug). Now Q8 applies only after this guard
+#     saw the cable unplugged (online != 1) at least once, i.e. never on the boot-time state; and a safety net
+#     reconnects any pull-up we removed once it has been off for PU_MAX (4) evaluations (~1 min) without QC reaching
+#     wait/verify/active, and then leaves the pull-up alone until the next unplug.
 BAT=${BAT:-/sys/class/power_supply/qcom-battery}; CHG=${CHG:-/sys/class/power_supply/pm660-charger}
 PERIOD=${PERIOD:-15}; RETRY=${RETRY:-3}
 # P1: the period is slept in TICKS slices of TICK s (default 1 s; a fractional PERIOD = one slice, as before)
@@ -90,6 +95,7 @@ apsd_disturbed() {  # Q8: APSD result (hvdcp_status apsd=0xSS/0xRR) has OCP (0x0
     x=$(rd $HVP/hvdcp_status); x=${x#*apsd=0x}; x=${x#*/0x}; x=${x%% *}
     case "$x" in [0-9a-fA-F][0-9a-fA-F]) [ $(( 0x$x & 0x12 )) -ne 0 ];; *) return 1;; esac
 }
+PU_MAX=${PU_MAX:-4}
 pu_managed() { v=${PULLUP:-$(prop persist.vendor.a6l.chg.pullup)}; [ "$v" != 0 ]; }
 hv_avail() { [ -e $HVP/hvdcp_enable ]; }
 hv_get() { case "$(rd $HVP/hvdcp_enable)" in Y|1) echo 1;; N|0) echo 0;; esac; }
@@ -137,13 +143,20 @@ pullup() {          # Q4: gadget D+ pull-up off on wall chargers / unplugged, on
     if ! pu_managed; then [ "$pu" = disconnect ] && pu_write connect; return 0; fi
     ty=$(rd $CHG/usb_type)
     if [ "$(rd $CHG/online)" != 1 ]; then
-        rr=0; pu_off=0                                                # Q7: unplugged/unknown never disconnects
+        rr=0; pu_off=0; unplug_seen=1; pu_hold=0                      # Q7: unplugged/unknown never disconnects
         host_seen && [ "$pu" = disconnect ] && pu_write connect
-    elif host_seen && ! { case "$ty" in *'[DCP]'*) apsd_disturbed;; *) false;; esac; }; then
+    elif [ "${pu_hold:-0}" = 1 ]; then
+        [ "$pu" = disconnect ] && pu_write connect                    # Q9: safety net fired; hands off until unplug
+    elif host_seen && ! { [ "${unplug_seen:-0}" = 1 ] && case "$ty" in *'[DCP]'*) apsd_disturbed;; *) false;; esac; }; then
         pu_off=0; [ "$pu" = disconnect ] && pu_write connect         # Q7: a host is on the bus, whatever usb_type says
     else case "$ty" in
         *'[DCP]'*)
             pu_write disconnect && pu_off=$((pu_off + 1))
+            if [ $pu_off -ge $PU_MAX ]; then                          # Q9: never leave USB dead
+                case "$(hv_state)" in wait|verify|active) ;; *)
+                    pu_hold=1; pu_write connect; log "usb: pull-up restored after $pu_off checks without QC ($(rd $HVP/hvdcp_status))";;
+                esac
+            fi
             if [ $rr = 0 ] && [ $pu_off -ge 2 ] && [ "$(hv_get)" = 1 ] && [ "$(hv_state)" = dcp-5v ]; then
                 rr=1; wr $HVP/hvdcp_rerun 1 && log "qc: APSD rerun requested with the USB pull-up off ($(rd $HVP/hvdcp_status))"
             fi;;
