@@ -926,3 +926,10 @@ To verify on the phone:
   2. Two permissive full-feature boots with selinux-audit.sh, expecting ~0 NEW denials.
   3. Boot-only flash of boot-10affa76-enforcing.img (9f96cd55). Rollback = boot-only flash of the permissive 10affa76.
 - Under enforcing, `adb shell setprop persist.vendor.a6l.*` will be refused (platform rule).
+
+**10 Oct ~12:00, audio live test FAILED; phone rebooted back to 26b (speaker works, headset still not routed):**
+- Speaker silent with the new TFA module (0004 "TFA Attenuation"), no kernel errors.
+- Headset routed but very faint: a6l-audio-route restored the top-level Digital RX1/RX2 Volume 0 instead of the path's 78/84.
+- Pierre's rule: no safety/volume reduction anywhere, full stock loudness.
+- Sent back to the audio agent (firmware/extracted/audio-20261010) with logs dmesg-live/logcat-live/tinymix-live.
+- Round 27 (SELinux 0005 + audio) waits for the corrected audio fix.
