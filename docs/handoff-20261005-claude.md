@@ -918,3 +918,11 @@ To verify on the phone:
 - main -> wide switch no longer darkens wide (0115);
 - the lamp scene;
 - the speaker in a call (now in the ROM).
+
+**10 Oct:** SELinux pass 5 (firmware/extracted/selinux-20261010/0005) applied to the repo and the WSL tree (commit above).
+- Next vendor round must be built with A6L_SELINUX_PREP=1, which the build script sets.
+- Plan:
+  1. Round 27 = 0005 + the audio fixes (in-call volume, wired headset; agent in firmware/extracted/audio-20261010), still permissive.
+  2. Two permissive full-feature boots with selinux-audit.sh, expecting ~0 NEW denials.
+  3. Boot-only flash of boot-10affa76-enforcing.img (9f96cd55). Rollback = boot-only flash of the permissive 10affa76.
+- Under enforcing, `adb shell setprop persist.vendor.a6l.*` will be refused (platform rule).
