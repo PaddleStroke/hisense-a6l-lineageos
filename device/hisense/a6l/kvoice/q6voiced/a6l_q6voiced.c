@@ -75,6 +75,15 @@
  *         - Android's mic mute ("mute 1") in bridge mode also disconnects the uplink injection route (the CVP mute alone
  *           would not silence the injected stream); "mute 0" reconnects it and keeps the phone mic muted.
  *         - "status" appends " bridge=0|1" when the bridge is enabled.
+ * voice-speaker (9 Oct 2026, firmware/extracted/voice-speaker-20261009): RX route fallback. The first SIM call test
+ *       showed a route that can never open (speakerphone: playback HW_PARAMS -EINVAL, the TFA98xx codec constrains the
+ *       shared DPCM runtime to its 48 kHz profile rate) retried for the whole call while the call stayed silent BOTH
+ *       ways (the CVP session needs both PCMs). Now, after FALLBACK_AFTER failed opens of a newly requested RX route,
+ *       the daemon reopens the last route that worked in this call (the earpiece port when none did yet), so the call
+ *       keeps its uplink and a downlink. The refused route is retried FALLBACK_RETRIES more times (5 s, 20 s, 60 s;
+ *       each retry is a short gap on the working route) and then given up until Android requests another route (a new
+ *       press of the speaker button retries at once) or the call ends. "status" appends " want=<route> fallback=1"
+ *       while the path runs on the fallback. Failures with no working route keep the F19 capped backoff.
  * Log lines start with A6L_Q6VOICED. Exit 0 = ok.
  */
 #include <errno.h>
@@ -376,6 +385,10 @@ static int pcm_open_start(int card, int dev, int capture)
 	iv_set(&hp.intervals[SNDRV_PCM_HW_PARAM_PERIODS - SNDRV_PCM_HW_PARAM_FIRST_INTERVAL], PERIODS);
 	if (ioctl(fd, SNDRV_PCM_IOCTL_HW_PARAMS, &hp) < 0) {
 		q6_error( "A6L_Q6VOICED %s HW_PARAMS: %s\n", what, strerror(errno));
+		/* voice-speaker: a back-end codec constraint on the shared DPCM runtime (not a q6voice failure) */
+		if (errno == EINVAL && !capture)
+			q6_error( "A6L_Q6VOICED hint: the RX back end refuses the %d Hz mono voice front end (TFA98xx: "
+				 "snd-soc-tfa98xx without the DPCM fix needs pcm_no_constraint=1)\n", RATE);
 		goto err;
 	}
 	memset(&sp, 0, sizeof(sp));
@@ -484,7 +497,22 @@ static void voice_close(struct voice *v)
 /* r5 pass2 F19: retry state of a failed open while the call is active */
 #define RETRY_FAST 5		/* attempts at the daemon loop rate (as before F19) */
 #define RETRY_MAX_MS 4000	/* backoff cap: DSP/PCM becoming ready later still recovers the call within 4 s */
-struct retry { int fails; long long next_ms; };
+/*
+ * voice-speaker: RX route fallback. All fields are 0 at a call start ({ 0, 0 } in the host tests).
+ *   ok_set/ok_rx  route of the last successful open in this call
+ *   fb_active     the path runs (or reopens) on the fallback route instead of the requested fb_rx
+ *   fb_tries      scheduled retries of fb_rx already made; fb_next_ms = when the next one is due
+ */
+#define FALLBACK_AFTER 2	/* failed opens of a newly requested route before the fallback (~250 ms) */
+#define FALLBACK_RETRIES 3	/* later retries of the refused route in the same call, then given up */
+struct retry {
+	int fails;
+	long long next_ms;
+	int ok_set, ok_rx;
+	int fb_active, fb_rx, fb_tries;
+	long long fb_next_ms;
+};
+static const struct retry *status_rt;	/* voice-speaker: last state seen by daemon_step, for "status" */
 static int (*voice_open_fn)(struct voice *v) = voice_open;	/* host tests: fake PCM open */
 
 static long long mono_ms(void)
@@ -505,22 +533,80 @@ static long long retry_delay_ms(int fails)
 	return d > RETRY_MAX_MS ? RETRY_MAX_MS : d;
 }
 
+/* voice-speaker: delay before scheduled retry number tries + 1 of a refused route */
+static long long fallback_retry_ms(int tries)
+{
+	return tries <= 0 ? 5000 : tries == 1 ? 20000 : 60000;
+}
+
+/*
+ * voice-speaker: the requested route `rx` failed again (rt->fails counts it). Reopen the last working route (the earpiece
+ * port when nothing worked yet in this call) after FALLBACK_AFTER failures of a new request, or at once when a scheduled
+ * retry failed. 1 = the path is open on the fallback, 0 = no fallback applies or it failed too (F19 backoff continues).
+ */
+static int rx_fallback(struct voice *v, struct retry *rt, int rx, long long now)
+{
+	int fb = rt->ok_set ? rt->ok_rx : RX_EAR;
+
+	if (!v->set_routes || fb == rx || (!rt->fb_active && rt->fails < FALLBACK_AFTER))
+		return 0;
+	if (rt->fb_active) {
+		rt->fb_tries++;
+	} else {
+		rt->fb_active = 1;
+		rt->fb_rx = rx;
+		rt->fb_tries = 0;
+	}
+	rt->fb_next_ms = now + fallback_retry_ms(rt->fb_tries);
+	if (rt->fb_tries < FALLBACK_RETRIES)
+		q6_info("A6L_Q6VOICED rx route %s refused (%d failed opens): falling back to %s, retry %d/%d in %lld ms\n",
+			rx_name(rx), rt->fails, rx_name(fb), rt->fb_tries + 1, FALLBACK_RETRIES, rt->fb_next_ms - now);
+	else
+		q6_info("A6L_Q6VOICED rx route %s refused (%d failed opens): falling back to %s, given up for this call "
+			"(until another route is requested)\n", rx_name(rx), rt->fails, rx_name(fb));
+	v->rx_route = fb;
+	if (!voice_open_fn(v)) {
+		q6_info("A6L_Q6VOICED call audio on fallback route %s (requested %s)\n", rx_name(fb), rx_name(rx));
+		rt->fails = 0;
+		rt->next_ms = 0;
+		return 1;
+	}
+	rt->fails++;
+	return 0;
+}
+
 /* one daemon iteration: want = call active, rx = requested RX port, now = monotonic ms */
 static void daemon_step(struct voice *v, struct retry *rt, int want, int rx, long long now)
 {
 	long long d;
+	int target = rx;	/* voice-speaker: route to run now (rx, or the fallback while rx is refused) */
 
+	status_rt = rt;
 	if (!want) {
 		if (rt->fails)
 			q6_info("A6L_Q6VOICED call ended: retry cancelled after %d failed opens\n", rt->fails);
 		rt->fails = 0;
 		rt->next_ms = 0;
+		rt->ok_set = rt->fb_active = 0;
 		voice_close(v);
 		return;
 	}
+	/* voice-speaker: Android asked for another route: the refused one is forgotten (asking for it again retries at once) */
+	if (rt->fb_active && rx != rt->fb_rx) {
+		q6_info("A6L_Q6VOICED rx route %s requested: fallback for %s cleared\n", rx_name(rx), rx_name(rt->fb_rx));
+		rt->fb_active = 0;
+	}
+	if (rt->fb_active) {
+		int due = rt->fb_tries < FALLBACK_RETRIES && now >= rt->fb_next_ms;
+
+		target = due ? rx : (rt->ok_set ? rt->ok_rx : RX_EAR);
+		if (due && v->tx >= 0)
+			q6_info("A6L_Q6VOICED retrying refused rx route %s (%d/%d)\n", rx_name(rx), rt->fb_tries + 1,
+				FALLBACK_RETRIES);
+	}
 	/* r5 F7: the CVP takes its RX port at creation: reopen on a route change during the call */
-	if (v->tx >= 0 && v->set_routes && rx != v->rx_route) {
-		q6_info("A6L_Q6VOICED rx route %s -> %s (reopen)\n", rx_name(v->rx_route), rx_name(rx));
+	if (v->tx >= 0 && v->set_routes && target != v->rx_route) {
+		q6_info("A6L_Q6VOICED rx route %s -> %s (reopen)\n", rx_name(v->rx_route), rx_name(target));
 		voice_close(v);
 		rt->fails = 0;
 		rt->next_ms = 0;
@@ -541,21 +627,31 @@ static void daemon_step(struct voice *v, struct retry *rt, int want, int rx, lon
 	}
 	if (v->tx >= 0)
 		return;
-	if (rt->fails && rx != v->rx_route && now < rt->next_ms) {
-		q6_info("A6L_Q6VOICED rx route %s -> %s during retry backoff: retry now\n", rx_name(v->rx_route), rx_name(rx));
+	if (rt->fails && target != v->rx_route && now < rt->next_ms) {
+		q6_info("A6L_Q6VOICED rx route %s -> %s during retry backoff: retry now\n", rx_name(v->rx_route),
+			rx_name(target));
 		rt->next_ms = now;
 	}
 	if (now < rt->next_ms)
 		return;
-	v->rx_route = rx;
+	v->rx_route = target;
 	if (!voice_open_fn(v)) {
 		if (rt->fails)
 			q6_info("A6L_Q6VOICED call audio recovered after %d failed opens\n", rt->fails);
+		if (rt->fb_active && target == rt->fb_rx) {
+			q6_info("A6L_Q6VOICED refused rx route %s works now: fallback ended\n", rx_name(target));
+			rt->fb_active = 0;
+		}
+		rt->ok_set = 1;
+		rt->ok_rx = target;
 		rt->fails = 0;
 		rt->next_ms = 0;
 		return;
 	}
 	rt->fails++;
+	/* voice-speaker: never leave the call silent on a route that cannot open while another one works */
+	if (target == rx && rx_fallback(v, rt, rx, now))
+		return;
 	d = retry_delay_ms(rt->fails);
 	rt->next_ms = now + d;
 	if (d)
@@ -697,6 +793,10 @@ static void handle_cmd(struct voice *v, const char *line, char *reply, size_t n)
 			size_t l = strlen(reply);
 			snprintf(reply + l, n - l, " bridge=%d", bt.active);
 		}
+		if (status_rt && status_rt->fb_active) {	/* voice-speaker: running on the fallback route */
+			size_t l = strlen(reply);
+			snprintf(reply + l, n - l, " want=%s fallback=1", rx_name(status_rt->fb_rx));
+		}
 	} else {
 		snprintf(reply, n, "ERR %d unknown command", EINVAL);
 	}
@@ -816,7 +916,7 @@ int main(int argc, char **argv)
 	}
 	if (!strcmp(argv[optind], "daemon")) {
 		const char *prop = optind + 1 < argc ? argv[optind + 1] : "vendor.a6l.voice.active";
-		struct retry rt = { 0, 0 };
+		struct retry rt = { 0 };
 		int lfd = ctl_socket_open(sock_path);
 
 		signal(SIGPIPE, SIG_IGN);

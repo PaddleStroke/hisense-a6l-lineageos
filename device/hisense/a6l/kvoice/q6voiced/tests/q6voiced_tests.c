@@ -244,6 +244,7 @@ static void test_prop_str(void)
 
 /* ---- r5 pass2 F19: fake PCM open (fails fo_fail times, then succeeds with /dev/null fds) */
 static int fo_fail, fo_calls;
+static int fo_bad_route = -1;	/* voice-speaker: opens on this RX route always fail (speakerphone HW_PARAMS -EINVAL) */
 static long long fo_t[256];
 static int fo_route[256];
 static int fake_open(struct voice *v)
@@ -253,6 +254,8 @@ static int fake_open(struct voice *v)
 		fo_t[fo_calls] = 0;
 	}
 	fo_calls++;
+	if (v->rx_route == fo_bad_route)
+		return -1;
 	if (fo_fail > 0) {
 		fo_fail--;
 		return -1;
@@ -271,7 +274,7 @@ static void run_loop(struct voice *v, struct retry *rt, int want, int rx, long l
 		int before = fo_calls;
 
 		daemon_step(v, rt, want, rx, *t);
-		if (fo_calls != before && before < 256)
+		for (; before < fo_calls && before < 256; before++)	/* voice-speaker: a step may open twice (fallback) */
 			fo_t[before] = *t;
 	}
 }
@@ -279,7 +282,7 @@ static void run_loop(struct voice *v, struct retry *rt, int want, int rx, long l
 static void test_retry_whole_call(void)
 {
 	struct voice v = { .card = 0, .dev = 99, .tx = -1, .rx = -1, .set_routes = 1, .rx_route = RX_EAR };
-	struct retry rt = { 0, 0 };
+	struct retry rt = { 0 };
 	long long t = 0, maxgap = 0;
 	int i;
 
@@ -313,7 +316,7 @@ static void test_retry_whole_call(void)
 static void test_retry_hangup_and_route(void)
 {
 	struct voice v = { .card = 0, .dev = 99, .tx = -1, .rx = -1, .set_routes = 1, .rx_route = RX_EAR };
-	struct retry rt = { 0, 0 };
+	struct retry rt = { 0 };
 	long long t = 0;
 	int n;
 
@@ -362,7 +365,7 @@ static int fake_alive(int fd) { (void)fd; alive_calls++; return alive_ok; }
 static void test_card_loss(void)
 {
 	struct voice v = { .card = 0, .dev = 99, .tx = -1, .rx = -1, .set_routes = 1, .rx_route = RX_EAR, .dev_auto = 1 };
-	struct retry rt = { 0, 0 };
+	struct retry rt = { 0 };
 	long long t = 0;
 	int n;
 
@@ -731,6 +734,94 @@ static void test_btcall_cfg(void)
 	bt_reset();
 }
 
+/* ---- voice-speaker (9 Oct 2026): a refused RX route falls back to the working one instead of a silent call */
+static int count_route(int from, int to, int route)
+{
+	int i, n = 0;
+
+	for (i = from; i < to && i < 256; i++)
+		n += fo_route[i] == route;
+	return n;
+}
+
+static void test_rx_fallback(void)
+{
+	struct voice v = { .card = 0, .dev = 99, .tx = -1, .rx = -1, .set_routes = 1, .rx_route = RX_EAR };
+	struct retry rt = { 0 };
+	long long t = 0, t0;
+	char r[128];
+	int n, i;
+
+	reset();
+	mute_want = -1;
+	voice_open_fn = fake_open;
+	fo_calls = 0;
+	fo_fail = 0;
+	fo_bad_route = RX_SPK;
+	/* call on the earpiece, then the speaker button: the speaker never opens (9 Oct log) */
+	run_loop(&v, &rt, 1, RX_EAR, &t, 500);
+	EXPECT(v.tx >= 0 && v.rx_route == RX_EAR && fo_calls == 1);
+	n = fo_calls;
+	t0 = t;
+	run_loop(&v, &rt, 1, RX_SPK, &t, 500);
+	EXPECT(count_route(n, fo_calls, RX_SPK) == FALLBACK_AFTER);	/* two quick attempts ... */
+	EXPECT(v.tx >= 0 && v.rx_route == RX_EAR && rt.fb_active && rt.fb_rx == RX_SPK);	/* ... then the earpiece again */
+	EXPECT(fo_t[fo_calls - 1] - t0 <= 250);			/* silent for at most ~250 ms */
+	handle_cmd(&v, "status", r, sizeof(r));
+	EXPECT(!strcmp(r, "OK open=1 rx=earpiece mute=0 want=speaker fallback=1"));
+	/* scheduled retries: 5 s, 20 s, 60 s, each followed by an immediate return to the earpiece; then given up */
+	n = fo_calls;
+	run_loop(&v, &rt, 1, RX_SPK, &t, 4500);
+	EXPECT(fo_calls == n && v.tx >= 0);			/* nothing before 5 s */
+	run_loop(&v, &rt, 1, RX_SPK, &t, 1000);
+	EXPECT(fo_calls == n + 2 && fo_route[n] == RX_SPK && fo_route[n + 1] == RX_EAR && v.tx >= 0 && v.rx_route == RX_EAR);
+	run_loop(&v, &rt, 1, RX_SPK, &t, 20000);
+	EXPECT(fo_calls == n + 4 && v.tx >= 0 && v.rx_route == RX_EAR);
+	run_loop(&v, &rt, 1, RX_SPK, &t, 60000);
+	EXPECT(fo_calls == n + 6 && v.tx >= 0 && v.rx_route == RX_EAR && rt.fb_tries == FALLBACK_RETRIES);
+	n = fo_calls;
+	run_loop(&v, &rt, 1, RX_SPK, &t, 300000);		/* 5 more minutes: no retry storm, call kept */
+	EXPECT(fo_calls == n && v.tx >= 0 && v.rx_route == RX_EAR && rt.fb_active);
+	/* speaker off (earpiece requested): fallback cleared without a reopen; speaker on again: tried at once */
+	run_loop(&v, &rt, 1, RX_EAR, &t, 250);
+	EXPECT(fo_calls == n && !rt.fb_active && v.tx >= 0);
+	handle_cmd(&v, "status", r, sizeof(r));
+	EXPECT(!strcmp(r, "OK open=1 rx=earpiece mute=0"));
+	run_loop(&v, &rt, 1, RX_SPK, &t, 500);
+	EXPECT(count_route(n, fo_calls, RX_SPK) == FALLBACK_AFTER && rt.fb_active && v.rx_route == RX_EAR && v.tx >= 0);
+	/* the speaker starts working (fixed back end): taken at the next scheduled retry */
+	fo_bad_route = -1;
+	n = fo_calls;
+	run_loop(&v, &rt, 1, RX_SPK, &t, 5250);
+	EXPECT(fo_calls == n + 1 && v.rx_route == RX_SPK && v.tx >= 0 && !rt.fb_active);
+	/* hang-up clears everything */
+	run_loop(&v, &rt, 0, RX_SPK, &t, 250);
+	EXPECT(v.tx < 0 && !rt.fb_active && !rt.ok_set && rt.fails == 0);
+	/* a call that STARTS on the speaker with a broken speaker: earpiece port after two attempts (nothing worked yet) */
+	fo_bad_route = RX_SPK;
+	n = fo_calls;
+	run_loop(&v, &rt, 1, RX_SPK, &t, 500);
+	EXPECT(count_route(n, fo_calls, RX_SPK) == FALLBACK_AFTER && v.tx >= 0 && v.rx_route == RX_EAR && rt.fb_active);
+	run_loop(&v, &rt, 0, RX_SPK, &t, 250);
+	/* no working route at all (card gone): F19 capped backoff as before, no fallback ping-pong */
+	fo_bad_route = -1;
+	fo_fail = 100000;
+	n = fo_calls;
+	run_loop(&v, &rt, 1, RX_SPK, &t, 20000);
+	EXPECT(v.tx < 0 && fo_calls - n <= 5 + 2 + 20000 / 500);
+	for (i = n + 1; i < fo_calls && i < 256; i++)
+		EXPECT(fo_t[i] >= fo_t[i - 1]);
+	fo_fail = 0;
+	run_loop(&v, &rt, 1, RX_SPK, &t, 60000 + 250);		/* card back: some route opens within the cap */
+	EXPECT(v.tx >= 0);
+	run_loop(&v, &rt, 0, RX_SPK, &t, 250);
+	EXPECT(v.tx < 0);
+	fo_bad_route = -1;
+	voice_open_fn = voice_open;
+	status_rt = NULL;
+	reset();
+}
+
 int main(void)
 {
 	ctl_write = fake_write;
@@ -744,6 +835,7 @@ int main(void)
 	test_retry_whole_call();
 	test_retry_hangup_and_route();
 	test_card_loss();
+	test_rx_fallback();
 	test_no_card();
 	test_btcall_disabled();
 	test_btcall_routes();

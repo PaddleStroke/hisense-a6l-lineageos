@@ -906,3 +906,15 @@ in frame is far too dark, while stock keeps the room visible.
 - Kit on the laptop: rom-r7c-round26-20261006.
 - Flash script: scratchpad/flash26.sh (no stay-awake).
 - Before flashing, Pierre wants to do the voice speaker test call (the live swap is lost at the reboot). If it passes, add the TFA .ko + daemon 0001 and rebuild as round 26b; otherwise flash round 26 as is.
+
+**Round 26b FLASHED 10 Oct 08:00** (vendor 3a7e2e5c, readback verified; boot/dtbo/system unchanged = round 23 system).
+Contents:
+- camera: core r13 8755e24c, IPA r12, tuning V2f, HAL r9b;
+- voice speaker fix: snd-soc-tfa98xx srcversion 6160AC7A, a6l-q6voiced with daemon 0001 (Soong build 9433b607). Call test passed live with Pierre before the flash.
+
+Note: the first attempt was staged with round 26 (never flashed) as its base. The flasher's predecessor check stopped it before any write. The failed kits were renamed *-failed-prev26 (laptop + WSL). Re-staged on round 25 and flashed OK.
+
+To verify on the phone:
+- main -> wide switch no longer darkens wide (0115);
+- the lamp scene;
+- the speaker in a call (now in the ROM).
