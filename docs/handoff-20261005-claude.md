@@ -933,3 +933,13 @@ To verify on the phone:
 - Pierre's rule: no safety/volume reduction anywhere, full stock loudness.
 - Sent back to the audio agent (firmware/extracted/audio-20261010) with logs dmesg-live/logcat-live/tinymix-live.
 - Round 27 (SELinux 0005 + audio) waits for the corrected audio fix.
+
+**10 Oct ~20:50, audio r2 STEP 1 live test FAILED** (patched daemons + XML + setModuleDebug headset stand-in, ROM TFA):
+- Speaker OK at first.
+- Headset plugged: video sluggish, then stopped, and touch unresponsive for a while. Headset audio only on one of several plugs.
+- After unplug, the speaker was silent.
+- Kernel: "binder: cannot allocate buffer".
+
+Logs in audio-20261010/live-s1. Phone rebooted back to 26b (speaker OK).
+
+A new agent is analysing. The debug-flag stand-in is suspect, so the plan is a real HAL build with 0006 plus a staged A/B. The previous audio agent's transcript was lost at the session restart; README.md in audio-20261010 is the reference.
