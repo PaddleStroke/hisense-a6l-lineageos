@@ -943,3 +943,20 @@ To verify on the phone:
 Logs in audio-20261010/live-s1. Phone rebooted back to 26b (speaker OK).
 
 A new agent is analysing. The debug-flag stand-in is suspect, so the plan is a real HAL build with 0006 plus a staged A/B. The previous audio agent's transcript was lost at the session restart; README.md in audio-20261010 is the reference.
+
+**Audio r3 (10 Oct late):** root cause of the step-1 failure found from the logs (audio-20261010 README section 0):
+- a6l-audio-route switches the MultiMedia1 DSP back end (TERT_MI2S speaker <-> LPI_MI2S_RX_0 headphones) while the PCM is playing.
+- q6routing binds the DSP stream at PCM prepare and never moves it, so we get "Error writing into ALSA: -1", or the DSP feeds the old port.
+- The debug flag was NOT the cause. The binder exhaustion was the frozen gms.learning app, unrelated.
+- Separate issue: the touch freeze = DPU vblank timeout / commit -110 after screen-on (display/suspend bug).
+
+Fix: HAL patch 0007 (StreamPrimary reopens the PCM when the selected back end changes), plus 0006. Real HAL built (hal/, sha 9ac30f52). The swap script r3 has a `hal` step.
+Test plan, steps S0-S5 (README section 3; reboot = rollback):
+- S0 baseline;
+- S1 daemons;
+- S2 hal + headset plug/unplug while playing;
+- S3 headset call volume;
+- S4 tfa-rom;
+- S5 tfa.
+
+Before ROM integration: refresh device/hisense/a6l/audio/patches/0005 from the WSL tree (useNativeInput drift).
