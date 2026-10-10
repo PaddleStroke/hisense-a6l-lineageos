@@ -7,3 +7,10 @@ allow system_server sysfs_a6l_vibrator:file r_file_perms;
 get_prop({ system_server priv_app }, vendor_a6l_ro_prop)
 # pass 3 (round 21): SystemUI (platform_app) reads ro.vendor.a6l.* too (x8)
 get_prop(platform_app, vendor_a6l_ro_prop)
+# pass 5 (round 26b): Settings (system_app, comm ndroid.settings) reads ro.vendor.a6l.* too (x8: open/getattr/map/read)
+get_prop(system_app, vendor_a6l_ro_prop)
+# pass 5 (round 26b): SystemUI (platform_app) reads the A6LDisplaySwitcher settings/state (persist.sys.a6l.*,
+# sys.a6l.dualux.*: a6l_dualux_ctl_prop, system_public_prop in eink/switcher/sepolicy/system_ext/public) (r26b x8, bms x4).
+# Read-only, like priv_app/system_server in eink/switcher/sepolicy/system_ext/private. Placed here so a vendor-only
+# round carries it; it belongs in eink/switcher/sepolicy/system_ext/private/ at the next system build.
+get_prop(platform_app, a6l_dualux_ctl_prop)

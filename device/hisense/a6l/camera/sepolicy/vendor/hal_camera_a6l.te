@@ -23,3 +23,24 @@ allow hal_camera_default dmabuf_system_heap_device:chr_file r_file_perms;
 # parameters /sys/module/qcom_camss/parameters/{a6l_pix,a6l_isp_live_lut} (generic sysfs: covered by the sysfs rules above).
 # Denial seen in permissive (6 Oct trial): hal_camera_default read/open/getattr/map u:object_r:vendor_a6l_prop:s0.
 get_prop(hal_camera_default, vendor_a6l_prop)
+
+# ---- selinux-20261010 pass 5 (round 26b full-use avc; firmware/extracted/selinux-20261010/README.md) ----
+# Gralloc client: the HAL allocates/imports its output and internal buffers through the minigbm allocator HAL and the
+# IMapper stable-C instance (camera.libcamera.so + libui; r26b: find hal_graphics_allocator_service x3 and
+# hal_graphics_mapper_service x3, binder call hal_graphics_allocator_default). Same macro as the composer (graphics.te)
+# and the cuttlefish/goldfish camera HALs: allocator service + mapper service find, binder call, memfd both ways.
+hal_client_domain(hal_camera_default, hal_graphics_allocator)
+# Acquire fences of the output buffers are composer release fences (anon_inode:sync_file created by
+# hal_graphics_composer_default). cameraserver's Camera3Device request thread (comm C3Dev-0-ReqQueu, r26b x4) passes
+# them to the HAL with each capture request; binder checks fd use for the receiver. AOSP grants the same to
+# cameraserver, hal_codec2_server and hal_omx_server (system/sepolicy/private/{cameraserver,hal_codec2,hal_omx}.te).
+# Denied = binder refuses the fd and fails the processCaptureRequest transaction -> preview/capture stops.
+allow hal_camera_default hal_graphics_composer:fd use;
+# The default_prop reads (r26b x2 each: open/getattr/map/read on u:object_r:default_prop:s0) are NOT the hw-ISP knobs:
+# persist.vendor.a6l.hwisp.* resolve to vendor_a6l_prop (persist.vendor.a6l. prefix, rom/sepolicy/vendor/property_contexts;
+# readable above). They are the legacy fallbacks ro.camera.req.fmq.size / ro.camera.res.fmq.size of the AIDL camera
+# device (camera/provider/device/CameraDeviceSession.cpp:104,127, read only when ro.vendor.camera.*.fmq.size is unset).
+# Neither is set, and no ro.camera.* name is labelled, so they fall to the `*` default_prop entry, which is
+# system_internal_prop (vendor domains may not read it: neverallow). Denied = property_get_int32() returns the default
+# (-1), exactly what an unset property returns today. Silence only.
+dontaudit hal_camera_default default_prop:file { getattr open read map };

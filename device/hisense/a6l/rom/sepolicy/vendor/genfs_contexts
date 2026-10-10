@@ -70,3 +70,6 @@ genfscon sysfs /devices/platform/soc@0/800f000.spmi/spmi-0/0-00/800f000.spmi:pmi
 genfscon sysfs /devices/platform/sound/wakeup                              u:object_r:sysfs_wakeup:s0
 # selinux-20261007 pass 4 (round 22): firmware_class search path (tqftpserv)
 genfscon sysfs /module/firmware_class/parameters/path                      u:object_r:sysfs_a6l_fw_path:s0
+# selinux-20261010 pass 5 (round 26b): WCN3990 Wi-Fi wakeup source (ath10k_snoc; system_suspend open/read
+# .../soc@0/18800000.wifi/wakeup/wakeup46/name and expire_count: r26b x2, radio-sim/bms logs x110)
+genfscon sysfs /devices/platform/soc@0/18800000.wifi/wakeup                u:object_r:sysfs_wakeup:s0

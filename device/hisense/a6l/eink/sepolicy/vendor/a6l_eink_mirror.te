@@ -34,3 +34,10 @@ allow a6l_eink_mirror hal_graphics_allocator_default:fd use;
 allow a6l_eink_mirror kmsg_device:chr_file w_file_perms;
 # eink-round6: /dev/kmsg is 0600 root:root, the markers go through /dev/kmsg_debug (0622 on userdebug builds)
 allow a6l_eink_mirror kmsg_debug_device:chr_file w_file_perms;
+# selinux-20261010 pass 5 (bms-20261009 log x1): the eink-round10 touch-guard override sys.a6l.eink.touch_guard_ms has
+# no property_contexts entry, so it is `sys.` = system_prop, which vendor domains may not read (core_property_type:
+# neverallow, system/sepolicy/private/property.te). Denied = prop_int() falls back to the built-in 2000 ms (the value
+# used today: nothing sets the override). Silence here; to make the knob work under enforcing, give it an exact entry
+# with the type the mirror already reads (sys.a6l.eink.touch_guard_ms -> a6l_eink_animation_prop, exact uint) in
+# eink/switcher/sepolicy/system_ext/private/property_contexts at the next system build.
+dontaudit a6l_eink_mirror system_prop:file { getattr open read map };

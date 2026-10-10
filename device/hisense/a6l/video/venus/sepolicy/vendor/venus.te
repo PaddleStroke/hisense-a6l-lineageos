@@ -32,3 +32,12 @@ allow a6l_modules video_device:dir r_dir_perms;
 # selinux-20261007 pass 2 (round 12): /vendor/build.prop ro.vendor.v4l2_codec2.* (venus.mk) are loaded in the vendor_init
 # context (r12: set ro.vendor.v4l2_codec2.encoder.supported.h264 denied; in enforcing the store would advertise nothing)
 set_prop(vendor_init, vendor_a6l_v4l2_codec2_prop)
+
+# ---- selinux-20261010 pass 5 (round 26b full-use avc; firmware/extracted/selinux-20261010/README.md) ----
+# HW decode of app buffers: MediaCodec in the app process (Jelly/Gallery/ExoPlayer, untrusted_app_34 in r26b) hands the
+# V4L2 Codec2 service its bufferpool2/FMQ memfds ("memfd:MessageQueue", policycap memfd_class: labelled with the
+# creator's domain). r26b: mediacodec read write map x16 on untrusted_app_34:memfd_file. Denied = the codec cannot map the
+# app's input/status queues -> playback fails. AOSP grants exactly this to the software codec service
+# (system/sepolicy/private/mediaswcodec.te: allow mediaswcodec appdomain:memfd_file { getattr read write map }); the
+# vendor Codec2 service needs the same. Platform clients (system_server, cameraserver) are covered by hal_client_domain().
+allow mediacodec appdomain:memfd_file { getattr map read write };

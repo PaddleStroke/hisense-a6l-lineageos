@@ -14,3 +14,8 @@ allow a6l_q6voiced self:unix_stream_socket { accept listen read write getopt set
 unix_socket_connect(hal_radio_default, a6l_q6voiced, a6l_q6voiced)
 unix_socket_connect(hal_audio_default, a6l_q6voiced, a6l_q6voiced)
 get_prop(a6l_q6voiced, vendor_a6l_audio_prop)   # type from audio/sepolicy (set by the audio HAL)
+
+# selinux-20261010 pass 5 (round 26b): pcm_busy_real() reads /proc/asound/card<N>/pcm<D><p|c>/sub0/status before it
+# opens a voice/BT-bridge PCM (r26b: search on proc_asound dir x2; the file read is granted above, but the path walk
+# needs the directories). Denied = fopen fails, the PCM always looks idle (busy check silently off). Read-only.
+allow a6l_q6voiced proc_asound:dir r_dir_perms;

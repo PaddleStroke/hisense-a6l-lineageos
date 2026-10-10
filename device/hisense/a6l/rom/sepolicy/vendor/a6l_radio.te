@@ -114,3 +114,16 @@ dontaudit { a6l_rmtfs a6l_tqftpserv a6l_diag a6l_radio_ctl } self:global_capabil
 # `exec $B/rmtfs` from a6l-radio.sh (domain_auto_trans): fds inherited from the a6l_radio_ctl shell (r22 rmtfs fd use x2;
 # tqftpserv and diag-router are started the same way, inferred)
 allow { a6l_rmtfs a6l_tqftpserv a6l_diag } a6l_radio_ctl:fd use;
+
+# ---- selinux-20261010 pass 5 (round 26b full-use avc; firmware/extracted/selinux-20261010/README.md) ----
+# rmtfs binds its QRTR socket to the fixed service port 14 (rmtfs.c run_rmtfs: qrtr_open(RMTFS_QMI_SERVICE) ->
+# bind(sq_port=14)). af_qrtr.c qrtr_port_assign(): a port below QRTR_MIN_EPH_SOCKET (0x4000) requires CAP_NET_ADMIN,
+# else -EACCES (r26b: capability net_admin x2). **Modem blocker under enforcing**: rmtfs exits, the modem gets no EFS
+# (modemst1/2) and restarts. tqftpserv and diag-router use ephemeral ports (qrtr_open(0)): no capability.
+allow a6l_rmtfs self:capability net_admin;
+# Same linker probe as pass 4 (shell_data_file above), for the other linkerconfig dir.* entries: linker_config.cpp
+# access(R_OK)s /data (r26b: read on system_data_root_file dir) and realpath()s /postinstall (getattr on
+# postinstall_mnt_dir) for rmtfs and tqftpserv. An inaccessible entry is used unresolved: no functional effect, and core
+# data access is neverallowed for vendor domains. Silence.
+dontaudit { a6l_rmtfs a6l_tqftpserv a6l_diag a6l_radio_ctl } system_data_root_file:dir { read open search getattr };
+dontaudit { a6l_rmtfs a6l_tqftpserv a6l_diag a6l_radio_ctl } postinstall_mnt_dir:dir { getattr search };

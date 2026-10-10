@@ -3,3 +3,7 @@ ro.vendor.v4l2_codec2.decoder.supported.   u:object_r:vendor_a6l_v4l2_codec2_pro
 ro.vendor.v4l2_codec2.device_name_filter   u:object_r:vendor_a6l_v4l2_codec2_prop:s0 exact string
 persist.vendor.v4l2_codec2.disable_vbr     u:object_r:vendor_a6l_v4l2_codec2_prop:s0 exact bool
 ro.vendor.v4l2_codec2.encoder.output_mmap   u:object_r:vendor_a6l_v4l2_codec2_prop:s0 exact bool
+# selinux-20261010 pass 5: V4L2 Codec2 decoder A/B switches (v4l2_codec2 patches 0008/0009: vendor.a6l.c2dec.input_mmap,
+# .merge_csd, .bytebuffer_pool; default true, read by DecodeComponent). Were vendor_a6l_prop (r26b: mediacodec
+# read/open/getattr/map); the codec's own type keeps mediacodec off the rest of vendor.a6l.*.
+vendor.a6l.c2dec.          u:object_r:vendor_a6l_v4l2_codec2_prop:s0 prefix bool
