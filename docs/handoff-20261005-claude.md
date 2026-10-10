@@ -899,3 +899,10 @@ in frame is far too dark, while stock keeps the room visible.
 7. Voice speaker fix: add only if Pierre's call test (live swap, before the reboot) passes:
    - the patched snd-soc-tfa98xx.ko into rom/prebuilt/vendor/lib/modules;
    - daemon patch 0001.
+
+**Round 26 BUILT + AUDITED + STAGED (10 Oct 07:xx), NOT flashed.**
+- Vendor f26bf914.
+- Camera stack: core r13 8755e24c, IPA r12 56e026e9 (+ .sign), tuning V2f (imx576 4daadf90), HAL r9b.
+- Kit on the laptop: rom-r7c-round26-20261006.
+- Flash script: scratchpad/flash26.sh (no stay-awake).
+- Before flashing, Pierre wants to do the voice speaker test call (the live swap is lost at the reboot). If it passes, add the TFA .ko + daemon 0001 and rebuild as round 26b; otherwise flash round 26 as is.

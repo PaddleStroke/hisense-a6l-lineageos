@@ -27,7 +27,8 @@ PRODUCT_COPY_FILES += \
 PRODUCT_VENDOR_PROPERTIES += \
     ro.hardware.camera=libcamera
 
-# camera-iq-20261008 (9 Oct 2026, round 25): core r11 (0105-0107 colour/LUT/sharpen, 0109 tap-to-focus core, 0111 detail
+# camera-iq-20261008 (round 26, 10 Oct 2026: core r13 = r11 + 0113 state timing + 0115 own tone curve at stream start;
+# IPA r12 = r9 + 0114 AWB damping + fast AE; tuning V2f). Round 25: core r11 (0105-0107 colour/LUT/sharpen, 0109 tap-to-focus core, 0111 detail
 # enhancer, 0112 soft toe + luma/chroma NR), HAL r9b (0104 two-stream, 0109 AF regions + template-size fix), IPA r9
 # (0108 robust continuous AF + 0110 tap-to-focus, signed), tuning V2d. 0106 robust AWB statistics on by default.
 PRODUCT_VENDOR_PROPERTIES += \

@@ -1,3 +1,7 @@
+# camera-iq-20261008 V2f = V2e with gentler highlight protection: small light sources may clip (brightest 0.5 %, cut <= 0.5 EV).
+# camera-iq-20261008 V2e = V2d + brightness/highlight protection + AE speed (README "Colour dance,
+# brightness, AE speed (9 Oct)", scripts/make-v2e.py). Agc keys work with the installed IPA r9; the Awb keys
+# and fastAe block need IPA 0114 (r12) and are ignored by r9.
 # camera-iq-20261008 V2b = V2 + the V1b changes.
 # A6L hw-ISP (VFE 4.8 PIX path, round 6 = round 5 + chroma denoise + low-light frame extension): s5k3t1 = r3-A unchanged (used only if listed in persist.vendor.a6l.hwisp.sensors).
 # CCM / WB gains / LUT are applied by the VFE through DebayerHwIsp; statistics come from the NV12 output
@@ -13,6 +17,14 @@ version: 1
 algorithms:
   - BlackLevel:
   - Awb:
+      # camera-iq V2e: IPA 0114 damping (r12; ignored by r9). First estimate of a session direct, then 0.5 x the log
+      # error per statistics update (0.3 with a core without 0113), at most 0.3, nothing below 1.5 %; a session starts
+      # from the camera's last gains.
+      speed: 0.5
+      speedUntimed: 0.3
+      deadband: 0.015
+      maxStep: 0.3
+      restore: true
   # Stock Qualcomm AWB-driven CCMs decoded from libchromatix_s5k3t1sp_hmct_hxsef02_a3_zsl_preview.so (camera-quality-20261006).
   # Row-major, rows = output R,G,B; columns = input R,G,B; rows sum to 1 (neutral-preserving).
   # NOTE: enabling Ccm switches debayer to the slower upstream scalar CCM path (A6L NEON prefix is !ccm only).
@@ -43,19 +55,30 @@ algorithms:
       # 0031. target = stock luma target 60/255 x missing-LSC frame-mean factor 1.605
       # x 0.74 (matched front pair, subject patches): 0.279.
       # Installed IPA: fixed 0.4 (= +0.51 EV brighter than this).
-      target: 0.28
-      lowLightTarget: 0.196   # stock low-light zone ratio 0.70
+      target: 0.22            # camera-iq V2e (0.28): -0.35 EV, brighter than stock on r11
+      lowLightTarget: 0.155   # camera-iq V2e (0.196)
       lowLightGainStart: 4.0
       lowLightGainEnd: 8.0
       # keep the brightest 2 % below 90 % of the white-balanced clip level, at most 1 EV under target
-      highlightQuantile: 0.98
-      highlightTarget: 0.9
-      highlightMaxCut: 0.5    # camera-iq V1b (was 1.0; DRC is off): bright monitor/window darkens the scene at most 0.5 EV
+      highlightQuantile: 0.995  # V2f (V2e 0.98): ignore small light sources
+      highlightTarget: 0.9      # V2f (V2e 0.85)
+      highlightMaxCut: 0.5      # V2f (V2e 1.25)
       # Round 3 (0035): faster convergence that stays stable even if a decision sees the previous exposure
       # (offline model rerun/agc-sim-stdout.txt, 'mild'). Deployed: convergence 0.5, maxStep 1.5, no split.
-      convergence: 0.6
-      maxStep: 2.0
+      convergence: 0.9        # camera-iq V2e (0.6), r9 path: with updateInterval 8 each decision sees the previous one
+      maxStep: 8.0            # camera-iq V2e (2.0), r9 path
+      updateInterval: 8       # camera-iq V2e, r9 path: 8 frames >= backlog (<= 3) + sensor delay (2) + stats period
       splitExposureGain: true
+      # camera-iq V2e: IPA 0114 fast AE (r12; the r9 IPA ignores these keys and uses convergence/maxStep/updateInterval)
+      fastAe: true
+      jumpThreshold: 1.0      # EV: larger errors are corrected by one jump
+      maxJump: 3.5
+      jumpGain: 0.9
+      fineConvergence: 0.7
+      fineMaxStep: 1.0
+      settleMinRatio: 0.4
+      settleMaxFrames: 12
+      clipBoost: 3.0
       # Round 6 (0038, needs core 0102): low light, lengthen the frame (VBLANK) instead of adding gain once the
       # gain at the 30 fps exposure reaches frameExtensionGain; at most maxFrameDuration (15 fps, like stock
       # preview). Bright and normal indoor scenes stay at 30 fps. persist.vendor.a6l.hwisp.minfps=30 disables it.
