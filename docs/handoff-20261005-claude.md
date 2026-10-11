@@ -992,3 +992,10 @@ Build with build-round26-image.py (same camera pin); audit against round26b-vend
 - Fix: Codec2 patch 0010 (buffer identity by dmabuf inode, spare CAPTURE slots via vendor.a6l.c2dec.spare_capture, safe slot hand-over, fetch retry).
 - Live test: phone/video-swap.sh swap|capture|restore (bind-mounts two vendor libs, restarts the c2 HAL). Not yet run.
 - ROM: copy 0010 + .sha256 into rom/android/patches/external/v4l2_codec2/ after the test passes.
+
+**Missed touch after wake, root cause (wake-touch-20261011):**
+- The FT8719 touch half is reset with the LCD at screen off/on. Upstream edt-ft5x06 never lifts a contact it was tracking, so the stale slot is re-read by InputReader at wake, and the swipe is dropped or the shade gets stuck.
+- Fix: patched edt-ft5x06.ko a0b67751 (panel follower: lift all at LCD off/on, settle window, vendor 200 ms check, missing-contact lift; only for focaltech,ft8719).
+- Live swap: phone/wt.sh install (LCD on), test 20 wake cycles with wt.sh start A/B.
+- ROM: copy the module into rom/prebuilt/vendor/lib/modules + git apply 0003.
+- DPU -110 on LCD power-on without s2idle is real but harmless (~50 ms); optional msm fix eink-round6/kernel/0001.
