@@ -960,3 +960,16 @@ Test plan, steps S0-S5 (README section 3; reboot = rollback):
 - S5 tfa.
 
 Before ROM integration: refresh device/hisense/a6l/audio/patches/0005 from the WSL tree (useNativeInput drift).
+
+**11 Oct audio r3 live test (Pierre):**
+- S0: touch miss happens with nothing swapped (display bug, lock/unlock recovers).
+- S1: daemons OK, speaker louder (stock level).
+- S2: HAL 9ac30f52 headset switching OK (PCM reopened on LPI_MI2S_RX_0 and back, no ALSA errors; pause on unplug).
+- S3: headset call + volume keys OK, but the max is quiet vs media.
+- S4: a live TFA module reload silences the speaker even with the ROM module, so live TFA swaps are invalid; test TFA r2 only in a ROM.
+- Gallery video pause/play freezes Gallery (audio underrun as a consequence); likely the Codec2 v4l2 decoder. Separate bug, TODO.
+
+Phone rebooted to 26b.
+
+Next: an agent integrates audio r3 into device/ + adds a call gain boost (+8 dB top step, earpiece/headset) and writes
+audio-20261010/ROM-INTEGRATION.md. Then round 27 = SELinux 0005 + audio r3 + TFA r2.
