@@ -985,3 +985,10 @@ Waiting on two more agents before building:
 - the missed touch after wake (firmware/extracted/wake-touch-20261011).
 
 Build with build-round26-image.py (same camera pin); audit against round26b-vendor-20261010; expected changes per audio-20261010/ROM-INTEGRATION.md.
+
+**Gallery freeze root cause (video-pause-20261011):**
+- Glimpse/ExoPlayer `setOutputSurface()` after Home, Recents or lock. The A16 Codec2 client doesn't migrate the buffers, so they return with new AHardwareBuffer ids.
+- VideoFramePool drops buffers after 25 unknown ids and retries forever (silent livelock). A frozen-app fetch error then wedges it too.
+- Fix: Codec2 patch 0010 (buffer identity by dmabuf inode, spare CAPTURE slots via vendor.a6l.c2dec.spare_capture, safe slot hand-over, fetch retry).
+- Live test: phone/video-swap.sh swap|capture|restore (bind-mounts two vendor libs, restarts the c2 HAL). Not yet run.
+- ROM: copy 0010 + .sha256 into rom/android/patches/external/v4l2_codec2/ after the test passes.
