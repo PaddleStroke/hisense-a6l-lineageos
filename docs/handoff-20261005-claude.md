@@ -973,3 +973,15 @@ Phone rebooted to 26b.
 
 Next: an agent integrates audio r3 into device/ + adds a call gain boost (+8 dB top step, earpiece/headset) and writes
 audio-20261010/ROM-INTEGRATION.md. Then round 27 = SELinux 0005 + audio r3 + TFA r2.
+
+**Round 27 tree state (11 Oct):**
+- SELinux 0005 (6939339);
+- audio r3 (99ec59e) synced to the WSL tree;
+- hardware/interfaces HAL patches 0006+0007 applied via apply-hal-patches.sh (StreamPrimary.cpp 3b965e5f, A6L_HAL_PATCHES_OK);
+- TFA r2 e58d29c1 in the WSL prebuilt modules (26b's 1f68eb8d backed up in /root/bak-20261010).
+
+Waiting on two more agents before building:
+- the Gallery pause/play freeze (firmware/extracted/video-pause-20261011);
+- the missed touch after wake (firmware/extracted/wake-touch-20261011).
+
+Build with build-round26-image.py (same camera pin); audit against round26b-vendor-20261010; expected changes per audio-20261010/ROM-INTEGRATION.md.
