@@ -1,0 +1,167 @@
+Hisense A6L audio-20261010 r3 (10 Oct 2026, firmware/extracted/audio-20261010) for the AOSP AIDL example audio HAL
+(StreamPrimary): the primary playback PCM follows the MultiMedia1 DSP back end. a6l-audio-route selects TERT_MI2S_RX
+(loudspeaker) or LPI_MI2S_RX_0 (WCD codec: wired headset, earpiece) from vendor.a6l.audio.media_out; q6routing binds the
+ADM COPP to the back end selected at PCM prepare and never moves a running session. Live 10 Oct: a speaker ->
+headphones switch under a running PCM made every pcm_write fail until standby, a headphones -> speaker switch left the
+speaker silent. When the selected back end differs from the one the PCM was opened on, the PCM is closed and reopened.
+Off switch: vendor.a6l.audio.media_follow_be=false (not persistent). Apply after 0001-0006, in hardware/interfaces, by
+tools/rom-v2-pipeline.sh (audio/patches/*.patch).
+
+diff -ru a/audio/aidl/default/include/core-impl/StreamPrimary.h b/audio/aidl/default/include/core-impl/StreamPrimary.h
+--- a/audio/aidl/default/include/core-impl/StreamPrimary.h	2026-10-10 21:19:37.331792960 +0200
++++ b/audio/aidl/default/include/core-impl/StreamPrimary.h	2026-10-10 21:25:45.302580063 +0200
+@@ -69,6 +69,9 @@
+                               const ::aidl::android::media::audio::common::AudioDevice& device);
+ 
+     bool isStubStreamOnWorker() const { return mCurrAlsaDeviceId == kStubDeviceId; }
++    // Hisense A6L audio-20261010 r3 (0007): reopens the PCM when the MultiMedia1 DSP back end changed under it.
++    // Worker thread. Returns false when no PCM could be (re)opened: the caller then drops this buffer.
++    bool a6lFollowBackEnd();
+ 
+     DriverStubImpl mStubDriver;
+     mutable std::mutex mLock;
+@@ -76,6 +79,10 @@
+ 
+     // Used by the worker thread only.
+     AlsaDeviceId mCurrAlsaDeviceId = kStubDeviceId;
++    // Hisense A6L (0007): back-end follower state (worker thread only).
++    bool mA6lFollowBackEnd = false;
++    int mA6lOpenBackEnd = 0;
++    bool mA6lReopenFailed = false;
+ };
+ 
+ class StreamInPrimary final : public StreamIn, public StreamPrimary, public StreamInHwGainHelper {
+diff -ru a/audio/aidl/default/primary/StreamPrimary.cpp b/audio/aidl/default/primary/StreamPrimary.cpp
+--- a/audio/aidl/default/primary/StreamPrimary.cpp	2026-10-10 21:19:37.330353406 +0200
++++ b/audio/aidl/default/primary/StreamPrimary.cpp	2026-10-10 21:25:45.292351533 +0200
+@@ -24,6 +24,7 @@
+ #include <audio_utils/clock.h>
+ #include <error/Result.h>
+ #include <error/expected_utils.h>
++#include <tinyalsa/mixer.h>
+ 
+ #include "core-impl/StreamPrimary.h"
+ 
+@@ -54,6 +55,63 @@
+                                                         : "persist.vendor.a6l.btcall.ul_pcm",
+                                                 -1, 1, 31);
+ }
++
++// Hisense A6L audio-20261010 r3 (10 Oct 2026, firmware/extracted/audio-20261010 README section 0): the MultiMedia1
++// playback front end (pcmC0D0p) has ONE DSP back end, chosen by a6l-audio-route from vendor.a6l.audio.media_out:
++// TERT_MI2S_RX (TFA9894 loudspeaker) or LPI_MI2S_RX_0 (WCD codec: wired headset/headphones, earpiece). q6routing opens
++// the ADM COPP on the back end selected when the PCM is prepared (q6routing_stream_open) and never moves a running
++// session, so a back-end switch under a running PCM breaks it. Live test 10 Oct: speaker -> headphones while the PCM ran
++// = every pcm_write failed (-1) until standby (no headset audio); headphones -> speaker = no error but a silent speaker;
++// a PCM opened after the switch played normally. The primary output therefore follows the selected back end: when it
++// differs from the one the PCM was opened on, the PCM is closed and reopened (one HAL buffer is lost at a route change).
++// Off switch for tests: vendor.a6l.audio.media_follow_be=false (read when the PCM is opened;
++// vendor.a6l.audio.media_* = vendor_a6l_audio_prop, which this HAL already sets, so no new SELinux rule).
++enum A6lBackEnd { kA6lBeUnknown = 0, kA6lBeTert = 1, kA6lBeLpi = 2 };
++
++const char* a6lBackEndName(int be) {
++    return be == kA6lBeTert ? "TERT_MI2S_RX" : be == kA6lBeLpi ? "LPI_MI2S_RX_0" : "none";
++}
++
++struct A6lMm1Controls {
++    struct mixer* mixer = nullptr;
++    struct mixer_ctl* tert = nullptr;
++    struct mixer_ctl* lpi = nullptr;
++};
++
++// Opened once per process (the HAL keeps the card open anyway); nullptr mixer = follower disabled.
++const A6lMm1Controls& a6lMm1Controls() {
++    static const A6lMm1Controls controls = [] {
++        A6lMm1Controls c;
++        if (::android::base::GetProperty("ro.product.vendor.device", "") != "a6l") return c;
++        c.mixer = mixer_open(primary::PrimaryMixer::kAlsaCard);
++        if (c.mixer == nullptr) {
++            LOG(ERROR) << "a6lMm1Controls: mixer_open failed, MultiMedia1 back-end follower disabled";
++            return c;
++        }
++        c.tert = mixer_get_ctl_by_name(c.mixer, "TERT_MI2S_RX Audio Mixer MultiMedia1");
++        c.lpi = mixer_get_ctl_by_name(c.mixer, "LPI_MI2S_RX_0 Audio Mixer MultiMedia1");
++        if (c.tert == nullptr || c.lpi == nullptr) {
++            LOG(WARNING) << "a6lMm1Controls: no MultiMedia1 routing controls, back-end follower disabled";
++            mixer_close(c.mixer);
++            return A6lMm1Controls{};
++        }
++        LOG(INFO) << "a6lMm1Controls: A6L MultiMedia1 back-end follower ready";
++        return c;
++    }();
++    return controls;
++}
++
++// q6routing reports 1 only for the back end the session is routed to, so at most one control reads 1. Both 0 = being
++// switched (or no back end): undecided, looked at again at the next buffer.
++int a6lSelectedMm1BackEnd() {
++    const A6lMm1Controls& c = a6lMm1Controls();
++    if (c.mixer == nullptr) return kA6lBeUnknown;
++    const int tert = mixer_ctl_get_value(c.tert, 0);
++    const int lpi = mixer_ctl_get_value(c.lpi, 0);
++    if (tert == 1 && lpi == 0) return kA6lBeTert;
++    if (lpi == 1 && tert == 0) return kA6lBeLpi;
++    return kA6lBeUnknown;
++}
+ }  // namespace
+ 
+ StreamPrimary::StreamPrimary(StreamContext* context, const Metadata& metadata)
+@@ -108,7 +166,17 @@
+     if (isStub) {
+         return mStubDriver.start();
+     }
++    // A6L (0007): empty = this start opens the PCM (not a resume after a pause).
++    const bool a6lOpensPcm = mAlsaDeviceProxies.empty();
+     RETURN_STATUS_IF_ERROR(StreamAlsaMonoPipe::start());
++    if (a6lOpensPcm) {
++        mA6lFollowBackEnd = !mIsInput && !getContext().isMmap() &&
++                            mCurrAlsaDeviceId == kDefaultCardAndDeviceId &&
++                            GetBoolProperty("vendor.a6l.audio.media_follow_be", true) &&
++                            a6lMm1Controls().mixer != nullptr;
++        mA6lOpenBackEnd = mA6lFollowBackEnd ? a6lSelectedMm1BackEnd() : kA6lBeUnknown;
++        mA6lReopenFailed = false;
++    }
+     mStartTimeNs = ::android::uptimeNanos();
+     mFramesSinceStart = 0;
+     mSkipNextTransfer = false;
+@@ -125,9 +193,11 @@
+         // data or insert emulator catch-up silence after a delayed command.
+         return StreamAlsaMonoPipe::transfer(buffer, frameCount, actualFrameCount, latencyMs);
+     }
++    // A6L (0007): reopen the PCM if a6l-audio-route moved MultiMedia1 to another back end.
++    const bool a6lPcmOpen = !mA6lFollowBackEnd || a6lFollowBackEnd();
+     // This is a workaround for the emulator implementation which has a host-side buffer
+     // and is not being able to achieve real-time behavior similar to ADSPs (b/302587331).
+-    if (!mSkipNextTransfer) {
++    if (!mSkipNextTransfer && a6lPcmOpen) {
+         RETURN_STATUS_IF_ERROR(
+                 StreamAlsaMonoPipe::transfer(buffer, frameCount, actualFrameCount, latencyMs));
+     } else {
+@@ -158,6 +228,27 @@
+     return ::android::OK;
+ }
+ 
++bool StreamPrimary::a6lFollowBackEnd() {
++    const int be = a6lSelectedMm1BackEnd();
++    if (be != kA6lBeUnknown && be != mA6lOpenBackEnd && !mAlsaDeviceProxies.empty()) {
++        LOG(INFO) << __func__ << ": A6L MultiMedia1 back end " << a6lBackEndName(mA6lOpenBackEnd) << " -> "
++                  << a6lBackEndName(be) << " under the running PCM: reopening it";
++        StreamAlsaMonoPipe::shutdown();  // Stop, join the I/O thread and close the PCM (as standby does).
++    }
++    if (mAlsaDeviceProxies.empty()) {
++        if (::android::status_t status = StreamAlsaMonoPipe::start(); status != ::android::OK) {
++            LOG_IF(ERROR, !mA6lReopenFailed)
++                    << __func__ << ": A6L PCM reopen failed (" << status << "), dropping audio until it opens";
++            mA6lReopenFailed = true;
++            return false;
++        }
++        mA6lOpenBackEnd = a6lSelectedMm1BackEnd();
++        LOG(INFO) << __func__ << ": A6L PCM reopened on " << a6lBackEndName(mA6lOpenBackEnd);
++        mA6lReopenFailed = false;
++    }
++    return true;
++}
++
+ ::android::status_t StreamPrimary::refinePosition(StreamDescriptor::Position*) {
+     // Since not all data is actually sent to the HAL, use the position maintained by Stream class
+     // which accounts for all frames passed from / to the client.

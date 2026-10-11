@@ -49,13 +49,41 @@
  * pcmC<card>D<persist.vendor.a6l.btcall.dl_pcm>c is open, i.e. the audio HAL reads the downlink) the codec is switched
  * to "voice-bridge" / "bridge-mic" (every analog output and the ADC path off: nothing audible from the phone, no phone
  * mic in the uplink). The DSP voice session itself is untouched (a6l-q6voiced keeps its RX on the earpiece port).
+ * audio-20261010 (10 Oct 2026, firmware/extracted/audio-20261010):
+ *  - in-call (downlink) volume. The ADSP rejects VSS_IVOLUME_CMD_SET_STEP (no vocproc volume calibration on this CVD),
+ *    so the call volume is an output gain owned by this daemon: a6l-q6voiced publishes Android's voice volume (0..1, the
+ *    audio policy's index/max) in vendor.a6l.audio.call_vol; att = round(range * (1 - v)) dB, range =
+ *    vendor.a6l.audio.call_vol_range (default CALL_VOL_RANGE_DB, 0..60). It is applied on top of the selected voice path:
+ *    voice-handset / voice-headphones lower "Digital RX1/RX2 Digital Volume" (1 dB per raw step) from the path value
+ *    (84 = 0 dB), voice-speaker raises "TFA Attenuation" (snd-soc-tfa98xx 0004, 0.5 dB steps; skipped with a warning on
+ *    a module without the control). Every gain control is written after libaudioroute's update and is part of the
+ *    verified state, so the periodic re-verification keeps it instead of undoing it. Outside calls they are at the XML
+ *    values (Android's media volume stays in AudioFlinger). Unset property = 0 dB (the old behaviour).
+ *  - call gain boost (11 Oct 2026, live S3: the headset call at max volume was "much less than a YouTube video"). Stock
+ *    gets positive gain at the top call steps from the vocproc volume table, which this CVD lacks, so the codec top
+ *    step was only 0 dB. The WCD voice paths (voice-handset, voice-headphones) now follow a boosted curve: with N
+ *    Android call steps (ro.config.vc_call_vol_steps, AudioService default 5; inferred from the value when it is not
+ *    on that grid) and index k = v * N, the top step (k = N) is +boost dB (vendor.a6l.audio.call_boost_db, default
+ *    CALL_BOOST_DB, 0..40 = the control's max 124), and below it gain = -round(range * (N - 1 - k) / N) dB, i.e.
+ *    k = N-1 is the old full level (0 dB) and each step below is range/N dB lower (5 steps, range 20: +8/0/-4/-8/-12).
+ *    The TFA "TFA Attenuation" can only reduce: voice-speaker keeps att = round(range * (1 - v)) with the top step
+ *    at full level (att 0), as before. Media paths always hold the XML values. Headroom: the WCD digital gain goes to
+ *    +40 dB (no control limit near). Network speech is ~-26..-20 dBFS active level with peaks ~12 dB higher, so +8 dB
+ *    puts typical peaks at about -6..0 dBFS: only an unusually hot far end can touch full scale, and only at the top
+ *    step. A boost/range property out of its range falls back to the default.
+ *  - unplug grace: Android's wired device (media_out/call_out headset|headphone) keeps the headphone path for
+ *    UNPLUG_GRACE_MS after the jack reports the unplug, instead of falling back to the loudspeaker at once. AudioService
+ *    holds the disconnect for its BECOMING_NOISY delay so that players pause first; the old jack-wins rule played that
+ *    tail on the loudspeaker. After the grace a stale property still falls back to the jack.
  * usage: a6l-audio-route [-x mixer_paths.xml] [-n card_name] [-1]   (-1: apply once for the current state and exit)
  */
 #define LOG_TAG "a6l-audio-route"
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <cutils/properties.h>
 #include <log/log.h>
@@ -66,6 +94,86 @@
 #define DEFAULT_CARD_NAME "Hisense A6L"
 #define MAX_FAILS_BEFORE_REOPEN 3
 #define VERIFY_EVERY 10		/* polls (300 ms) between re-verifications of an unchanged route */
+#define UNPLUG_GRACE_MS 2500	/* audio-20261010: headphone path kept after an unplug (AudioService noisy delay 1 s) */
+#define CALL_VOL_RANGE_DB 20	/* audio-20261010: span of the call curve (TFA: index 1/5 = -16 dB; codec: range/N per step) */
+#define CALL_BOOST_DB 8		/* 11 Oct 2026: codec gain of the top call step (stock-like vocproc top-step gain) */
+#define CALL_BOOST_MAX_DB 40	/* "Digital RX1/RX2 Digital Volume" max 124 = 84 (0 dB) + 40 */
+#define CALL_STEPS_DEFAULT 5	/* AudioService MAX_STREAM_VOLUME[STREAM_VOICE_CALL] */
+#define CALL_STEPS_MAX 30
+
+static long long mono_ms_real(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+static long long (*now_ms)(void) = mono_ms_real;	/* host tests: fake clock */
+
+/* audio-20261010 + call boost (11 Oct 2026): the call gains of one voice volume, in dB */
+struct call_gain {
+	int codec_db;	/* WCD voice paths: dB relative to the XML path value (+ = boost above 0 dB) */
+	int tfa_att_db;	/* voice-speaker: TFA attenuation in dB (>= 0, the TFA can only reduce) */
+};
+
+static int on_grid(double v, int n)
+{
+	double k = v * n;
+	return fabs(k - floor(k + 0.5)) < 0.01;	/* distinct k/n (n <= 30) differ by >= 1/30 in v * n */
+}
+
+/* Android's call step count: v = index / N (AudioPolicyManager). The hint (ro.config.vc_call_vol_steps, else the
+ * AudioService default 5) when v lies on its grid, else the smallest N that puts v on a grid, else the hint. */
+static int call_steps(double v, const char *steps)
+{
+	char *end = NULL;
+	long h = steps && steps[0] ? strtol(steps, &end, 10) : 0;
+	int n = (end && end != steps && *end == '\0' && h >= 1 && h <= CALL_STEPS_MAX) ? (int)h : CALL_STEPS_DEFAULT;
+
+	if (on_grid(v, n))
+		return n;
+	for (int k = 2; k <= CALL_STEPS_MAX; k++)
+		if (on_grid(v, k))
+			return k;
+	return n;
+}
+
+/* vol: vendor.a6l.audio.call_vol (0..1), range: call_vol_range (0..60 dB), boost: call_boost_db (0..40 dB),
+ * steps: ro.config.vc_call_vol_steps. Unset/invalid vol = no call gain (the level before audio-20261010). */
+static struct call_gain call_gain_db(const char *vol, const char *range, const char *boost, const char *steps)
+{
+	struct call_gain g = { 0, 0 };
+	char *end = NULL;
+	double v = strtod(vol, &end), rg = CALL_VOL_RANGE_DB, bst = CALL_BOOST_DB;
+
+	if (!vol[0] || end == vol || !(v >= 0.0 && v <= 1.0))
+		return g;
+	if (range && range[0]) {
+		double r = strtod(range, &end);
+		if (end != range && r >= 0.0 && r <= 60.0)
+			rg = r;
+	}
+	if (boost && boost[0]) {
+		double b = strtod(boost, &end);
+		if (end != boost && b >= 0.0 && b <= CALL_BOOST_MAX_DB)
+			bst = b;
+	}
+	int n = call_steps(v, steps);
+	double below = n - v * n;	/* steps below the top (real when v is off the grid) */
+	g.tfa_att_db = (int)lround(rg * (1.0 - v));
+	if (below < 0.5) {
+		g.codec_db = (int)lround(bst);
+	} else {
+		long c = -lround(rg * (below - 1.0) / n);
+		g.codec_db = c > 0 ? 0 : (int)c;	/* never above 0 dB below the top step */
+	}
+	return g;
+}
+
+static int gain_eq(const struct call_gain *a, const struct call_gain *b)
+{
+	return a->codec_db == b->codec_db && a->tfa_att_db == b->tfa_att_db;
+}
 
 static int find_card(const char *want)
 {
@@ -114,6 +222,7 @@ static int get_bool(struct mixer *m, const char *name)
 /* ---------------------------------------------------------------- decision (pure, host-tested) */
 struct route_state {
 	int hp, mic, voice, has_spk;
+	int hp_grace;			/* audio-20261010: jack unplugged less than UNPLUG_GRACE_MS ago */
 	int bridge;			/* btcall: modem call carried to a BT headset by the AudioFlinger bridge */
 	const char *call_out, *call_in;	/* Android's call devices (audio HAL properties), "" = unknown */
 	const char *media_out, *media_in;	/* F62: Android's playback/capture devices outside modem calls, "" = unknown */
@@ -157,7 +266,8 @@ static void decide(const struct route_state *s, struct route_choice *c)
 			if (wired)
 				c->unsupported = 1;	/* speaker + headset: no combined path, speaker keeps it audible */
 		} else if (wired) {
-			c->out = (s->hp == 1 || !s->has_spk) ? "headphones" : "speaker";	/* stale after an unplug */
+			/* stale after an unplug (the jack wins), except during the grace after it (BECOMING_NOISY) */
+			c->out = (s->hp == 1 || s->hp_grace || !s->has_spk) ? "headphones" : "speaker";
 		} else if (has_dev(mo, "earpiece")) {
 			c->out = "handset";
 		}
@@ -185,8 +295,8 @@ static void decide(const struct route_state *s, struct route_choice *c)
 	} else if (!strcmp(co, "earpiece")) {
 		c->out = "voice-handset";
 	} else if (!strcmp(co, "headset") || !strcmp(co, "headphone")) {
-		/* stale property after an unplug: the jack wins */
-		c->out = (s->hp == 1) ? "voice-headphones" : "voice-handset";
+		/* stale property after an unplug: the jack wins (after the audio-20261010 grace) */
+		c->out = (s->hp == 1 || s->hp_grace) ? "voice-headphones" : "voice-handset";
 	} else if (!strcmp(co, "bt-sco")) {
 		c->unsupported = 1;	/* placeholder: HFP/SCO audio is not integrated */
 	}
@@ -356,36 +466,172 @@ static int ctl_matches(struct mixer *m, const struct xr_ctl *c)
 }
 
 /* the complete expected mixer state for out+in: top-level defaults, then out, then in (libaudioroute's order) */
-static int verify_route(const struct xroute *x, struct mixer *m, const char *out, const char *in)
+static int expected_state(const struct xroute *x, const char *out, const char *in, struct xr_want *w, int *n)
 {
-	static struct xr_want w[XR_MAX_CTL];
-	int n = 0, bad = 0;
+	*n = 0;
 	for (int i = 0; i < x->nctl; i++) {
 		int inpath = 0;
 		for (int k = 0; k < x->npath; k++)
 			if (i >= x->path[k].first && i < x->path[k].first + x->path[k].n)
 				inpath = 1;
 		if (!inpath)
-			xr_put(w, &n, &x->ctl[i], 0);
+			xr_put(w, n, &x->ctl[i], 0);
 	}
-	if (xr_overlay(x, out, w, &n, 0) || xr_overlay(x, in, w, &n, 0)) {
+	if (xr_overlay(x, out, w, n, 0) || xr_overlay(x, in, w, n, 0)) {
 		ALOGE("verify: path %s/%s not in the XML", out, in);
 		return -EINVAL;
 	}
+	return 0;
+}
+
+/* ---------------------------------------------------------------- audio-20261010: call volume gain controls */
+/* value = the control's value in the expected state (top level + paths) + per_db * gain dB, clamped; the gain is the
+ * codec gain (signed, boosted top step) or minus the TFA attenuation (<= 0) */
+enum { GAIN_CODEC, GAIN_TFA };
+struct gain_rule { const char *out, *ctl; int kind, per_db, min, max; };
+static const struct gain_rule GAINS[] = {
+	/* WCD digital gain: raw 84 = 0 dB, 1 dB/step, max 124 = +40 dB */
+	{ "voice-handset", "Digital RX1 Digital Volume", GAIN_CODEC, 1, 0, 124 },
+	{ "voice-headphones", "Digital RX1 Digital Volume", GAIN_CODEC, 1, 0, 124 },
+	{ "voice-headphones", "Digital RX2 Digital Volume", GAIN_CODEC, 1, 0, 124 },
+	{ "voice-speaker", "TFA Attenuation", GAIN_TFA, -2, 0, 120 },	/* TFA9894 CF volume: 0.5 dB/step (0004) */
+};
+
+static int rule_db(const struct gain_rule *r, const struct call_gain *g)
+{
+	return r->kind == GAIN_CODEC ? g->codec_db : -g->tfa_att_db;
+}
+
+/* the call gain (dB) the output path out carries (0 for a path without a gain rule), for logs */
+static int path_gain_db(const char *out, const struct call_gain *g)
+{
+	for (int k = 0; k < (int)(sizeof(GAINS) / sizeof(GAINS[0])); k++)
+		if (!strcmp(GAINS[k].out, out))
+			return rule_db(&GAINS[k], g);
+	return 0;
+}
+#define NGAINS ((int)(sizeof(GAINS) / sizeof(GAINS[0])))
+
+/* 1 when `name` is one of the managed gain controls (first rule naming it, so each control is handled once) */
+static int gain_managed(int idx)
+{
+	for (int k = 0; k < idx; k++)
+		if (!strcmp(GAINS[k].ctl, GAINS[idx].ctl))
+			return 0;
+	return 1;
+}
+
+static int is_gain_ctl(const char *name)
+{
+	for (int k = 0; k < NGAINS; k++)
+		if (!strcmp(GAINS[k].ctl, name))
+			return 1;
+	return 0;
+}
+
+/* the value a managed gain control must hold in the state w (for output path out, call gain g); 0 = not in the state */
+static int gain_value(const struct xr_want *w, int n, const char *out, const struct call_gain *g, const char *name,
+		      int *val)
+{
+	const struct xr_want *e = NULL;
+
+	for (int i = 0; i < n; i++)
+		if (!strcmp(w[i].c->name, name) && w[i].c->id < 0)
+			e = &w[i];
+	if (!e)
+		return 0;
+	*val = atoi(e->c->value);
+	for (int k = 0; k < NGAINS; k++)
+		if (!strcmp(GAINS[k].out, out) && !strcmp(GAINS[k].ctl, name) && rule_db(&GAINS[k], g)) {
+			int v = *val + GAINS[k].per_db * rule_db(&GAINS[k], g);
+			*val = v < GAINS[k].min ? GAINS[k].min : v > GAINS[k].max ? GAINS[k].max : v;
+		}
+	return 1;
+}
+
+/* 1 = every value of the INT control equals v, 0 = differs, -1 = missing/unreadable */
+static int ctl_int_matches(struct mixer *m, const char *name, int v)
+{
+	struct mixer_ctl *ctl = mixer_get_ctl_by_name(m, name);
+	if (!ctl)
+		return -1;
+	unsigned int nv = mixer_ctl_get_num_values(ctl);
+	for (unsigned int i = 0; i < nv; i++) {
+		int cur = mixer_ctl_get_value(ctl, i);
+		if (cur < 0)
+			return -1;
+		if (cur != v)
+			return 0;
+	}
+	return 1;
+}
+
+/* write the managed gain controls of the state (libaudioroute's value cache does not know our values: a control it
+ * believes unchanged may still hold a call gain). 0, or -EIO when a write failed (verify reports it as well). */
+static int write_gains(struct mixer *m, const struct xr_want *w, int n, const char *out, const struct call_gain *g)
+{
+	int ret = 0;
+
+	for (int k = 0; k < NGAINS; k++) {
+		int v;
+		if (!gain_managed(k) || !gain_value(w, n, out, g, GAINS[k].ctl, &v))
+			continue;
+		struct mixer_ctl *ctl = mixer_get_ctl_by_name(m, GAINS[k].ctl);
+		if (!ctl) {
+			if (!strcmp(GAINS[k].out, out) && rule_db(&GAINS[k], g))
+				ALOGW("call volume %+d dB not applied on %s: no control '%s' (snd-soc-tfa98xx without 0004?)",
+				      rule_db(&GAINS[k], g), out, GAINS[k].ctl);
+			continue;
+		}
+		if (ctl_int_matches(m, GAINS[k].ctl, v) == 1)
+			continue;
+		for (unsigned int i = 0; i < mixer_ctl_get_num_values(ctl); i++)
+			if (mixer_ctl_set_value(ctl, i, v) < 0)
+				ret = -EIO;
+	}
+	return ret;
+}
+
+static int verify_route_att(const struct xroute *x, struct mixer *m, const char *out, const char *in,
+			    const struct call_gain *g)
+{
+	static struct xr_want w[XR_MAX_CTL];
+	int n = 0, bad = 0;
+	if (expected_state(x, out, in, w, &n))
+		return -EINVAL;
 	for (int i = 0; i < n; i++) {
-		int r = ctl_matches(m, w[i].c);
+		int r, gv = 0;
+		if (w[i].c->id < 0 && is_gain_ctl(w[i].c->name) && gain_value(w, n, out, g, w[i].c->name, &gv))
+			r = ctl_int_matches(m, w[i].c->name, gv);
+		else
+			r = ctl_matches(m, w[i].c);
 		if (r == 1 || (r < 0 && !w[i].required))
 			continue;
-		ALOGE("verify out=%s in=%s: '%s' %s (want %s)", out, in, w[i].c->name, r < 0 ? "missing/unreadable" : "differs",
-		      w[i].c->value);
+		if (is_gain_ctl(w[i].c->name))
+			ALOGE("verify out=%s in=%s: '%s' %s (want %d, call gain %+d dB)", out, in, w[i].c->name,
+			      r < 0 ? "missing/unreadable" : "differs", gv, path_gain_db(out, g));
+		else
+			ALOGE("verify out=%s in=%s: '%s' %s (want %s)", out, in, w[i].c->name,
+			      r < 0 ? "missing/unreadable" : "differs", w[i].c->value);
 		bad++;
 	}
 	return bad ? -EIO : 0;
 }
 
-/* 0 on success, negative errno otherwise (nothing is cached by the caller then) */
-static int apply(const struct xroute *x, struct audio_route *ar, struct mixer *m, const char *out, const char *in)
+/* host tests (the daemon itself always verifies with the call gain) */
+__attribute__((unused)) static int verify_route(const struct xroute *x, struct mixer *m, const char *out, const char *in)
 {
+	static const struct call_gain none = { 0, 0 };
+	return verify_route_att(x, m, out, in, &none);
+}
+
+/* 0 on success, negative errno otherwise (nothing is cached by the caller then) */
+static int apply(const struct xroute *x, struct audio_route *ar, struct mixer *m, const char *out, const char *in,
+		 const struct call_gain *g)
+{
+	static struct xr_want w[XR_MAX_CTL];
+	int n = 0;
+
 	audio_route_reset(ar);
 	if (audio_route_apply_path(ar, out) < 0) {
 		ALOGE("apply_path(%s) failed", out);
@@ -399,14 +645,17 @@ static int apply(const struct xroute *x, struct audio_route *ar, struct mixer *m
 		ALOGE("update_mixer failed");
 		return -EIO;
 	}
-	int r = verify_route(x, m, out, in);
+	/* audio-20261010: call volume gains (and their XML values on every other path) */
+	if (expected_state(x, out, in, w, &n) == 0)
+		write_gains(m, w, n, out, g);
+	int r = verify_route_att(x, m, out, in, g), gdb = path_gain_db(out, g);
 	if (r) {
-		printf("A6L_AUDIO_ROUTE_FAIL out=%s in=%s\n", out, in);
+		printf("A6L_AUDIO_ROUTE_FAIL out=%s in=%s gain=%+d\n", out, in, gdb);
 		fflush(stdout);
 		return r;
 	}
-	ALOGI("route: out=%s in=%s", out, in);
-	printf("A6L_AUDIO_ROUTE out=%s in=%s\n", out, in);
+	ALOGI("route: out=%s in=%s call_gain=%+ddB", out, in, gdb);
+	printf("A6L_AUDIO_ROUTE out=%s in=%s gain=%+d\n", out, in, gdb);
 	fflush(stdout);
 	return 0;
 }
@@ -426,6 +675,11 @@ struct routed {
 	char last_out_dev[PROPERTY_VALUE_MAX], last_in_dev[PROPERTY_VALUE_MAX];
 	char last_mout[PROPERTY_VALUE_MAX], last_min[PROPERTY_VALUE_MAX];	/* F62 */
 	int fails;
+	/* audio-20261010 */
+	int last_grace;				/* committed unplug grace */
+	struct call_gain last_gain, cur_gain;	/* committed call gain */
+	int hp_seen;				/* jack state of the previous poll (unplug edge) */
+	long long unplug_ms;			/* time of the last unplug, 0 = none */
 };
 
 static void route_close(struct routed *r)
@@ -486,14 +740,20 @@ static int route_step(struct routed *r, const char *cname)
 {
 	char vp[PROPERTY_VALUE_MAX], co[PROPERTY_VALUE_MAX], ci[PROPERTY_VALUE_MAX];
 	char mo[PROPERTY_VALUE_MAX], mi[PROPERTY_VALUE_MAX];
+	char cv[PROPERTY_VALUE_MAX], cr[PROPERTY_VALUE_MAX], cb[PROPERTY_VALUE_MAX], cn[PROPERTY_VALUE_MAX] = "";
 	struct route_state s;
 	struct route_choice c;
+	long long now = now_ms();
+	struct call_gain g = { 0, 0 };
 
 	property_get("vendor.a6l.voice.active", vp, "0");
 	property_get("vendor.a6l.audio.call_out", co, "");
 	property_get("vendor.a6l.audio.call_in", ci, "");
 	property_get("vendor.a6l.audio.media_out", mo, "");
 	property_get("vendor.a6l.audio.media_in", mi, "");
+	property_get("vendor.a6l.audio.call_vol", cv, "");		/* audio-20261010: set by a6l-q6voiced */
+	property_get("vendor.a6l.audio.call_vol_range", cr, "");
+	property_get("vendor.a6l.audio.call_boost_db", cb, "");		/* 11 Oct 2026: codec top-step boost */
 	s.hp = get_bool(r->m, "Headphone Jack");
 	s.mic = get_bool(r->m, "Mic Jack");
 	s.voice = vp[0] == '1';
@@ -503,6 +763,17 @@ static int route_step(struct routed *r, const char *cname)
 	s.media_out = s.voice ? "" : mo;	/* F62: a modem call keeps priority */
 	s.media_in = s.voice ? "" : mi;
 	s.bridge = 0;
+	/* audio-20261010: unplug edge -> grace window for Android's (still connected) wired device */
+	if (s.hp != 1 && r->hp_seen == 1)
+		r->unplug_ms = now ? now : 1;
+	if (s.hp == 1)
+		r->unplug_ms = 0;
+	r->hp_seen = s.hp;
+	s.hp_grace = r->unplug_ms && now - r->unplug_ms < UNPLUG_GRACE_MS;
+	if (s.voice) {	/* only voice paths carry a call gain */
+		property_get("ro.config.vc_call_vol_steps", cn, "");	/* exported_config_prop: readable by every domain */
+		g = call_gain_db(cv, cr, cb, cn);
+	}
 	if (s.voice) {	/* btcall (default off): bridge enabled and the HAL's downlink stream running */
 		char be[PROPERTY_VALUE_MAX], dp[PROPERTY_VALUE_MAX];
 		int dl;
@@ -513,13 +784,14 @@ static int route_step(struct routed *r, const char *cname)
 		s.bridge = be[0] == '1' && dl > 0 && dl < 32 && pcm_busy(r->card, dl, 1);
 	}
 	if (s.hp == r->last_hp && s.mic == r->last_mic && s.voice == r->last_voice && s.bridge == r->last_bridge &&
+	    s.hp_grace == r->last_grace && gain_eq(&g, &r->last_gain) &&
 	    !strcmp(s.call_out, r->last_out_dev) && !strcmp(s.call_in, r->last_in_dev) &&
 	    !strcmp(s.media_out, r->last_mout) && !strcmp(s.media_in, r->last_min)) {
 		/* round6 F7: an unchanged route is re-verified periodically (codec/DSP reset with the card kept) */
 		if (!r->cur_out || ++r->polls < VERIFY_EVERY)
 			return 0;
 		r->polls = 0;
-		if (!verify_route(r->x, r->m, r->cur_out, r->cur_in))
+		if (!verify_route_att(r->x, r->m, r->cur_out, r->cur_in, &r->cur_gain))
 			return 0;
 		ALOGW("committed route out=%s in=%s no longer applied: repairing", r->cur_out, r->cur_in);
 		r->last_hp = -2;	/* not committed any more: re-applied below and on the next polls until it holds */
@@ -538,10 +810,16 @@ static int route_step(struct routed *r, const char *cname)
 			return 1;
 		r->ar_stale = 0;
 	}
-	int ret = apply(r->x, r->ar, r->m, c.out, c.in);
+	if (!gain_eq(&g, &r->last_gain) && s.voice)
+		ALOGI("call volume '%s' (range '%s', boost '%s', steps '%s') -> codec %+d dB, TFA -%d dB: %+d dB on %s", cv,
+		      cr, cb, cn, g.codec_db, g.tfa_att_db, path_gain_db(c.out, &g), c.out);
+	int ret = apply(r->x, r->ar, r->m, c.out, c.in, &g);
 	if (ret == 0) {
 		r->cur_out = c.out;
 		r->cur_in = c.in;
+		r->cur_gain = g;
+		r->last_gain = g;
+		r->last_grace = s.hp_grace;
 		r->polls = 0;
 		r->last_hp = s.hp;
 		r->last_mic = s.mic;

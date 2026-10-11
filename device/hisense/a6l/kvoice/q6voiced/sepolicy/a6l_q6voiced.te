@@ -19,3 +19,5 @@ get_prop(a6l_q6voiced, vendor_a6l_audio_prop)   # type from audio/sepolicy (set 
 # opens a voice/BT-bridge PCM (r26b: search on proc_asound dir x2; the file read is granted above, but the path walk
 # needs the directories). Denied = fopen fails, the PCM always looks idle (busy check silently off). Read-only.
 allow a6l_q6voiced proc_asound:dir r_dir_perms;
+# audio-20261010: publishes Android's in-call volume in vendor.a6l.audio.call_vol (read by a6l-audio-route, output gain)
+set_prop(a6l_q6voiced, vendor_a6l_audio_prop)

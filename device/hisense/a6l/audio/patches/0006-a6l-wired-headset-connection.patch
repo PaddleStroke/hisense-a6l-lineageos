@@ -1,0 +1,51 @@
+Hisense A6L audio-20261010 (10 Oct 2026, firmware/extracted/audio-20261010) for the AOSP AIDL example audio HAL
+(ModulePrimary): accept the connection of the analog 3.5 mm jack devices (Wired Headset / Wired Headphones / Wired Headset
+Mic). Without it IModule.connectExternalDevice failed in Module::populateConnectedDevicePort (EX_ILLEGAL_STATE), the audio
+policy dropped the device and media and calls stayed on the speaker. Apply after 0002 (same files), in hardware/interfaces,
+by tools/rom-v2-pipeline.sh (audio/patches/*.patch).
+
+diff -ru a/audio/aidl/default/ModulePrimary.cpp b/audio/aidl/default/ModulePrimary.cpp
+--- a/audio/aidl/default/ModulePrimary.cpp	2026-10-10 10:14:21.009370145 +0200
++++ b/audio/aidl/default/ModulePrimary.cpp	2026-10-10 10:14:21.012778534 +0200
+@@ -237,6 +237,28 @@
+     return Module::setMicMute(in_mute);
+ }
+ 
++// Hisense A6L audio-20261010 (firmware/extracted/audio-20261010): the 3.5 mm jack. audio_policy_configuration.xml declares
++// "Wired Headset", "Wired Headphones" and "Wired Headset Mic" as external (non-attached) device ports of this module, so
++// the audio policy connects them with IModule.connectExternalDevice when WiredAccessoryManager reports the jack. The
++// default Module::populateConnectedDevicePort() refuses every device with a connection type (EX_ILLEGAL_STATE, "module
++// implementation must override 'populateConnectedDevicePort'"), so the connection failed, the policy dropped the device
++// and media/calls stayed on the speaker/earpiece (and no BECOMING_NOISY on unplug: the headset never was the music
++// device). Analog jack devices need nothing from the HAL: the ports keep their static profiles (the PCM is the same
++// MultiMedia1 front end) and the codec path is switched by a6l-audio-route from vendor.a6l.audio.media_out/call_out.
++ndk::ScopedAStatus ModulePrimary::populateConnectedDevicePort(AudioPort* audioPort, int32_t nextPortId) {
++    if (audioPort->ext.getTag() == AudioPortExt::device) {
++        const auto& type = audioPort->ext.get<AudioPortExt::device>().device.type;
++        if (type.connection == AudioDeviceDescription::CONNECTION_ANALOG &&
++            (type.type == AudioDeviceType::OUT_HEADSET || type.type == AudioDeviceType::OUT_HEADPHONE ||
++             type.type == AudioDeviceType::IN_HEADSET)) {
++            LOG(INFO) << __func__ << ": A6L wired jack device " << type.toString() << " connected (port id "
++                      << nextPortId << ", static profiles)";
++            return ndk::ScopedAStatus::ok();
++        }
++    }
++    return Module::populateConnectedDevicePort(audioPort, nextPortId);
++}
++
+ ndk::ScopedAStatus ModulePrimary::getTelephony(std::shared_ptr<ITelephony>* _aidl_return) {
+     if (!mTelephony) {
+         mTelephony = ndk::SharedRefBase::make<Telephony>();
+diff -ru a/audio/aidl/default/include/core-impl/ModulePrimary.h b/audio/aidl/default/include/core-impl/ModulePrimary.h
+--- a/audio/aidl/default/include/core-impl/ModulePrimary.h	2026-10-10 10:14:21.009597420 +0200
++++ b/audio/aidl/default/include/core-impl/ModulePrimary.h	2026-10-10 10:14:21.012277232 +0200
+@@ -40,6 +40,9 @@
+ 
+   protected:
+     ndk::ScopedAStatus getTelephony(std::shared_ptr<ITelephony>* _aidl_return) override;
++    // Hisense A6L audio-20261010: analog wired headset / headphones (jack on the WCD codec) can be connected.
++    ndk::ScopedAStatus populateConnectedDevicePort(
++            ::aidl::android::media::audio::common::AudioPort* audioPort, int32_t nextPortId) override;
+ 
+     ndk::ScopedAStatus calculateBufferSizeFrames(
+             const ::aidl::android::media::audio::common::AudioFormatDescription& format,

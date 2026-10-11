@@ -71,7 +71,20 @@ static void test_mute_cmd(void)
 	EXPECT(!strcmp(r, "OK open=0 rx=earpiece mute=0"));
 }
 
-/* r5 review round4 F37: in-call volume -> "VoiceMMode1 RX Volume Step" */
+/* r5 review round4 F37 + audio-20261010: in-call volume -> vendor.a6l.audio.call_vol (output gain, a6l-audio-route);
+ * the DSP step "VoiceMMode1 RX Volume Step" only with -D and never fatal */
+static char p_name[64], p_val[32];
+static int p_n, p_err;
+static int fake_prop_set(const char *prop, const char *val)
+{
+	if (p_err)
+		return -p_err;
+	snprintf(p_name, sizeof(p_name), "%s", prop);
+	snprintf(p_val, sizeof(p_val), "%s", val);
+	p_n++;
+	return 0;
+}
+
 static void test_volume_cmd(void)
 {
 	struct voice v = { .card = 0, .dev = 99, .tx = -1, .rx = -1, .set_routes = 1, .rx_route = RX_EAR };
@@ -79,18 +92,22 @@ static void test_volume_cmd(void)
 	int i, found;
 
 	reset();
+	prop_set = fake_prop_set;
+	p_n = p_err = 0;
 	vol_want = -1;
+	dsp_vol = 0;
 	handle_cmd(&v, "getvolume", r, sizeof(r));
 	EXPECT(!strcmp(r, "OK volume=-1"));
 	handle_cmd(&v, "volume 1", r, sizeof(r));
-	EXPECT(!strcmp(r, "OK volume=5"));
-	EXPECT(w_n == 1 && !strcmp(w_name[0], "VoiceMMode1 RX Volume Step") && w_val[0] == 5 && vol_want == 5);
-	handle_cmd(&v, "volume 0.5", r, sizeof(r));
-	EXPECT(!strcmp(r, "OK volume=3") && w_val[1] == 3);
+	EXPECT(!strcmp(r, "OK volume=5") && vol_want == 5);
+	EXPECT(!strcmp(p_name, "vendor.a6l.audio.call_vol") && !strcmp(p_val, "1.0000") && p_n == 1);
+	EXPECT(w_n == 0);				/* no DSP step by default */
+	handle_cmd(&v, "volume 0.6", r, sizeof(r));
+	EXPECT(!strcmp(r, "OK volume=3") && !strcmp(p_val, "0.6000"));
 	handle_cmd(&v, "volume 0.2", r, sizeof(r));
-	EXPECT(!strcmp(r, "OK volume=1"));
+	EXPECT(!strcmp(r, "OK volume=1") && !strcmp(p_val, "0.2000"));
 	handle_cmd(&v, "volume 0", r, sizeof(r));
-	EXPECT(!strcmp(r, "OK volume=0") && vol_want == 0);	/* lowest calibrated level, not a mute */
+	EXPECT(!strcmp(r, "OK volume=0") && vol_want == 0 && !strcmp(p_val, "0.0000"));
 	/* monotonic over Android's range */
 	{
 		int last = -1, mono = 1;
@@ -108,24 +125,30 @@ static void test_volume_cmd(void)
 		EXPECT(mono && last == 5);
 	}
 	reset();
+	p_n = 0;
 	const char *bad[] = { "volume 1.5", "volume -0.1", "volume nan", "volume abc", "volume 0.3x", "volume " };
 	for (i = 0; i < 6; i++) {
 		handle_cmd(&v, bad[i], r, sizeof(r));
 		EXPECT(!strncmp(r, "ERR 22", 6));
 	}
-	EXPECT(w_n == 0 && vol_want == 5);
-	/* DSP rejects the step: error reported, requested level not recorded as applied */
+	EXPECT(w_n == 0 && p_n == 0 && vol_want == 5);
+	/* the property cannot be set: error reported, level not recorded */
+	p_err = EPERM;
+	handle_cmd(&v, "volume 0.4", r, sizeof(r));
+	EXPECT(!strncmp(r, "ERR 1 ", 6) && vol_want == 5);
+	p_err = 0;
+	/* -D: the DSP step is sent too; the ADSP's EFAILED (EIO) no longer fails the request */
+	dsp_vol = 1;
+	handle_cmd(&v, "volume 0.4", r, sizeof(r));
+	EXPECT(!strcmp(r, "OK volume=2") && w_n == 1 && !strcmp(w_name[0], "VoiceMMode1 RX Volume Step") && w_val[0] == 2);
 	fail_name = "VoiceMMode1 RX Volume Step";
 	fail_err = EIO;
-	handle_cmd(&v, "volume 0.4", r, sizeof(r));
-	EXPECT(!strncmp(r, "ERR 5 ", 6) && vol_want == 5);
-	/* kernel without the rx-volume patch */
-	fail_err = ENOENT;
-	handle_cmd(&v, "volume 0.4", r, sizeof(r));
-	EXPECT(!strncmp(r, "ERR 2 ", 6));
-	handle_cmd(&v, "getvolume", r, sizeof(r));
-	EXPECT(!strcmp(r, "OK volume=5"));
-	/* re-asserted before every PCM open */
+	handle_cmd(&v, "volume 0.8", r, sizeof(r));
+	EXPECT(!strcmp(r, "OK volume=4") && vol_want == 4 && !strcmp(p_val, "0.8000"));
+	fail_err = ENOENT;				/* kernel without the rx-volume control */
+	handle_cmd(&v, "volume 0.6", r, sizeof(r));
+	EXPECT(!strcmp(r, "OK volume=3"));
+	/* DSP step re-asserted before every PCM open only with -D */
 	reset();
 	vol_want = 2;
 	voice_open(&v);
@@ -133,6 +156,13 @@ static void test_volume_cmd(void)
 		if (!strcmp(w_name[i], "VoiceMMode1 RX Volume Step") && w_val[i] == 2)
 			found = 1;
 	EXPECT(found);
+	dsp_vol = 0;
+	reset();
+	voice_open(&v);
+	for (found = 0, i = 0; i < w_n; i++)
+		if (!strcmp(w_name[i], "VoiceMMode1 RX Volume Step"))
+			found = 1;
+	EXPECT(!found);
 	/* -V: other table sizes */
 	vol_max_step = 7;
 	handle_cmd(&v, "volume 1", r, sizeof(r));
@@ -429,12 +459,14 @@ static void test_no_card(void)
 	EXPECT(!strncmp(r, "ERR 19 ", 7) && mute_want == 0);	/* a mute is never stored unapplied */
 	mute_want = 1;						/* (as if accepted earlier with a card) */
 	fail_name = "VoiceMMode1 RX Volume Step";
+	dsp_vol = 1;						/* audio-20261010: DSP step only with -D */
 	handle_cmd(&v, "volume 0.8", r, sizeof(r));
 	EXPECT(!strcmp(r, "OK volume=4") && vol_want == 4);
-	/* other errors are still reported */
+	/* audio-20261010: DSP errors are logged, the output-gain volume is still accepted */
 	fail_err = EIO;
 	handle_cmd(&v, "volume 0.2", r, sizeof(r));
-	EXPECT(!strncmp(r, "ERR 5 ", 6) && vol_want == 4);
+	EXPECT(!strcmp(r, "OK volume=1") && vol_want == 1);
+	vol_want = 4;
 	/* no PCM device known and no lookup allowed: open fails before touching any control */
 	reset();
 	EXPECT(voice_open(&v) == -1 && w_n == 0);
@@ -452,6 +484,7 @@ static void test_no_card(void)
 		}
 		EXPECT(m && vol);
 	}
+	dsp_vol = 0;
 	/* an accepted unmute is re-asserted as well (a stale kernel mute must not survive) */
 	reset();
 	mute_want = 0;

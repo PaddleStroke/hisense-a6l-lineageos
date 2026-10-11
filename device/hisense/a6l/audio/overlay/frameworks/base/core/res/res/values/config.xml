@@ -3,4 +3,11 @@
      SW_MICROPHONE_INSERT, "Hisense A6L Headset Jack"); there is no h2w switch class / extcon. -->
 <resources>
     <bool name="config_useDevInputEventForAudioJack">true</bool>
+    <!-- audio-20261010: Pierre's rule, no volume reduction anywhere. Without this, the safe-media-volume feature drops the
+         music volume on the wired headset to the "safe" index as soon as it is used above it (live test 10 Oct:
+         volume_changed [3,15,8,15,com.android.systemui] twice) until the warning is confirmed, and re-arms after 20 h of
+         music. Disabled: the persisted state becomes SAFE_MEDIA_VOLUME_DISABLED. Sound dosage (CSD) stays off (AOSP
+         default false, set explicitly). -->
+    <bool name="config_safe_media_volume_enabled">false</bool>
+    <bool name="config_safe_sound_dosage_enabled">false</bool>
 </resources>

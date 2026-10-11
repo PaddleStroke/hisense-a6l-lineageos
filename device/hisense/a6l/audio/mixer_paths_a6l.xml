@@ -21,6 +21,11 @@
          The audio HAL opens pcm device ro.vendor.a6l.audio.capture_pcm (=1) for input (tree patch audio/patches/0001). -->
     <ctl name="MultiMedia2 Mixer LPI_MI2S_TX_3" value="1" />
     <ctl name="TERT_MI2S_RX Audio Mixer MultiMedia1" value="0" />
+    <!-- audio-20261010: TFA9894 runtime attenuation (snd-soc-tfa98xx patch 0004, 0.5 dB steps, 0 = profile level). 0 on every
+         path; a6l-audio-route raises it during a speakerphone call for Android's in-call volume (vendor.a6l.audio.call_vol).
+         Skipped (with a libaudioroute warning) on a TFA module without the control. The call volume of voice-handset /
+         voice-headphones is applied the same way on "Digital RX1/RX2 Digital Volume" below their path value. -->
+    <ctl name="TFA Attenuation" value="0" />
     <!-- codec playback: everything off / muted -->
     <ctl name="Digital RX1 MIX1 INP1" value="ZERO" />
     <ctl name="Digital RX2 MIX1 INP1" value="ZERO" />
@@ -42,13 +47,14 @@
     <ctl name="Digital TX1 Digital Volume" value="84" />
     <ctl name="Digital TX2 Digital Volume" value="84" />
 
-    <!-- Wired headset / headphones (stock "headphones"). -6 dB digital (stock 0 dB); Android volume is applied in software on top. -->
+    <!-- Wired headset / headphones (stock "headphones"). audio-20261010: 0 dB digital (raw 84) = stock (was 78 = -6 dB; Pierre: no
+         volume reduction anywhere). Android volume is applied in software on top. -->
     <path name="headphones">
         <ctl name="Digital RX1 MIX1 INP1" value="RX1" />
         <ctl name="Digital RX2 MIX1 INP1" value="RX2" />
         <ctl name="RDAC2 MUX" value="RX2" />
-        <ctl name="Digital RX1 Digital Volume" value="78" />
-        <ctl name="Digital RX2 Digital Volume" value="78" />
+        <ctl name="Digital RX1 Digital Volume" value="84" />
+        <ctl name="Digital RX2 Digital Volume" value="84" />
         <ctl name="HPHL" value="Switch" />
         <ctl name="HPHR" value="Switch" />
     </path>
@@ -67,7 +73,7 @@
     <path name="handset">
         <ctl name="Digital RX1 MIX1 INP1" value="RX1" />
         <ctl name="RDAC2 MUX" value="RX1" />
-        <ctl name="Digital RX1 Digital Volume" value="78" />
+        <ctl name="Digital RX1 Digital Volume" value="84" />
         <ctl name="EAR_S" value="Switch" />
     </path>
 

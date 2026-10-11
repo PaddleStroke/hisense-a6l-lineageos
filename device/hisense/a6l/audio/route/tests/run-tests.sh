@@ -9,7 +9,7 @@ cp $H/../../mixer_paths_a6l.xml $W/route/; find $W -type f -exec sed -i 's/\r$//
 F="-std=gnu11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
 gcc $F -w -I$AR/include -I$TA -I$W/route/tests/stub -c $AR/audio_route.c -o $W/audio_route.o
 gcc $F -Wall -Wextra -Werror -Wno-unused-function -I$AR/include -I$TA -I$W/route/tests/stub -c $W/route/tests/route_tests.c -o $W/t.o
-gcc $F $W/t.o $W/audio_route.o -lexpat -o $W/t
+gcc $F $W/t.o $W/audio_route.o -lexpat -lm -o $W/t
 # r5 review F62: the exact HAL publisher (added lines of patch 0002) + the daemon's exact decide()
 python3 - $H/../../patches/0002-a6l-call-route-mute.patch $W/route/a6l_audio_route.c $W <<'PY2'
 import sys

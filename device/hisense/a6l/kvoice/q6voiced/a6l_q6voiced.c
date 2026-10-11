@@ -84,6 +84,13 @@
  *       each retry is a short gap on the working route) and then given up until Android requests another route (a new
  *       press of the speaker button retries at once) or the call ends. "status" appends " want=<route> fallback=1"
  *       while the path runs on the fallback. Failures with no working route keep the F19 capped backoff.
+ * audio-20261010 (10 Oct 2026, firmware/extracted/audio-20261010): in-call volume as an output gain. The CVP rejects
+ *       VSS_IVOLUME_CMD_SET_STEP with ADSP_EFAILED on this firmware (no vocproc volume calibration registered), so the
+ *       volume keys changed nothing and the audio HAL logged setVoiceVolume failures. "volume <0..1>" now publishes the
+ *       value in vendor.a6l.audio.call_vol (-P overrides; a file path on host builds); a6l-audio-route turns it into a
+ *       gain on the active output (TFA attenuation on the speakerphone, WCD digital gain on earpiece/headset) and keeps
+ *       it verified. The reply is unchanged ("OK volume=<step>"). The DSP step is only sent with -D (experiments,
+ *       kernel 0003 rx_vol_mode); its failure no longer fails the request.
  * Log lines start with A6L_Q6VOICED. Exit 0 = ok.
  */
 #include <errno.h>
@@ -150,6 +157,8 @@ static int mute_want = -1;	/* r5 F6: last mute accepted by the kernel, -1 = neve
 static const char *CTL_RX_VOL = "VoiceMMode1 RX Volume Step";		/* r5 round4 F37: kernel rx-volume patch */
 static int vol_max_step = 5;	/* F37: -V; stock msm audio HAL MAX_VOL_INDEX */
 static int vol_want = -1;	/* F37: last volume step accepted by the kernel, -1 = never requested */
+static const char *VOL_PROP = "vendor.a6l.audio.call_vol";	/* audio-20261010: read by a6l-audio-route (-P) */
+static int dsp_vol;		/* audio-20261010: -D also sends the step to the DSP (VSS_IVOLUME_CMD_SET_STEP) */
 static const char *ROUTE_TX = "VoiceMMode1 Capture Mixer LPI_MI2S_TX_3";
 static const char *SESSION_PARAM = "/sys/module/q6mvm/parameters/mmode1_session";
 static const char *session_opt;	/* volte3: -s */
@@ -455,8 +464,8 @@ static int voice_open(struct voice *v)
 	/* r5 round2 A2: an accepted unmute is re-asserted too (not fatal: never opens a live microphone by itself) */
 	if (mute_want == 0 && !bt_mic_mute() && ctl_set(v->card, CTL_TX_MUTE, 0) < 0)
 		q6_error( "A6L_Q6VOICED warning: unmute not re-applied (kernel keeps its state)\n");
-	/* r5 round4 F37: re-assert the requested downlink volume (module reload); not fatal */
-	if (vol_want >= 0 && ctl_set(v->card, CTL_RX_VOL, vol_want) < 0)
+	/* r5 round4 F37: re-assert the requested downlink volume (module reload); not fatal. audio-20261010: -D only */
+	if (dsp_vol && vol_want >= 0 && ctl_set(v->card, CTL_RX_VOL, vol_want) < 0)
 		q6_error( "A6L_Q6VOICED warning: volume step %d not applied (DSP default level)\n", vol_want);
 	/* capture (tx) first, as q6voiced: q6voice starts the path when the second direction opens */
 	v->tx = pcm_open_start(v->card, v->dev, 1);
@@ -692,6 +701,21 @@ static void prop_str(const char *prop, char *out, size_t n)
 #endif
 }
 
+/* audio-20261010: 0 or -errno */
+static int prop_set_real(const char *prop, const char *val)
+{
+#ifdef __ANDROID__
+	return __system_property_set(prop, val) == 0 ? 0 : -EPERM;
+#else
+	FILE *f = fopen(prop, "w");	/* host test build: the "property" is a file */
+	if (!f)
+		return -errno;
+	fputs(val, f);
+	return fclose(f) == 0 ? 0 : -EIO;
+#endif
+}
+static int (*prop_set)(const char *prop, const char *val) = prop_set_real;	/* host tests: fake */
+
 /* btcall: a control name from a property; empty or too long for an ALSA control name -> the default */
 static void bt_ctl_name(char dst[BT_CTL_MAX], const char *val, const char *def)
 {
@@ -771,15 +795,20 @@ static void handle_cmd(struct voice *v, const char *line, char *reply, size_t n)
 			snprintf(reply, n, "ERR %d volume must be 0..1", EINVAL);
 		} else {
 			int step = (int)(f * vol_max_step + 0.5);
+			char val[16];
 
-			r = ctl_set(v->card, CTL_RX_VOL, step);
-			if (r == -ENODEV)	/* r5 round2 A2: no card: stored, re-asserted before the next PCM open */
-				r = 0;
+			/* audio-20261010: the output gain (a6l-audio-route) is the volume; works without a card too */
+			snprintf(val, sizeof(val), "%.4f", f);
+			r = prop_set(VOL_PROP, val);
 			if (r < 0) {
-				snprintf(reply, n, "ERR %d %s", -r, strerror(-r));
+				snprintf(reply, n, "ERR %d %s: %s", -r, VOL_PROP, strerror(-r));
 			} else {
 				vol_want = step;
 				snprintf(reply, n, "OK volume=%d", step);
+				/* -D: DSP volume step as well (EFAILED without a vocproc volume table: logged only) */
+				if (dsp_vol && (r = ctl_set(v->card, CTL_RX_VOL, step)) < 0 && r != -ENODEV)
+					q6_info("A6L_Q6VOICED DSP volume step %d not applied (%s): output gain only\n", step,
+						strerror(-r));
 			}
 		}
 		q6_info("A6L_Q6VOICED %s -> %s\n", line, reply);
@@ -858,7 +887,7 @@ static void serve_one(int lfd, struct voice *v)
 
 static void usage(void)
 {
-	q6_error( "usage: a6l-q6voiced [-c card] [-d dev] [-r] [-s session] [-o outprop] [-S socket] [-V max_vol_step] [-b btcall_prefix] hold <sec> | daemon [prop] | routes <0|1> [speaker]\n");
+	q6_error( "usage: a6l-q6voiced [-c card] [-d dev] [-r] [-s session] [-o outprop] [-S socket] [-V max_vol_step] [-b btcall_prefix] [-P volprop] [-D] hold <sec> | daemon [prop] | routes <0|1> [speaker]\n");
 	exit(2);
 }
 
@@ -870,7 +899,7 @@ int main(int argc, char **argv)
 	const char *sock_path = NULL;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "c:d:rs:o:S:V:b:")) != -1) {
+	while ((opt = getopt(argc, argv, "c:d:rs:o:S:V:b:P:D")) != -1) {
 		switch (opt) {
 		case 'c': v.card = atoi(optarg); break;
 		case 'd': v.dev = atoi(optarg); break;
@@ -879,6 +908,8 @@ int main(int argc, char **argv)
 		case 'o': OUT_PROP = optarg; break;
 		case 'S': sock_path = optarg; break;
 		case 'b': bt_prefix = optarg; break;
+		case 'P': VOL_PROP = optarg; break;	/* audio-20261010 */
+		case 'D': dsp_vol = 1; break;		/* audio-20261010 */
 		case 'V': vol_max_step = atoi(optarg); if (vol_max_step < 1 || vol_max_step > 15) usage(); break;
 		default: usage();
 		}
