@@ -1,0 +1,48 @@
+# incident-20261012-1203 (applied in round 28): reset-reason capture at every boot, for rom/debug/ (debug builds only,
+# like init.a6l.bootlog-debug.rc). rom/debug/bootlog.mk would add:
+#   PRODUCT_COPY_FILES += \
+#     .../init.a6l.pon-debug.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.pon-debug.rc \
+#     .../a6l-pon-capture.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-pon-capture.sh
+# What it does (READ-ONLY on the PMICs; regmap debugfs, mounted only for the capture and unmounted again):
+#  - on fs (before /data, so a boot loop that dies early still leaves it in the krec/bootlog rings): one decoded
+#    "A6L_PON ..." line in the kernel log: PM660 + PM660L power-on reason, the CURRENT off/fault/S3 reason (selected by
+#    OFF_REASON 0x8c7), the PM660 BCL latches (min VBAT / max IBAT);
+#  - post-fs-data: the full capture in /data/vendor/a6l-pon/boot-NNNN.txt (boot counter in bootcount, newest 64 kept):
+#    both PON pages raw + decoded, BCL page, SMPS S1/S2/S3/S5 and temp-alarm status, power supplies, thermal zones;
+#  - persist.vendor.a6l.pon.watch=1 (attended tests or "catch the next reset" days): power trace (VBAT, IBAT, BCL
+#    latches, gold/silver clock, skin) in /data/vendor/a6l-pon/watch-NNNN.csv, fsync'ed, ~1 line/s under load,
+#    1 line/30 s when quiet, 4 MiB cap. Set the property back to 0 (or empty) to stop it.
+# Domain su like the other debug services (permissive build); an enforcing build needs a vendor domain with debugfs
+# and /dev/kmsg access, or the a6l_warmreset.ko / a6l_bcl.ko kernel-log path instead.
+on fs
+    start a6l_pon_kmsg
+
+on post-fs-data
+    mkdir /data/vendor/a6l-pon 0700 root root
+    start a6l_pon_capture
+
+on property:sys.boot_completed=1 && property:persist.vendor.a6l.pon.watch=1
+    start a6l_pon_watch
+
+on property:persist.vendor.a6l.pon.watch=0
+    stop a6l_pon_watch
+
+service a6l_pon_kmsg /vendor/bin/sh /vendor/bin/a6l-pon-capture.sh kmsg
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:su:s0
+
+service a6l_pon_capture /vendor/bin/sh /vendor/bin/a6l-pon-capture.sh boot
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:su:s0
+
+service a6l_pon_watch /vendor/bin/sh /vendor/bin/a6l-pon-capture.sh watch 1 0
+    user root
+    group root
+    disabled
+    seclabel u:r:su:s0

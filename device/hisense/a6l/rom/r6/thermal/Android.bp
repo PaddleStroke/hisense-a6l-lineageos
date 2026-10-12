@@ -13,6 +13,7 @@ cc_binary {
         "Thermal.cpp",
         "thermal_logic.cpp",
         "cooling_logic.cpp",
+        "mitigation_logic.cpp",
     ],
     static_libs: ["android.hardware.thermal-V3-ndk"],
     shared_libs: [
@@ -25,11 +26,21 @@ cc_binary {
         "-Wextra",
         "-Werror",
     ],
-    required: ["thermal-a6l.conf"],
+    required: [
+        "thermal-a6l.conf",
+        "thermal-a6l-mitigation.conf",
+    ],
 }
 
 prebuilt_etc {
     name: "thermal-a6l.conf",
     src: "thermal-a6l.conf",
+    vendor: true,
+}
+
+// thermal-20261012: stock-like skin mitigation rules (stock thermal-engine quiet_therm ss sections)
+prebuilt_etc {
+    name: "thermal-a6l-mitigation.conf",
+    src: "thermal-a6l-mitigation.conf",
     vendor: true,
 }

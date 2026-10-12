@@ -162,8 +162,12 @@ int main(int argc, char** argv) {
         put(d + "/in_temp_epd_therm_input", "29000\n");
         resolve(&c2, scanZones(r2), scanIio(r2));
         CHECK(find("epd-therm")->path == d + "/in_temp_epd_therm_input");
-        // skin severity from quiet_therm (stock gold throttle 45 -> MODERATE, 58 -> SHUTDOWN)
-        CHECK(severityFor(45.0f, sk->hot, 0, 2.0f) == 2 && severityFor(58.0f, sk->hot, 0, 2.0f) == 6);
+        // skin severity from quiet_therm (thermal-20261012: stock gold throttle 45 -> LIGHT, 48 = above the silver/GPU
+        // set point 47 -> MODERATE, CRITICAL 50 / EMERGENCY 53 / SHUTDOWN 58 unchanged)
+        CHECK(severityFor(44.9f, sk->hot, 0, 2.0f) == 0 && severityFor(45.0f, sk->hot, 0, 2.0f) == 1);
+        CHECK(severityFor(47.9f, sk->hot, 0, 2.0f) == 1 && severityFor(48.0f, sk->hot, 0, 2.0f) == 2);
+        CHECK(severityFor(50.0f, sk->hot, 0, 2.0f) == 4 && severityFor(53.0f, sk->hot, 0, 2.0f) == 5);
+        CHECK(severityFor(58.0f, sk->hot, 0, 2.0f) == 6);
     }
 
     // ---- safe shutdown path: no cpufreq cooling (no DT cooling-maps) and, on r5, a kernel critical trip that does not

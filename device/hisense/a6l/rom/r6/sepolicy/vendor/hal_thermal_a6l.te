@@ -7,3 +7,11 @@ r_dir_file(hal_thermal_default, sysfs_batteryinfo)
 # (sysfs_thermal, r6 genfs_contexts). Directory walk + symlink only, no generic sysfs file access.
 allow hal_thermal_default sysfs:dir r_dir_perms;
 allow hal_thermal_default sysfs:lnk_file read;
+# thermal-20261012 (firmware/extracted/thermal-20261012/README.md): stock-like skin mitigation. The HAL writes the cpufreq
+# policyN/scaling_max_freq (genfs sysfs_devices_system_cpu) and the Adreno devfreq max_freq (5000000.gpu subtree = sysfs_gpu,
+# rom/sepolicy/vendor/genfs_contexts), reads their frequency tables, and reads its on/off switch
+# persist.vendor.a6l.thermal.mitigation (vendor_a6l_prop). /sys/class/devfreq is generic sysfs (dir + symlink: above).
+allow hal_thermal_default sysfs_devices_system_cpu:file rw_file_perms;
+allow hal_thermal_default sysfs_gpu:dir r_dir_perms;
+allow hal_thermal_default sysfs_gpu:file rw_file_perms;
+get_prop(hal_thermal_default, vendor_a6l_prop)

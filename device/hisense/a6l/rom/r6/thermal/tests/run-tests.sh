@@ -11,6 +11,13 @@ $CXX $F -fsanitize=address,undefined -o $O/t $T/test_thermal_logic.cpp $T/../the
 S="$T/test_sources_cooling.cpp $T/../thermal_logic.cpp $T/../cooling_logic.cpp"
 $CXX $F -fsanitize=address,undefined -o $O/s $S 2>> $O/err || $CXX $F -O1 -o $O/s $S 2>> $O/err \
   || { tail -5 $O/err; echo "A6L_THERMAL_TEST FAIL (build sources/cooling)"; rm -rf $O; exit 1; }
+# thermal-20261012: third binary = skin mitigation (test_mitigation.cpp: rule parser, device scan, ss controller, writes)
+M="$T/test_mitigation.cpp $T/../thermal_logic.cpp $T/../mitigation_logic.cpp"
+$CXX $F -fsanitize=address,undefined -o $O/m $M 2>> $O/err || $CXX $F -O1 -o $O/m $M 2>> $O/err \
+  || { tail -5 $O/err; echo "A6L_THERMAL_TEST FAIL (build mitigation)"; rm -rf $O; exit 1; }
 tr -d '\r' < $T/../thermal-a6l.conf > $O/conf
+tr -d '\r' < $T/../thermal-a6l-mitigation.conf > $O/mconf
 $O/s $O/conf | tail -1; rs=${PIPESTATUS[0]}
-$O/t $O/conf; rc=$?; [ $rs = 0 ] || { echo "A6L_THERMAL_TEST FAIL (sources/cooling)"; rc=1; }; rm -rf $O; exit $rc
+$O/m $O/mconf $O/conf | tail -1; rm_=${PIPESTATUS[0]}
+$O/t $O/conf; rc=$?; [ $rs = 0 ] || { echo "A6L_THERMAL_TEST FAIL (sources/cooling)"; rc=1; }
+[ $rm_ = 0 ] || { echo "A6L_THERMAL_TEST FAIL (mitigation)"; rc=1; }; rm -rf $O; exit $rc

@@ -2,3 +2,17 @@ service vendor.thermal-a6l /vendor/bin/hw/android.hardware.thermal-service.a6l
     class hal
     user system
     group system
+
+# thermal-20261012: the skin mitigation (thermal-a6l-mitigation.conf) writes the max-frequency knobs as user system. The
+# cpufreq policies appear when the misc module group loads a6l_cpufreq_osm (policy0 = silver, policy1 = gold on the A6L;
+# policy4 = the usual numbering, ignored when absent); the GPU devfreq comes with msm.ko (display group, earlier). init's
+# chown is lchown: real sysfs paths, not the /sys/class symlinks. Until this runs the HAL's writes fail (logged, retried).
+on property:init.svc.vendor.a6l_modules_misc=stopped
+    chown system system /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq
+    chmod 0664 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq
+    chown system system /sys/devices/system/cpu/cpufreq/policy1/scaling_max_freq
+    chmod 0664 /sys/devices/system/cpu/cpufreq/policy1/scaling_max_freq
+    chown system system /sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq
+    chmod 0664 /sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq
+    chown system system /sys/devices/platform/soc@0/5000000.gpu/devfreq/5000000.gpu/max_freq
+    chmod 0664 /sys/devices/platform/soc@0/5000000.gpu/devfreq/5000000.gpu/max_freq

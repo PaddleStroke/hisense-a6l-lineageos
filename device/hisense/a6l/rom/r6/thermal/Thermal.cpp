@@ -16,10 +16,14 @@ namespace th = ::a6l::thermal;
 
 namespace {
 constexpr float kHysteresis = 2.0f;                 // degC below a threshold before a severity is left
-constexpr auto kPollInterval = std::chrono::seconds(5);
-constexpr int kRescanPolls = 12;                    // re-resolve sensors / cooling devices every poll for the first ~60 s,
+constexpr auto kPollInterval = std::chrono::seconds(2);  // thermal-20261012: stock quiet_therm ss sampling (was 5 s)
+constexpr int kRescanPolls = 30;                    // re-resolve sensors / cooling devices every poll for the first ~60 s,
                                                     // then once a minute (thermal follow-up 29 Sep: the misc module group with
-                                                    // qcom-spmi-adc5 = skin quiet_therm may load after the first minute)
+                                                    // qcom-spmi-adc5 = skin quiet_therm may load after the first minute; the
+                                                    // cpufreq group loads ~20 s after it: the mitigation devices too)
+constexpr const char* kMitPrefix = "a6l-skin-";     // reported cooling devices of the skin mitigation
+
+CoolingType mitType(const std::string& spec) { return spec.rfind("cpu", 0) == 0 ? CoolingType::CPU : CoolingType::GPU; }
 
 bool sameBinder(const std::shared_ptr<::ndk::ICInterface>& a, const std::shared_ptr<::ndk::ICInterface>& b) {
     if (a == nullptr || b == nullptr || !a->isRemote() || !b->isRemote()) return a == b;
@@ -28,8 +32,14 @@ bool sameBinder(const std::shared_ptr<::ndk::ICInterface>& a, const std::shared_
 ScopedAStatus illegal(const char* m) { return ScopedAStatus::fromExceptionCodeWithMessage(EX_ILLEGAL_ARGUMENT, m); }
 }  // namespace
 
-Thermal::Thermal(std::vector<th::Sensor> sensors, std::string sysRoot)
+Thermal::Thermal(std::vector<th::Sensor> sensors, std::vector<th::MitigationRule> rules, std::string sysRoot)
     : sysRoot_(std::move(sysRoot)), sensors_(std::move(sensors)), severity_(sensors_.size(), 0) {
+    if (!rules.empty()) {
+        for (const auto& r : rules)
+            LOG(INFO) << "mitigation " << r.name << ": " << r.sensor << " " << r.set << "/" << r.clear << " C -> "
+                      << r.device << " first cap " << r.maxLimit << " floor " << r.floor;
+        mitigator_ = std::make_unique<th::Mitigator>(std::move(rules), sysRoot_, false, true);
+    }
     for (const auto& s : sensors_)
         LOG(INFO) << "sensor " << s.name << " type " << s.type << " -> " << (s.path.empty() ? "(absent)" : s.path);
     cooling_ = th::scanCooling(sysRoot_);
@@ -83,6 +93,7 @@ void Thermal::rescan() {
     }
     th::resolve(&fresh, th::scanZones(sysRoot_), th::scanIio(sysRoot_));
     std::vector<th::Cooling> cool = th::scanCooling(sysRoot_);
+    if (mitigator_) mitigator_->rescan();  // poller thread only (rescan() is called from pollLoop)
     std::lock_guard<std::mutex> l(lock_);
     for (size_t i = 0; i < sensors_.size(); ++i) {
         if (fresh[i].path == sensors_[i].path) continue;
@@ -106,8 +117,10 @@ void Thermal::pollLoop() {
         if (polls > 0 && (polls <= kRescanPolls || polls % kRescanPolls == 0)) rescan();
         ++polls;
         std::vector<std::pair<Temperature, std::vector<std::shared_ptr<IThermalChangedCallback>>>> notify;
+        std::map<std::string, float> now;  // this poll's readings, for the mitigation rules
         for (size_t i = 0; i < sensors_.size(); ++i) {
             Temperature t = readOne(i);
+            now[t.name] = t.value;
             if (!std::isfinite(t.value)) continue;
             std::lock_guard<std::mutex> g(lock_);
             int sev = static_cast<int>(t.throttlingStatus);
@@ -121,6 +134,32 @@ void Thermal::pollLoop() {
         }
         // cooling devices: notify cur_state changes (first read only records the state)
         std::vector<std::pair<CoolingDevice, std::vector<std::shared_ptr<ICoolingDeviceChangedCallback>>>> cnotify;
+        if (mitigator_) {
+            auto changes = mitigator_->step([&now](const std::string& n) {
+                auto it = now.find(n);
+                return it == now.end() ? NAN : it->second;
+            });
+            std::lock_guard<std::mutex> g(lock_);
+            for (const auto& c : changes) {
+                if (c.ok)
+                    LOG(INFO) << "mitigation " << c.spec << " (" << c.device << ") " << c.from << " -> " << c.to
+                              << " (level " << c.level << ", " << c.why << ")";
+                else
+                    LOG(ERROR) << "mitigation " << c.spec << " (" << c.device << "): write " << c.to << " failed ("
+                               << c.why << ")";
+            }
+            for (const auto& [spec, level] : mitigator_->levels()) {
+                auto it = mitLevels_.find(spec);
+                bool changed = it != mitLevels_.end() && it->second != level;
+                mitLevels_[spec] = level;
+                if (!changed) continue;
+                CoolingDevice d{.type = mitType(spec), .name = kMitPrefix + spec, .value = level};
+                std::vector<std::shared_ptr<ICoolingDeviceChangedCallback>> cbs;
+                for (const CoolCb& cb : coolCbs_)
+                    if (cb.type == d.type) cbs.push_back(cb.cb);
+                if (!cbs.empty()) cnotify.emplace_back(d, std::move(cbs));
+            }
+        }
         {
             std::lock_guard<std::mutex> g(lock_);
             for (size_t i = 0; i < cooling_.size(); ++i) {
@@ -156,6 +195,10 @@ void Thermal::readCooling(std::vector<CoolingDevice>* out, bool filter, CoolingT
         long v;
         if (!th::readState(c.curPath, &v)) continue;
         out->push_back(CoolingDevice{.type = static_cast<CoolingType>(c.type), .name = c.name, .value = v});
+    }
+    for (const auto& [spec, level] : mitLevels_) {
+        if (filter && mitType(spec) != type) continue;
+        out->push_back(CoolingDevice{.type = mitType(spec), .name = kMitPrefix + spec, .value = level});
     }
 }
 

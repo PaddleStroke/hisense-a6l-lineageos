@@ -24,3 +24,8 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.a6l.bootlog.after_bc_s=0
 # r6j diagnostic trial: hold only GPU runtime PM; attended property=0 restores auto.
 PRODUCT_VENDOR_PROPERTIES += persist.vendor.a6l.gpu.pm_hold=1
 endif
+# incident-20261012-1203 (round 28): PMIC reset-reason capture at every boot (read-only; kmsg at `on fs`, full capture in
+# /data/vendor/a6l-pon/boot-NNNN.txt; optional power trace with persist.vendor.a6l.pon.watch=1).
+PRODUCT_COPY_FILES += \
+    device/hisense/a6l/rom/debug/init.a6l.pon-debug.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.pon-debug.rc \
+    device/hisense/a6l/rom/debug/a6l-pon-capture.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-pon-capture.sh
