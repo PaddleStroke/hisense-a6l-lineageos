@@ -1,0 +1,757 @@
+A6L speaker-sleep-20261012 0005: snd-soc-tfa98xx speaker path health (TERT MI2S pad re-assert at every stream start,
+TFA9894 status checks with hard reset + cold start recovery, system sleep ops, a6l_status / a6l_ctl sysfs).
+Apply AFTER voice-speaker-20261009 0002 and audio-20261010 0004 in the TFA module source dir
+(/home/a6l/audio3/tfa = out-a6l-rom-r5/oot/tfa) with patch -p1. Only src/tfa98xx.c changes.
+
+diff -ruN a/src/tfa98xx.c b/src/tfa98xx.c
+--- a/src/tfa98xx.c	2026-10-12 09:06:49.788251571 +0200
++++ b/src/tfa98xx.c	2026-10-12 09:20:22.341595369 +0200
+@@ -27,6 +27,11 @@
+ #include <linux/debugfs.h>
+ #include <linux/version.h>
+ #include <linux/input.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
+ #include "config.h"
+ #include "tfa98xx.h"
+ #include "tfa.h"
+@@ -219,6 +224,626 @@
+ 	tfa98xx_att_apply(tfa98xx, "start");
+ }
+ 
++/*
++ * A6L speaker-sleep-20261012 (0005): health of the TERT MI2S -> TFA9894 speaker path.
++ *
++ * Problem (12 Oct 2026, round 26b): the loudspeaker went silent for good (until a reboot) while the DSP path ran
++ * (PCM RUNNING, hw_ptr advancing) and nothing logged an error. Two gaps make any transient fault permanent:
++ *  1. The TERT MI2S pads (LPASS LPI gpio4-7) are only re-checked on system resume (round 16, pinctrl-lpass-lpi
++ *     A6L_LPI_RESTORE). The ADSP rewrites them on its own (0xd0 -> 0x2ca, seen 60 times in that boot); stock re-selects
++ *     the pad state at EVERY MI2S start (msm_cdc_pinctrl aud_active/aud_sleep), so a clobber outside a suspend was
++ *     repaired at the next stream there, and never here.
++ *  2. Nothing checks the amplifier itself. tfa_dev_start() takes the warm path whenever ACS=0 and never looks at the
++ *     clock or the CoolFlux/manager state; the vendor status monitor never runs on the TFA9894 (dev_ops.tfa_status is
++ *     NULL, so tfa98xx_dsp_init() does not queue monitor_work). A CoolFlux watchdog or a lost configuration is
++ *     therefore restarted "warm" for every stream, silently, until the chip is reset (reboot).
++ * Fix:
++ *  - every stream start (BE startup) and every health check: compare gpio4-7 CFG with the value programmed at probe,
++ *    repair through the LPI driver's shadow (lpi_pinctrl_resume(), symbol_get: no hard module dependency), log
++ *    A6L_TFA_PADS;
++ *  - 300 ms after each start and every 3 s while the stream runs: read STATUS0/MANSTATE. Clocked but not operating
++ *    (CoolFlux watchdog, ACS=1 = configuration lost, powered down, manager stuck before the amplifier) on two samples,
++ *    or ACS/WDS even without clock: hard reset (TFA RST GPIO) and a cold start with the container (the vendor init
++ *    work, with its retries) -> A6L_TFA_RECOVER. At most 2 per stream. No clock at all: logged (A6L_TFA_NOCLK) with
++ *    the pads, since the amplifier cannot fix a missing BCK;
++ *  - system sleep ops: no checks while suspended; on resume the amp state is read once (A6L_TFA_RESUME if it is cold);
++ *  - /sys/bus/i2c/devices/2-0034/a6l_status (registers, decoded status, pads, driver state, counters, verdict) and
++ *    a6l_ctl (write "check", "pads" or "recover") for live diagnosis without debugfs.
++ * Switches (0644): a6l_health, a6l_autorecover, a6l_pad_check.
++ */
++static bool a6l_health = true;
++module_param(a6l_health, bool, 0644);
++MODULE_PARM_DESC(a6l_health, "A6L: check the amplifier status after every start and every 3 s while playing");
++static bool a6l_autorecover = true;
++module_param(a6l_autorecover, bool, 0644);
++MODULE_PARM_DESC(a6l_autorecover, "A6L: hard reset + cold start an amplifier that is clocked but not operating");
++static bool a6l_pad_check = true;
++module_param(a6l_pad_check, bool, 0644);
++MODULE_PARM_DESC(a6l_pad_check, "A6L: re-assert the TERT MI2S LPI pads (gpio4-7) at every stream start");
++
++/* exported by pinctrl-lpass-lpi (A6L round 16); resolved at run time with symbol_get() */
++int lpi_pinctrl_resume(struct device *dev);
++
++#define A6L_NPADS		4
++#define A6L_FIRST_CHECK_MS	300
++#define A6L_CONFIRM_MS		700
++#define A6L_PERIOD_MS		3000
++#define A6L_MAX_RECOVER		2
++/* SDM660 LPASS LPI TLMM CFG register offsets of gpio4-7 (ter_mi2s clk/ws/data/data), pinctrl-sdm660-lpass-lpi.c */
++static const u32 a6l_pad_off[A6L_NPADS] = { 0x3000, 0x3010, 0x4000, 0x4010 };
++/* registers read for a status sample */
++static const u8 a6l_regs[] = { 0x00, 0x01, 0x02, 0x10, 0x11, 0x13, 0x14, 0x51 };
++#define A6L_R00 0
++#define A6L_R10 3
++#define A6L_R11 4
++#define A6L_R13 5
++#define A6L_R14 6
++#define A6L_R51 7
++
++struct a6l_tfa_st {
++	int err;
++	u16 r[ARRAY_SIZE(a6l_regs)];
++	int manstate;
++};
++
++struct a6l_health {
++	struct tfa98xx *tfa98xx;	/* the (single) amplifier this state belongs to */
++	struct delayed_work work;
++	bool work_ready;
++	bool suspended;
++	struct mutex pad_lock;
++	void __iomem *pad[A6L_NPADS];
++	u32 pad_ref[A6L_NPADS];
++	bool pads_ok;
++	struct device *lpi_dev;
++	/* per stream */
++	int bad;
++	int noclk_samples;
++	int recov_stream;
++	bool noclk_logged;
++	bool noclk_recovered;
++	bool ok_logged;
++	/* counters */
++	unsigned int starts, checks, pad_repairs, noclk, recoveries, recover_fail, resume_cold, start_fail;
++	char last[160];
++};
++static struct a6l_health a6l_h = { .pad_lock = __MUTEX_INITIALIZER(a6l_h.pad_lock) };
++
++static int tfa98xx_ext_reset(struct tfa98xx *tfa98xx);
++
++#define A6L_BIT(v, b) (((v) >> (b)) & 1)
++/* STATUS0 (0x10) bits, TFA9894 N1/N2 */
++#define A6L_PLLS(s)	A6L_BIT(s, 1)
++#define A6L_CLKS(s)	A6L_BIT(s, 6)
++#define A6L_NOCLK(s)	A6L_BIT(s, 8)
++#define A6L_ACS(s)	A6L_BIT(s, 9)
++#define A6L_WDS(s)	A6L_BIT(s, 10)
++#define A6L_SWS(s)	A6L_BIT(s, 11)
++#define A6L_AMPS(s)	A6L_BIT(s, 12)
++
++static const char *a6l_manstate_name(int m)
++{
++	static const char * const n[] = { "power_down", "wait_for_source_settings", "connect_pll_input",
++		"disconnect_pll_input", "enable_pll", "enable_cgu", "init_cf", "enable_amplifier", "alarm", "operating",
++		"mute_audio", "disable_cgu_pll" };
++
++	return (m >= 0 && m < (int)ARRAY_SIZE(n)) ? n[m] : "?";
++}
++
++static const char *a6l_dsp_init_name(int s)
++{
++	switch (s) {
++	case TFA98XX_DSP_INIT_STOPPED: return "STOPPED";
++	case TFA98XX_DSP_INIT_RECOVER: return "RECOVER";
++	case TFA98XX_DSP_INIT_FAIL: return "FAIL";
++	case TFA98XX_DSP_INIT_PENDING: return "PENDING";
++	case TFA98XX_DSP_INIT_DONE: return "DONE";
++	case TFA98XX_DSP_INIT_INVALIDATED: return "INVALIDATED";
++	}
++	return "?";
++}
++
++/* dsp_lock held (or nothing else can touch the chip) */
++static void a6l_read_st(struct tfa98xx *tfa98xx, struct a6l_tfa_st *st)
++{
++	unsigned int i;
++
++	st->err = 0;
++	for (i = 0; i < ARRAY_SIZE(a6l_regs); i++) {
++		unsigned short v = 0;
++
++		if (tfa98xx_read_register16(tfa98xx->tfa, a6l_regs[i], &v) != Tfa98xx_Error_Ok)
++			st->err = -EIO;
++		st->r[i] = v;
++	}
++	/* MANSTATE: reg 0x13 bits 6:3 on TFA9894 N2, reg 0x14 bits 6:3 on N1 */
++	if (tfa_is_94_N2_device(tfa98xx->tfa))
++		st->manstate = (st->r[A6L_R13] >> 3) & 0xf;
++	else
++		st->manstate = (st->r[A6L_R14] >> 3) & 0xf;
++}
++
++static int a6l_st_fmt(const struct a6l_tfa_st *st, char *buf, size_t len)
++{
++	u16 s = st->r[A6L_R10];
++
++	return scnprintf(buf, len, "STATUS0 %04x (PLLS %d CLKS %d NOCLK %d ACS %d WDS %d SWS %d AMPS %d) 00=%04x 11=%04x "
++			 "MANSTATE %d %s%s", s, A6L_PLLS(s), A6L_CLKS(s), A6L_NOCLK(s), A6L_ACS(s), A6L_WDS(s), A6L_SWS(s),
++			 A6L_AMPS(s), st->r[A6L_R00], st->r[A6L_R11], st->manstate, a6l_manstate_name(st->manstate),
++			 st->err ? " (i2c error)" : "");
++}
++
++static int a6l_pads_fmt(struct a6l_health *h, char *buf, size_t len)
++{
++	int i, n = 0;
++
++	if (!h->pads_ok)
++		return scnprintf(buf, len, "pads n/a");
++	n += scnprintf(buf + n, len - n, "pads gpio4-7");
++	for (i = 0; i < A6L_NPADS; i++)
++		n += scnprintf(buf + n, len - n, " %03x", readl(h->pad[i]));
++	n += scnprintf(buf + n, len - n, " (programmed");
++	for (i = 0; i < A6L_NPADS; i++)
++		n += scnprintf(buf + n, len - n, " %03x", h->pad_ref[i]);
++	n += scnprintf(buf + n, len - n, ")");
++	return n;
++}
++
++/*
++ * Compare the TERT MI2S pads with what the LPI driver programmed at probe; repair them through the LPI driver (its
++ * shadow and lock), or directly if that driver lacks the A6L export. Returns the mask of the pads that were wrong.
++ */
++static unsigned int a6l_pads_check(struct a6l_health *h, const char *why)
++{
++	int (*restore)(struct device *dev);
++	u32 cur[A6L_NPADS], after[A6L_NPADS];
++	unsigned int bad = 0, still = 0;
++	const char *via = "lpi";
++	int i;
++
++	if (!h->pads_ok || !a6l_pad_check || !h->tfa98xx)
++		return 0;
++	mutex_lock(&h->pad_lock);
++	for (i = 0; i < A6L_NPADS; i++) {
++		cur[i] = readl(h->pad[i]);
++		if (cur[i] != h->pad_ref[i])
++			bad |= BIT(i);
++	}
++	if (!bad) {
++		mutex_unlock(&h->pad_lock);
++		return 0;
++	}
++	restore = h->lpi_dev ? symbol_get(lpi_pinctrl_resume) : NULL;
++	if (restore) {
++		restore(h->lpi_dev);
++		symbol_put(lpi_pinctrl_resume);
++	}
++	for (i = 0; i < A6L_NPADS; i++) {
++		after[i] = readl(h->pad[i]);
++		if (after[i] != h->pad_ref[i]) {
++			writel(h->pad_ref[i], h->pad[i]);
++			still |= BIT(i);
++		}
++	}
++	if (still)
++		via = restore ? "lpi+direct" : "direct";
++	h->pad_repairs++;
++	mutex_unlock(&h->pad_lock);
++	dev_warn(&h->tfa98xx->i2c->dev,
++		 "A6L_TFA_PADS %s: TERT MI2S pads gpio4-7 %03x %03x %03x %03x, programmed %03x %03x %03x %03x: restored (%s)\n",
++		 why, cur[0], cur[1], cur[2], cur[3], h->pad_ref[0], h->pad_ref[1], h->pad_ref[2], h->pad_ref[3], via);
++	scnprintf(h->last, sizeof(h->last), "%lld s: pads %03x %03x %03x %03x restored (%s, %s)",
++		  ktime_get_boottime_seconds(), cur[0], cur[1], cur[2], cur[3], why, via);
++	return bad;
++}
++
++/* dsp_lock held. Hard reset, then let the vendor init work cold-start the amplifier (container reload, retries). */
++static void a6l_recover_locked(struct a6l_health *h, const char *reason, const struct a6l_tfa_st *st)
++{
++	struct tfa98xx *tfa98xx = h->tfa98xx;
++	char sb[160];
++
++	a6l_st_fmt(st, sb, sizeof(sb));
++	h->recoveries++;
++	h->recov_stream++;
++	h->bad = 0;
++	h->noclk_samples = 0;
++	h->ok_logged = false;
++	dev_warn(&tfa98xx->i2c->dev, "A6L_TFA_RECOVER #%u (%s): %s -> hard reset + cold start (container reload)\n",
++		 h->recoveries, reason, sb);
++	scnprintf(h->last, sizeof(h->last), "%lld s: recover #%u (%s), %s", ktime_get_boottime_seconds(),
++		  h->recoveries, reason, sb);
++	if (gpio_is_valid(tfa98xx->reset_gpio))
++		tfa98xx_ext_reset(tfa98xx);	/* POR: ACS=1, so the next tfa_dev_start() is a cold start */
++	else
++		tfa_reset(tfa98xx->tfa);
++	tfa98xx->att_running = 0;		/* 0004: VOL is back at POR, the start re-applies the attenuation */
++	tfa98xx->dsp_init = TFA98XX_DSP_INIT_STOPPED;
++	tfa98xx->init_count = 0;
++	if (tfa98xx->pstream || tfa98xx->cstream)
++		queue_delayed_work(tfa98xx->tfa98xx_wq, &tfa98xx->init_work, 0);
++}
++
++/* dsp_lock held: one health sample of a started amplifier */
++static void a6l_check_locked(struct a6l_health *h, const char *why, bool *resched_fast)
++{
++	struct tfa98xx *tfa98xx = h->tfa98xx;
++	struct a6l_tfa_st st;
++	const char *fault = NULL;
++	char sb[160], pb[96];
++	u16 s;
++	bool clocked;
++
++	h->checks++;
++	a6l_read_st(tfa98xx, &st);
++	if (st.err)
++		return;			/* i2c trouble is logged by the register accessors */
++	s = st.r[A6L_R10];
++	clocked = A6L_CLKS(s) && A6L_PLLS(s) && !A6L_NOCLK(s);
++
++	if (A6L_WDS(s))
++		fault = "CoolFlux watchdog (WDS)";
++	else if (A6L_ACS(s))
++		fault = "cold: configuration lost (ACS)";
++	else if (clocked && (st.r[A6L_R00] & 1))
++		fault = "powered down (PWDN) while started";
++	else if (clocked && (st.manstate <= 6 || st.manstate == 11))
++		fault = "manager stuck before the amplifier";
++
++	if (fault) {
++		h->bad++;
++		if (h->bad < 2) {
++			*resched_fast = true;		/* confirm before acting */
++			return;
++		}
++		if (a6l_autorecover && h->recov_stream < A6L_MAX_RECOVER) {
++			a6l_recover_locked(h, fault, &st);
++			return;
++		}
++		if (h->bad == 2) {
++			a6l_st_fmt(&st, sb, sizeof(sb));
++			dev_warn(&tfa98xx->i2c->dev, "A6L_TFA_FAULT (%s, %s): %s; %s\n", fault,
++				 a6l_autorecover ? "recovery limit reached for this stream" : "a6l_autorecover=0", sb,
++				 why);
++		}
++		return;
++	}
++	h->bad = 0;
++
++	if (!clocked) {
++		if (!h->noclk_logged) {
++			h->noclk_logged = true;
++			h->noclk++;
++			a6l_st_fmt(&st, sb, sizeof(sb));
++			a6l_pads_fmt(h, pb, sizeof(pb));
++			dev_warn(&tfa98xx->i2c->dev, "A6L_TFA_NOCLK (%s): started without I2S clock: %s; %s\n", why, sb, pb);
++			scnprintf(h->last, sizeof(h->last), "%lld s: no I2S clock, %s", ktime_get_boottime_seconds(), sb);
++		}
++		/*
++		 * Still no clock 1 s after the start, pads correct: one cold start per stream. It rewrites the I2S/PLL
++		 * configuration (a configuration lost without ACS looks exactly like a missing clock); if the bit clock
++		 * really is missing, the vendor start fails and A6L_TFA_START_FAIL says so.
++		 */
++		if (++h->noclk_samples < 2) {
++			*resched_fast = true;
++			return;
++		}
++		if (a6l_autorecover && !h->noclk_recovered && h->recov_stream < A6L_MAX_RECOVER) {
++			h->noclk_recovered = true;
++			a6l_recover_locked(h, "no I2S clock 1 s after the start", &st);
++		}
++		return;
++	}
++	h->noclk_samples = 0;
++	if (h->noclk_logged || !h->ok_logged) {
++		/* first good sample of this start (or the clock came back): one line, so a session log shows it */
++		a6l_st_fmt(&st, sb, sizeof(sb));
++		dev_info(&tfa98xx->i2c->dev, "A6L_TFA_OK (%s): %s\n", why, sb);
++		h->noclk_logged = false;
++		h->ok_logged = true;
++	}
++}
++
++static void a6l_health_work(struct work_struct *work)
++{
++	struct a6l_health *h = container_of(work, struct a6l_health, work.work);
++	struct tfa98xx *tfa98xx = h->tfa98xx;
++	bool fast = false;
++	bool again;
++
++	if (!tfa98xx || !a6l_health || READ_ONCE(h->suspended))
++		return;
++	a6l_pads_check(h, "while playing");
++	mutex_lock(&tfa98xx->dsp_lock);
++	again = tfa98xx->pstream && (tfa98xx->dsp_init == TFA98XX_DSP_INIT_DONE ||
++				     tfa98xx->dsp_init == TFA98XX_DSP_INIT_INVALIDATED);
++	if (again)
++		a6l_check_locked(h, "playing", &fast);
++	/* after a recovery dsp_init is STOPPED: the init work reschedules the check when the start succeeds */
++	again = again && tfa98xx->dsp_init != TFA98XX_DSP_INIT_STOPPED;
++	mutex_unlock(&tfa98xx->dsp_lock);
++	if (again)
++		queue_delayed_work(tfa98xx->tfa98xx_wq, &h->work,
++				   msecs_to_jiffies(fast ? A6L_CONFIRM_MS : A6L_PERIOD_MS));
++}
++
++/* tfa98xx_dsp_init() succeeded (dsp_lock held) */
++static void a6l_health_started(struct tfa98xx *tfa98xx)
++{
++	struct a6l_health *h = &a6l_h;
++
++	if (h->tfa98xx != tfa98xx || !h->work_ready || !a6l_health)
++		return;
++	h->bad = 0;
++	h->noclk_samples = 0;
++	h->ok_logged = false;
++	mod_delayed_work(tfa98xx->tfa98xx_wq, &h->work, msecs_to_jiffies(A6L_FIRST_CHECK_MS));
++}
++
++/* tfa98xx_dsp_init() gave up (dsp_lock held): log what the chip says */
++static void a6l_health_start_failed(struct tfa98xx *tfa98xx)
++{
++	struct a6l_health *h = &a6l_h;
++	struct a6l_tfa_st st;
++	char sb[160], pb[96];
++
++	if (h->tfa98xx != tfa98xx)
++		return;
++	h->start_fail++;
++	a6l_read_st(tfa98xx, &st);
++	a6l_st_fmt(&st, sb, sizeof(sb));
++	a6l_pads_fmt(h, pb, sizeof(pb));
++	dev_warn(&tfa98xx->i2c->dev, "A6L_TFA_START_FAIL: %s; %s\n", sb, pb);
++	scnprintf(h->last, sizeof(h->last), "%lld s: start failed, %s", ktime_get_boottime_seconds(), sb);
++}
++
++/* mute_stream(unmute): a new stream */
++static void a6l_health_stream_start(struct tfa98xx *tfa98xx)
++{
++	struct a6l_health *h = &a6l_h;
++
++	if (h->tfa98xx != tfa98xx)
++		return;
++	h->starts++;
++	h->recov_stream = 0;
++	h->noclk_logged = false;
++	h->noclk_recovered = false;
++}
++
++/* mute_stream(mute) of the last stream: no dsp_lock held */
++static void a6l_health_stream_stop(struct tfa98xx *tfa98xx)
++{
++	struct a6l_health *h = &a6l_h;
++
++	if (h->tfa98xx == tfa98xx && h->work_ready)
++		cancel_delayed_work_sync(&h->work);
++}
++
++/* i2c probe: pads of the TFA's pinctrl state (gpio4-7 on the SDM660 LPI TLMM), as the pinctrl core programmed them */
++static void a6l_pads_init(struct a6l_health *h, struct device *dev)
++{
++	struct device_node *state, *lpi;
++	struct platform_device *pdev;
++	struct resource res;
++	int i;
++
++	state = of_parse_phandle(dev->of_node, "pinctrl-0", 0);
++	if (!state)
++		return;
++	lpi = of_get_parent(state);
++	of_node_put(state);
++	if (!lpi)
++		return;
++	if (!of_device_is_compatible(lpi, "qcom,sdm660-lpass-lpi-pinctrl") || of_address_to_resource(lpi, 0, &res)) {
++		of_node_put(lpi);
++		return;
++	}
++	pdev = of_find_device_by_node(lpi);
++	of_node_put(lpi);
++	for (i = 0; i < A6L_NPADS; i++) {
++		h->pad[i] = ioremap(res.start + a6l_pad_off[i], 4);
++		if (!h->pad[i])
++			goto unmap;
++		h->pad_ref[i] = readl(h->pad[i]);
++		if (((h->pad_ref[i] >> 2) & 0xf) != 4) {	/* not ter_mi2s (function 4): leave the pads alone */
++			dev_warn(dev, "A6L_TFA_PADS: gpio%d CFG %03x at probe is not ter_mi2s, pad check disabled\n",
++				 4 + i, h->pad_ref[i]);
++			i++;
++			goto unmap;
++		}
++	}
++	h->lpi_dev = pdev ? &pdev->dev : NULL;
++	h->pads_ok = true;
++	dev_info(dev, "A6L_TFA_PADS: watching gpio4-7 %03x %03x %03x %03x (lpi %s)\n", h->pad_ref[0], h->pad_ref[1],
++		 h->pad_ref[2], h->pad_ref[3], h->lpi_dev ? dev_name(h->lpi_dev) : "none");
++	return;
++unmap:
++	while (i-- > 0)
++		if (h->pad[i]) {
++			iounmap(h->pad[i]);
++			h->pad[i] = NULL;
++		}
++	if (pdev)
++		put_device(&pdev->dev);
++}
++
++static void a6l_pads_exit(struct a6l_health *h)
++{
++	int i;
++
++	h->pads_ok = false;
++	for (i = 0; i < A6L_NPADS; i++)
++		if (h->pad[i]) {
++			iounmap(h->pad[i]);
++			h->pad[i] = NULL;
++		}
++	if (h->lpi_dev) {
++		put_device(h->lpi_dev);
++		h->lpi_dev = NULL;
++	}
++}
++
++static const char *a6l_verdict(struct tfa98xx *tfa98xx, const struct a6l_tfa_st *st, unsigned int pads_bad)
++{
++	u16 s = st->r[A6L_R10];
++	bool started = tfa98xx->dsp_init == TFA98XX_DSP_INIT_DONE || tfa98xx->dsp_init == TFA98XX_DSP_INIT_INVALIDATED;
++
++	if (st->err)
++		return "I2C ERROR: amplifier not answering";
++	if (A6L_WDS(s))
++		return "FAULT: CoolFlux watchdog (write 'recover' to a6l_ctl)";
++	if (started && A6L_ACS(s))
++		return "FAULT: amplifier cold (configuration lost) while started";
++	if (!started && !tfa98xx->pstream)
++		return A6L_ACS(s) ? "idle, cold (next stream does a cold start)" : "idle";
++	if (!started)
++		return "stream open, amplifier not started (see dsp_init)";
++	if (!A6L_CLKS(s) || !A6L_PLLS(s) || A6L_NOCLK(s))
++		return pads_bad ? "NO I2S CLOCK: TERT MI2S pads were wrong (repaired now: replay)"
++				: "NO I2S CLOCK with correct pads: LPASS/AFE side (TERT MI2S bit clock not running)";
++	if (st->manstate == 9)
++		return "OK: clocked and operating";
++	if (st->manstate <= 6 || st->manstate == 11)
++		return "FAULT: clocked but the manager is not operating (write 'recover' to a6l_ctl)";
++	return "clocked, manager not in operating (alarm/mute)";
++}
++
++static ssize_t a6l_status_show(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	struct tfa98xx *tfa98xx = dev_get_drvdata(dev);
++	struct a6l_health *h = &a6l_h;
++	struct a6l_tfa_st st;
++	unsigned int pads_bad = 0, i;
++	u16 s, r0, r51;
++	int n = 0;
++
++	if (!tfa98xx || !tfa98xx->tfa)
++		return sysfs_emit(buf, "stub (amplifier not usable)\n");
++	if (READ_ONCE(h->suspended))
++		return sysfs_emit(buf, "suspended\n");
++	if (h->pads_ok)
++		for (i = 0; i < A6L_NPADS; i++)
++			if (readl(h->pad[i]) != h->pad_ref[i])
++				pads_bad |= BIT(i);
++	mutex_lock(&tfa98xx->dsp_lock);
++	a6l_read_st(tfa98xx, &st);
++	n += sysfs_emit_at(buf, n, "driver: fw_state %d dsp_init %s pstream %d cstream %d profile %d vstep %d rate %d "
++			   "init_count %u rev %04x\n", tfa98xx->dsp_fw_state, a6l_dsp_init_name(tfa98xx->dsp_init),
++			   tfa98xx->pstream, tfa98xx->cstream, tfa98xx->profile, tfa98xx->vstep, tfa98xx->rate,
++			   tfa98xx->init_count, tfa98xx->tfa->rev);
++	n += sysfs_emit_at(buf, n, "regs:");
++	for (i = 0; i < ARRAY_SIZE(a6l_regs); i++)
++		n += sysfs_emit_at(buf, n, " %02x=%04x", a6l_regs[i], st.r[i]);
++	n += sysfs_emit_at(buf, n, "%s\n", st.err ? " (I2C ERROR)" : "");
++	mutex_unlock(&tfa98xx->dsp_lock);
++	s = st.r[A6L_R10];
++	r0 = st.r[A6L_R00];
++	r51 = st.r[A6L_R51];
++	n += sysfs_emit_at(buf, n, "STATUS0: VDDS %d PLLS %d OTDS %d OVDS %d UVDS %d OCDS %d CLKS %d NOCLK %d ACS %d WDS %d "
++			   "SWS %d AMPS %d\n", A6L_BIT(s, 0), A6L_PLLS(s), A6L_BIT(s, 2), A6L_BIT(s, 3), A6L_BIT(s, 4),
++			   A6L_BIT(s, 5), A6L_CLKS(s), A6L_NOCLK(s), A6L_ACS(s), A6L_WDS(s), A6L_SWS(s), A6L_AMPS(s));
++	n += sysfs_emit_at(buf, n, "control: PWDN %d CFE %d AMPE %d SBSL %d CFSM %d VOL %02x MANSTATE %d %s TDMERR %d\n",
++			   A6L_BIT(r0, 0), A6L_BIT(r0, 2), A6L_BIT(r0, 3), A6L_BIT(r0, 5), A6L_BIT(r51, 3), r51 >> 8,
++			   st.manstate, a6l_manstate_name(st.manstate), A6L_BIT(st.r[A6L_R11], 10));
++	if (h->pads_ok) {
++		char pb[96];
++
++		a6l_pads_fmt(h, pb, sizeof(pb));
++		n += sysfs_emit_at(buf, n, "%s%s\n", pb, pads_bad ? " WRONG" : " ok");
++	} else {
++		n += sysfs_emit_at(buf, n, "pads: not watched\n");
++	}
++	n += sysfs_emit_at(buf, n, "a6l: health %d autorecover %d pad_check %d starts %u checks %u pad_repairs %u noclk %u "
++			   "recoveries %u recover_fail %u start_fail %u resume_cold %u\n", a6l_health, a6l_autorecover,
++			   a6l_pad_check, h->starts, h->checks, h->pad_repairs, h->noclk, h->recoveries, h->recover_fail,
++			   h->start_fail, h->resume_cold);
++	n += sysfs_emit_at(buf, n, "last: %s\n", h->last[0] ? h->last : "-");
++	n += sysfs_emit_at(buf, n, "verdict: %s\n", a6l_verdict(tfa98xx, &st, pads_bad));
++	return n;
++}
++static DEVICE_ATTR_RO(a6l_status);
++
++static ssize_t a6l_ctl_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct tfa98xx *tfa98xx = dev_get_drvdata(dev);
++	struct a6l_health *h = &a6l_h;
++	struct a6l_tfa_st st;
++	bool fast = false;
++
++	if (!tfa98xx || !tfa98xx->tfa || h->tfa98xx != tfa98xx || !h->work_ready)
++		return -ENODEV;
++	if (READ_ONCE(h->suspended))
++		return -EBUSY;
++	if (sysfs_streq(buf, "pads")) {
++		if (!a6l_pads_check(h, "a6l_ctl"))
++			dev_info(dev, "A6L_TFA_PADS a6l_ctl: pads ok\n");
++	} else if (sysfs_streq(buf, "check")) {
++		mutex_lock(&tfa98xx->dsp_lock);
++		a6l_check_locked(h, "a6l_ctl", &fast);
++		mutex_unlock(&tfa98xx->dsp_lock);
++	} else if (sysfs_streq(buf, "recover")) {
++		/* manual: also allowed when idle (the next stream then cold-starts) */
++		cancel_delayed_work_sync(&h->work);
++		mutex_lock(&tfa98xx->dsp_lock);
++		a6l_read_st(tfa98xx, &st);
++		h->recov_stream = 0;
++		a6l_recover_locked(h, "a6l_ctl", &st);
++		mutex_unlock(&tfa98xx->dsp_lock);
++	} else {
++		return -EINVAL;
++	}
++	return count;
++}
++static DEVICE_ATTR_WO(a6l_ctl);
++
++/* System sleep: no chip access while suspended; one status read on resume */
++static int tfa98xx_a6l_suspend(struct device *dev)
++{
++	struct tfa98xx *tfa98xx = dev_get_drvdata(dev);
++	struct a6l_health *h = &a6l_h;
++
++	if (!tfa98xx || h->tfa98xx != tfa98xx)
++		return 0;
++	WRITE_ONCE(h->suspended, true);
++	if (h->work_ready)
++		cancel_delayed_work_sync(&h->work);
++	if (tfa98xx->pstream)
++		dev_warn(dev, "A6L_TFA_SUSPEND with a playback stream running (dsp_init %s)\n",
++			 a6l_dsp_init_name(tfa98xx->dsp_init));
++	return 0;
++}
++
++static int tfa98xx_a6l_resume(struct device *dev)
++{
++	struct tfa98xx *tfa98xx = dev_get_drvdata(dev);
++	struct a6l_health *h = &a6l_h;
++	struct a6l_tfa_st st;
++	char sb[160];
++
++	if (!tfa98xx || h->tfa98xx != tfa98xx)
++		return 0;
++	WRITE_ONCE(h->suspended, false);
++	if (tfa98xx->dsp_fw_state != TFA98XX_DSP_FW_OK || !a6l_health)
++		return 0;
++	mutex_lock(&tfa98xx->dsp_lock);
++	a6l_read_st(tfa98xx, &st);
++	mutex_unlock(&tfa98xx->dsp_lock);
++	if (!st.err && A6L_ACS(st.r[A6L_R10])) {
++		h->resume_cold++;
++		a6l_st_fmt(&st, sb, sizeof(sb));
++		dev_warn(dev, "A6L_TFA_RESUME: the amplifier lost its configuration in suspend: %s (next start is a cold start)\n",
++			 sb);
++		scnprintf(h->last, sizeof(h->last), "%lld s: cold after resume, %s", ktime_get_boottime_seconds(), sb);
++	}
++	if (tfa98xx->pstream && h->work_ready)
++		mod_delayed_work(tfa98xx->tfa98xx_wq, &h->work, 0);
++	return 0;
++}
++
++static const struct dev_pm_ops tfa98xx_a6l_pm_ops = {
++	SYSTEM_SLEEP_PM_OPS(tfa98xx_a6l_suspend, tfa98xx_a6l_resume)
++};
++
+ /* Wrapper for tfa start */
+ static enum tfa_error tfa98xx_tfa_start(struct tfa98xx *tfa98xx, int next_profile, int vstep)
+ {
+@@ -2443,6 +3068,7 @@
+ 			/* cancel other pending init works */
+ 			cancel_delayed_work(&tfa98xx->init_work);
+ 			tfa98xx->init_count = 0;
++			a6l_health_started(tfa98xx);	/* A6L 0005: status check 300 ms after the start */
+ 		}
+ 	}
+ 	else {
+@@ -2464,6 +3090,7 @@
+ 		/* cancel other pending init works */
+ 		cancel_delayed_work(&tfa98xx->init_work);
+ 		tfa98xx->init_count = 0;
++		a6l_health_start_failed(tfa98xx);	/* A6L 0005: log the chip status */
+ 	}
+ 	mutex_unlock(&tfa98xx->dsp_lock);
+ 
+@@ -2570,6 +3197,10 @@
+ 	if (!substream->runtime)
+ 		return 0;
+ 
++	/* A6L 0005: re-assert the TERT MI2S pads before the AFE port starts (stock re-selects them at every start) */
++	if (a6l_h.tfa98xx == tfa98xx)
++		a6l_pads_check(&a6l_h, "stream start");
++
+ 	if (pcm_no_constraint != 0)
+ 		return 0;
+ 
+@@ -2796,6 +3427,7 @@
+ 		mutex_unlock(&tfa98xx_mutex);
+ 
+ 		cancel_delayed_work_sync(&tfa98xx->monitor_work);
++		a6l_health_stream_stop(tfa98xx);	/* A6L 0005 */
+ 
+ 		cancel_delayed_work_sync(&tfa98xx->init_work);
+ 		if (tfa98xx->dsp_fw_state != TFA98XX_DSP_FW_OK)
+@@ -2813,6 +3445,7 @@
+ 			tfa98xx->pstream = 1;
+ 		else
+ 			tfa98xx->cstream = 1;
++		a6l_health_stream_start(tfa98xx);	/* A6L 0005 */
+ 
+ 		/* Start DSP */
+ #if 1
+@@ -2897,6 +3530,12 @@
+ 	INIT_DELAYED_WORK(&tfa98xx->interrupt_work, tfa98xx_interrupt);
+ 	INIT_DELAYED_WORK(&tfa98xx->tapdet_work, tfa98xx_tapdet_work);
+ 	INIT_DELAYED_WORK(&tfa98xx->nmodeupdate_work, tfa98xx_nmode_update_work);
++	if (!a6l_h.tfa98xx && no_start == 0)	/* A6L 0005: the card may bind before the i2c probe returns */
++		a6l_h.tfa98xx = tfa98xx;
++	if (a6l_h.tfa98xx == tfa98xx) {		/* A6L 0005: health work on the same (single-thread) queue */
++		INIT_DELAYED_WORK(&a6l_h.work, a6l_health_work);
++		a6l_h.work_ready = true;
++	}
+ 
+ 	tfa98xx->codec = codec;
+ 
+@@ -2939,6 +3578,10 @@
+ 	cancel_delayed_work_sync(&tfa98xx->init_work);
+ 	cancel_delayed_work_sync(&tfa98xx->tapdet_work);
+ 	cancel_delayed_work_sync(&tfa98xx->nmodeupdate_work);
++	if (a6l_h.tfa98xx == tfa98xx && a6l_h.work_ready) {	/* A6L 0005 */
++		a6l_h.work_ready = false;
++		cancel_delayed_work_sync(&a6l_h.work);
++	}
+ 
+ 	if (tfa98xx->tfa98xx_wq)
+ 		destroy_workqueue(tfa98xx->tfa98xx_wq);
+@@ -3400,6 +4043,16 @@
+ 	if (ret)
+ 		dev_info(&i2c->dev, "error creating sysfs files\n");
+ 
++	/* A6L 0005: speaker path health (one amplifier on the A6L) */
++	if ((!a6l_h.tfa98xx || a6l_h.tfa98xx == tfa98xx) && no_start == 0) {
++		a6l_h.tfa98xx = tfa98xx;
++		if (!a6l_h.pads_ok)
++			a6l_pads_init(&a6l_h, &i2c->dev);
++		if (device_create_file(&i2c->dev, &dev_attr_a6l_status) ||
++		    device_create_file(&i2c->dev, &dev_attr_a6l_ctl))
++			dev_info(&i2c->dev, "A6L: error creating a6l_status/a6l_ctl\n");
++	}
++
+ 	pr_info("%s Probe completed successfully!\n", __func__);
+ 
+ 	INIT_LIST_HEAD(&tfa98xx->list);
+@@ -3461,6 +4114,17 @@
+ 
+ 	device_remove_bin_file(&i2c->dev, &dev_attr_reg);
+ 	device_remove_bin_file(&i2c->dev, &dev_attr_rw);
++	if (a6l_h.tfa98xx == tfa98xx) {		/* A6L 0005 */
++		device_remove_file(&i2c->dev, &dev_attr_a6l_ctl);
++		device_remove_file(&i2c->dev, &dev_attr_a6l_status);
++		if (a6l_h.work_ready) {
++			a6l_h.work_ready = false;
++			cancel_delayed_work_sync(&a6l_h.work);
++		}
++		a6l_pads_exit(&a6l_h);
++		memset(&a6l_h, 0, sizeof(a6l_h));
++		mutex_init(&a6l_h.pad_lock);
++	}
+ #ifdef CONFIG_DEBUG_FS
+ 	tfa98xx_debug_remove(tfa98xx);
+ #endif
+@@ -3519,6 +4183,7 @@
+ 		.name = "tfa98xx",
+ 		.owner = THIS_MODULE,
+ 		.of_match_table = of_match_ptr(tfa98xx_dt_match),
++		.pm = pm_sleep_ptr(&tfa98xx_a6l_pm_ops),	/* A6L 0005 */
+ 	},
+ 	.probe = tfa98xx_i2c_probe,
+ 	.remove = tfa98xx_i2c_remove,
