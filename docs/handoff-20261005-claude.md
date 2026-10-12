@@ -1061,3 +1061,9 @@ Battery life: overnight test planned. Reset batterystats at unplug; collect batt
 - Hypothesis: a power brown-out / regulator fault under heavy CPU load (cpu_busy 60-75 % of 8 cores, gold up to 2.2 GHz), with no stock LMh/BCL limiting.
 - Evidence: crash-20261009/incident-20261012-1203. Agent decoding + mitigation plan.
 - The thermal test is paused until then.
+
+**12 Oct thermal runs (thermal-20261012/runB, runC):**
+- Run B (skin mitigd live, ROM camera): skin levelled at 46-47 C (was rising to the reset in run A); gold stepped 2208 -> 1113.6 MHz. Load stays 60-76 % of 8 cores (the work shifts to silver). VBAT >= 4.19 V at 2 s resolution.
+- Run C (+ r14 camera): same, because 0116 never engaged ("frames full 403 light 1"): Aperture's repeating requests don't qualify as display-only preview. Agent fixing: firmware/extracted/camera-iq-20261008 0118 (+ in-app flash/torch, which doesn't work in Aperture although the QS torch works).
+- BCL module a6l_bcl: readings invalid on PM660 (VBAT min 0x7f / IBAT 0x80): unloaded, needs a different register path. PMIC capture after the 12:04 reset: SMPL on PM660 and PM660L, OFF_REASON POFF_SEQ, GP_FAULT0 (incident-20261012-1203/pon-capture-now.txt).
+- Live state: r14 core/HAL bound and mitigd running until reboot.
