@@ -1029,3 +1029,15 @@ Post-flash tests:
 - Gallery leave/return;
 - 20 wake cycles;
 - SELinux permissive avc audit run x2 (selinux-20261010/selinux-audit.sh), then the enforcing boot.
+
+**12 Oct, round 27 FLASHED** (vendor a1f69a43), all binaries verified.
+- Pierre: everything works.
+- SELinux audit run 1: 0 NEW, 7 KNOWN (selinux-20261010/audit-r27-run1.txt). Run 2 needed after camera/Wi-Fi/BT/GPS/e-ink/charging, then the enforcing boot.
+
+Camera issues:
+- Main too dark with a window in frame: clipBoost 3 + target 0.17 -> tuning V2g (main clipBoost 1.0, target 0.20). Live-verified: median 40 -> 70, wall visible. Ship V2g next round.
+- Thermal: the "skin" (quiet_therm) reached 46.8 C -> MOD/SEV warnings. Gold cluster at max 2.2 GHz, ~70 C, no stock-like skin throttling.
+- Per-thread during preview: SWIspWorker 30 %, SF+RenderEngine 34 % (GPU client composition of the preview), CameraManager 19 %.
+- Agent working: firmware/extracted/thermal-20261012 (stock-like skin throttling + camera CPU cost).
+
+Battery life: overnight test planned. Reset batterystats at unplug; collect batterystats, suspend_stats and wakeup sources next morning.
