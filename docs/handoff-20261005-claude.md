@@ -1049,3 +1049,9 @@ Battery life: overnight test planned. Reset batterystats at unplug; collect batt
 - SF GPU composition of the camera preview: drm_hwcomposer flattens all layers because the rotated, scaled NV12 preview fits no DPU plane. Drafts sf/0007 (GPU only the failing layer), 0008 (cursor SSPP); not built.
 - Camera CPU (SWIsp 30 %, HAL 31 %) NOT delivered. Unreviewed drafts 0116/0117 in the session scratchpad cam/ (if still present).
 - Charging skin budget not done (belongs in a6l-chg-guard).
+
+**Camera CPU r14 (reviewed, keyless OK, not on the phone):**
+- 0116 light preview frames: the HAL sets controls::Sharpness per request. Light only for PREVIEW intent with display-only buffers; any JPEG/YUV buffer or a still intent = full. Video stays full unless light=2.
+- 0117: drop the redundant input DMA-BUF sync (vb2 syncs at buffer done / QBUF on the MMAP capture queue). persist.vendor.a6l.hwisp.insync=1 restores it.
+- Build: Pierre runs camera-iq-20261008/scripts/52-build-r14-core-hal.sh -> prebuilt-r14 (core + HAL). Live: iq-ab.sh corelib r14 + hal r14.
+- Test plan: thermal-20261012/README section 7 (4 x 2 min runs with thermlog2 ALL: rows).
