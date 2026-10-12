@@ -1096,3 +1096,10 @@ Post-flash checks:
 - Prep agent writing firmware/extracted/user-build-20261012 (README + build-user.sh); no build until Pierre says go.
 - Disk: WSL 38 GB free / 1 TB (out/ 132 GB, rom-v2 205G, kernel 198G, scratch 61G, rom-v1 33G, /root 72G); C: 43 GB free. A cleanup proposal is pending Pierre's approval.
 - Battery test: unplugged ~17:40 at 99 % (stats reset not done; use "since last charge" tomorrow).
+
+**12 Oct evening, user build prep done** (firmware/extracted/user-build-20261012: README + build-user.sh):
+- device/ gating committed (17ec38f) and synced.
+- Cleanup with Pierre's OK: deleted the flashtest/codex-update fixtures, realinit-v80 RAM boots, qemu runs, and all kits before round 26. 304 GB freed; WSL 339 GB free. Kept: kits 26/26b/27/28, boot-r6i, rom-v1/verify-r8 (EDL loader), kernel trees, /root/rsos.
+- fstrim done (214 GiB). Pierre must compact ext4.vhdx (wsl --shutdown + diskpart compact) before the build; `build-user.sh check` refuses until C: headroom is safe.
+- Then: `build-user.sh all` (~7-8 h), `audit`, `prekit`.
+- Before the first user flash: the --wipe-data mode for the kit tools (README section 8) still has to be written and reviewed. Recommended first: a userdebug enforcing boot test (boot-only 9f96cd55).
