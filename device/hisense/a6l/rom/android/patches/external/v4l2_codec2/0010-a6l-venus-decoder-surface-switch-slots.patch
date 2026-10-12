@@ -1,0 +1,430 @@
+--- a/components/VideoFramePool.cpp
++++ b/components/VideoFramePool.cpp
+@@ -45,6 +45,15 @@
+         return dmabufId.value();
+     }
+     case C2PlatformAllocatorStore::IGBA: {
++        // A6L patch 0010: identify the MEMORY (dmabuf inode), not the AHardwareBuffer. With the
++        // AIDL HAL the client-side LegacyGraphicsTracker does not migrate buffers on
++        // setOutputSurface(): a decoded buffer rendered to the new surface is attached there as a
++        // new GraphicBuffer (new AHardwareBuffer id, same dmabuf). Keyed by the AHB id it looked
++        // like a foreign buffer and the V4L2 CAPTURE slot that owns its memory was never reused.
++        if (block.handle() && block.handle()->numFds > 0) {
++            auto dmabufId = android::getDmabufId(block.handle()->data[0]);
++            if (dmabufId) return dmabufId.value();
++        }
+         std::shared_ptr<_C2BlockPoolData> blockPoolData =
+                 _C2BlockFactory::GetGraphicBlockPoolData(block);
+         struct AHardwareBuffer *buf;
+@@ -219,8 +228,13 @@
+     constexpr size_t kFetchRetryDelayInit = 256;   // Initial delay: 256us
+     constexpr size_t kFetchRetryDelayMax = 16384;  // Max delay: 16ms (1 frame at 60fps)
+     constexpr size_t kFenceWaitTimeoutNs = 16000000;  // 16ms (1 frame at 60fps)
+-    static size_t sNumRetries = 0;
+-    static size_t sDelay = kFetchRetryDelayInit;
++    // A6L patch 0010: transient fetch errors (e.g. igba::allocate failing with BR_FROZEN_REPLY
++    // while the app is frozen in the background) are retried slowly instead of abandoning the
++    // request: upstream returned without calling back, so getVideoFrame() refused every later
++    // request ("Previous callback is running") and the decoder never got an output buffer again.
++    constexpr size_t kFetchErrorDelayInit = 20000;   // 20ms
++    constexpr size_t kFetchErrorDelayMax = 500000;   // 500ms
++    if (mRetryDelayUs == 0) mRetryDelayUs = kFetchRetryDelayInit;
+ 
+     C2Fence fence;
+     std::shared_ptr<C2GraphicBlock> block;
+@@ -261,34 +275,56 @@
+ 
+         if (bufferId) {
+             ALOGV("%s(): Got buffer with id = %u", __func__, *bufferId);
+-
++            // A6L patch 0010: no drop here any more. Upstream dropped (and so returned to the
++            // queue) every buffer id beyond the first |mMaxBufferCount| ids, then fetched again:
++            // after a surface switch every buffer of the new BufferQueue was unknown, the same
++            // buffer came back on each retry and the decoder livelocked silently with no output.
++            // V4L2Decoder now decides whether a new buffer can take over a V4L2 CAPTURE slot.
+             if (shouldDropBuffer(*bufferId)) {
+-                // We drop buffer, since we got more then needed.
+-                ALOGV("%s(): Dropping allocated buffer with id = %u", __func__, *bufferId);
+-                bufferId = std::nullopt;
+-                block.reset();
+-                err = C2_TIMED_OUT;
++                ALOGV("%s(): buffer id %u is beyond the first %zu ids (surface switch?)", __func__,
++                      *bufferId, mMaxBufferCount);
+             }
+         }
+     }
+ 
+     if (err == C2_TIMED_OUT || err == C2_BLOCKING) {
+-        ALOGV("%s(): fetchGraphicBlock() timeout, waiting %zuus (%zu retry)", __func__, sDelay,
+-              sNumRetries + 1);
++        ALOGV("%s(): fetchGraphicBlock() timeout, waiting %zuus (%zu retry)", __func__,
++              mRetryDelayUs, mNumRetries + 1);
+         mFetchTaskRunner->PostDelayedTask(
+                 FROM_HERE, ::base::BindOnce(&VideoFramePool::getVideoFrameTask, mFetchWeakThis),
+-                ::base::TimeDelta::FromMicroseconds(sDelay));
++                ::base::TimeDelta::FromMicroseconds(mRetryDelayUs));
++
++        mRetryDelayUs = std::min(mRetryDelayUs * 4, kFetchRetryDelayMax);  // Exponential backoff
++        mNumRetries++;
++        return;
++    }
+ 
+-        sDelay = std::min(sDelay * 4, kFetchRetryDelayMax);  // Exponential backoff
+-        sNumRetries++;
++    if (err != C2_OK && err != C2_BAD_STATE && err != C2_NO_INIT) {
++        // Transient: retry with a slow backoff (the pool itself is still valid).
++        mNumFetchErrors++;
++        if (mNumFetchErrors == 1 || mNumFetchErrors % 100 == 0) {
++            ALOGW("%s(): fetchGraphicBlock() failed, err=%d (%zu times), retrying", __func__, err,
++                  mNumFetchErrors);
++        }
++        const size_t delay = std::min(kFetchErrorDelayInit * (mNumFetchErrors < 25 ? mNumFetchErrors : 25),
++                                      kFetchErrorDelayMax);
++        mFetchTaskRunner->PostDelayedTask(
++                FROM_HERE, ::base::BindOnce(&VideoFramePool::getVideoFrameTask, mFetchWeakThis),
++                ::base::TimeDelta::FromMicroseconds(delay));
+         return;
+     }
+ 
+     // Reset to the default value.
+-    sNumRetries = 0;
+-    sDelay = kFetchRetryDelayInit;
++    mNumRetries = 0;
++    mRetryDelayUs = kFetchRetryDelayInit;
++    if (err == C2_OK && mNumFetchErrors > 0) {
++        ALOGI("%s(): fetchGraphicBlock() works again after %zu failures", __func__, mNumFetchErrors);
++        mNumFetchErrors = 0;
++    }
+ 
+     if (err != C2_OK) {
++        // C2_BAD_STATE / C2_NO_INIT: the pool was invalidated (component stopping). Upstream
++        // behaviour: no callback.
+         ALOGE("%s(): Failed to fetch block, err=%d", __func__, err);
+         return;
+     }
+@@ -301,7 +337,7 @@
+         // Only pass the frame + id pair if both have successfully been obtained.
+         // Otherwise exit the loop so a nullopt is passed to the client.
+         frameWithBlockId = std::make_pair(std::move(frame), *bufferId);
+-        mBuffers.insert(*bufferId);
++        if (mBuffers.size() < mMaxBufferCount) mBuffers.insert(*bufferId);
+     } else {
+         ALOGE("%s(): Failed to generate VideoFrame or get the buffer id.", __func__);
+     }
+--- a/components/include/v4l2_codec2/components/VideoFramePool.h
++++ b/components/include/v4l2_codec2/components/VideoFramePool.h
+@@ -73,6 +73,12 @@
+     size_t mMaxBufferCount;
+     // Contains known buffer ids that are valid for the pool.
+     std::set<uint32_t> mBuffers;
++    // A6L patch 0010: fetch retry state of this pool (it was function-static, shared by every pool
++    // of the process), plus a counter of transient fetch failures (binder errors while the client
++    // process is frozen), which are retried instead of wedging the pool.
++    size_t mNumRetries = 0;
++    size_t mRetryDelayUs = 0;
++    size_t mNumFetchErrors = 0;
+ 
+     const ui::Size mSize;
+     const HalPixelFormat mPixelFormat;
+--- a/v4l2/V4L2Decoder.cpp
++++ b/v4l2/V4L2Decoder.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include <v4l2_codec2/v4l2/V4L2Decoder.h>
+ 
++#include <inttypes.h>
+ #include <stdint.h>
+ 
+ #include <algorithm>
+@@ -17,8 +18,10 @@
+ #include <base/bind.h>
+ #include <base/files/scoped_file.h>
+ #include <base/memory/ptr_util.h>
++#include <base/time/time.h>
+ #include <log/log.h>
+ #include <cutils/properties.h>
++#include <utils/Timers.h>
+ #include <utils/Trace.h>
+ 
+ #include <v4l2_codec2/common/Common.h>
+@@ -93,6 +96,22 @@
+ constexpr size_t kNumInputBuffersMmap = 8;
+ constexpr size_t kInputBufferSizeMmap = 4 * 1024 * 1024;
+ 
++// A6L patch 0010: CAPTURE slots after an output surface switch (see V4L2Decoder.h).
++// Extra DMABUF CAPTURE slots (no memory: the buffers come from the client); vb2 clamps the total
++// to its maximum (32), so 25 needed + 7 spare on Venus.
++constexpr int32_t kNumSpareOutputBuffers = 8;
++// A slot idle for this many CAPTURE dequeues can no longer hold a reference frame
++// (H.264/HEVC DPB <= 16 frames; VP8/VP9/AV1 keep long-lived golden/alt-ref frames: longer).
++constexpr uint64_t kSlotIdleFramesAvcHevc = 24;
++constexpr uint64_t kSlotIdleFramesOther = 64;
++// Nothing at the device and no slot for a new buffer this long: take the least recently used one.
++constexpr nsecs_t kStarvationRebindNs = 300 * 1000 * 1000;
++// Retry delay for a buffer that could not get a slot (doubles up to the max).
++constexpr int64_t kUnboundRetryInitUs = 4000;
++constexpr int64_t kUnboundRetryMaxUs = 128000;
++// Key frame detection looks at the start of each access unit only (IDR slice after SPS/PPS/SEI).
++constexpr size_t kKeyFrameScanBytes = 32 * 1024;
++
+ }  // namespace
+ 
+ // static
+@@ -386,16 +405,27 @@
+ 
+     mFrameAtDevice.clear();
+     mBlockIdToV4L2Id.clear();
++    resetSlotTracking();
+     while (!mReuseFrameQueue.empty()) {
+         mReuseFrameQueue.pop();
+     }
+ 
++    // A6L patch 0010: spare DMABUF slots for the buffers of a new output surface.
++    size_t spare = 0;
++    if (memory == V4L2_MEMORY_DMABUF && minOutputBuffersCount > 1) {
++        spare = static_cast<size_t>(std::clamp(
++                property_get_int32("vendor.a6l.c2dec.spare_capture", kNumSpareOutputBuffers), 0, 32));
++    }
+     const size_t adjustedNumOutputBuffers =
+-            mOutputQueue->allocateBuffers(*numOutputBuffers, memory);
++            mOutputQueue->allocateBuffers(*numOutputBuffers + spare, memory);
+     if (adjustedNumOutputBuffers == 0) {
+         ALOGE("Failed to allocate output buffer.");
+         return false;
+     }
++    if (spare > 0) {
++        ALOGI("CAPTURE: %zu slots (%zu needed + spare)", adjustedNumOutputBuffers,
++              *numOutputBuffers);
++    }
+ 
+     ALOGV("Allocated %zu output buffers.", adjustedNumOutputBuffers);
+     if (!mOutputQueue->streamon()) {
+@@ -431,6 +461,8 @@
+     if (!mIsSecure && (mCodec == VideoCodec::H264 || mCodec == VideoCodec::HEVC))
+         parseBitstreamVisibleRect(buffer->dmabuf);
+ 
++    if (!mIsSecure) noteKeyFrame(buffer->dmabuf, buffer->id);
++
+     mDecodeRequests.push(DecodeRequest(std::move(buffer), std::move(decodeCb)));
+     pumpDecodeRequest();
+ }
+@@ -725,6 +757,8 @@
+         mReuseFrameQueue.push(std::make_pair(blockId, std::move(frame)));
+     }
+     mFrameAtDevice.clear();
++    // A6L patch 0010: flushed key frames will never come out.
++    mKeyFrameIds.clear();
+ 
+     mInputQueue->streamoff();
+ 
+@@ -814,6 +848,19 @@
+         ALOGV("DQBUF from output queue, bufferId=%zu, bitstreamId=%d, bytesused=%zu, isLast=%d",
+               bufferId, bitstreamId, bytesUsed, isLast);
+ 
++        // A6L patch 0010: slot age and key frame tracking.
++        mLastDequeueSeq[bufferId] = ++mOutputSeq;
++        if (bytesUsed > 0 && !mKeyFrameIds.empty() && *mKeyFrameIds.begin() <= bitstreamId) {
++            mKeyFrameIds.erase(mKeyFrameIds.begin(), mKeyFrameIds.upper_bound(bitstreamId));
++            mLastKeyFrameOutputSeq = mOutputSeq;
++        }
++        if (mUnboundSinceNs != 0) {
++            ALOGI("CAPTURE output resumed %" PRId64 " ms after a new buffer found no free slot "
++                  "(%zu slot hand-overs so far)",
++                  (systemTime(SYSTEM_TIME_MONOTONIC) - mUnboundSinceNs) / 1000000, mNumRebinds);
++            mUnboundSinceNs = 0;
++        }
++
+         // Get the corresponding VideoFrame of the dequeued buffer.
+         auto it = mFrameAtDevice.find(bufferId);
+         if (it == mFrameAtDevice.end() && isLast) continue;
+@@ -1033,13 +1080,51 @@
+         // available V4L2 buffer.
+         const size_t v4l2BufferId = mBlockIdToV4L2Id.size();
+         mBlockIdToV4L2Id.emplace(blockId, v4l2BufferId);
++        mV4L2IdToBlockId[v4l2BufferId] = blockId;
+         outputBuffer = mOutputQueue->getFreeBuffer(v4l2BufferId);
+         ALOG_ASSERT(v4l2BufferId == outputBuffer->bufferId());
+     } else {
+-        // If this happens, this is a bug in VideoFramePool. It should never
+-        // provide more blocks than we have V4L2 buffers.
+-        ALOGE("Got more different blocks than we have V4L2 buffers for.");
+-    }
++        // A6L patch 0010: a buffer we never saw while every slot is bound. Upstream assumed this
++        // cannot happen (the pool dropped such buffers); it does after setOutputSurface() with the
++        // AIDL Codec2 client, which gives the new surface new memory instead of migrating ours.
++        const char* reason = "";
++        std::optional<size_t> slot = findReusableSlot(&reason);
++        if (!slot) {
++            // Give the buffer back and try again later: a known buffer may come back meanwhile
++            // (frames rendered to the new surface keep their memory), or a slot becomes safe.
++            if (mUnboundSinceNs == 0) {
++                mUnboundSinceNs = systemTime(SYSTEM_TIME_MONOTONIC);
++                mUnboundSinceSeq = mOutputSeq;
++                ALOGI("New output buffer (id %u) while all %zu CAPTURE slots are bound (output "
++                      "surface switch?): waiting for a reusable slot",
++                      blockId, mOutputQueue->allocatedBuffersCount());
++            }
++            const int64_t delayUs = std::min<int64_t>(
++                    kUnboundRetryInitUs << std::min<size_t>(mNumUnboundRetries, 5),
++                    kUnboundRetryMaxUs);
++            mNumUnboundRetries++;
++            frame.reset();
++            mTaskRunner->PostDelayedTask(
++                    FROM_HERE, ::base::BindOnce(&V4L2Decoder::tryFetchVideoFrame, mWeakThis),
++                    ::base::TimeDelta::FromMicroseconds(delayUs));
++            return;
++        }
++        const size_t oldBlockId = mV4L2IdToBlockId[*slot];
++        mBlockIdToV4L2Id.erase(oldBlockId);
++        mBlockIdToV4L2Id.emplace(blockId, *slot);
++        mV4L2IdToBlockId[*slot] = blockId;
++        mNumRebinds++;
++        const uint64_t lastSeq = mLastDequeueSeq.count(*slot) ? mLastDequeueSeq[*slot] : 0;
++        if (mNumRebinds <= 4 || mNumRebinds % 32 == 0) {
++            ALOGI("CAPTURE slot %zu: buffer %zu -> %u (%s, idle for %" PRIu64
++                  " frames), %zu slot hand-overs so far",
++                  *slot, oldBlockId, blockId, reason, mOutputSeq - lastSeq, mNumRebinds);
++        }
++        outputBuffer = mOutputQueue->getFreeBuffer(*slot);
++    }
++    // The starvation episode (mUnboundSinceNs) ends at the next CAPTURE dequeue, not here: if the
++    // device makes no progress, further new buffers may take least recently used slots.
++    if (outputBuffer) mNumUnboundRetries = 0;
+ 
+     if (!outputBuffer) {
+         ALOGE("V4L2 buffer not available. blockId=%u", blockId);
+@@ -1066,6 +1151,91 @@
+     tryFetchVideoFrame();
+ }
+ 
++// A6L patch 0010: remember queued key frames. Only an exact key frame counts (H.264 IDR slice,
++// HEVC IDR_W_RADL, VP8/VP9 key frame, not show_existing_frame): a false positive could hand over
++// a slot the firmware still reads as a reference.
++void V4L2Decoder::noteKeyFrame(const C2ConstLinearBlock& input, int32_t bitstreamId) {
++    C2ReadView view = input.map().get();
++    if (view.error() != C2_OK || view.capacity() == 0) return;
++    const uint8_t* data = view.data();
++    const size_t length = std::min<size_t>(view.capacity(), kKeyFrameScanBytes);
++    bool key = false;
++    switch (mCodec) {
++    case VideoCodec::H264: {
++        H264NalParser parser(data, length);
++        key = parser.locateIDR();
++        break;
++    }
++    case VideoCodec::HEVC: {
++        HEVCNalParser parser(data, length);
++        key = parser.locateIDR();
++        break;
++    }
++    case VideoCodec::VP8:
++        key = (data[0] & 0x1) == 0;  // frame tag: key_frame == 0
++        break;
++    case VideoCodec::VP9: {
++        // frame_marker(2) profile(2) show_existing_frame(1) frame_type(1), profiles 0-2 only.
++        const uint8_t b = data[0];
++        const bool profile3 = (b & 0x30) == 0x30;
++        key = (b & 0xc0) == 0x80 && !profile3 && (b & 0x08) == 0 && (b & 0x04) == 0;
++        break;
++    }
++    case VideoCodec::AV1:
++        break;
++    }
++    if (!key) return;
++    mKeyFrameIds.insert(bitstreamId);
++    while (mKeyFrameIds.size() > 64) mKeyFrameIds.erase(mKeyFrameIds.begin());
++}
++
++// A6L patch 0010: pick the CAPTURE slot that a new output buffer may take over, if any is safe:
++// not queued, not waiting in the post-flush reuse queue, and either dequeued before the last key
++// frame came out, idle long enough to have left the DPB, or (nothing at the device for
++// kStarvationRebindNs) the least recently used one.
++std::optional<size_t> V4L2Decoder::findReusableSlot(const char** reason) {
++    if (!mReuseFrameQueue.empty()) return std::nullopt;
++
++    std::optional<size_t> best;
++    uint64_t bestSeq = UINT64_MAX;
++    for (const auto& [slot, block] : mV4L2IdToBlockId) {
++        if (mFrameAtDevice.find(slot) != mFrameAtDevice.end()) continue;
++        auto it = mLastDequeueSeq.find(slot);
++        const uint64_t seq = (it == mLastDequeueSeq.end()) ? 0 : it->second;
++        if (seq < bestSeq) {
++            bestSeq = seq;
++            best = slot;
++        }
++    }
++    if (!best) return std::nullopt;
++
++    const uint64_t idleFrames = mOutputSeq - bestSeq;
++    const uint64_t minIdle = (mCodec == VideoCodec::H264 || mCodec == VideoCodec::HEVC)
++                                     ? kSlotIdleFramesAvcHevc
++                                     : kSlotIdleFramesOther;
++    if (bestSeq < mLastKeyFrameOutputSeq) {
++        *reason = "dequeued before the last key frame";
++        return best;
++    }
++    if (idleFrames >= minIdle) {
++        *reason = "idle";
++        return best;
++    }
++    if (mUnboundSinceNs != 0 && (mFrameAtDevice.empty() || mOutputSeq == mUnboundSinceSeq) &&
++        systemTime(SYSTEM_TIME_MONOTONIC) - mUnboundSinceNs >= kStarvationRebindNs) {
++        *reason = "no output progress, least recently used";
++        return best;
++    }
++    return std::nullopt;
++}
++
++void V4L2Decoder::resetSlotTracking() {
++    mV4L2IdToBlockId.clear();
++    mLastDequeueSeq.clear();
++    mUnboundSinceNs = 0;
++    mNumUnboundRetries = 0;
++}
++
+ std::optional<size_t> V4L2Decoder::getNumOutputBuffers() {
+     ALOGV("%s()", __func__);
+     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
+--- a/v4l2/include/v4l2_codec2/v4l2/V4L2Decoder.h
++++ b/v4l2/include/v4l2_codec2/v4l2/V4L2Decoder.h
+@@ -9,7 +9,9 @@
+ 
+ #include <cstdint>
+ #include <memory>
++#include <map>
+ #include <optional>
++#include <set>
+ #include <utility>
+ 
+ #include <base/callback.h>
+@@ -166,6 +168,30 @@
+     // V4L2 buffer index.
+     std::map<size_t, size_t> mBlockIdToV4L2Id;
+ 
++    // A6L patch 0010: CAPTURE slot ownership after a surface switch. The AIDL Codec2 client does
++    // not migrate buffers to a new output surface, so the new BufferQueue hands out new memory.
++    // A V4L2 slot bound to memory that will never come back is handed over to a new buffer once
++    // the firmware can no longer reference the old one (dynamic buffer mode keeps decoded frames
++    // as references; re-queueing a slot with another dmabuf unmaps the old memory).
++    std::map<size_t, size_t> mV4L2IdToBlockId;
++    // CAPTURE DQBUF sequence number (all dequeues), and per slot the sequence of its last DQBUF.
++    uint64_t mOutputSeq = 0;
++    std::map<size_t, uint64_t> mLastDequeueSeq;
++    // Bitstream ids of queued key frames (IDR / VPx key frame) not yet seen at the output, and the
++    // output sequence at which the last one came out: every slot dequeued before that point is
++    // no longer referenced.
++    std::set<int32_t> mKeyFrameIds;
++    uint64_t mLastKeyFrameOutputSeq = 0;
++    // Since when (monotonic ns, 0 = not starving) a new buffer could not get a slot, and the
++    // output sequence at that time (no progress since = the device is stuck without buffers).
++    int64_t mUnboundSinceNs = 0;
++    uint64_t mUnboundSinceSeq = 0;
++    size_t mNumRebinds = 0;
++    size_t mNumUnboundRetries = 0;
++    void noteKeyFrame(const C2ConstLinearBlock& input, int32_t bitstreamId);
++    std::optional<size_t> findReusableSlot(const char** reason);
++    void resetSlotTracking();
++
+     State mState = State::Idle;
+ 
+     scoped_refptr<::base::SequencedTaskRunner> mTaskRunner;
