@@ -1055,3 +1055,9 @@ Battery life: overnight test planned. Reset batterystats at unplug; collect batt
 - 0117: drop the redundant input DMA-BUF sync (vb2 syncs at buffer done / QBUF on the MMAP capture queue). persist.vendor.a6l.hwisp.insync=1 restores it.
 - Build: Pierre runs camera-iq-20261008/scripts/52-build-r14-core-hal.sh -> prebuilt-r14 (core + HAL). Live: iq-ab.sh corelib r14 + hal r14.
 - Test plan: thermal-20261012/README section 7 (4 x 2 min runs with thermlog2 ALL: rows).
+
+**12 Oct ~12:04: SECOND spontaneous reset, during thermal run A** (camera preview, cool start, battery 99 % 4.24 V, on the laptop port), followed by ~3 boot-loop attempts before booting.
+- PON registers read right after: PON_REASON1 0x808=0x03 (HARD_RESET + SMPL?), FAULT_REASON1 0x8c8=0x01, S3_RESET_REASON 0x8ca=0x80.
+- Hypothesis: a power brown-out / regulator fault under heavy CPU load (cpu_busy 60-75 % of 8 cores, gold up to 2.2 GHz), with no stock LMh/BCL limiting.
+- Evidence: crash-20261009/incident-20261012-1203. Agent decoding + mitigation plan.
+- The thermal test is paused until then.
