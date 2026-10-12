@@ -1,0 +1,36 @@
+# /vendor/bin/a6l-reboot-guard.sh (rom/init/init.a6l-rebootguard.rc, "shutdown critical": started by init at the start of
+# every shutdown/reboot; firmware/extracted/reboot-hang-20261006/README.md fix A).
+# user-build-20261012: was `seclabel u:r:su:s0` (userdebug convention). su does not exist in a user policy, so a user build
+# could not start the guard at all; it now has its own domain in every variant (file-label transition, no seclabel).
+# The script only: sleeps, reads /proc/uptime, init's /proc/1/syscall (is init inside reboot(2)?), getprop, logs to
+# /dev/kmsg, and on a hang writes w then b to /proc/sysrq-trigger.
+type a6l_reboot_guard, domain;
+init_daemon_domain(a6l_reboot_guard)
+allow a6l_reboot_guard vendor_shell_exec:file rx_file_perms;
+allow a6l_reboot_guard vendor_toolbox_exec:file rx_file_perms;
+allow a6l_reboot_guard kmsg_device:chr_file { write append getattr };
+dontaudit a6l_reboot_guard kmsg_device:chr_file ioctl;
+allow a6l_reboot_guard proc_uptime:file r_file_perms;
+# hang action: `echo w|b > /proc/sysrq-trigger` (blocked-task dump, then emergency_restart), same as llkd/lmkd may do
+allow a6l_reboot_guard proc_sysrq:file w_file_perms;
+# /proc/1/syscall and /proc/1/stack = PTRACE_MODE_ATTACH on init -> SELinux process:ptrace, which is neverallowed for
+# every domain (`neverallow * init:process ptrace`, private/init.te; the offline link refuses the allow). So under
+# enforcing the guard cannot see init enter reboot(2): the script then falls back to a 40 s wall-clock budget (uhang,
+# rom/bin/a6l-reboot-guard.sh). Permissive builds keep the exact reboot(2) detection. Silence the expected refusals
+# (the loop probes once per second).
+allow a6l_reboot_guard init:dir search;
+dontaudit a6l_reboot_guard init:process ptrace;
+dontaudit a6l_reboot_guard init:file r_file_perms;
+dontaudit a6l_reboot_guard self:global_capability_class_set sys_admin;
+# armed log line: /sys/kernel/reboot/mode (sysfs) and /proc/sys/kernel/panic (proc_panic, genfs_contexts)
+allow a6l_reboot_guard sysfs:file r_file_perms;
+allow a6l_reboot_guard proc_panic:file r_file_perms;
+# persist.vendor.a6l.rebootguard.{khang,uhang} (vendor_a6l_prop) and sys.powerctl (powerctl_prop, system_public)
+get_prop(a6l_reboot_guard, vendor_a6l_prop)
+get_prop(a6l_reboot_guard, powerctl_prop)
+
+# `on shutdown` writes of the same rc (vendor_init): /proc/sys/kernel/{panic,softlockup_panic,hardlockup_panic}. These
+# are generic `proc` in the platform genfs, which vendor_init may not write: under enforcing the three writes failed
+# silently (never audited: the avc audits run on a live system, not during shutdown). Labelled proc_panic in
+# genfs_contexts (the platform already uses proc_panic for /proc/sys/kernel/panic_on_oops).
+allow vendor_init proc_panic:file w_file_perms;

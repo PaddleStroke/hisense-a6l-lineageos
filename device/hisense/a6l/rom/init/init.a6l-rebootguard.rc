@@ -31,6 +31,7 @@ service a6l_reboot_guard /vendor/bin/a6l-reboot-guard.sh
     disabled
     oneshot
     shutdown critical
-    # userdebug/permissive ROM (same convention as a6l_logcat). An enforcing build needs a vendor domain allowed to
-    # write /proc/sysrq-trigger, /proc/sys/kernel/*, /sys/kernel/reboot/mode and to read /proc/1/{syscall,stack}.
-    seclabel u:r:su:s0
+    # user-build-20261012: no seclabel. Was `seclabel u:r:su:s0`, which a user build cannot start (no su domain). The
+    # script now runs in its own domain a6l_reboot_guard (rom/sepolicy/vendor/a6l_reboot_guard.te, file label
+    # a6l_reboot_guard_exec), in every variant. Needs rom/sepolicy/vendor in the build (A6L_SEPOLICY_ROM=1 or
+    # A6L_SELINUX_PREP=1, as every round since round 12); without it init refuses to start the guard ("no domain").

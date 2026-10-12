@@ -12,9 +12,14 @@ PRODUCT_COPY_FILES += \
     $(ROM_DIR)/init/init.a6l.usb.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.a6l.usb.rc \
     $(ROM_DIR)/bin/a6l-modules.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-modules.sh \
     $(ROM_DIR)/bin/a6l-radio.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-radio.sh \
-    $(ROM_DIR)/bin/a6l-logcat.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-logcat.sh \
     $(ROM_DIR)/init/init.a6l-rebootguard.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l-rebootguard.rc \
     $(ROM_DIR)/bin/a6l-reboot-guard.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-reboot-guard.sh
+# user-build-20261012: a6l-logcat.sh is only run by the debug a6l_logcat service (su; rom/selinux/init.a6l.logcat-debug.rc,
+# userdebug/eng only), so a user build does not ship it.
+ifneq ($(TARGET_BUILD_VARIANT),user)
+PRODUCT_COPY_FILES += \
+    $(ROM_DIR)/bin/a6l-logcat.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-logcat.sh
+endif
 
 -include $(ROM_DIR)/rom-files.mk
 
@@ -49,8 +54,15 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Pass 2 (round 12): persist.sys.usb.config=adb too (system_prop, vendor_init set denied; was PRODUCT_VENDOR_PROPERTIES).
 PRODUCT_SYSTEM_EXT_PROPERTIES += \
     service.sf.prime_shader_cache=false \
-    sys.use_memfd=true \
+    sys.use_memfd=true
+# user-build-20261012: adb on USB by default only in userdebug/eng. A user build leaves persist.sys.usb.config unset
+# (framework default: charging only, adb off until Developer options > USB debugging; ro.adb.secure=1 then asks for the
+# host key on screen), like a stock user ROM. post_process_props.py only adds adb by itself when ro.debuggable=1, which
+# Lineage userdebug is not (PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG), hence the explicit value for the debug variants.
+ifneq ($(TARGET_BUILD_VARIANT),user)
+PRODUCT_SYSTEM_EXT_PROPERTIES += \
     persist.sys.usb.config=adb
+endif
 
 # CameraX recording uses a persistent encoder surface. The software Codec2
 # service has no native input-surface factory; select Android's built-in AIDL
@@ -223,6 +235,11 @@ $(call inherit-product, device/hisense/a6l/rom/selinux/selinux.mk)
 # r6b boot fix (30 Sep 2026; docs/rom-r6b-bootfix-20260930.md): userdebug/eng-only persistent boot log
 # (/metadata/a6l/boot-kmsg.txt, a6l_bootlog service); a user build installs nothing from it
 $(call inherit-product, device/hisense/a6l/rom/debug/bootlog.mk)
+# user-build-20261012 (firmware/extracted/user-build-20261012/README.md): user-variant replacements for what the debug
+# files above did with su (GPU runtime-PM hold) and refusal of a user build without the enforcing-prep policy.
+ifeq ($(TARGET_BUILD_VARIANT),user)
+$(call inherit-product, device/hisense/a6l/rom/user/user.mk)
+endif
 
 # venus-impl (6 Oct 2026; firmware/extracted/venus-impl-20261006): Venus hardware H.264 encoder via the V4L2 Codec2 HAL
 # (external/v4l2_codec2 + rom/android/patches/external/v4l2_codec2). persist.vendor.a6l.venus: 1 (default) on, 0 off.

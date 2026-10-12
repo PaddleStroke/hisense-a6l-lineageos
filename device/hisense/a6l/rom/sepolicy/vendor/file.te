@@ -7,6 +7,7 @@ type a6l_rmtfs_exec, exec_type, vendor_file_type, file_type;       # /vendor/a6l
 type a6l_tqftpserv_exec, exec_type, vendor_file_type, file_type;   # /vendor/a6l/radio/bin/tqftpserv
 type a6l_diag_exec, exec_type, vendor_file_type, file_type;        # /vendor/a6l/radio/bin/diag-router
 type a6l_macs_exec, exec_type, vendor_file_type, file_type;        # /vendor/bin/a6l_macs
+type a6l_reboot_guard_exec, exec_type, vendor_file_type, file_type; # /vendor/bin/a6l-reboot-guard.sh (user-build-20261012)
 # --- runtime / data
 type a6l_dev_file, file_type;                                       # /dev/a6l (e-ink mode hand-off, tmpfs)
 type a6l_tqftpserv_data_file, file_type, data_file_type;            # /data/vendor/tmp/tqftpserv

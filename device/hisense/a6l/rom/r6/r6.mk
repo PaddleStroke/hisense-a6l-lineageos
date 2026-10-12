@@ -23,8 +23,11 @@ DEVICE_PACKAGE_OVERLAYS += $(R6_DIR)/overlay
 # and device/hisense/a6l/usb (android-usb) were prepared in parallel on 29 Sep.
 
 # --- on-phone test helpers (not a daemon; run from adb shell as root): suspend/wake/drain checks for H53/H54/H62
+# user-build-20261012: test script, userdebug/eng only (no root shell in a user build)
+ifneq ($(TARGET_BUILD_VARIANT),user)
 PRODUCT_COPY_FILES += \
     $(R6_DIR)/tools/a6l-suspend-check.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-suspend-check.sh
+endif
 
 # --- APSS hardware watchdog (cpufreq-watchdog 29 Sep; H64): vendor watchdogd service, opt-in persist.vendor.a6l.watchdog=1
 $(call inherit-product, device/hisense/a6l/watchdog/watchdog.mk)

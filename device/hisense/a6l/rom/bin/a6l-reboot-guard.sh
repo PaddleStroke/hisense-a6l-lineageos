@@ -11,6 +11,11 @@ now() { read a b < /proc/uptime; echo "${a%.*}"; }
 nr() { s=$(cat /proc/1/syscall 2>/dev/null); echo "${s%% *}"; }
 khang=$(getprop persist.vendor.a6l.rebootguard.khang); khang=${khang:-15}
 uhang=$(getprop persist.vendor.a6l.rebootguard.uhang); uhang=${uhang:-0}
+# user-build-20261012: under SELinux enforcing (every user build) no domain may ptrace init (`neverallow * init:process
+# ptrace`, system/sepolicy/private/init.te), so /proc/1/syscall is unreadable and the reboot(2) detection below never
+# fires. Then (and only then, and only if the property is unset) use a wall-clock budget from the start of the shutdown:
+# a normal shutdown + reboot(2) takes < 20 s here; init's own monitor (300 s -> sysrq c -> panic=5) stays the last resort.
+[ -z "$(nr)" ] && [ -z "$(getprop persist.vendor.a6l.rebootguard.uhang)" ] && uhang=40
 t0=$(now); tsys=; cmd=$(getprop sys.powerctl)
 log "armed: '$cmd' mode=$(cat /sys/kernel/reboot/mode) panic=$(cat /proc/sys/kernel/panic) khang=$khang uhang=$uhang"
 

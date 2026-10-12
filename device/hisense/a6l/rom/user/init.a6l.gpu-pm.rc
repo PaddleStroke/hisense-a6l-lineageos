@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# A6L user builds only (rom/user/user.mk): GPU runtime-PM policy from persist.vendor.a6l.gpu.pm_hold, the same two
+# property triggers as rom/debug/init.a6l.gpu-coredump-debug.rc (userdebug/eng), without its su exec/status/coredump
+# services. Runs in vendor_init (vendor rc), which may write sysfs_gpu (5000000.gpu subtree, rom/sepolicy/vendor genfs).
+# The build default is 1 (rom/user/user.mk); vendor.a6l.display=done (a6l-modules.sh) gates the write until the GPU probed.
+on property:persist.vendor.a6l.gpu.pm_hold=1 && property:vendor.a6l.display=done
+    write /sys/devices/platform/soc@0/5000000.gpu/power/control on
+
+on property:persist.vendor.a6l.gpu.pm_hold=0 && property:vendor.a6l.display=done
+    write /sys/devices/platform/soc@0/5000000.gpu/power/control auto
