@@ -1083,3 +1083,9 @@ Post-flash checks:
 - thermal HAL running with `thermal-a6l` caps lines;
 - camera light preview + flash;
 - /data/vendor/a6l-pon/boot-0001.txt present.
+
+**Round 28 FLASHED 12 Oct 17:33** (vendor 7d861266, readback verified).
+- Thermal HAL running.
+- The cpufreq/GPU max nodes are chowned to system at ~110 s, when the misc module group finishes; caps become writable then.
+- boot-0001.txt PON capture written.
+- 4 known avc, 0 new.
