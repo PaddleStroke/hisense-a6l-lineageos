@@ -1103,3 +1103,8 @@ Post-flash checks:
 - fstrim done (214 GiB). Pierre must compact ext4.vhdx (wsl --shutdown + diskpart compact) before the build; `build-user.sh check` refuses until C: headroom is safe.
 - Then: `build-user.sh all` (~7-8 h), `audit`, `prekit`.
 - Before the first user flash: the --wipe-data mode for the kit tools (README section 8) still has to be written and reviewed. Recommended first: a userdebug enforcing boot test (boot-only 9f96cd55).
+
+**12 Oct 22:14: user build STARTED**: `build-user.sh all` (check, build, sign, images) as a6l, OUT_DIR=out-user. Log: firmware/extracted/user-build-20261012/build-all.log (ends with exit=N).
+- vhdx compacted first (945 -> 639 GB; C: 358 GB free); WSL restarted for the other session (RetroStoneOS).
+- Next: as root, `build-user.sh audit prekit`; write and review the kit-tool --wipe-data mode (README section 8); userdebug enforcing boot test (boot-only 9f96cd55) first; then the user wipe install on the spare and the fr.laposte.idn test.
+- Battery test: collect in the morning ("since last charge").
