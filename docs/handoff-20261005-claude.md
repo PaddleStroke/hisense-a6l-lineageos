@@ -1008,3 +1008,24 @@ Build with build-round26-image.py (same camera pin); audit against round26b-vend
 NEW BUG: the speaker went silent system-wide after s2idle cycles. Even a direct tinyplay on MM1/TERT was silent with the PCM running; a TFA profile toggle didn't help; a reboot restores it. Same symptom as the live TFA reload. Agent on it: firmware/extracted/speaker-sleep-20261012.
 
 Round 27 contents so far: SELinux 0005 + audio r3 (HAL 0006/0007, daemons, call boost, XML, overlay, TFA r2) + Codec2 0010 + touch module. Waiting on the speaker-sleep fix.
+
+**Speaker-after-sleep (speaker-sleep-20261012):**
+- Round 16's pad restore only runs on resume. After 08:37 on 12 Oct the phone never suspended (the Gallery session kept Venus powered), so a fault while awake persisted until reboot.
+- The TFA driver never checks the amp (warm start, no MANSTATE/clock/watchdog check, status monitor not started for the 9894). The exact 12 Oct cause (pads vs amp) is unproven.
+- Fix: TFA 0005 health module 2decad86. It checks/repairs the pads at stream start and every 3 s while playing, checks the amp and auto-recovers (cold start) on a fault, has a suspend/resume handler, and a /sys/bus/i2c/devices/2-0034/a6l_status + a6l_ctl diagnosis.
+- Switches: a6l_health / a6l_autorecover / a6l_pad_check module params.
+- Repro: phone/speaker-sleep-repro.sh (40 s2idle cycles). If silent again before the fix: phone/tfa-diag.sh tone BEFORE rebooting.
+
+**Round 27 BUILT + AUDITED + STAGED (12 Oct), not flashed.**
+- Vendor a1f69a43; audit vs 26b: only the expected files changed.
+- Image binaries verified identical to the live-tested ones: TFA 2decad86, edt a0b67751, codec2 libs e52ca3f2/c56446bd, audio HAL in the APEX 9ac30f52.
+- Kit rom-r7c-round27-20261006 (prev = 26b); flash script scratchpad flash27.sh.
+
+Post-flash tests:
+- audio-20261010/ROM-INTEGRATION.md list;
+- TFA phase A/B (speaker-sleep README);
+- headset media and calls;
+- call volume steps;
+- Gallery leave/return;
+- 20 wake cycles;
+- SELinux permissive avc audit run x2 (selinux-20261010/selinux-audit.sh), then the enforcing boot.
