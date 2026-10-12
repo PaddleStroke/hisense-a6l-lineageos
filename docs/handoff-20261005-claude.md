@@ -1067,3 +1067,19 @@ Battery life: overnight test planned. Reset batterystats at unplug; collect batt
 - Run C (+ r14 camera): same, because 0116 never engaged ("frames full 403 light 1"): Aperture's repeating requests don't qualify as display-only preview. Agent fixing: firmware/extracted/camera-iq-20261008 0118 (+ in-app flash/torch, which doesn't work in Aperture although the QS torch works).
 - BCL module a6l_bcl: readings invalid on PM660 (VBAT min 0x7f / IBAT 0x80): unloaded, needs a different register path. PMIC capture after the 12:04 reset: SMPL on PM660 and PM660L, OFF_REASON POFF_SEQ, GP_FAULT0 (incident-20261012-1203/pon-capture-now.txt).
 - Live state: r14 core/HAL bound and mitigd running until reboot.
+
+**12 Oct r15 live test (Pierre):**
+- Torch works, flash fires.
+- Light preview engaged (photo session: "frames full 3 light 650"); 0 FaceDetectMode errors (0118 fixes repeating-request settings being wiped).
+
+**Round 28 BUILT + AUDITED + STAGED** (vendor 7d861266, prev = round27):
+- camera core r14 c78bfe0a, HAL r15 e3744657, V2g imx576 f7f2ef3a;
+- thermal HAL with skin mitigation (thermal-a6l-mitigation.conf; skin 45/48/49/50/53/58);
+- PMIC reset capture (a6l-pon-capture.sh + init.a6l.pon-debug.rc).
+
+Build script build-round28-image.py (libcamera pin c78bfe0a); flash script scratchpad flash28.sh.
+
+Post-flash checks:
+- thermal HAL running with `thermal-a6l` caps lines;
+- camera light preview + flash;
+- /data/vendor/a6l-pon/boot-0001.txt present.
