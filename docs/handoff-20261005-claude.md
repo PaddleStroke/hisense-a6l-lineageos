@@ -1108,3 +1108,10 @@ Post-flash checks:
 - vhdx compacted first (945 -> 639 GB; C: 358 GB free); WSL restarted for the other session (RetroStoneOS).
 - Next: as root, `build-user.sh audit prekit`; write and review the kit-tool --wipe-data mode (README section 8); userdebug enforcing boot test (boot-only 9f96cd55) first; then the user wipe install on the spare and the fr.laposte.idn test.
 - Battery test: collect in the morning ("since last charge").
+
+**Wipe-data mode READY for review** (user-build-20261012/wipe-mode/; offline tests 15/15 + 7/7):
+- Patched tool copies in wipe-mode/tools + wipe-data-tools.patch (not applied to tools/).
+- stage-user-kit.py (from the prekit, prev = round28; --rollback stages round 28 with a wipe).
+- Zeroes only the first MiB of metadata (sector 1472536) and userdata (sector 20322304) after the images verify. It refuses if they are mounted, and requires --wipe-data on all 3 tools + --confirm-wipe 1e529013, battery >= 50 %, round 28 as predecessor.
+- Runbook + backups in its README.
+- Expected serial hard-coded to the spare.
