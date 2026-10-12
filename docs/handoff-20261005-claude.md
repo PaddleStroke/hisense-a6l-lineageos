@@ -1041,3 +1041,11 @@ Camera issues:
 - Agent working: firmware/extracted/thermal-20261012 (stock-like skin throttling + camera CPU cost).
 
 Battery life: overnight test planned. Reset batterystats at unplug; collect batterystats, suspend_stats and wakeup sources next morning.
+
+**Thermal (thermal-20261012):**
+- Root cause: no skin (quiet_therm) throttling. Stock throttles gold at 45/40, silver and GPU at 47/40. Our MODERATE warning was at 45.
+- Fix: thermal HAL patch hal/0001 (stock-like step-wise caps on scaling_max_freq + GPU devfreq; 2 s poll; persist.vendor.a6l.thermal.mitigation=0 to disable; skin status remapped LIGHT 45 / MOD 48 / SEV 49; CRIT/EMERG/SHUT unchanged).
+- Live test without a build: mitigd/a6l-thermal-mitigd + scripts/mitigd-live.sh. Test runs: scripts/host-camera-thermal-test.sh base|mit|hal.
+- SF GPU composition of the camera preview: drm_hwcomposer flattens all layers because the rotated, scaled NV12 preview fits no DPU plane. Drafts sf/0007 (GPU only the failing layer), 0008 (cursor SSPP); not built.
+- Camera CPU (SWIsp 30 %, HAL 31 %) NOT delivered. Unreviewed drafts 0116/0117 in the session scratchpad cam/ (if still present).
+- Charging skin budget not done (belongs in a6l-chg-guard).
