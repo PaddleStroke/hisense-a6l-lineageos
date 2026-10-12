@@ -999,3 +999,12 @@ Build with build-round26-image.py (same camera pin); audit against round26b-vend
 - Live swap: phone/wt.sh install (LCD on), test 20 wake cycles with wt.sh start A/B.
 - ROM: copy the module into rom/prebuilt/vendor/lib/modules + git apply 0003.
 - DPU -110 on LCD power-on without s2idle is real but harmless (~50 ms); optional msm fix eink-round6/kernel/0001.
+
+**12 Oct live tests (Pierre):**
+- Codec2 0010: the Gallery freeze is gone.
+- Touch module a0b67751: 19 wakes, 0 no-touchable drops, every wake unlocked. The misses were Android's falsing classifier on short swipes, not the bug.
+- Both are now in the tree (Codec2 0010 applied in the WSL external/v4l2_codec2; edt-ft5x06.ko a0b67751 in the WSL prebuilt modules, 26b module backed up).
+
+NEW BUG: the speaker went silent system-wide after s2idle cycles. Even a direct tinyplay on MM1/TERT was silent with the PCM running; a TFA profile toggle didn't help; a reboot restores it. Same symptom as the live TFA reload. Agent on it: firmware/extracted/speaker-sleep-20261012.
+
+Round 27 contents so far: SELinux 0005 + audio r3 (HAL 0006/0007, daemons, call boost, XML, overlay, TFA r2) + Codec2 0010 + touch module. Waiting on the speaker-sleep fix.
