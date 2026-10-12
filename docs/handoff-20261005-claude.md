@@ -1089,3 +1089,10 @@ Post-flash checks:
 - The cpufreq/GPU max nodes are chowned to system at ~110 s, when the misc module group finishes; caps become writable then.
 - boot-0001.txt PON capture written.
 - 4 known avc, 0 new.
+
+**12 Oct evening:**
+- fr.laposte.idn (L'Identité Numérique, needed for the INPI login) self-crashes in its protection lib libidp-shared.so: deliberate SIGSEGV at 0, 3x, then "crashed too many times". It probes userdebug_or_eng_prop. Likely triggers: userdebug + test-keys + permissive + root; hardware attestation (unlocked bootloader) can't be passed legitimately.
+- Plan: release "user" build signed with the release keys (/home/a6l/a6l-release-keys-20260927.tar.gz), enforcing, debug services gated off. Test the app on the spare (data wipe needed for test-keys -> release-keys).
+- Prep agent writing firmware/extracted/user-build-20261012 (README + build-user.sh); no build until Pierre says go.
+- Disk: WSL 38 GB free / 1 TB (out/ 132 GB, rom-v2 205G, kernel 198G, scratch 61G, rom-v1 33G, /root 72G); C: 43 GB free. A cleanup proposal is pending Pierre's approval.
+- Battery test: unplugged ~17:40 at 99 % (stats reset not done; use "since last charge" tomorrow).
