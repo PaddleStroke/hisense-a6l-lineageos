@@ -1159,3 +1159,8 @@ Post-flash checks:
 - Integrated: rom/init/init.a6l.cpuidle.rc + rom.mk (persist.vendor.a6l.cpuidle.pc_only=1, all variants). The agent's 0001 patch had a literal "\n" in the PRODUCT_COPY_FILES line; fixed by hand. vendor_init may write sysfs_type (enforcing OK).
 - TPS65185 fault-clear module (0cc74f3b, srcversion 3B7C34EE, CRCs match) installed in the WSL tree rom/prebuilt/vendor/lib/modules (backup /root/bak-20261013/tps65185.ko.60d28b6c); record device/hisense/a6l/kernel/a6l-tps65185-0001-clear-latched-faults.patch. Not live-tested (can't reload under the panel).
 - Both need a vendor rebuild (userdebug round 29 and/or the user build).
+
+**13 Oct 11:23: user build REBUILT with F1 + TPS65185 fix** (incremental, 6 min build + sign + images; audit PASS):
+- New prekit /home/a6l/user-build-20261012/kit-images: boot 9f96cd55, dtbo 69251122, system 1f2a246c, vendor fdb326df (tps65185.ko 0cc74f3b, init.a6l.cpuidle.rc, persist.vendor.a6l.cpuidle.pc_only=1 verified inside the erofs).
+- Last night's prekit kept as kit-images-20261013-0235 (system da463a29, vendor 96808b55).
+- Enforcing boot test kit staged: laptop rom-r7c-round28e-20261006 = round 28 with boot 9f96cd55 (stage-round4-kit.py now also accepts 9f96cd55 as a boot .img). Script scratchpad/flash28e.sh (copied to the laptop /tmp). Rollback = re-stage with boot 10affa76.
