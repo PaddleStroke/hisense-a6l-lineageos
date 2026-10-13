@@ -1,42 +1,45 @@
 # A6L port checklist
 
-## Current status — 9 Oct 2026 00:05 (installed: round 23)
+## Current status — 13 Oct 2026 (project paused)
 
-Installed: boot 10affa76 (force-normal cmdline, Venus CX DTB, cpufreq OSM nodes) + vendor 475d6519 + system 83226f56
-(round 23: round 20 + ath10k 0005 Wi-Fi-off fix + SELinux passes 2-4 + e-ink 0055 idle back-off + 0056 reader-sleep allowlist). Kits: `/home/pierrelouis/A6L-usb-20260915/rom-r7c-round*-20261006` on the laptop; builds and audits in
-`firmware/extracted/pm-logging-20261005/round*-{vendor,system}-*` (build-round12-image.py, audit-round*-*.py,
-stage-round4-kit.py). Handoff detail: `docs/handoff-20261005-claude.md`. SELinux: permissive (prep rules, pass 1).
+**Builds:**
+- **Round 29b, userdebug.** The recommended development ROM. Boot 9f96cd55 (SELinux **enforcing**), dtbo 69251122, vendor 4f7e6654, system 83226f56 (round 23). Laptop kit `rom-r7c-round29b-20261006`.
+- **User/release-keys build.** Installed on the spare on 13 Oct. Boot 9f96cd55, vendor 339693b6, system d7ed7fdf. Kit `rom-r7c-user-20261013`. The way back is the wipe kit `rom-r7c-round29b-rewipe-20261013`.
+- Builds and audits live in `firmware/extracted/pm-logging-20261005/` (`build-round29-image.py`, `audit-round29-vendor.py`, `stage-round4-kit.py`) and `firmware/extracted/user-build-20261012/` (`build-user.sh`, `wipe-mode/`).
+- Full history: `docs/handoff-20261005-claude.md`. Upstreaming notes: `docs/upstreaming.md`.
+
+**Why the user build was made, and the result:** the user build was meant to run La Poste "L'Identité Numérique" (`fr.laposte.idn`). It still refuses the device. Its protection library crashes the app on purpose at launch. Ruled out:
+- USB debugging;
+- root (none on the user build);
+- the build type (user/release-keys);
+- the device identity (Hisense/A6L).
+
+The remaining signals are the unlocked bootloader (`ro.boot.verifiedbootstate=orange`), the hardware attestation and the lack of Google certification. They are not addressed on purpose, because addressing them would mean spoofing an integrity check. The bootloader cannot be relocked with non-Hisense-signed images.
 
 Legend: **OK** = verified on the phone (by Pierre where noted) · **PARTIAL** = works with known gaps · **UNTESTED** = built in,
 not yet exercised · **OPEN** = not working / not started.
 
 | Area | Status | Evidence / notes | Next |
 |---|---|---|---|
-| Boot, restart with USB (warm-boot backlit black) | OK | charger-mode trap fixed by `androidboot.mode=normal` (fa8ff3c); every reboot on 7-8 Oct normal | — |
+| Boot, restart | OK | Restart from Android works under enforcing (13 Oct, back in 45 s). | The first boot after the user wipe landed in the diagnostic recovery once; it was left with a sysrq reboot. The wipe flow should end with a reboot, not a power-off. |
 | LCD display, touch, GPU | OK | — | — |
-| E-ink mirror, LCD<->e-ink switch | OK (Pierre) | switch fast (0042/0045/0048 + hwc 0006 GPU compose); tears fixed (0048/0051); sleep-screen clock OK (lock_clock was 0, now 1; 0054 logs who changes it); carrier marquee off on e-ink (0053) | per-app reader sleep + mirror idle back-off (eink-round9) |
-| E-ink reader sleep (Android sleeps between pages) | UNTESTED | 0044 phase 1 + 0056 allowlist (Reader apps default / All / custom), Settings > E-ink, needs Screen lock None; vol keys wake + turn page; 0055 mirror idle back-off (100->1000 ms on static pages) | attended test plan eink-round9-20261008/README Part 3 (~45 min) |
-| CPU frequency (CPRh + OSM DVFS) | OK | rev 13b: L2 SAW AVS init was the missing piece; both clusters to top (1843/2208 MHz) on fused open-loop voltages (silver 612-900 mV, gold 692-940 mV); sweep, 3 min all-core + 1080p encode stress OK; loaded at boot (round 19+); opt-out `persist.vendor.a6l.cpufreq=0` | closed loop CPR later; one unexplained freeze (cpufreq + live venus module swap), watch |
-| Hardware video encoder (Venus H.264) | OK (Pierre) | Aperture 720p/1080p, High@4.1, 30 fps; cold power cycle (prod3+), sleep OK | — |
-| Hardware video decoder (H.264/HEVC/VP8/VP9) | OK | prod5e + Codec2 0007-0009, b11d ACCEPT=1 (Surface 1080p ~140 fps, bit-exact); codecs listed at boot (round 20: venus before cpufreq + media restart) | Pierre: Gallery playback smoothness |
-| Camera: 3 sensors, photo/video, tap-to-focus | OK (Pierre, round 26b) | core r13 8755e24c, IPA r12 56e026e9, HAL r9b 0ea0ca71, tuning V2f: neutral colour, no colour dance, fast AE, tap-to-focus, detail/grain/blacks near stock (front + wide equivalent to stock), camera switch keeps each camera's own tone curve (0115) | daylight brightness check vs stock; video range tag (full-range BT.601 tagged limited BT.709); 1080p media_profiles |
-| Speaker / audio playback | OK (Pierre) | after-sleep silence fixed (round 16: LPI pad restore on resume + sm8250 BE wakeup source) | — |
-| Microphone / recording audio | OK | tinycap + Aperture audio track | — |
-| Wi-Fi (WCN3990 / ath10k) | OK | connects at boot (cfg80211 early); WoWLAN at suspend (no teardown crash); Wi-Fi-off crash root-caused (TXBF reset after VDEV_DOWN) and fixed in ath10k_core 0005 quirks=1 (live A/B: 4 passes, control crashes) | verified on round 21: Wi-Fi off/on, no fatal |
-| Modem / mobile data / calls / SMS | PARTIAL (Pierre) | data (Wi-Fi off too), SMS, calls in/out, in-call speaker (26b) OK. VoLTE: carrier (Orange) refuses Hisense devices, not a ROM bug. OPEN: in-call volume keys change the UI only (VSS_IVOLUME_CMD_SET_STEP fails, no vocproc volume table); wired headset not routed (jack detected, h2w AVAILABLE, but HPH path never enabled) -> firmware/extracted/audio-20261010 in progress | fix volume + headset |
-| Bluetooth | OK (Pierre, 10 Oct) | pairing + A2DP audio | — |
-| GNSS, sensors (accel, gyro, prox/light, hall) | OK (Pierre, 10 Oct) | GPS fix, auto-rotate, light sensor (auto-brightness), proximity | hall/cover not checked |
-| Suspend / battery | PARTIAL | s2idle works; "hard LOCKUP" watchdog reports in s2idle are false positives; mdss_ahb_clk stuck-on warning at suspend (cosmetic); backlit-black panel on timer-only wakes (bug, power) | power measurement; mdss fix (mdss-ahb-20261007) |
-| Charging / battery status (BMS) | OK (Pierre; in ROM since round 24) | "Not charging" root cause: pmi8998_fg loads before qcom_smbx, never links the charger, and its current-sign fallback was inverted (positive = charging) -> DISCHARGING -> "Not charging". Fixed module e0587abf (live charger status by name, sign fixed; bms-20261009). QC 9 V never ran when moving the cable from the laptop: the UDC stays "configured", the guard kept the D+ pull-up, APSD saw OCP. Guard Q8 trusts APSD OCP/FLOAT over the stale UDC state -> pull-up off, rerun, QC3 8.8 V, battery 2.5 A (47 -> 50 % in 2 min); back on the laptop the pull-up reconnects (adb OK). Speed label: no voltage_max, Android assumes 5 V; 0.5 A at plug-in = "Charging slowly" until the 2 A limit is read | speed label confirmed "Charging rapidly" ~1 min after plug-in (Pierre, 9 Oct); ship in next round; optional voltage_max in qcom_smbx so the label is right from the first seconds |
-| SELinux enforcing | OPEN | round 26b full-use boot: new denials from camera HAL (gralloc/mapper/composer fd, default_prop knobs), mediacodec memfd of apps (HW decode), a6l props from Settings/Dualux, q6voiced proc_asound, rmtfs net_admin -> pass 5 in progress (firmware/extracted/selinux-20261010), then permissive 0-avc run, then enforcing boot | pass 5 |
-| Google apps / Play Protect | PARTIAL | device registered (GSF id), message gone. Play Store showed Google Maps "not compatible": ro.opengles.version unset -> reqGlEsVersion=0x0; fixed in rom.mk (196609 = GLES 3.1, Mesa FD512), round 24 | flash round 24, install Maps |
-
-| Stability | OPEN | 9 Oct 11:32: one spontaneous reset during the first cellular-data session (Play Store, gold cluster at 70 C, on battery): screen black ~2 s then boot logo, no button press (Pierre); no panic or log (rings just stop), pstore empty. powerup_reason=HRST is set on almost every boot and proves nothing; the hw watchdog is not armed. Suspects: PMIC power fault (no LMh/BCL current limiting yet), modem/IPA under data (ipa2_lite, anoc2 SMMU), CPU DVFS. Kit: firmware/extracted/crash-20261009 (pon-reason.sh, krec session, warm-reset module for ramoops, repro scripts) | after any reset: run pon-reason.sh BEFORE rebooting; kernel.panic=5 + a6l_diag 0400 next round |
-| USB while asleep | OPEN | adb drops at every system suspend on a PC port (dwc3 "HS-PHY not in L2", QSCRATCH restore + re-enumeration at each resume); hidden before by stay-awake. Charging continues | keep the link in L2 across suspend like stock |
-
-### Known caveats for daily use
-- Round 21: Wi-Fi off/airplane no longer crash the modem.
-- Playback/recording of heavy video while the CPU is pinned at max is untested beyond the 3 min stress.
+| E-ink mirror, LCD<->e-ink switch, e-ink key wake, lock clock | OK (Pierre, 29b enforcing) | Enforcing needed the mirror rule `gpu_device:dir search` (round 29b) and `hal_graphics_composer_default:fd use` (in the tree and the user build). TPS65185 latched-UVLO fix: tps65185.ko 0cc74f3b (round 29+), see `firmware/extracted/eink-tps-20261013`. | — |
+| CPU frequency (CPRh + OSM) | OK | Both clusters reach the top frequency (1843/2208 MHz). | Closed-loop CPR. |
+| CPU idle / suspend power | PARTIAL | Overnight drain on 12-13 Oct was 349 mA: the gold cluster busy-looped in s2idle on PSCI states the TZ rejects. Fix F1: `init.a6l.cpuidle.rc` (WFI + CPU power collapse only, `persist.vendor.a6l.cpuidle.pc_only=1`, round 29+). Live test: CLOCK_MONOTONIC frozen 93 % of the time while screen off. See `firmware/extracted/battery-20261012/README.md`. | Measure an unplugged overnight run (`measure/a6l-pm-log.sh`). Phase 2: L2 power collapse via DT (`dt-psci-idle/`). mdss_ahb fix. |
+| Hardware video encoder / decoder (Venus) | OK (Pierre) | Gallery freeze fixed (Codec2 0010, round 27). | Video range tag. |
+| Camera: 3 sensors, photo/video, AF, tap-to-focus, flash/torch | OK (Pierre, round 28) | Core r14 c78bfe0a, HAL r15 e3744657, tuning V2g. Tap-to-focus, fast AE, no colour dance. HAL NULL-settings bug fixed (0118). | Image quality is still slightly below stock. |
+| Speaker, earpiece, wired headset, microphone | OK (Pierre) | In-call volume keys and headset routing fixed (round 27: audio r3, HAL 0006/0007, TFA 0005 health). | — |
+| Wi-Fi (WCN3990 / ath10k) | OK | Works under enforcing. Needs the modem up (rmtfs). | `wlan0` MAC is not set ("mac-failed": `ip` is a system binary), so it stays random. |
+| Modem / data / calls / SMS | PARTIAL (Pierre) | Data, SMS, calls, in-call speaker, volume and headset work. Enforcing blocker fixed in 29b: rmtfs/tqftpserv AT_SECURE dropped LD_LIBRARY_PATH; fix `allow a6l_radio_ctl ... noatsecure`. | VoLTE: the carrier (Orange) refuses Hisense devices; not a ROM bug. |
+| Bluetooth, GNSS, sensors | OK (Pierre) | — | Hall/cover not checked. |
+| Charging / battery status | OK (Pierre) | pmi8998_fg fix + guard Q8/Q9; QC3 9 V. | voltage_max for the speed label. |
+| Thermal | OK | Skin mitigation in the thermal HAL (round 28). | Charging skin budget in the guard. |
+| SELinux | **OK, enforcing** (13 Oct) | Feature pass on 29b enforcing: camera ×3, video, Gallery/YouTube, BT, Wi-Fi, e-ink, restart. Remaining denials are AOSP/GMS noise. | — |
+| User build (release keys) | PARTIAL | Builds, signs and audits; the wipe install works. | **Bug:** USB debugging is ON by default (`persist.sys.usb.config=adb` is set at runtime; the images do not set it; source not found yet). First-boot setup with USB plugged in: Google "Copy apps & data" crashes (`UsbD2dMigrateService` NPE) and loops the wizard; unplug USB during setup. |
+| Google apps / Play Store | OK | Maps installs (GLES property, round 24). | — |
+| **Stability** | **OPEN** | SMPL resets under load on 9 Oct and 12 Oct, with no BCL/LMh current limiting. On 13 Oct, on the user build, two hard resets (`powerup_reason=HRST`, FSCK at next boot) during heavy use: an app crash loop, and the Play Store. The user build keeps no kernel log, so the cause is unknown. Round 29b was not soak-tested. | Soak 29b (userdebug keeps kmsg in /data via a6l_bootlog_data). Ramoops/pstore. BCL register path. |
+| USB while asleep | OPEN | adb drops at every suspend (dwc3 not kept in L2). | Keep the link in L2 like stock. |
+| /data encryption | OPEN | /data is plain ext4 (no FBE/metadata encryption). | — |
 
 ---
 

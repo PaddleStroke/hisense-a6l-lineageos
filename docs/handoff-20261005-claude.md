@@ -1189,3 +1189,15 @@ Post-flash checks:
 - Run (laptop, phone in LineageOS, only adb device, battery >= 50 %): `cd rom-r7c-user-20261013/rom-v2 && python3 extra/start-wipe-flash.py --confirm-wipe 1e529013`; progress `python3 extra/flash-progress-wipe.py`.
 
 **13 Oct 13:56-14:02: USER ROM INSTALLED on the spare (wipe).** start-wipe-flash.py --confirm-wipe 1e529013 from round 29b: vendor 339693b6 + system d7ed7fdf written and read back, boot/dtbo unchanged_skipped, metadata + userdata first MiB zeroed and verified (30e14955 = 1 MiB of zeroes), invariants unchanged, power off. Log rom-r7c-user-20261013/logs/flash-wipe-20261013T115558Z.log. Next: first boot (formats /data), setup wizard, About = user/release-keys, Developer options off, then fr.laposte.idn.
+
+**13 Oct afternoon: user ROM tested, IDN refused; project PAUSED.**
+- First boot after the wipe: the phone landed in the diagnostic recovery (cmdline androidboot.mode=recovery, powerup_reason=USB_CHG, empty BCB). A sysrq reboot then gave a normal first boot (/data formatted, ~3 min). Logs: laptop rom-r7c-user-20261013/logs/userboot1.
+- Setup wizard: com.google.android.apps.restore UsbD2dMigrateService NPE loops "Getting your phone ready" while USB is connected. Unplugging fixes it. "Speech Recognition and Synthesis keeps stopping" once.
+- USB debugging comes up enabled on the user build: persist.sys.usb.config=adb and adbd running, with Developer options hidden. No image sets it (grepped system/vendor erofs). AdbService.systemReady derives ADB_ENABLED from persist.sys.usb.config, so something sets it before system_server. TODO: find it.
+- fr.laposte.idn (from Play): SIGSEGV at 0 in libidp-shared.so right after loading libbacc3c.so (its RASP), 2 call paths, before any network.
+  - Still crashes with adb_enabled=0.
+  - No su/magisk/busybox in the images; identity Hisense/A6L; ro.debuggable=0; release-keys.
+  - Remaining signal: ro.boot.verifiedbootstate=orange (+ attestation / certification). Not pursued: spoofing integrity is out of scope (Pierre informed). A draft complaint to La Poste / Services Publics+ was given in chat.
+- Two hard resets on the user build: ~15:51 during the IDN crash loop (tombstone cut, FSCK at next boot) and ~16:36 in the Play Store. powerup_reason=HRST (note: HRST is also set by sysrq reboots, so it is not proof of a watchdog). No kernel log is kept on the user build, so the cause is unknown. Sluggish UI right after (FSCK + dexopt), normal later.
+- Recommended restart point: roll back to 29b userdebug (wipe kit rom-r7c-round29b-rewipe-20261013, staged + verified, `python3 extra/start-wipe-flash.py --confirm-wipe <serial>` in that kit; the kit dir has no rom-v2 subdir on the laptop). Then soak-test with the a6l_bootlog_data kmsg in /data to catch the freeze.
+- Docs written today: docs/port-status.md (current status rewritten), docs/upstreaming.md, root README.md (flashing guide).
