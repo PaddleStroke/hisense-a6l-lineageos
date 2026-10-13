@@ -1126,3 +1126,12 @@ Post-flash checks:
   2. Userdebug enforcing boot test (boot-only 9f96cd55) first.
   3. stage-user-kit.py + wipe flash on the spare (backups first).
   4. Test fr.laposte.idn.
+
+**13 Oct morning: overnight drain** (battery-20261012):
+- Real discharge ~10 %/h screen off (99 % 18:14 -> 4 % 04:04, ~350 mA avg); the phone died around 04-05h.
+- batterystats: awake 66 % of screen-off time with no big wakelock. FailedSuspendDelay 341, wakeup reason unknown 1046.
+- Kernel ring: s2idle cycles every ~26-30 s, each with a dpm_run_callback WARN; "Some devices failed to suspend".
+- The e-ink minute clock wakes the phone 590 times (~11 min total).
+- Agent investigating deep sleep / RPM low-power states / the failing suspend callback.
+- After the empty battery the gauge re-learns: it showed 3 % at 3.83 V while charging.
+- PON at the next boot: SMPL latched + FAULT_REASON2 PBS_WATCHDOG_TO, powerup_reason USB_CHG, mode=charger.
