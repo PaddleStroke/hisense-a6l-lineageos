@@ -60,6 +60,9 @@ allow a6l_modules kernel:key search;                           # module signatur
 allow a6l_modules self:capability net_admin;
 # chmod 0664 on the SMGR IIO buffer files: CAP_FSETID is only checked to keep a setgid bit we never set
 dontaudit a6l_modules self:capability fsetid;
+# insmod msm.ko: the fbdev/fbcon setup probes CAP_SYS_ADMIN (enforcing 13 Oct, 23.54 s, right after "Initialized msm-kms");
+# the display comes up normally without it (display done fails=0), so do not grant it
+dontaudit a6l_modules self:capability sys_admin;
 # /proc/sys/kernel/printk: loglevel 7 around insmod msm.ko (restart-hang console trace), restored afterwards
 allow a6l_modules proc_a6l_printk:file rw_file_perms;
 # eink-round6e touch_rebind(): echo 1-0038 > /sys/bus/i2c/drivers/edt_ft5x06/bind (front touch lost its probe race)

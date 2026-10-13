@@ -1164,3 +1164,9 @@ Post-flash checks:
 - New prekit /home/a6l/user-build-20261012/kit-images: boot 9f96cd55, dtbo 69251122, system 1f2a246c, vendor fdb326df (tps65185.ko 0cc74f3b, init.a6l.cpuidle.rc, persist.vendor.a6l.cpuidle.pc_only=1 verified inside the erofs).
 - Last night's prekit kept as kit-images-20261013-0235 (system da463a29, vendor 96808b55).
 - Enforcing boot test kit staged: laptop rom-r7c-round28e-20261006 = round 28 with boot 9f96cd55 (stage-round4-kit.py now also accepts 9f96cd55 as a boot .img). Script scratchpad/flash28e.sh (copied to the laptop /tmp). Rollback = re-stage with boot 10affa76.
+
+**13 Oct 11:37: FIRST ENFORCING BOOT (round28e = round 28 + boot 9f96cd55).** Booted normally (~1 min), Enforcing, all A6L_ROM groups fails=0, domains OK (q6voiced, eink, einklock, mediacodec, diag, hal_camera_default).
+- BLOCKER found: rmtfs + tqftpserv restart-loop, "CANNOT LINK EXECUTABLE ... libqrtr.so not found" -> no modem. Cause: a6l-radio.sh passes LD_LIBRARY_PATH, and the a6l_radio_ctl -> a6l_rmtfs/a6l_tqftpserv transition is AT_SECURE, so the linker drops it (no avc logged). Fix: `allow a6l_radio_ctl { a6l_rmtfs a6l_tqftpserv }:process noatsecure;` (a6l_radio.te).
+- insmod msm.ko sys_admin (fbcon probe) -> dontaudit (a6l_modules.te). The other 8 denials are shell syslog_read (expected).
+- The user build fdb326df has the same bug -> must be rebuilt after this fix. Next: userdebug vendor round 29 (F1 + TPS + this) for the enforcing feature pass, then the user rebuild.
+- Spare backup before the wipe: laptop /home/pierrelouis/A6L-usb-20260915/backup-spare-20261013 (persist props, a6l-pon, DCIM 1.2 GB, Pictures).

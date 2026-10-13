@@ -29,6 +29,10 @@ set_prop(a6l_radio_ctl, ctl_stop_prop)
 domain_auto_trans(a6l_radio_ctl, a6l_rmtfs_exec, a6l_rmtfs)
 domain_auto_trans(a6l_radio_ctl, a6l_tqftpserv_exec, a6l_tqftpserv)
 domain_auto_trans(a6l_radio_ctl, a6l_diag_exec, a6l_diag)
+# enforcing 13 Oct: rmtfs/tqftpserv find libqrtr.so/libc++.so next to them through LD_LIBRARY_PATH (a6l-radio.sh). A domain
+# transition is an AT_SECURE exec, so the linker dropped LD_LIBRARY_PATH: "CANNOT LINK EXECUTABLE ... libqrtr.so not
+# found" in a restart loop, no modem. Permissive never showed it (the denied noatsecure check was allowed).
+allow a6l_radio_ctl { a6l_rmtfs a6l_tqftpserv }:process noatsecure;
 
 # rmtfs: modem EFS over QRTR, shared memory /dev/qcom_rmtfs_mem1, partitions modemst1/modemst2/fsg/fsc (-P)
 type a6l_rmtfs, domain;
