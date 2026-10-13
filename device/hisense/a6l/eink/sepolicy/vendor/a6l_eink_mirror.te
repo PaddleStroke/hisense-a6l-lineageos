@@ -33,6 +33,9 @@ get_prop(a6l_eink_mirror, boot_status_prop)
 # tclass=fd, path="/dmabuf:"): the PRIME fd of a scanout buffer (GETFB2 handle -> drmPrimeHandleToFD) is the dma-buf file
 # the allocator HAL created; mmap'ing it for the capture needs fd use on the allocator's domain.
 allow a6l_eink_mirror hal_graphics_allocator_default:fd use;
+# enforcing 13 Oct (round 29b, x2): some scanout buffers are the composer's own (client target / GPU composition), so the
+# PRIME fd belongs to hal_graphics_composer_default; denied = that mirror frame is skipped
+allow a6l_eink_mirror hal_graphics_composer_default:fd use;
 # eink-round5: display-transition markers in the kernel log (/dev/kmsg write, as hal_health)
 allow a6l_eink_mirror kmsg_device:chr_file w_file_perms;
 # eink-round6: /dev/kmsg is 0600 root:root, the markers go through /dev/kmsg_debug (0622 on userdebug builds)

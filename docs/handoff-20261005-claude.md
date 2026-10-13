@@ -1170,3 +1170,13 @@ Post-flash checks:
 - insmod msm.ko sys_admin (fbcon probe) -> dontaudit (a6l_modules.te). The other 8 denials are shell syslog_read (expected).
 - The user build fdb326df has the same bug -> must be rebuilt after this fix. Next: userdebug vendor round 29 (F1 + TPS + this) for the enforcing feature pass, then the user rebuild.
 - Spare backup before the wipe: laptop /home/pierrelouis/A6L-usb-20260915/backup-spare-20261013 (persist props, a6l-pon, DCIM 1.2 GB, Pictures).
+
+**13 Oct 12:10-12:58: round 29b ENFORCING, Pierre: "everything works".**
+- Round 29 (vendor 9629b7d0, staged as round29e, not flashed) = F1 + TPS65185 fault clear + radio noatsecure + insmod sys_admin dontaudit.
+- Round 29b (vendor 4f7e6654) = 29 + e-ink mirror gpu_device:dir search. Flashed 12:10 with boot 9f96cd55 (kit rom-r7c-round29b-20261006, prev round28e).
+- Enforcing feature pass: cameras x3 + video, Gallery/YouTube, Bluetooth, Wi-Fi (modem remoteproc up, wlan0 UP), e-ink switch both ways, e-ink key wake, lock clock: all OK.
+- Found on the 28e enforcing boot (11:37): no modem/Wi-Fi (rmtfs/tqftpserv AT_SECURE, LD_LIBRARY_PATH dropped) and no e-ink mirror/key wake (/dev/dri search). Both invisible in permissive.
+- Remaining denials: a6l_eink_mirror fd use on hal_graphics_composer_default (x2, now allowed in the tree, not in 29b), bluetooth search gms data (AOSP/GMS, ignore), isolated_app content_capture (AOSP, ignore), shell syslog_read (expected).
+- wlan0 MAC still "mac-failed" (same as permissive; ip is a system binary, release-prep doc 3.4): random MAC.
+- Not done yet: restart from the power menu under enforcing.
+- User build: previous prekits archived (kit-images-20261013-0235, -1123, -1158); rebuilding with all of the above.
