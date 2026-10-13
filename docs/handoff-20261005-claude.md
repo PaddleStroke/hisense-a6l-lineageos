@@ -1144,3 +1144,10 @@ Post-flash checks:
 - Fix F1: disable cpuidle states 1,3,4,5 on all CPUs. fix-cpuidle/init.a6l.cpuidle.rc + 0001 patch (adds persist.vendor.a6l.cpuidle.pc_only=1 for all variants), not yet applied to device/.
 - Live test: 10:28 `a6l-cpuidle.sh apply` on round 28 (non-persistent), baseline in /data/local/tmp/cpuidle-before.txt and cpuidle-f1-start.txt; wakelock released. Check with `a6l-cpuidle.sh delta /data/local/tmp/cpuidle-f1-start.txt` after a sleep: expect state2 s2idle_usage on all 8 CPUs, rejected +0, no new LOCKUP lines (count 71 at start).
 - Later: overnight measure with measure/a6l-pm-log.sh (no wakelock); phase 2 = L2 power collapse via DT (dt-psci-idle/), mdss fix, qcom_stats.ko for RPM counters.
+
+**13 Oct 10:36: e-ink clock frozen since boot (8:56) = TPS65185 latched UVLO.**
+- Boot with the battery at ~1 %: the e-ink frames at 38/58/119 s were OK. From the first suspend (167 s) every rail power-up failed: "tps65185 0-0068: A6L: rails did not reach power good", a6l_epdd "FAIL rails on: Connection timed out". INT1 (reg 07) = 0x04 = UVLO latched.
+- The driver only reads INT1/INT2 in its IRQ thread, which never runs (the PG pin is unusable; it polls reg 0x0f). Reading INT1/INT2 via debugfs regmap cleared the fault, and the 10:36 frame drew OK.
+- Fix: clear and log INT1/INT2 before PWRUP; on a PG timeout, read again and retry once. An agent is building it in /home/a6l/eink-tps-20261013 (shipped source = /home/a6l/eink-work/tps65185-adc-20261003, ko 60d28b6c).
+- Live workaround if seen again: `cat /sys/kernel/debug/regmap/0-0068/registers` (as root; needs debugfs mounted).
+- F1 test restarted 10:36:39 (baseline re-saved in cpuidle-f1-start.txt), wakelock released.
