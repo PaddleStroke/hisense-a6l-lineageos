@@ -1115,3 +1115,14 @@ Post-flash checks:
 - Zeroes only the first MiB of metadata (sector 1472536) and userdata (sector 20322304) after the images verify. It refuses if they are mounted, and requires --wipe-data on all 3 tools + --confirm-wipe 1e529013, battery >= 50 %, round 28 as predecessor.
 - Runbook + backups in its README.
 - Expected serial hard-coded to the spare.
+
+**13 Oct night: USER BUILD DONE.**
+- Build 4h09, OK. Signing needed --allow_gsi_debug_sepolicy: the GSI system_ext ships userdebug_plat_sepolicy.cil, inert without force_debuggable (the script now refuses if the boot ramdisk ever has it).
+- build-user.sh's key check was replaced by AOSP check_target_files_signatures on the signed zip: 0 installed APK/APEX test-signed, except the CTS shim APEX (presigned by AOSP). Google apps are presigned by Google.
+- The audit's su-rc check fixed to ignore comments; audit PASSED.
+- Prekit at /home/a6l/user-build-20261012/kit-images: boot 9f96cd55 (enforcing), dtbo 69251122 (r28), system da463a29, vendor 96808b55.
+- Next with Pierre:
+  1. Review the wipe mode.
+  2. Userdebug enforcing boot test (boot-only 9f96cd55) first.
+  3. stage-user-kit.py + wipe flash on the spare (backups first).
+  4. Test fr.laposte.idn.
