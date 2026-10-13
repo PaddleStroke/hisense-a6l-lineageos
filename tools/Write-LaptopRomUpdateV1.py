@@ -12,6 +12,11 @@ Started by Run-LaptopRomUpdate-v1.py (never by hand for a real run). Kit layout 
   --transport edl | adb-recovery    (EDL entry from LineageOS is unproven; adb-recovery = V74 diagnostic recovery)
   --dry-run            offline: tool/image/compat hashes, compat rules, plan allowlist, guard self-test. No USB, no adb.
 Never written in any mode: userdata, metadata, persist, modemst1/2, fsg, fsc, misc, recovery, vbmeta, devinfo, GPT.
+  --wipe-data          (user-build-20261012/wipe-mode) update/backup-only, adb-recovery only, on a kit staged for it
+                       (update/wipe-data.json): accepts ONLY the test-keys <-> release-keys compat problems
+                       (RomUpdateLayoutV1.wipe_compat) and, after the images are written and read back, zeroes the first
+                       MiB of metadata and of userdata (readback = zero hash) so the first boot formats both. update is
+                       hash-only. Exception to the line above: exactly those two MiB, nothing else of metadata/userdata.
 """
 import argparse
 from datetime import datetime, timezone
@@ -93,8 +98,9 @@ def sha_big(p):
     return h.hexdigest()
 
 
-def load_kit(verify_files=True):
-    """-> images, prev_images, prev_compat, new_compat. Verifies tool pins and every data file hash."""
+def load_kit(verify_files=True, wipe_data=False):
+    """-> images, prev_images, prev_compat, new_compat. Verifies tool pins and every data file hash.
+    wipe_data: the kit must have been staged for it (update/wipe-data.json, pinned in update/SHA256SUMS)."""
     if verify_files:
         tools = json.loads((UPD / 'rom-update-tools.json').read_text())
         for name, digest in tools['files'].items():
@@ -104,6 +110,10 @@ def load_kit(verify_files=True):
             digest, name = line.split(None, 1)
             if sha_big(UPD / name.strip()) != digest:
                 raise E.StopRun('update data differs: ' + name)
+    if wipe_data:
+        listed = [line.split(None, 1)[1].strip() for line in (UPD / 'SHA256SUMS').read_text().splitlines() if line.strip()]
+        if 'wipe-data.json' not in listed or json.loads((UPD / 'wipe-data.json').read_text()).get('wipe_data') is not True:
+            raise E.StopRun('--wipe-data on a kit not staged for it (no pinned update/wipe-data.json)')
     pins = json.loads((ROM / 'rom-v1-pins.json').read_text())
     prev = json.loads((UPD / 'prev-rom-v1-pins.json').read_text())
     images = {n: (ROM / pins['images'][n]['file'], pins['images'][n]['bytes'], pins['images'][n]['sha256']) for n in U.UPDATE_WRITABLE}
@@ -116,21 +126,64 @@ def load_kit(verify_files=True):
     return images, prev_images, prev_compat, new_compat
 
 
-def dry_run(mode, backup_policy=None):
+def wipe_transport_selftest():
+    """The adb transport allowlist, offline (no adb): with wipe_data it takes exactly the two zero ranges, all-zero
+    payloads only; without it, neither; never persist/EFS/misc/recovery/vbmeta/devinfo or a longer userdata range."""
+    import RomUpdateAdbV1 as A
+    def dev(w):
+        d = A.AdbRecoveryDevice('selftest', adb='/nonexistent/adb', wipe_data=w)
+        d.parts = {n: ('/dev/null', s, c) for n, (s, c) in L.PARTITIONS.items()}
+        return d
+    on, off = dev(True), dev(False)
+    for label, (s, c) in U.wipe_zero_ranges().items():
+        if on.check_program(s, c) != (U.WIPE_ZERO[label], True):
+            raise AssertionError('wipe transport refused ' + label)
+        try:
+            off.check_program(s, c); raise AssertionError('transport without wipe_data accepted ' + label)
+        except A.AdbStop:
+            pass
+        try:
+            list(on._zeros_only([bytes(4096), b'\0' * 4095 + b'\1'])); raise AssertionError('non-zero wipe payload accepted')
+        except A.AdbStop:
+            pass
+    bad = [L.PARTITIONS['userdata'], (L.PARTITIONS['userdata'][0], 4096), L.PARTITIONS['metadata']]
+    bad += [(L.PARTITIONS[n][0], min(2048, L.PARTITIONS[n][1])) for n in U.NEVER_WRITE if n not in U.WIPE_ZERO.values()]
+    for s, c in bad:
+        try:
+            on.check_program(s, c); raise AssertionError('wipe transport accepted %s+%s' % (s, c))
+        except A.AdbStop:
+            pass
+    return True
+
+
+def dry_run(mode, backup_policy=None, wipe_data=False, transport='edl'):
     backup_policy = backup_policy or ('hash-only' if mode == 'update' else 'snapshot')
     result = {'dry_run': True, 'mode': mode, 'backup_policy': backup_policy, 'passed': False}
+    if wipe_data:
+        result['wipe_data'] = True
     try:
         if backup_policy == 'hash-only' and mode != 'update':
             raise E.StopRun('hash-only is for development updates')
-        images, prev_images, prev_compat, new_compat = load_kit()
+        if wipe_data:
+            wipe_args_check(mode, transport, backup_policy)
+        images, prev_images, prev_compat, new_compat = load_kit(wipe_data=wipe_data)
         UE.load_payloads(images)
         result['compat_problems'] = U.compat_problems(prev_compat, new_compat)
+        if wipe_data:
+            result['compat_problems'], result['waived_by_wipe'] = U.wipe_compat(prev_compat, new_compat)
         result['prev'] = prev_compat.get('system_fingerprint')
         result['new'] = new_compat.get('system_fingerprint')
         writes = U.update_writes({k: v[1] for k, v in images.items()})
         result['plan'] = [list(w) for w in writes] if mode == 'update' else []
         result['plan_if_update'] = [list(w) for w in writes]
         result['rollback_plan'] = [list(w) for w in U.rollback_writes()]
+        if wipe_data:
+            wipe = U.wipe_writes({k: v[1] for k, v in images.items()})
+            result['plan'] = [list(w) for w in wipe] if mode == 'update' else []
+            result['plan_if_update'] = [list(w) for w in wipe]
+            result['rollback_plan'] = 'none: a wipe is undone by the previous kit with --wipe-data'
+            result['invariant_regions'] = sorted(U.invariant_regions(wipe=True))
+            result['wipe_transport_selftest'] = wipe_transport_selftest()
         g = UpdateGuard()
         g.set_plan({(s, n) for _, s, n in writes})
         for name in U.NEVER_WRITE:
@@ -145,12 +198,22 @@ def dry_run(mode, backup_policy=None):
         except ValueError:
             pass
         if result['compat_problems'] and mode != 'rollback':
-            raise E.StopRun('new build cannot boot the existing /data: ' + '; '.join(result['compat_problems']))
+            raise E.StopRun(('wipe-data refused: ' if wipe_data else 'new build cannot boot the existing /data: ')
+                            + '; '.join(result['compat_problems']))
         result['passed'] = True
     except Exception as e:   # noqa: BLE001 - reported
         result['error'] = repr(e)
     print(json.dumps(result, indent=2))
     return 0 if result['passed'] else 1
+
+
+def wipe_args_check(mode, transport, backup_policy, userdata_full=False, reflash=False):
+    if mode not in ('update', 'backup-only'):
+        raise E.StopRun('--wipe-data is for --mode update or backup-only')
+    if transport != 'adb-recovery':
+        raise E.StopRun('--wipe-data is implemented for --transport adb-recovery only')
+    if mode == 'update' and (backup_policy != 'hash-only' or userdata_full):
+        raise E.StopRun('--wipe-data updates are hash-only (no snapshot, no --userdata-full)')
 
 
 def edl_device(report, save, extra_reads):
@@ -235,12 +298,19 @@ def main():
     ap.add_argument('--backup-policy', choices=('hash-only', 'snapshot'),
                     help='development updates default to hashes, without old partition snapshots')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--wipe-data', action='store_true',
+                    help='test-keys <-> release-keys switch: zero the first MiB of metadata+userdata (see the docstring)')
     args = ap.parse_args()
     policy = args.backup_policy or ('hash-only' if args.mode == 'update' and not args.userdata_full else 'snapshot')
     if args.dry_run:
         if policy == 'hash-only' and args.userdata_full:
             ap.error('--userdata-full requires snapshot policy')
-        return dry_run(args.mode, policy)
+        return dry_run(args.mode, policy, wipe_data=args.wipe_data, transport=args.transport)
+    if args.wipe_data:
+        try:
+            wipe_args_check(args.mode, args.transport, policy, args.userdata_full)
+        except E.StopRun as e:
+            ap.error(str(e))
     import pwd, socket
     try:
         uid = pwd.getpwnam('pierrelouis').pw_uid
@@ -255,7 +325,8 @@ def main():
         ap.error('--userdata-full is for backup-only/update')
     os.umask(0o022)
     args.output.mkdir(mode=0o700, exist_ok=False)
-    report = {'scope': 'rom-update ' + args.mode + ' via ' + args.transport, 'started_utc': datetime.now(timezone.utc).isoformat()}
+    report = {'scope': 'rom-update ' + args.mode + (' wipe-data' if args.wipe_data else '') + ' via ' + args.transport,
+              'started_utc': datetime.now(timezone.utc).isoformat()}
     path = args.output / 'report.json'
 
     def save():
@@ -270,9 +341,9 @@ def main():
     signal.alarm(bound)
     app = None
     try:
-        images, prev_images, prev_compat, new_compat = load_kit()
+        images, prev_images, prev_compat, new_compat = load_kit(wipe_data=args.wipe_data)
         save()
-        writes = U.update_writes({k: v[1] for k, v in images.items()})
+        writes = (U.wipe_writes if args.wipe_data else U.update_writes)({k: v[1] for k, v in images.items()})
         plan = set() if args.mode == 'backup-only' else (
             {(s, n) for _, s, n in writes} if args.mode == 'update' else {(s, n) for _, s, n in U.rollback_writes()})
         report['program_plan'] = sorted(plan)
@@ -286,7 +357,7 @@ def main():
             import RomUpdateAdbV1 as A
             kit = HOME.parent / 'a6l-recovery-kit'
             kit_expected = {'primary': (kit / 'expected-primary.bin').read_bytes(), 'tail': (kit / 'expected-tail.bin').read_bytes()}
-            dev = A.AdbRecoveryDevice(ADB_RECOVERY_SERIAL)
+            dev = A.AdbRecoveryDevice(ADB_RECOVERY_SERIAL, wipe_data=args.wipe_data)
             report['adb_disk'] = dev.preflight()
             save()
         if args.mode == 'rollback':
@@ -295,7 +366,8 @@ def main():
             UE.run_rollback(dev, args.output, args.update_capture, kit_expected, report, save)
         else:
             UE.run_update(dev, args.output, images, prev_images, prev_compat, new_compat, kit_expected, report, save,
-                          mode=args.mode, userdata_full=args.userdata_full, reflash=args.reflash, backup_policy=policy)
+                          mode=args.mode, userdata_full=args.userdata_full, reflash=args.reflash, backup_policy=policy,
+                          wipe_data=args.wipe_data)
     except (Exception, SystemExit) as error:
         report['error'] = repr(error)
         print('rom-update stopped: ' + repr(error), flush=True)
@@ -305,9 +377,12 @@ def main():
             app.cdc.close()
         report['finished_utc'] = datetime.now(timezone.utc).isoformat()
         save()
-    keys = ('scope', 'error', 'predecessor', 'compat', 'readback_verified', 'invariants_unchanged', 'rehearsal_passed', 'power')
+    keys = ('scope', 'error', 'predecessor', 'compat', 'readback_verified', 'wipe_zero_verified', 'invariants_unchanged',
+            'rehearsal_passed', 'power')
     print(json.dumps({k: report.get(k) for k in keys}, indent=2))
     ok = report.get('power') and not report.get('error') and (report.get('readback_verified') or report.get('rehearsal_passed'))
+    if args.wipe_data and args.mode == 'update':
+        ok = ok and report.get('wipe_zero_verified') and report.get('invariants_unchanged')
     return 0 if ok else 1
 
 

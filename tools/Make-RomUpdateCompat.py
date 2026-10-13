@@ -52,6 +52,16 @@ def data_line(fstab_text):
     raise ValueError('no /data entry in fstab')
 
 
+def formattable(fstab_text, mnt):
+    """wipe-mode (12 Oct 2026): True when the fstab line of `mnt` carries the fs_mgr flag 'formattable' (fs_mgr then
+    formats the partition at mount_all when its head is zeroes; the wipe-data update relies on it)."""
+    for line in fstab_text.splitlines():
+        f = line.split()
+        if len(f) >= 5 and not f[0].startswith('#') and f[1] == mnt:
+            return 'formattable' in f[4].split(',')
+    return False
+
+
 def extract(img, dest):
     r = subprocess.run([FSCK, '--extract=' + str(dest), '--no-preserve', str(img)], capture_output=True, text=True)
     if r.returncode != 0:
@@ -72,7 +82,8 @@ def describe(images_dir, sysroot=None, venroot=None):
         sp = props(first(sysroot, 'system/build.prop', 'build.prop').read_text(errors='replace'))
         vp = props(first(venroot, 'build.prop', 'vendor/build.prop').read_text(errors='replace'))
         cert = platform_cert(first(sysroot, 'system/etc/selinux/plat_mac_permissions.xml', 'etc/selinux/plat_mac_permissions.xml').read_text())
-        fs, enc = data_line(first(venroot, 'etc/fstab.qcom', 'vendor/etc/fstab.qcom').read_text())
+        fstab = first(venroot, 'etc/fstab.qcom', 'vendor/etc/fstab.qcom').read_text()
+        fs, enc = data_line(fstab)
         tags = sp.get('ro.system.build.tags') or sp.get('ro.build.tags')
         return {
             'schema': 1,
@@ -88,6 +99,8 @@ def describe(images_dir, sysroot=None, venroot=None):
             'platform_cert_sha256': cert,
             'data_fs': fs,
             'data_encryption': enc,
+            'data_formattable': formattable(fstab, '/data'),
+            'metadata_formattable': formattable(fstab, '/metadata'),
             'boot_fstab': pins.get('boot_report', {}).get('fstab'),
             'rom': pins.get('rom'),
             'images': {n: pins['images'][n]['sha256'] for n in ('boot', 'dtbo', 'vendor', 'system')},

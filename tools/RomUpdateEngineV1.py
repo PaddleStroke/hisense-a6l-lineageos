@@ -13,6 +13,14 @@ modes
                to the installed (previous-kit) image, and whose head was just read back as that image, is left untouched
                (report 'unchanged_skipped'); --reflash writes all four again.
   rollback     from an update capture: write the four saved partitions back (keeps data), readback, invariants, reset.
+  wipe_data=True (user-build-20261012/wipe-mode, --wipe-data; update and backup-only only): the data-compatibility
+               rule becomes RomUpdateLayoutV1.wipe_compat (only the platform-certificate and /data-format problems of a
+               test-keys <-> release-keys switch are accepted, plus the build type/tags change), and AFTER the images are
+               written and read back, the first MiB of metadata and of userdata is zeroed and read back (= zero hash),
+               so the first boot formats both. update+wipe is hash-only (no snapshot: an image-only rollback over a
+               wiped /data is meaningless; the rollback is the previous kit with --wipe-data). Every other check is
+               unchanged: GPT/identity, vbmeta/devinfo/BCB, predecessor, plan allowlist, readback, invariant regions
+               (metadata and userdata-head minus their zeroed first MiB).
 Development CLI updates default to hash-only verification: no old partition snapshots are saved.
 The engine API keeps its snapshot default for existing callers. Explicit snapshot/backup-only modes
 retain partition copies; rollback requires such a snapshot. Restore a hash-only development update
@@ -31,9 +39,9 @@ import RomUpdateLayoutV1 as U
 StopRun = E.StopRun
 
 
-def _checked(writes):
+def _checked(writes, wipe=False):
     try:
-        U.check_update_plan(writes)
+        U.check_update_plan(writes, wipe=wipe) if wipe else U.check_update_plan(writes)
         if hasattr(L, 'check_plan'):   # kits staged before bug hunt round 2 (kit-r5) lack it; check_update_plan is stricter
             L.check_plan(writes)
     except ValueError as e:
@@ -80,15 +88,15 @@ def _pre_checks(s, kit_expected):
         os.remove(s.capture / f'{n}.bin')
 
 
-def hash_invariants(s, suffix):
+def hash_invariants(s, suffix, wipe=False):
     out = {}
-    for label, (start, sectors) in U.invariant_regions().items():
+    for label, (start, sectors) in (U.invariant_regions(wipe=True) if wipe else U.invariant_regions()).items():
         out[label] = s.hash_region('inv-' + label, start, sectors, suffix)
     return out
 
 
 def run_update(dev, capture, images, prev_images, prev_compat, new_compat, kit_expected, report, save, mode='update',
-               userdata_full=False, reflash=False, power_after=None, backup_policy='snapshot'):
+               userdata_full=False, reflash=False, power_after=None, backup_policy='snapshot', wipe_data=False):
     """images/prev_images: {'boot','dtbo','system','vendor'} -> (path, nbytes, sha256) of the new kit / of the build that
     must be on the phone (prev_images paths are only used for their (nbytes, sha256); the files need not exist)."""
     if mode not in ('update', 'backup-only'):
@@ -97,27 +105,45 @@ def run_update(dev, capture, images, prev_images, prev_compat, new_compat, kit_e
         raise StopRun('unknown backup policy')
     if backup_policy == 'hash-only' and (mode != 'update' or userdata_full):
         raise StopRun('hash-only is for development updates without a userdata backup')
+    if wipe_data is not False and wipe_data is not True:
+        raise StopRun('wipe_data must be a bool')
+    if wipe_data and mode == 'update' and backup_policy != 'hash-only':
+        raise StopRun('wipe-data updates are hash-only (rollback = the previous kit with --wipe-data)')
     s = E.Session(dev, capture, report, save)
     report['mode'] = mode
     report['backup_policy'] = backup_policy
+    if wipe_data:
+        report['wipe_data'] = True
     # ---- offline checks (no device access) ----
     load_payloads(images)
-    problems = U.compat_problems(prev_compat, new_compat)
+    if wipe_data:
+        problems, waived = U.wipe_compat(prev_compat, new_compat)
+    else:
+        problems, waived = U.compat_problems(prev_compat, new_compat), None
     report['compat'] = {'prev': prev_compat.get('system_fingerprint'), 'new': new_compat.get('system_fingerprint'),
                         'problems': problems}
+    if wipe_data:
+        report['compat']['waived_by_wipe'] = waived
     save()
     if problems:
-        raise StopRun('new build cannot boot the existing /data: ' + '; '.join(problems))
-    writes = U.update_writes({k: v[1] for k, v in images.items()})
-    _checked(writes)
+        raise StopRun(('wipe-data refused: ' if wipe_data else 'new build cannot boot the existing /data: ') + '; '.join(problems))
+    sizes = {k: v[1] for k, v in images.items()}
+    writes = U.wipe_writes(sizes) if wipe_data else U.update_writes(sizes)
+    _checked(writes, wipe=wipe_data)
     report['plan'] = [list(w) for w in writes] if mode == 'update' else []
     report['plan_if_update'] = [list(w) for w in writes]
     save()
     # ---- device: identity + state (reads only) ----
     _pre_checks(s, kit_expected)
-    inv_before = hash_invariants(s, '-before')
+    inv_before = hash_invariants(s, '-before', wipe=wipe_data)
     report['invariants_before'] = inv_before
     save()
+    wipe_heads_before = {}
+    if wipe_data:      # hash only (no bytes kept): what the two MiB that will be zeroed hold now
+        for label, (start, sectors) in U.wipe_zero_ranges().items():
+            wipe_heads_before[label] = s.hash_region(label, start, sectors, '-before')
+        report['wipe_heads_before'] = wipe_heads_before
+        save()
     backups, files = {}, {}
     head_hashes = {}
     if backup_policy == 'snapshot':
@@ -166,6 +192,9 @@ def run_update(dev, capture, images, prev_images, prev_compat, new_compat, kit_e
                 'layout': {n: list(L.PARTITIONS[n]) for n in U.UPDATE_BACKUP},
                 'predecessor': state, 'prev_compat': prev_compat, 'new_compat': new_compat,
                 'invariants_before': inv_before}
+    if wipe_data:
+        manifest['wipe_data'] = True
+        manifest['wipe_heads_before'] = wipe_heads_before
     if userdata_full:
         manifest['layout']['userdata-full'] = list(U.userdata_full())
     (Path(capture) / 'backup-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -173,7 +202,7 @@ def run_update(dev, capture, images, prev_images, prev_compat, new_compat, kit_e
     report['predecessor_verified'] = True
     save()
     if mode == 'backup-only':
-        inv_after = hash_invariants(s, '-after')
+        inv_after = hash_invariants(s, '-after', wipe=wipe_data)
         report['invariants_unchanged'] = inv_after == inv_before
         save()
         if inv_after != inv_before:
@@ -187,9 +216,12 @@ def run_update(dev, capture, images, prev_images, prev_compat, new_compat, kit_e
     # ---- writes: boot, dtbo, vendor, system only; r6b: only those that change ----
     unchanged = [n for n in U.UPDATE_WRITABLE if not reflash and state[n] == 'prev'
                  and images[n][1:] == prev_images[n][1:]]
-    writes = [w for w in writes if w[0] not in unchanged]
+    zero_writes = [w for w in writes if w[0] in U.WIPE_ZERO]
+    writes = [w for w in writes if w[0] not in unchanged and w[0] not in U.WIPE_ZERO]
+    if bool(zero_writes) != wipe_data or (wipe_data and [w[0] for w in zero_writes] != list(U.wipe_zero_ranges())):
+        raise StopRun('internal: zero ranges in the plan do not match the wipe-data flag')
     report['unchanged_skipped'] = unchanged
-    report['plan'] = [list(w) for w in writes]
+    report['plan'] = [list(w) for w in writes + zero_writes]
     save()
     for n in unchanged:
         print('unchanged (not written) ' + n, flush=True)
@@ -201,9 +233,18 @@ def run_update(dev, capture, images, prev_images, prev_compat, new_compat, kit_e
     for label, start, sectors in writes:
         s.verify_written(label, start, sectors, images[label][2])
         print('readback ok ' + label, flush=True)
+    if wipe_data:      # only after every image is written AND read back
+        for label, start, sectors in zero_writes:
+            U.check_update_plan([(label, start, sectors)], wipe=True)
+            s.program(label, start, sectors, E.zero_stream(sectors * L.SECTOR), E.zero_sha(sectors * L.SECTOR))
+            print('zeroed ' + label, flush=True)
+        for label, start, sectors in zero_writes:
+            s.verify_written(label, start, sectors, E.zero_sha(sectors * L.SECTOR))
+            print('readback ok ' + label, flush=True)
+        report['wipe_zero_verified'] = True
     report['readback_verified'] = True
     save()
-    inv_after = hash_invariants(s, '-after')
+    inv_after = hash_invariants(s, '-after', wipe=wipe_data)
     report['invariants_after'] = inv_after
     report['invariants_unchanged'] = inv_after == inv_before
     save()
@@ -227,6 +268,8 @@ def run_rollback(dev, capture, update_capture, kit_expected, report, save, power
     urep = json.loads((src / 'report.json').read_text())
     if manifest.get('kind') != 'rom-update' or urep.get('mode') != 'update':
         raise StopRun('not an update capture')
+    if manifest.get('wipe_data') or urep.get('wipe_data'):
+        raise StopRun('wipe-data capture: an image-only rollback cannot boot the wiped /data; flash the previous kit with --wipe-data')
     if manifest.get('layout', {}).get('boot') is None or any(manifest['layout'][n] != list(L.PARTITIONS[n]) for n in U.UPDATE_BACKUP):
         raise StopRun('capture layout differs from this tool\'s layout; not rolling back')
     for n in U.UPDATE_BACKUP:

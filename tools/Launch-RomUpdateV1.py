@@ -1,6 +1,7 @@
 """Launch the "preserve userdata" update coordinator ONLY while Pierre is present (agent update-keepdata, 29 Sep 2026).
 usage: python3 Launch-RomUpdateV1.py --mode backup-only|update|rollback --transport adb-recovery|edl [coordinator options]
-A dry run of the worker must pass first (it is repeated inside the coordinator)."""
+A dry run of the worker must pass first (it is repeated inside the coordinator).
+wipe-data (ERASES /data): ... --mode update --wipe-data --confirm-wipe <serial> --enter-recovery (Run-LaptopRomUpdate-v1.py)."""
 import json, os, subprocess, sys
 from pathlib import Path
 root = Path(__file__).resolve().parent
@@ -12,11 +13,12 @@ if mode not in ('backup-only', 'update', 'rollback'):
     sys.exit('--mode backup-only|update|rollback required')
 subprocess.run(['/usr/bin/python3', str(root / 'Run-LaptopRomUpdate-v1.py')] + args + ['--dry-run'], check=True)
 env = dict(os.environ, DISPLAY=':0', XDG_RUNTIME_DIR='/run/user/1000', DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus')
-log_path = root / f'rom-update-{mode}-launch.log'
+log_path = root / (f'rom-update-{mode}-wipe-launch.log' if '--wipe-data' in args else f'rom-update-{mode}-launch.log')
 if log_path.exists():
     os.replace(log_path, log_path.with_suffix('.log.%d' % int(log_path.stat().st_mtime)))
 with log_path.open('x') as log:
-    p = subprocess.Popen(['/usr/bin/gnome-session-inhibit', '--app-id', 'A6L-rom-update', '--reason', 'A6L rom update ' + mode,
+    p = subprocess.Popen(['/usr/bin/gnome-session-inhibit', '--app-id', 'A6L-rom-update', '--reason',
+                          'A6L rom update ' + mode + (' WIPE-DATA' if '--wipe-data' in args else ''),
                           '--inhibit', 'suspend:idle', '/usr/bin/python3', str(root / 'Run-LaptopRomUpdate-v1.py')] + args,
                          cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 print(json.dumps({'launched_pid': p.pid, 'log': log_path.name}))

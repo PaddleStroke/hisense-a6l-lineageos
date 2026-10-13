@@ -18,6 +18,11 @@ and all its checks are identical. Extra guards here:
     dropped the last ~125 KB of vendor and system on the attended 30 Sep run; the chunked push + dd is the method that
     restored them, .relay/tmp/pushwrite.sh);
   * after each program: sync + blockdev --flushbufs + drop_caches, so the readback comes from the eMMC, not the page cache.
+  * wipe-data (user-build-20261012/wipe-mode): only a device constructed with wipe_data=True (the worker sets it from
+    --wipe-data) also accepts the two RomUpdateLayoutV1.wipe_zero_ranges() (first MiB of metadata / userdata, exact
+    start and length), and only with an all-zero payload; every other metadata/userdata range is still refused.
+    Neither metadata nor userdata may be mounted in the recovery (/proc/self/mountinfo, by major:minor): checked at
+    preflight and again right before each zero write (a mounted ext4 could write its superblock back over the zeroes).
 """
 import hashlib
 import os
@@ -42,8 +47,9 @@ class AdbStop(Exception):
 
 
 class AdbRecoveryDevice:
-    def __init__(self, serial, adb='/usr/bin/adb', expected_image='v74', timeout=3600):
+    def __init__(self, serial, adb='/usr/bin/adb', expected_image='v74', timeout=3600, wipe_data=False):
         self.adb = [adb, '-s', serial]
+        self.wipe_data = wipe_data is True
         self.expected_image = expected_image
         self.timeout = timeout
         self.log = []
@@ -103,6 +109,9 @@ class AdbRecoveryDevice:
         mk.append(f'{T} rm -f {NODES}/disk; {T} mknod {NODES}/disk b {int(ma)} {int(mi)}')
         self.must(' && '.join(mk))
         self.parts = {n: (f'{NODES}/{n}', s, c) for n, (_, s, c) in parts.items()}
+        self.devnums = {n: dev for n, (dev, _, _) in parts.items()}
+        if self.wipe_data:
+            self.assert_unmounted(tuple(U.WIPE_ZERO.values()))
         self.disk = f'{NODES}/disk'
         self.log.append(('preflight', d))
         return d
@@ -164,17 +173,29 @@ class AdbRecoveryDevice:
         if rc != 0 or got != n or Path(out_path).stat().st_size != n:
             raise AdbStop('read failed or short: %d+%d (got %d)' % (start, sectors, got))
 
-    def program(self, start, sectors, stream):
+    def check_program(self, start, sectors):
+        """-> (partition name, zero_only). Transport allowlist of one program range (no adb: also used by the dry run)."""
         if self.parts is None:
             raise AdbStop('preflight not done')
         hit = [n for n, (_, ps, _) in self.parts.items() if ps == start]
         if len(hit) != 1:
             raise AdbStop('program does not start at a partition start: %d' % start)
         name = hit[0]
+        zero = [label for label, r in U.wipe_zero_ranges().items() if r == (start, sectors)] if self.wipe_data else []
         try:
-            U.check_update_plan([(name, start, sectors)])
+            if zero:
+                U.check_update_plan([(zero[0], start, sectors)], wipe=True)
+            else:
+                U.check_update_plan([(name, start, sectors)])
         except ValueError as e:
             raise AdbStop(str(e))
+        return name, bool(zero)
+
+    def program(self, start, sectors, stream):
+        name, zero_only = self.check_program(start, sectors)
+        if zero_only:
+            self.assert_unmounted((name,))
+            stream = self._zeros_only(stream)
         node = self.parts[name][0]
         n = sectors * L.SECTOR
         self.log.append(('program', start, sectors))
@@ -208,6 +229,24 @@ class AdbRecoveryDevice:
         if sent != n:
             raise AdbStop('payload shorter than the programmed range (%d of %d bytes)' % (sent, n))
         self.must(f'{T} rm -f {REMOTE_CHUNK}; {T} sync; {T} blockdev --flushbufs {node}; echo 3 > /proc/sys/vm/drop_caches')
+
+    def assert_unmounted(self, names):
+        devs = getattr(self, 'devnums', None)
+        if not devs:
+            raise AdbStop('preflight not done')
+        want = {devs[n].strip() for n in names}
+        out = self.must(f'{T} cat /proc/self/mountinfo')
+        hit = [l for l in out.splitlines() if len(l.split()) > 2 and l.split()[2] in want]
+        if not out.strip() or hit:
+            raise AdbStop('wipe-data: %s mounted in the recovery (or mountinfo unreadable): %s' % (list(names), hit[:2]))
+        self.log.append(('unmounted', tuple(names)))
+
+    @staticmethod
+    def _zeros_only(stream):
+        for b in stream:
+            if b.count(0) != len(b):
+                raise AdbStop('wipe range payload is not all zeroes; nothing more sent')
+            yield b
 
     def _remote_sha(self, cmd, what):
         rc, out, err = self.shell(cmd, timeout=600)

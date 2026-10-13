@@ -1180,3 +1180,10 @@ Post-flash checks:
 - wlan0 MAC still "mac-failed" (same as permissive; ip is a system binary, release-prep doc 3.4): random MAC.
 - Not done yet: restart from the power menu under enforcing.
 - User build: previous prekits archived (kit-images-20261013-0235, -1123, -1158); rebuilding with all of the above.
+
+**13 Oct 13:50: user build v3 + wipe kits staged.**
+- Restart via PowerManager (`svc power reboot`) under enforcing on 29b: back in 45 s, enforcing, rmtfs running.
+- User build rebuilt with all enforcing fixes: system d7ed7fdf, vendor 339693b6 (3 new policy rules + cpuidle + tps 0cc74f3b verified in the image). Audit re-run with A6L_PREV_KIT=round29b: PASS, all checks true.
+- tools/: wipe-data-tools.patch applied (wipe mode, reviewed with Pierre 13 Oct).
+- Kits on the laptop: rom-r7c-user-20261013 (prev round29b; writes vendor+system, zeroes metadata/userdata first MiB) and rollback rom-r7c-round29b-rewipe-20261013 (prev = user kit, base = round 29b). Receipts in user-build-20261012/wipe-mode/stage-logs.
+- Run (laptop, phone in LineageOS, only adb device, battery >= 50 %): `cd rom-r7c-user-20261013/rom-v2 && python3 extra/start-wipe-flash.py --confirm-wipe 1e529013`; progress `python3 extra/flash-progress-wipe.py`.
