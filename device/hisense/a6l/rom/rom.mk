@@ -121,6 +121,13 @@ PRODUCT_COPY_FILES += \
     device/hisense/a6l/power/rom/a6l-chg-guard.sh:$(TARGET_COPY_OUT_VENDOR)/bin/a6l-chg-guard.sh \
     device/hisense/a6l/power/rom/init.a6l-power.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l-power.rc
 
+# --- CPU idle (battery-20261012): WFI + CPU power collapse only. The TZ rejects the PSCI parameters of the other DT idle
+# states; in s2idle the gold cluster busy-looped on them all night (~300 mA). persist.vendor.a6l.cpuidle.pc_only=0 re-enables
+# them (A/B, or once the DT carries the stock composite StateIDs: firmware/extracted/battery-20261012/dt-psci-idle).
+PRODUCT_COPY_FILES += \
+    $(ROM_DIR)/init/init.a6l.cpuidle.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.a6l.cpuidle.rc
+PRODUCT_VENDOR_PROPERTIES += persist.vendor.a6l.cpuidle.pc_only=1
+
 # --- Wi-Fi regulatory database (wifi 26 Sep): signed regulatory.db(.p7s) -> /vendor/firmware, so cfg80211 applies the
 # FR country rules (else world domain 00). Same bytes as the attended v75/wifi run (sha 5560f4f0 / 5dd27969).
 $(call inherit-product, device/hisense/a6l/wifi/wifi-regdb.mk)

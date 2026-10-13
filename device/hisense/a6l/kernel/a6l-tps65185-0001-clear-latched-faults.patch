@@ -1,0 +1,151 @@
+A6L eink-tps-20261013 0001: tps65185 clears latched INT1/INT2 faults before every power-up and retries once on a
+power-good timeout (a UVLO latched at the first suspend after a ~1 % battery boot froze the e-ink clock, 13 Oct 2026).
+Apply on top of the shipped source /home/a6l/eink-work/tps65185-adc-20261003/tps65185.c (irq-less ADC, ko 60d28b6c),
+in a copy of that module dir, with patch -p1. Only tps65185.c changes.
+
+diff -ruN a/tps65185.c b/tps65185.c
+--- a/tps65185.c	2026-10-13 10:43:36.696898590 +0200
++++ b/tps65185.c	2026-10-13 10:43:36.699213502 +0200
+@@ -38,6 +38,11 @@
+ #define TPS65185_ENABLE_ACTIVE BIT(7)
+ #define TPS65185_ENABLE_STANDBY BIT(6)
+ 
++/* A6L: INT1/INT2 (TI SLVSAQ8G tables 10/11), both read-to-clear */
++#define TPS65185_INT1_FAULTS 0x7c	/* TSD HOT TMST_HOT TMST_COLD UVLO; not DTX ACQC PRGC */
++#define TPS65185_INT2_FAULTS 0xfe	/* VB_UV VDDH_UV VN_UV VPOS_UV VEE_UV VCOMF VNEG_UV; not EOC */
++#define TPS65185_INT2_EOC BIT(0)
++
+ #define PGOOD_TIMEOUT_MSECS 200
+ 
+ struct tps65185_data {
+@@ -185,19 +190,81 @@
+ 	return IRQ_HANDLED;
+ }
+ 
+-static int tps65185_vposneg_enable(struct regulator_dev *rdev)
++static const char * const tps65185_int1_names[8] = {
++	"PRGC", "ACQC", "UVLO", "TMST_COLD", "TMST_HOT", "HOT", "TSD", "DTX"
++};
++
++static const char * const tps65185_int2_names[8] = {
++	"EOC", "VNEG_UV", "VCOMF", "VEE_UV", "VPOS_UV", "VN_UV", "VDDH_UV", "VB_UV"
++};
++
++/*
++ * A6L: a fault (UVLO, TSD, VB_UV, VN_UV, VCOMF) is latched in INT1/INT2 and the
++ * rails cannot be re-enabled until both registers have been read (TI SLVSAQ8G
++ * 8.3.8). Only tps65185_irq_thread() reads them and pmic@68 has no interrupt
++ * on A6L, so a single UVLO (boot at ~1 % battery, 13 Oct 2026) blocked every
++ * later power-up until INT1/INT2 were read by hand. Read them here: this clears
++ * whatever is latched (a persisting fault sets its bit again within 32 us).
++ */
++static void tps65185_clear_int(struct tps65185_data *data, const char *when)
+ {
+-	struct tps65185_data *data = rdev_get_drvdata(rdev);
+-	int ret;
++	unsigned int int1 = 0, int2 = 0;
++	char names[128];
++	int len = 0;
++	int ret1, ret2;
++	int i;
++
++	ret1 = regmap_read(data->regmap, TPS65185_REG_INT1, &int1);
++	ret2 = regmap_read(data->regmap, TPS65185_REG_INT2, &int2);
++	if (ret1 || ret2) {
++		dev_warn_ratelimited(data->dev, "A6L: %s: INT1/INT2 read failed (%d/%d)\n",
++				     when, ret1, ret2);
++		if (ret1)
++			int1 = 0;
++		if (ret2)
++			int2 = 0;
++	}
+ 
+-	reinit_completion(&data->pgood_completion);
++	/* the read consumed EOC: hand it to a temperature read waiting for the IRQ */
++	if (int2 & TPS65185_INT2_EOC)
++		complete(&data->tmst_completion);
++
++	if (!(int1 & TPS65185_INT1_FAULTS) && !(int2 & TPS65185_INT2_FAULTS)) {
++		dev_dbg(data->dev, "%s: INT1 %02x INT2 %02x\n", when, int1, int2);
++		return;
++	}
++
++	for (i = 7; i >= 0; i--)
++		if (int1 & BIT(i))
++			len += scnprintf(names + len, sizeof(names) - len, " %s",
++					 tps65185_int1_names[i]);
++	for (i = 7; i >= 0; i--)
++		if (int2 & BIT(i))
++			len += scnprintf(names + len, sizeof(names) - len, " %s",
++					 tps65185_int2_names[i]);
++	dev_warn_ratelimited(data->dev, "A6L: %s: latched faults read and cleared: INT1 %02x INT2 %02x:%s\n",
++			     when, int1, int2, names);
++}
++
++static int tps65185_set_pwrup(struct tps65185_data *data, bool on)
++{
+ 	if (data->pwrup_gpio)
+-		ret = gpiod_set_value_cansleep(data->pwrup_gpio, 1);
+-	else
+-		ret = regmap_update_bits(data->regmap, TPS65185_REG_ENABLE,
+-					 TPS65185_ENABLE_ACTIVE,
+-					 TPS65185_ENABLE_ACTIVE);
++		return gpiod_set_value_cansleep(data->pwrup_gpio, on);
++	if (on)
++		return regmap_update_bits(data->regmap, TPS65185_REG_ENABLE,
++					  TPS65185_ENABLE_ACTIVE,
++					  TPS65185_ENABLE_ACTIVE);
++	return regmap_update_bits(data->regmap, TPS65185_REG_ENABLE,
++				  TPS65185_ENABLE_STANDBY,
++				  TPS65185_ENABLE_STANDBY);
++}
++
++static int tps65185_vposneg_power_up(struct regulator_dev *rdev)
++{
++	struct tps65185_data *data = rdev_get_drvdata(rdev);
++	int ret;
+ 
++	ret = tps65185_set_pwrup(data, true);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -207,11 +274,36 @@
+ 			return 0;
+ 		usleep_range(5000, 6000);
+ 	}
+-	dev_err(data->dev, "A6L: rails did not reach power good\n");
+-	gpiod_set_value_cansleep(data->pwrup_gpio, 0);
++
+ 	return -ETIMEDOUT;
++}
+ 
+-	return 0;
++static int tps65185_vposneg_enable(struct regulator_dev *rdev)
++{
++	struct tps65185_data *data = rdev_get_drvdata(rdev);
++	unsigned int pg = 0;
++	int ret;
++
++	reinit_completion(&data->pgood_completion);
++	tps65185_clear_int(data, "before power-up");	/* A6L: a latched fault blocks PWRUP */
++	ret = tps65185_vposneg_power_up(rdev);
++	if (ret != -ETIMEDOUT)
++		return ret;
++
++	/* A6L: PWRUP is edge sensitive: drop it, clear what tripped, retry once */
++	regmap_read(data->regmap, TPS65185_REG_PG, &pg);
++	dev_warn(data->dev, "A6L: power good timeout (PG %02x), retrying once\n", pg);
++	tps65185_set_pwrup(data, false);
++	tps65185_clear_int(data, "power good timeout");
++	usleep_range(10000, 11000);
++	ret = tps65185_vposneg_power_up(rdev);
++	if (ret != -ETIMEDOUT)
++		return ret;
++
++	dev_err(data->dev, "A6L: rails did not reach power good\n");
++	tps65185_set_pwrup(data, false);
++	tps65185_clear_int(data, "power good timeout after retry");
++	return -ETIMEDOUT;
+ }
+ 
+ static int tps65185_vposneg_disable(struct regulator_dev *rdev)

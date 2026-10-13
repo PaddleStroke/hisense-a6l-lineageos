@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: Apache-2.0
+# A6L battery-20261012: CPU idle limited to WFI (state0) + CPU power collapse (state2, PSCI 0x40000003) on all 8 CPUs.
+#
+# Why: the SDM660 TZ rejects the PSCI parameters that mainline sdm630.dtsi gives the other states (sysfs "rejected"
+# in the millions, "usage" 0, receipt pm-logging-20261005/laptop-logs/cpuidle-20261005T082157Z):
+#   state1 retention 0x40000002, state3/4/5 cluster 0x400000f2/0x400000f3/0x400000f4 (no affinity level, bad StateID).
+# In s2idle the kernel takes the deepest state that has an s2idle callback: state5 on the gold CPUs 1-4. PSCI returns
+# an error at once, so the gold cores busy-loop (tick_freeze -> SMC -> error -> tick_unfreeze) for the whole night:
+# ~300 mA, the "66 % awake" of batterystats, the "hard LOCKUP on cpu 5" and RCU stall reports. The silver CPUs pick
+# state2 (state5 has the same 2336 us latency and loses the strict-increase test), which works (>100k usages per CPU).
+# With 1/3/4/5 disabled every CPU uses state2 in s2idle and in normal idle.
+#
+# persist.vendor.a6l.cpuidle.pc_only: 1 (build default) = apply; 0 = leave every state enabled (A/B, or a DTB with
+# corrected PSCI parameters, battery-20261012/dt-psci-idle). Runs in vendor_init (may write sysfs_type files).
+# The sysfs "disable" knobs are not persistent: a reboot without this file restores the kernel default.
+
+on boot && property:persist.vendor.a6l.cpuidle.pc_only=1
+    trigger a6l-cpuidle-pc-only
+
+on property:sys.boot_completed=1 && property:persist.vendor.a6l.cpuidle.pc_only=1
+    trigger a6l-cpuidle-pc-only
+
+on property:sys.boot_completed=1 && property:persist.vendor.a6l.cpuidle.pc_only=0
+    trigger a6l-cpuidle-all
+
+on a6l-cpuidle-pc-only
+    write /sys/devices/system/cpu/cpu0/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu0/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu0/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu0/cpuidle/state5/disable 1
+    write /sys/devices/system/cpu/cpu1/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu1/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu1/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu1/cpuidle/state5/disable 1
+    write /sys/devices/system/cpu/cpu2/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu2/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu2/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu2/cpuidle/state5/disable 1
+    write /sys/devices/system/cpu/cpu3/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu3/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu3/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu3/cpuidle/state5/disable 1
+    write /sys/devices/system/cpu/cpu4/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu4/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu4/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu4/cpuidle/state5/disable 1
+    write /sys/devices/system/cpu/cpu5/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu5/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu5/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu5/cpuidle/state5/disable 1
+    write /sys/devices/system/cpu/cpu6/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu6/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu6/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu6/cpuidle/state5/disable 1
+    write /sys/devices/system/cpu/cpu7/cpuidle/state1/disable 1
+    write /sys/devices/system/cpu/cpu7/cpuidle/state3/disable 1
+    write /sys/devices/system/cpu/cpu7/cpuidle/state4/disable 1
+    write /sys/devices/system/cpu/cpu7/cpuidle/state5/disable 1
+
+on a6l-cpuidle-all
+    write /sys/devices/system/cpu/cpu0/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu0/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu0/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu0/cpuidle/state5/disable 0
+    write /sys/devices/system/cpu/cpu1/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu1/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu1/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu1/cpuidle/state5/disable 0
+    write /sys/devices/system/cpu/cpu2/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu2/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu2/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu2/cpuidle/state5/disable 0
+    write /sys/devices/system/cpu/cpu3/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu3/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu3/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu3/cpuidle/state5/disable 0
+    write /sys/devices/system/cpu/cpu4/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu4/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu4/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu4/cpuidle/state5/disable 0
+    write /sys/devices/system/cpu/cpu5/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu5/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu5/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu5/cpuidle/state5/disable 0
+    write /sys/devices/system/cpu/cpu6/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu6/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu6/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu6/cpuidle/state5/disable 0
+    write /sys/devices/system/cpu/cpu7/cpuidle/state1/disable 0
+    write /sys/devices/system/cpu/cpu7/cpuidle/state3/disable 0
+    write /sys/devices/system/cpu/cpu7/cpuidle/state4/disable 0
+    write /sys/devices/system/cpu/cpu7/cpuidle/state5/disable 0

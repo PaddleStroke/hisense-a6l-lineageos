@@ -1151,3 +1151,11 @@ Post-flash checks:
 - Fix: clear and log INT1/INT2 before PWRUP; on a PG timeout, read again and retry once. An agent is building it in /home/a6l/eink-tps-20261013 (shipped source = /home/a6l/eink-work/tps65185-adc-20261003, ko 60d28b6c).
 - Live workaround if seen again: `cat /sys/kernel/debug/regmap/0-0068/registers` (as root; needs debugfs mounted).
 - F1 test restarted 10:36:39 (baseline re-saved in cpuidle-f1-start.txt), wakelock released.
+
+**13 Oct 11:02: F1 PASSED live** (round 28, plugged on the laptop, 10:36-11:02):
+- s2idle entries on all 8 CPUs land in state2 (gold too); the disabled states get no rejections; hard-LOCKUP/RCU stall count unchanged (71, all from before).
+- CLOCK_MONOTONIC advanced 51.9 s in 780 s boottime (10:48-11:01): 93 % frozen (before F1: ~20-28 s/min = 55-65 % awake). The remaining ~4 s/min is mostly the e-ink minute frame (~1.1 s) + resume/suspend.
+- E-ink drew every minute. The mA gain is not measured yet (plugged); needs an unplugged overnight run with measure/a6l-pm-log.sh.
+- Integrated: rom/init/init.a6l.cpuidle.rc + rom.mk (persist.vendor.a6l.cpuidle.pc_only=1, all variants). The agent's 0001 patch had a literal "\n" in the PRODUCT_COPY_FILES line; fixed by hand. vendor_init may write sysfs_type (enforcing OK).
+- TPS65185 fault-clear module (0cc74f3b, srcversion 3B7C34EE, CRCs match) installed in the WSL tree rom/prebuilt/vendor/lib/modules (backup /root/bak-20261013/tps65185.ko.60d28b6c); record device/hisense/a6l/kernel/a6l-tps65185-0001-clear-latched-faults.patch. Not live-tested (can't reload under the panel).
+- Both need a vendor rebuild (userdebug round 29 and/or the user build).
