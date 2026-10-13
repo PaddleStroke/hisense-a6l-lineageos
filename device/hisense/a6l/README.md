@@ -1,39 +1,26 @@
-# Hisense A6L bring-up
+# Hisense A6L device tree (LineageOS 24)
 
-Target branch: LineageOS 24.0. **System compile probe built and filesystem-checked;
-not boot-tested or ready to flash.**
+Device tree for the unofficial LineageOS 24 / Android 17 port to the Hisense A6L (HLTE730T, SDM660, LCD + rear e-ink).
+Status, installation and build notes: the top-level [README.md](../../../README.md) and
+[docs/port-status.md](../../../docs/port-status.md). History: [docs/handoff-20261005-claude.md](../../../docs/handoff-20261005-claude.md).
 
-`lineage_gsi_a6l` is an initial system-image compile probe using the upstream
-LineageOS arm64 GSI product. It gives us a current framework baseline and a place
-to add compatibility work. It is not full native A6L hardware support. Kernel,
-boot, recovery, vendor, userdata and OTA outputs are disabled for this probe.
-The system image size is constrained by the measured stock partition capacity.
+**The ROM boots and is usable as of 13 Oct 2026** (project paused):
+- Round 29b userdebug, SELinux enforcing.
+- A release-keys user build also exists.
+- Open items: stability under load, VoLTE (blocked by the carrier), /data encryption.
 
-## Known blockers
+## Layout
 
-- Stock vendor is API 28 / VNDK 28. LineageOS 24's GSI product presently includes
-  additional VNDK snapshots 31–34, not 28. An unmodified probe is not expected to
-  satisfy this vendor. Preserve and audit the stock VNDK/LLNDK dependencies before
-  selecting a legacy compatibility implementation or replacing vendor components.
-- Kernel 4.4.153 has Hisense-specific e-ink changes. No matching A6L kernel source
-  has been located in the searches recorded so far. New Android kernel/runtime
-  requirements need auditing, not just a renamed device tree.
-- The old `BOARD_BUILD_SYSTEM_ROOT_IMAGE` switch is obsolete in current build
-  rules. The stock system-as-root boot flow must be reconciled explicitly.
-- E-ink support crosses framework, SurfaceFlinger/libgui, HWC, a software TCON
-  library and kernel/sysfs. Merely enabling fb1 or copying the old SurfaceFlinger
-  binary is not an implementation for Android 17.
-- Bootloader remains locked. There is a verified firmware backup, but no tested
-  restore procedure or installation package. Nothing here authorizes automatic
-  flashing, partition repartitioning, or rollback-index changes.
+| Path | What |
+|---|---|
+| `lineage_gsi_a6l.mk`, `BoardConfig*.mk` | Product: LineageOS arm64 GSI system + the A6L vendor image (mainline-based Linux 7.2, prebuilt kernel and modules) |
+| `rom/` | Vendor init scripts, fstab, sepolicy (enforcing), prebuilt modules (`rom/prebuilt/vendor/lib/modules`), the `user` variant, debug-only services (`rom/debug`, userdebug/eng only) |
+| `kernel/` | Kernel patch records and device-tree overlays |
+| `camera/` | libcamera (simple pipeline + VFE hardware ISP), IPA, Android HAL patches, tuning |
+| `eink/` | E-ink mirror, panel daemon (`a6l_epdd`), LCD/e-ink switcher, lock clock |
+| `audio/`, `kvoice/` | Audio HAL patches, mixer paths, routing daemon, voice-call daemon |
+| `radio/`, `gnss/`, `wifi/`, `usb/`, `power/`, `hals/`, `sens/`, `video/` | Modem (QMI RIL, rmtfs/tqftpserv), GNSS, Wi-Fi, USB gadget, charger guard and power, other HALs, sensors, Venus/Codec2 |
+| `diagnostic/` | Bring-up probes kept for reference; not part of the ROM |
 
-## First build after Linux setup
-
-Place this tree at `device/hisense/a6l` inside a LineageOS 24 source checkout.
-Run `tools/build-linux-probe.sh` from the desktop workspace inside WSL. It sources
-the branch's aosp_target_release and uses the three-argument lunch interface,
-then builds `systemimage`. Record all configuration failures.
-Do not treat successful compilation as evidence it can boot the stock phone.
-
-Stock binaries remain private under the workspace's ignored firmware directory.
-Public device files contain configuration and independently recorded facts only.
+Stock firmware and proprietary blobs are not in this repository. They are pulled from the developer's own stock backup at
+build time (see the top-level README, "Building from source").
