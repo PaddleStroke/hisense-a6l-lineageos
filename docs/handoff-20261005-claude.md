@@ -1187,3 +1187,5 @@ Post-flash checks:
 - tools/: wipe-data-tools.patch applied (wipe mode, reviewed with Pierre 13 Oct).
 - Kits on the laptop: rom-r7c-user-20261013 (prev round29b; writes vendor+system, zeroes metadata/userdata first MiB) and rollback rom-r7c-round29b-rewipe-20261013 (prev = user kit, base = round 29b). Receipts in user-build-20261012/wipe-mode/stage-logs.
 - Run (laptop, phone in LineageOS, only adb device, battery >= 50 %): `cd rom-r7c-user-20261013/rom-v2 && python3 extra/start-wipe-flash.py --confirm-wipe 1e529013`; progress `python3 extra/flash-progress-wipe.py`.
+
+**13 Oct 13:56-14:02: USER ROM INSTALLED on the spare (wipe).** start-wipe-flash.py --confirm-wipe 1e529013 from round 29b: vendor 339693b6 + system d7ed7fdf written and read back, boot/dtbo unchanged_skipped, metadata + userdata first MiB zeroed and verified (30e14955 = 1 MiB of zeroes), invariants unchanged, power off. Log rom-r7c-user-20261013/logs/flash-wipe-20261013T115558Z.log. Next: first boot (formats /data), setup wizard, About = user/release-keys, Developer options off, then fr.laposte.idn.
