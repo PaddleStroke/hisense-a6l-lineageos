@@ -8,6 +8,9 @@ unix_socket_connect(a6l_eink_mirror, a6l_epd, a6l_epdd)
 
 # capture: LCD CRTC planes (GETPLANE/GETFB2 on a plain, never-master card fd; handles need CAP_SYS_ADMIN), PRIME mmap
 allow a6l_eink_mirror gpu_device:chr_file rw_file_perms;
+# enforcing 13 Oct: /dev/dri itself is gpu_device (dir); without search the card open failed in a loop (89 denials in 20 s),
+# the rear screen never mirrored, the e-ink key did not wake and a6l_dualux hit "readiness timeout, fail open"
+allow a6l_eink_mirror gpu_device:dir r_dir_perms;
 allow a6l_eink_mirror self:global_capability_class_set sys_admin;
 allow a6l_eink_mirror sysfs:dir r_dir_perms;
 allow a6l_eink_mirror sysfs:file r_file_perms;
