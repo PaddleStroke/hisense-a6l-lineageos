@@ -1135,3 +1135,12 @@ Post-flash checks:
 - Agent investigating deep sleep / RPM low-power states / the failing suspend callback.
 - After the empty battery the gauge re-learns: it showed 3 % at 3.83 V while charging.
 - PON at the next boot: SMPL latched + FAULT_REASON2 PBS_WATCHDOG_TO, powerup_reason USB_CHG, mode=charger.
+
+**13 Oct 10:30: drain ROOT CAUSE (F1) + live test running** (battery-20261012/README.md):
+- The 4 gold cores never sleep in s2idle. The TZ rejects every DT idle state except WFI and CPU power collapse (state2, PSCI 0x40000003).
+  - s2idle takes the deepest state with an s2idle callback: state5 (0x400000f4) on CPUs 1-4. PSCI refuses it at once, so the gold cores spin (tick_freeze -> SMC -> error) all night: ~280-320 of the ~350 mA.
+  - Live receipt 13 Oct (1.5 h uptime): CPUs 1-4 state5 s2idle_usage ~68 M each. Silver CPUs use state2 (real sleep). 71 hard-LOCKUP/RCU stall lines.
+- The per-cycle WARN is mdss_ahb_clk stuck on (cosmetic). The failed suspends are mostly alarmtimer (an alarm due within 2 s), not a failing driver.
+- Fix F1: disable cpuidle states 1,3,4,5 on all CPUs. fix-cpuidle/init.a6l.cpuidle.rc + 0001 patch (adds persist.vendor.a6l.cpuidle.pc_only=1 for all variants), not yet applied to device/.
+- Live test: 10:28 `a6l-cpuidle.sh apply` on round 28 (non-persistent), baseline in /data/local/tmp/cpuidle-before.txt and cpuidle-f1-start.txt; wakelock released. Check with `a6l-cpuidle.sh delta /data/local/tmp/cpuidle-f1-start.txt` after a sleep: expect state2 s2idle_usage on all 8 CPUs, rejected +0, no new LOCKUP lines (count 71 at start).
+- Later: overnight measure with measure/a6l-pm-log.sh (no wakelock); phase 2 = L2 power collapse via DT (dt-psci-idle/), mdss fix, qcom_stats.ko for RPM counters.
