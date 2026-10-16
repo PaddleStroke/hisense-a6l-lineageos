@@ -4,10 +4,8 @@ An unofficial LineageOS 24 / Android 17 port for the **Hisense A6L (HLTE730T)**:
 a rear 720x1440 e-ink panel. It is built on a mainline-based Linux 7.2 kernel, Mesa freedreno for the GPU, libcamera
 for the cameras and an A6L-specific e-ink stack (mirror, LCD/e-ink switching, lock-screen clock).
 
-One person developed it on one spare phone, with help from AI coding agents. **The project is paused as of
-13 October 2026.** This repository holds the device tree, kernel patches and device-tree overlays, the flashing
-tools and the dated engineering notes. **It does not contain flashable images.** See [Installation](#4-installation)
-before you plan anything.
+This repository holds the device tree, kernel patches and device-tree overlays, the flashing
+tools and the dated engineering notes. An experimental **user build** is available in [Releases](https://github.com/PaddleStroke/hisense-a6l-lineageos/releases)). See [Installation](#4-installation) before you plan anything.
 
 ## 1. Status
 
@@ -35,9 +33,7 @@ The maintained checklist is [docs/port-status.md](docs/port-status.md). In short
 - **Stability.** Occasional hard resets and freezes under heavy load were seen on several days. The cause is unknown.
 - **No /data encryption.** /data is plain ext4 (no FBE). Anyone holding the phone can read it.
 - **Apps that require an unmodified, certified device** may refuse to run: banking, identity, some DRM apps. The
-  bootloader is unlocked (`verifiedbootstate=orange`), the device is not Google-certified, and KeyMint is a software
-  implementation (no TEE). A French identity app was tested on the user build and still refused the device. Bypassing
-  these checks is not a goal of this project.
+  bootloader is unlocked (`verifiedbootstate=orange`), there is an option to hide the unlocked bootloader to some apps. You can toggle it in App info.
 - adb drops at every suspend (USB is not kept alive while asleep).
 - No fingerprint reader support, no Widevine DRM, no Vulkan. The Wi-Fi MAC address is random at every boot.
 
@@ -91,9 +87,9 @@ The maintained checklist is [docs/port-status.md](docs/port-status.md). In short
 
 ### 4.1 Read this first
 
-- **No images are published.** `*.img`, `*.erofs`, the flash kits, the stock firmware backup and the build outputs are
-  all excluded from git (see `.gitignore`). You need to build the images yourself, or ask in the
-  [issues](https://github.com/PaddleStroke/hisense-a6l-lineageos/issues) whether images will be shared.
+- **Images:** the latest user build (boot, dtbo, system, vendor) is on the [Releases](https://github.com/PaddleStroke/hisense-a6l-lineageos/releases) page, with
+  checksums and an install route by `fastboot flash` that is **not yet verified on this bootloader**. The flash kits,
+  the stock firmware backup and the build outputs are not published (see `.gitignore`).
 - **The tools are not plug-and-play for another phone.** On purpose, they hard-code and check:
   - the developer's phone serial and its Sahara/EDL identity;
   - its GPT, byte for byte (the GPT holds a disk GUID unique to each phone);
@@ -328,7 +324,9 @@ Start with [docs/build-checkpoint.md](docs/build-checkpoint.md), [docs/merge-202
 
 **Licence:** there is no top-level LICENSE file yet. Some files carry their own SPDX header (for example
 Apache-2.0). Kernel patches follow the licence of the code they modify. Until a licence is chosen, see the individual
-files. No proprietary Hisense or Qualcomm firmware is distributed here.
+files. The git repository contains no proprietary Hisense or Qualcomm firmware. The **vendor image** on the Releases
+page includes the stock firmware and libraries the hardware needs, unmodified. They remain their owners' property, and
+rights holders can ask for removal in the issues.
 
 Questions, reports from other A6L owners and help with the open items are welcome in the
 [issues](https://github.com/PaddleStroke/hisense-a6l-lineageos/issues).
